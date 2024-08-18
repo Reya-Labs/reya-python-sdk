@@ -1,5 +1,5 @@
+from reya_data_feed.websocket_client import ReyaSocket
 import asyncio
-from .websocket_client import ReyaSocket
 
 def on_error(wapp, message):
     print("On error", message)

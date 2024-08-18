@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "reya-examples"
+version = "0.1.0"
+description = ""
+authors = ["Reya Labs"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+websocket = "^0.2.1"
+typing-extensions = "^4.12.2"
+websocket-client = "^1.8.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
