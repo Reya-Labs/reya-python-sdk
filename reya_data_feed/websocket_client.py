@@ -32,6 +32,15 @@ class Candles(Channel):
     def unsubscribe(self, id):
         super().unsubscribe(id=f"{id}/15MINS")
 
+class Prices(Channel):
+    channel = "prices"
+
+    def subscribe(self, id, batched=True) -> Self:
+        return super().subscribe(id=id, batched=batched)
+
+    def unsubscribe(self, id):
+        super().unsubscribe(id=id)
+
 
 def as_json(on_message):
     def wrapper(ws, message):
@@ -50,6 +59,7 @@ class ReyaSocket(websocket.WebSocketApp):
         **kwargs,
     ):
         self.candles = Candles(self)
+        self.prices = Prices(self)
 
         super().__init__(
             url=url,

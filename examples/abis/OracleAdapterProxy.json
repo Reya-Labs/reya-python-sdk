@@ -1,0 +1,20 @@
+[
+    {
+        "type": "function",
+        "name": "fulfillOracleQuery",
+        "inputs": [
+            {
+                "name": "oracleProvider",
+                "type": "uint8",
+                "internalType": "enum OracleProvider"
+            },
+            {
+                "name": "signedOffchainData",
+                "type": "bytes",
+                "internalType": "bytes"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "payable"
+    }
+]

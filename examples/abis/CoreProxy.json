@@ -1,0 +1,105 @@
+[
+    {
+        "type": "function",
+        "name": "execute",
+        "inputs": [
+          {
+            "name": "accountId",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "commands",
+            "type": "tuple[]",
+            "internalType": "struct Command[]",
+            "components": [
+              {
+                "name": "commandType",
+                "type": "uint8",
+                "internalType": "enum CommandType"
+              },
+              {
+                "name": "inputs",
+                "type": "bytes",
+                "internalType": "bytes"
+              },
+              {
+                "name": "marketId",
+                "type": "uint128",
+                "internalType": "uint128"
+              },
+              {
+                "name": "exchangeId",
+                "type": "uint128",
+                "internalType": "uint128"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "outputs",
+            "type": "bytes[]",
+            "internalType": "bytes[]"
+          },
+          {
+            "name": "usdNodeMarginInfo",
+            "type": "tuple",
+            "internalType": "struct MarginInfo",
+            "components": [
+              {
+                "name": "collateral",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "marginBalance",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "realBalance",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "initialDelta",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "maintenanceDelta",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "liquidationDelta",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "dutchDelta",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "adlDelta",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "initialBufferDelta",
+                "type": "int256",
+                "internalType": "int256"
+              },
+              {
+                "name": "liquidationMarginRequirement",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+]
