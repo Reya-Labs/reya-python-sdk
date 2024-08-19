@@ -35,7 +35,7 @@ class Candles(Channel):
 class Prices(Channel):
     channel = "prices"
 
-    def subscribe(self, id, batched=True) -> Self:
+    def subscribe(self, id, batched=False) -> Self:
         return super().subscribe(id=id, batched=batched)
 
     def unsubscribe(self, id):
