@@ -169,7 +169,7 @@ def getConfigs():
     }
 
 
-async def main():
+def main():
     '''Example trade
     This executes a short trade on account 12, of base 1 (notional = base * price).
     The price limit constrains the slippage. For simplicity, any slippage is allowed, meaning the limit
@@ -181,13 +181,13 @@ async def main():
     trusted producer, they are verified on-chain (do not modify).
     '''
     configs = getConfigs()
-    await execute_trade(
+    execute_trade(
         configs=configs,
         base=-Web3.to_wei(1, 'ether'),  # WAD precision
         price_limit=0,  # WAD precision
         market_id=MarketIds.SOL.value,
-        account_id=12,  # your margin account id
-        current_core_nonce=72,  # sigature nonce of owner address stored in Reya Core
+        account_id=12345,  # your margin account id
+        current_core_nonce=1,  # sigature nonce of owner address stored in Reya Core
         price_payloads=[{
             'oraclePubKey': '0x0a803F9b1CCe32e2773e0d2e98b37E0775cA5d44',
             'pricePayload': {
@@ -202,7 +202,6 @@ async def main():
         }]
     )
 
+
 if __name__ == "__main__":
-    print("... Start")
-    asyncio.run(main())
-    print("... End")
+    main()
