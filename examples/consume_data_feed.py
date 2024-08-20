@@ -25,7 +25,7 @@ def on_message_prices(ws: ReyaSocket, message: dict):
 
 
 async def main():
-    ws = ReyaSocket("wss://ws-test.reya-cronos.network",
+    ws = ReyaSocket(os.environ['REYA_WS_URL'],
                     on_error=on_error, on_message=on_message_prices)
     await ws.connect()
 
