@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from eth_account.messages import encode_typed_data
 from typing import Dict, Any
 
+
 def convert_ethers_signature_to_eip712_signature(signature, deadline):
     return (
         signature['v'],
@@ -10,7 +11,8 @@ def convert_ethers_signature_to_eip712_signature(signature, deadline):
         deadline
     )
 
-async def sign_core_commands(
+
+def sign_core_commands(
     signer,  # This should be a Web3 Account object or equivalent
     reya_chain_id,
     caller,
@@ -26,7 +28,7 @@ async def sign_core_commands(
     for command in commands:
         (command_type, inputs, market_id, exchange_id) = command
         commands_dict.append({
-            'commandType':command_type,
+            'commandType': command_type,
             'inputs': inputs,
             'marketId': market_id,
             'exchangeId': exchange_id
@@ -63,10 +65,12 @@ async def sign_core_commands(
 
     return convert_ethers_signature_to_eip712_signature(signature, deadline)
 
+
 def sign_reya_typed_data(signer, verifying_contract, types, value):
     domain = get_reya_domain(verifying_contract)
 
-    encoded_data = encode_typed_data(domain_data=domain, message_types=types, message_data=value)
+    encoded_data = encode_typed_data(
+        domain_data=domain, message_types=types, message_data=value)
     signed_message = signer.sign_message(encoded_data)
 
     return {
@@ -74,6 +78,7 @@ def sign_reya_typed_data(signer, verifying_contract, types, value):
         'r': signed_message.r.to_bytes(32, byteorder='big'),
         's': signed_message.s.to_bytes(32, byteorder='big')
     }
+
 
 def get_reya_domain(verifying_contract) -> Dict[str, Any]:
     return {
