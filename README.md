@@ -4,9 +4,11 @@ This repo contains Python examples of how to interact with the Reya ecosystem. I
 ## Get Started
 
 Dependencies are managed with Poetry. Install using: 
-`pipx install poetry`.
 
-For `pipx`, follow official installation guide https://pipx.pypa.io/stable/installation/
+```pipx install poetry```
+
+
+For installing `pipx`, follow official installation guide https://pipx.pypa.io/stable/installation/
 
 To create the shell dedicated to running the examples, run this from the repo's root:
 ```bash
@@ -16,9 +18,7 @@ cd ..
 
 Ensure you have the env variables set up. Find an example at `examples/.env.example`
 
-To run any example file, run: 
-```python3 -m examples.<file_name>```
-e.g. 
+To run any example file, run `python3 -m examples.<file_name>`, e.g.:
 ```python3 -m examples.consume_data_feed```
 
 ## Contents
