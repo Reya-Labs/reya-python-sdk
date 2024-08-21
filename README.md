@@ -13,7 +13,7 @@ For installing `pipx`, follow official installation guide https://pipx.pypa.io/s
 To create the shell dedicated to running the examples, run this from the repo's root:
 ```bash
 cd examples && poetry shell
-poetry install
+poetry install --no-root
 cd ..
 ```
 
@@ -24,7 +24,7 @@ To run any example file, run `python3 -m examples.<file_name>`, e.g.:
 
 ## Contents
 ### Websocket client
-The WebSocket client code found at `reya_data_feed/websocket_client.py` is designed to interact with the Reya WebSocket API. The client enables subscription and unsubscription to channels such as candles, spot prices, and funding rates, each supplying data of a specific Reya market. The list of supported markets is ETHUSD, BTCUSD, SOLUSD, ARBUSD, OPUSD, AVAXUSD
+The WebSocket client code found at `reya_data_feed/consumer.py` is designed to interact with the Reya WebSocket API. The client enables subscription and unsubscription to channels such as candles, spot prices, and funding rates, each supplying data of a specific Reya market. The list of supported markets is ETHUSD, BTCUSD, SOLUSD, ARBUSD, OPUSD, AVAXUSD
 
 At the time of writing, prices and candles updates are very fast, almost 500ms, whereas the funding rate is updated only every minute.
 

@@ -1,4 +1,4 @@
-from reya_data_feed.websocket_client import ReyaSocket
+from reya_data_feed.consumer import ReyaSocket
 from examples.consume_data_feed import on_error
 import asyncio
 import random

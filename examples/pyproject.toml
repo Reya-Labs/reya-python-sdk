@@ -7,11 +7,10 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-websocket = "^0.2.1"
 typing-extensions = "^4.12.2"
-websocket-client = "^1.8.0"
 eth-abi = "^5.1.0"
 python-dotenv = "^1.0.1"
+websocket-client = "^1.8.0"
 
 
 [build-system]
