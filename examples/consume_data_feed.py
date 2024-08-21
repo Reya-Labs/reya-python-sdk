@@ -1,5 +1,7 @@
 from reya_data_feed.websocket_client import ReyaSocket
 import asyncio
+import os
+from dotenv import load_dotenv
 
 
 def on_error(_, message):
@@ -25,6 +27,7 @@ def on_message_prices(ws: ReyaSocket, message: dict):
 
 
 async def main():
+    load_dotenv()
     ws = ReyaSocket(os.environ['REYA_WS_URL'],
                     on_error=on_error, on_message=on_message_prices)
     await ws.connect()

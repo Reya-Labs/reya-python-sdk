@@ -3,7 +3,6 @@ from eth_abi import encode
 from enum import Enum
 import json
 import os
-import asyncio
 from dotenv import load_dotenv
 from decimal import *
 from examples.sign import sign_core_commands

@@ -4,6 +4,9 @@ import asyncio
 import random
 from examples.trade_execution import execute_trade, getConfigs, MarketIds
 
+import os
+from dotenv import load_dotenv
+
 market_ids = ["ETHUSD", "BTCUSD", "SOLUSD", "ARBUSD", "OPUSD", "AVAXUSD"]
 global_price_payloads = {key: None for key in market_ids}
 global_funding_rates = {key: None for key in market_ids}
@@ -64,6 +67,7 @@ def run_trades():
 
 
 async def main():
+    load_dotenv()
     ws = ReyaSocket(os.environ['REYA_WS_URL'],
                     on_error=on_error, on_message=on_message_prices)
     await ws.connect()
