@@ -13,6 +13,7 @@ For installing `pipx`, follow official installation guide https://pipx.pypa.io/s
 To create the shell dedicated to running the examples, run this from the repo's root:
 ```bash
 cd examples && poetry shell
+poetry install
 cd ..
 ```
 
