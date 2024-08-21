@@ -42,14 +42,18 @@ Aggregating these oracle calls with the actual trade call requires routing via t
 Prerequisites for calling `execute_trade()`:
 - Ensure your private key is included in the .env file
 - Ensure the contract addresses and chain_id are included in the .env file as per the example
-- Ensure you already have a Reya margin account funded with enough collateral. Create one in the app dashboard: https://app.reya.xyz/. Examples of how to achieve this programmatically are coming soon.
-- Ensure your wallet is funded with some ETH to pay the gas fees
+- Ensure you already have a Reya margin account funded with enough collateral and mentioned in the .env file. Create one in the app dashboard: https://app.reya.xyz/. Examples of how to achieve this programmatically are coming soon.
+- Ensure your wallet is funded with some ETH on Reya network to pay the gas fees. Find bridge here https://reya.network/bridge.
 - Decide on the base value of the trade. A negative value means taking a short position, a positive one means a long position. The base is represented with 18 decimals precision. The base represents the units of exposure denoted in the underlying token of the market
 - Pick a price limit. If the execution price exceeds this, the trade will revert. The price limit for a short trade must be lower than the pool price and vice-versa for a long trade. Price is represented with 18 decimals precision.
 - Specify your margin account id and nonce. These values are revealed when attempting to execute a trade on the app. Your wallet will prompt you to sign a message and will show the account id and the next nonce (your current nonce is 1 less). The message does not need to be signed. In fact, if the message is signed, the nonce will increase by 1.
 - List price update payloads for all markets (source is described above)
 
-To run this example (`examples/trade_execution.py`), follow the instructions from the "Get Started" section.
+To run this example (`examples/trade_execution.py`), run from project root:
+
+```bash
+python3 -m examples.trade_execution --current-nonce <account_core_nonce>
+```
 
 
 ### Trigger trades based on price and funding rate updates
@@ -59,4 +63,8 @@ To make use of this example, adjust these two functions `decide_execution()` and
 Follow the trade example instructions to adjust trading execution with the proper inputs.
 Deciding when to execute a trade is up to the user.
 
-To run this example (`examples/trade_based_on_updates.py`), follow the instructions from the "Get Started" section.
+To run this example (`examples/trade_based_on_updates.py`), run from project root:
+
+```bash
+python3 -m examples.trade_based_on_updates --current-nonce <account_core_nonce>
+```

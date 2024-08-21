@@ -2,14 +2,17 @@ from reya_data_feed.consumer import ReyaSocket
 from examples.consume_data_feed import on_error
 import asyncio
 import random
-from examples.trade_execution import execute_trade, getConfigs, MarketIds
+from examples.utils.trade import execute_trade, getConfigs
 
 import os
 from dotenv import load_dotenv
+import argparse
 
 market_ids = ["ETHUSD", "BTCUSD", "SOLUSD", "ARBUSD", "OPUSD", "AVAXUSD"]
 global_price_payloads = {key: None for key in market_ids}
 global_funding_rates = {key: None for key in market_ids}
+
+current_nonce = 1
 
 '''Listen to price changes and funding rate changes and trade based on this information'''
 
@@ -55,15 +58,19 @@ def decide_execution(_, __):
 
 def run_trades():
     configs = getConfigs()
-    execute_trade(
+    global current_nonce
+    success = execute_trade(
         configs=configs,
-        base=-(10**18),
-        price_limit=0,
-        market_id=MarketIds.SOL.value,
-        account_id=12,  # your margin account id
-        current_core_nonce=72,  # sigature nonce of owner address stored in Reya Core
+        base= < REPLACE_ME > , # e.g. -10**18 for short trade, WAD precision
+        price_limit= < REPLACE_ME >, # e.g. 2678 * (10 **18), WAD precision
+        market_id= < REPLACE_ME > , # e.g. MarketIds.SOL.value,
+        account_id=configs['account_id'],  # your margin account id
+        # sigature nonce of owner address stored in Reya Core
+        current_core_nonce=current_nonce,
         price_payloads=map(_map_payloads, global_price_payloads.values())
     )
+    # incrememnt nonce aftre every successful trade
+    current_nonce += 1 if success else 0
 
 
 async def main():
@@ -73,6 +80,13 @@ async def main():
     await ws.connect()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Example script for demonstration.")
+    parser.add_argument('--current-nonce', type=str, default="1",
+                        help="Current nonce of the margin account owner, tracked in Core")
+    args = parser.parse_args()
+    current_nonce = int(args.current_nonce)
+
     print("... Start")
     asyncio.run(main())
     print("... End")

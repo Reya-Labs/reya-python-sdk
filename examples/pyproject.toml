@@ -11,6 +11,7 @@ typing-extensions = "^4.12.2"
 eth-abi = "^5.1.0"
 python-dotenv = "^1.0.1"
 websocket-client = "^1.8.0"
+web3 = "^6.20.2"
 
 
 [build-system]
