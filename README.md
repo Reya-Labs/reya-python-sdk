@@ -3,12 +3,12 @@ This repo contains Python examples of how to interact with the Reya ecosystem. I
 
 ## Get Started
 
-Dependencies are managed with Poetry. Install using: 
+Dependencies are managed with Poetry. To install Poetry, use the following command:
 
-```pipx install poetry```
-
-
-For installing `pipx`, follow official installation guide https://pipx.pypa.io/stable/installation/
+```bash
+pipx install poetry
+```
+> **Note**: If `pipx` is not installed on your system, follow the [official installation guide](https://pipx.pypa.io/stable/installation/).
 
 To create the shell dedicated to running the examples, run this from the repo's root:
 ```bash
