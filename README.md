@@ -3,12 +3,12 @@ This repo contains Python examples of how to interact with the Reya ecosystem. I
 
 ## Get Started
 
-Dependencies are managed with Poetry. Install using: 
+Dependencies are managed with Poetry. To install Poetry, use the following command:
 
-```pipx install poetry```
-
-
-For installing `pipx`, follow official installation guide https://pipx.pypa.io/stable/installation/
+```bash
+pipx install poetry
+```
+> **Note**: If `pipx` is not installed on your system, follow the [official installation guide](https://pipx.pypa.io/stable/installation/).
 
 To create the shell dedicated to running the examples, run this from the repo's root:
 ```bash
@@ -37,13 +37,13 @@ It shows how oracle updates can be appended to trades to ensure the latest price
 
 The prices updates can be obtained from the websocket API as seen in `examples/trade_based_on_updates.py`. The updates contain the latest price, corresponding timestamp and the signed message from the trusted producer. The signature is verified against the given values on-chain.
 
-Aggregating these oracle calls with the actual trade call requires routing via the Multicall contract [https://www.multicall3.com/]. Thus, the message sender is not the user anymore and a signature is required to ensure the integrity of the trade information.
+Aggregating these oracle calls with the actual trade call requires routing via the [Multicall contract](https://www.multicall3.com/). Thus, the message sender is not the user anymore and a signature is required to ensure the integrity of the trade information.
 
 Prerequisites for calling `execute_trade()`:
 - Ensure your private key is included in the .env file
 - Ensure the contract addresses and chain_id are included in the .env file as per the example
-- Ensure you already have a Reya margin account funded with enough collateral and mentioned in the .env file. Create one in the app dashboard: https://app.reya.xyz/. Examples of how to achieve this programmatically are coming soon.
-- Ensure your wallet is funded with some ETH on Reya network to pay the gas fees. Find bridge here https://reya.network/bridge.
+- Ensure you already have a Reya margin account funded with enough collateral and mentioned in the .env file. Create one in the app [dashboard](https://app.reya.xyz). Examples of how to achieve this programmatically are coming soon.
+- Ensure your wallet is funded with some ETH on Reya network to pay the gas fees. Find bridge [here](https://reya.network/bridge).
 - Decide on the base value of the trade. A negative value means taking a short position, a positive one means a long position. The base is represented with 18 decimals precision. The base represents the units of exposure denoted in the underlying token of the market
 - Pick a price limit. If the execution price exceeds this, the trade will revert. The price limit for a short trade must be lower than the pool price and vice-versa for a long trade. Price is represented with 18 decimals precision.
 - Specify your margin account id and nonce. These values are revealed when attempting to execute a trade on the app. Your wallet will prompt you to sign a message and will show the account id and the next nonce (your current nonce is 1 less). The message does not need to be signed. In fact, if the message is signed, the nonce will increase by 1.
