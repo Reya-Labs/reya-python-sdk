@@ -145,12 +145,15 @@ def _encode_price_update_calls(w3, oracle_adapter_abi, pricePayloads, oracle_ada
 
 
 def getConfigs():
-    chain_id = os.environ['CHAIN_ID']
-    if int(chain_id) not in [1729, 89346162]:
+    chain_id = int(os.environ['CHAIN_ID'])
+    if chain_id not in [1729, 89346162]:
         raise Exception("Wrong chain id")
 
     pool_id = 2 if chain_id == 1729 else 4
     rpc_url = 'https://rpc.reya.network' if chain_id == 1729 else 'https://rpc.reya-cronos.gelato.digital'
+    core_proxy_address = "0xA763B6a5E09378434406C003daE6487FbbDc1a80" if chain_id == 1729 else "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72"
+    multicall2_address = "0x82a55eB2346277d85D5D0A60101ebD0F02680B0D" if chain_id == 1729 else "0xd9f0F399f5264fAac91476Dbd950574726D18633"
+    oracle_adapter_proxy_address = "0x32edABC058C1207fE0Ec5F8557643c28E4FF379e" if chain_id == 1729 else "0xc501A2356703CD351703D68963c6F4136120f7CF"
 
     f = open('examples/abis/CoreProxy.json')
     core_abi = json.load(f)
@@ -162,9 +165,9 @@ def getConfigs():
     oracle_adapter_abi = json.load(f)
 
     return {
-        'core_proxy_address': os.environ['CORE_PROXY_ADDRESS'],
-        'multicall2_address': os.environ['MULTICALL2_ADDRESS'],
-        'oracle_adapter_proxy_address': os.environ['ORACLE_ADAPTER_PROXY_ADDRESS'],
+        'core_proxy_address': core_proxy_address,
+        'multicall2_address': multicall2_address,
+        'oracle_adapter_proxy_address': oracle_adapter_proxy_address,
         'private_key': os.environ['PRIVATE_KEY'],
         'pool_id': pool_id,
         'exchange_id': 1,
