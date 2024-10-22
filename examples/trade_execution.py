@@ -16,16 +16,14 @@ def main(current_nonce):
     trusted producer, they are verified on-chain (do not modify).
     '''
     configs = getConfigs()
-    execute_trade(
-        configs=configs,
-        base=-Web3.to_wei(1, 'ether'),  # WAD precision
-        price_limit=0,
-        market_id=MarketIds.SOL.value,
-        account_id=configs['account_id'],  # your margin account id
-        # sigature nonce of owner address stored in Reya Core
-        current_core_nonce=int(current_nonce),
-        # example payload, replace with new data
-        price_payloads=[{
+
+    # order inputs
+    order_base = -0.1
+    market_id = MarketIds.SOL.value
+    price_limit = 0 if order_base < 0 else 1_000_000_000
+
+    # price payloads
+    price_payloads = [{
             'oraclePubKey': '0x0a803F9b1CCe32e2773e0d2e98b37E0775cA5d44',
             'pricePayload': {
                 'assetPairId': 'SOLUSD',
@@ -37,6 +35,22 @@ def main(current_nonce):
             's': '0x6d5c4d7aad09748a2f234d09e28b6075b8103dd7e45b941d0c60093a3149fc00',
             'v': '0x1b',
         }]
+
+    # input formatting
+    scaled_abs_order_base = Web3.to_wei(abs(order_base), 'ether')
+    actual_order_base = scaled_abs_order_base if order_base > 0 else -scaled_abs_order_base
+    actual_price_limit = Web3.to_wei(price_limit, 'ether')
+
+    execute_trade(
+        configs=configs,
+        base=actual_order_base,  # WAD precision
+        price_limit=actual_price_limit,  # WAD precision
+        market_id=market_id,
+        account_id=configs['account_id'],  # your margin account id
+        # sigature nonce of owner address stored in Reya Core
+        current_core_nonce=int(current_nonce),
+        # example payload, replace with new data
+        price_payloads=price_payloads
     )
 
 
