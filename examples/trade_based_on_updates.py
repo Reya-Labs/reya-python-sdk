@@ -8,7 +8,8 @@ import os
 from dotenv import load_dotenv
 import argparse
 
-market_ids = ["ETHUSD", "BTCUSD", "SOLUSD", "ARBUSD", "OPUSD", "AVAXUSD"]
+# Note: the list of markets keeps updating, please check with the team for the updated ids
+market_ids = ["ETHUSDMARK", "BTCUSDMARK", "SOLUSDMARK", "ARBUSDMARK", "OPUSDMARK", "AVAXUSDMARK", "MKRUSDMARK", "LINKUSDMARK", "AAVEUSDMARK", "CRVUSDMARK", "UNIUSDMARK", "SUIUSDMARK", "TIAUSDMARK", "SEIUSDMARK", "ZROUSDMARK", "XRPUSDMARK", "WIFUSDMARK", "1000PEPEUSDMARK"]
 global_price_payloads = {key: None for key in market_ids}
 global_funding_rates = {key: None for key in market_ids}
 
@@ -28,22 +29,23 @@ def on_message_prices(ws: ReyaSocket, message: dict):
         # Store prices and funding rates
         if message["channel"] == 'prices':
             global_price_payloads[message['id']] = message["contents"]
-        elif message["channel"] == 'funding-rates':
-            global_funding_rates[message['id']] = message["contents"]
+        # Note: funding-rates update every 30 seconds
+        # elif message["channel"] == 'funding-rates':
+        #     global_funding_rates[message['id']] = message["contents"]
         else:
             pass
 
         # If all markets's data is assigned, trade can be executed
-        is_data_assigned = all(value is not None for value in global_price_payloads.values(
-        )) and all(value is not None for value in global_funding_rates.values())
+        is_data_assigned = all(value is not None for value in global_price_payloads.values()) 
+            # and all(value is not None for value in global_funding_rates.values())
         if is_data_assigned and decide_execution(global_price_payloads, global_funding_rates):
             # Execute trades if market conditions satify decide_execution conditions
             run_trades()
 
 
 def _map_payloads(payload):
-    payload['pricePayload']['price'] = int(payload['pricePayload']['price'])
-    return payload
+    payload['signedPrice']['pricePayload']['price'] = int(payload['signedPrice']['pricePayload']['price'])
+    return payload['signedPrice']
 
 
 ''' Mock function that decides if a trade should be executed based on current market conditions '''
@@ -67,7 +69,7 @@ def run_trades():
         account_id=configs['account_id'],  # your margin account id
         # sigature nonce of owner address stored in Reya Core
         current_core_nonce=current_nonce,
-        price_payloads=map(_map_payloads, global_price_payloads.values())
+        price_payloads=list(map(_map_payloads, global_price_payloads.values()))
     )
     # incrememnt nonce aftre every successful trade
     current_nonce += 1 if success else 0

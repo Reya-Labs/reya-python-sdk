@@ -21,6 +21,7 @@ class CommandType(Enum):
     TransferBetweenMarginAccounts = 4
 
 
+# Note: the list of markets keeps updating, please check with the team for the updated ids
 class MarketIds(Enum):
     ETH = 1
     BTC = 2
@@ -28,6 +29,18 @@ class MarketIds(Enum):
     ARB = 4
     OP = 5
     AVAX = 6
+    MKRUSDMARK = 7
+    LINKUSDMARK = 8
+    AAVEUSDMARK = 9
+    CRVUSDMARK = 10
+    UNIUSDMARK = 11
+    SUIUSDMARK = 12
+    TIAUSDMARK = 13
+    SEIUSDMARK = 14
+    ZROUSDMARK = 15
+    XRPUSDMARK = 16
+    WIFUSDMARK = 17
+    PEPEUSDMARK = 18
 
 
 class OracleProvider(Enum):
@@ -71,7 +84,7 @@ def execute_trade(configs, base, price_limit, market_id, account_id, current_cor
         # Aggregate oracle updates and match order
         calls = [(configs['multicall2_address'], oracle_update_calldata),
                  (configs['core_proxy_address'], core_execution_calldata)]
-        # Success is required
+        # # Success is required
         tx_hash = multicall2.functions.tryAggregate(
             True, calls).transact({'from': account.address})
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
@@ -86,7 +99,8 @@ def execute_trade(configs, base, price_limit, market_id, account_id, current_cor
         # print("Result from trade", succes2, output2.hex())
 
         return True
-    except:
+    except Exception as e:
+        print("Failed to execute trade:", e)
         return False
 
 
