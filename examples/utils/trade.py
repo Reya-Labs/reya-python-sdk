@@ -1,3 +1,4 @@
+import math
 from web3 import Web3
 from eth_abi import encode
 from enum import Enum
@@ -66,7 +67,7 @@ To encode the transaction, these steps are followed:
 - aggregate the Multicall oracle updates and the Reya Core call into a strict an optional Mulicall 'tryAggregatePreservingError'
 '''
 
-def execute_trade(configs, base, price_limit, market_id, account_id, price_payloads) -> bool:
+def execute_trade(configs, base, price_limit, market_id, account_id, signed_payloads) -> bool:
     try:
         # Initialise provider with signer
         w3 = Web3(Web3.HTTPProvider(configs['rpc_url']))
@@ -86,7 +87,7 @@ def execute_trade(configs, base, price_limit, market_id, account_id, price_paylo
         multicall = w3.eth.contract(
             address=configs['multicall_address'], abi=configs['multicall_abi'])
         oracle_update_calldata = _encode_price_update_calls(
-            w3, configs['oracle_abi'], price_payloads, configs['oracle_adapter_proxy_address'], multicall)
+            w3, configs['oracle_abi'], signed_payloads, configs['oracle_adapter_proxy_address'], multicall)
 
         # Aggregate oracle updates and match order
         calls = [(configs['multicall_address'], oracle_update_calldata),
@@ -143,27 +144,35 @@ def _encode_core_match_order(w3, account, configs, base, price_limit, market_id,
     return core_proxy.encode_abi(fn_name="executeBySig", args=[account_id, commands, sig, extra_data])
 
 
-def _encode_price_update_calls(w3, oracle_adapter_abi, pricePayloads, oracle_adapter_proxy_address, multicall):
+def _encode_price_update_calls(w3, oracle_adapter_abi, signed_payloads, oracle_adapter_proxy_address, multicall):
     oracle_adapter = w3.eth.contract(
         address=oracle_adapter_proxy_address, abi=oracle_adapter_abi)
 
     # list of payloads should contain an update for every market
     encoded_calls: list = []
-    for update in pricePayloads:
-        payload = update['pricePayload']
-        encoded_payload = encode(['string', 'uint256', 'uint256'], [
-                                 payload['assetPairId'], payload['timestamp'], payload['price']])
+    for signed_payload in signed_payloads:
+        price_payload = signed_payload['pricePayload']
+        encoded_payload = encode(
+            ['(address,(string,uint256,uint256),bytes32,bytes32,uint8)'],
+            [[
+                signed_payload['oraclePubKey'],
+                [price_payload['assetPairId'], math.floor(price_payload['timestamp'] / 1e9), price_payload['price']],
+                Web3.to_bytes(hexstr=signed_payload['r']),
+                Web3.to_bytes(hexstr=signed_payload['s']),
+                int(signed_payload['v'], 16),
+            ]]
+        )
+
         encoded_calls.append((
             oracle_adapter_proxy_address,
-            oracle_adapter.encode_abi(fn_name="fulfillOracleQuery", args=[
-                                      OracleProvider.Stork.value, encoded_payload])
+            oracle_adapter.encode_abi(fn_name="fulfillOracleQuery", args=[encoded_payload])
         ))
 
     # Encode an Multicall call, without required success for each call
     return multicall.encode_abi(fn_name="tryAggregatePreservingError", args=[False, encoded_calls])
 
 
-'''Gathering configuration from environemnt variables and ABIs'''
+'''Gathering configuration from environment variables and ABIs'''
 
 
 def getConfigs():

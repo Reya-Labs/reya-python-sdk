@@ -75,7 +75,7 @@ def run_trades():
         price_limit=actual_price_limit,
         market_id=market_id,
         account_id=configs['account_id'],  # your margin account id
-        price_payloads=list(map(_map_payloads, global_price_payloads.values()))
+        signed_payloads=list(map(_map_payloads, global_price_payloads.values()))
     )
 
 
