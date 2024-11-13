@@ -1,6 +1,7 @@
+from examples.utils.consts import MarketIds
 from web3 import Web3
 from decimal import *
-from examples.utils.trade import execute_trade, getConfigs, MarketIds
+from examples.utils.trade import execute_trade, getConfigs
 
 
 def main():
@@ -18,7 +19,7 @@ def main():
 
     # order inputs
     order_base = -0.1
-    market_id = MarketIds.SOLUSD.value
+    market_id = MarketIds.SOL.value
     price_limit = 0 if order_base < 0 else 1_000_000_000
 
     # input formatting

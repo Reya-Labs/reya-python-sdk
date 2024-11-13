@@ -1,7 +1,7 @@
 import math
+from examples.utils.consts import CommandType
 from web3 import Web3
 from eth_abi import encode
-from enum import Enum
 import json
 import os
 from dotenv import load_dotenv
@@ -11,48 +11,6 @@ from web3.middleware import construct_sign_and_send_raw_middleware
 from time import time
 
 load_dotenv()
-
-
-class CommandType(Enum):
-    Deposit                       = 0
-    Withdraw                      = 1
-    DutchLiquidation              = 2
-    MatchOrder                    = 3
-    TransferBetweenMarginAccounts = 4
-
-# Note: the list of markets keeps updating, please check with the team for the updated ids
-class MarketIds(Enum):
-    ETHUSD    = 1
-    BTCUSD    = 2
-    SOLUSD    = 3
-    ARBUSD    = 4
-    OPUSD     = 5
-    AVAXUSD   = 6
-    MKRUSD    = 7
-    LINKUSD   = 8
-    AAVEUSD   = 9
-    CRVUSD    = 10
-    UNIUSD    = 11
-    SUIUSD    = 12
-    TIAUSD    = 13
-    SEIUSD    = 14
-    ZROUSD    = 15
-    XRPUSD    = 16
-    WIFUSD    = 17
-    kPEPEUSD  = 18
-    POPCATUSD = 19
-    DOGEUSD   = 20
-    kSHIBUSD  = 21
-    kBONKUSD  = 22
-    APTUSD    = 23
-    BNBUSD    = 24
-    JTOUSD    = 25
-
-
-class OracleProvider(Enum):
-    Stork = 0
-    Pyth = 1
-
 
 ''' Executes an on-chain trade
 
