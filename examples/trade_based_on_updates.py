@@ -9,8 +9,9 @@ import os
 from dotenv import load_dotenv
 
 # Note: the list of markets keeps updating, please check with the team for the updated ids
-global_price_payloads = {key: None for key in MarketIds}
-global_funding_rates = {key: None for key in MarketIds}
+market_ids = ["ETHUSDMARK", "BTCUSDMARK", "SOLUSDMARK", "ARBUSDMARK", "OPUSDMARK", "AVAXUSDMARK", "MKRUSDMARK", "LINKUSDMARK", "AAVEUSDMARK", "CRVUSDMARK", "UNIUSDMARK", "SUIUSDMARK", "TIAUSDMARK", "SEIUSDMARK", "ZROUSDMARK", "XRPUSDMARK", "WIFUSDMARK", "1000PEPEUSDMARK"]
+global_price_payloads = {key: None for key in market_ids}
+global_funding_rates = {key: None for key in market_ids}
 
 '''Listen to price changes and funding rate changes and trade based on this information'''
 
@@ -18,7 +19,7 @@ global_funding_rates = {key: None for key in MarketIds}
 def on_message_prices(ws: ReyaSocket, message: dict):
     if message["type"] == "connected":
         print("Connected")
-        for market_id in MarketIds:
+        for market_id in market_ids:
             ws.prices.subscribe(id=market_id)
             ws.funding_rates.subscribe(id=market_id)
 

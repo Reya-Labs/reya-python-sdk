@@ -37,7 +37,7 @@ It shows how oracle updates can be appended to trades to ensure the latest price
 
 The prices updates can be obtained from the websocket API as seen in `examples/trade_based_on_updates.py`. The updates contain the latest price, corresponding timestamp and the signed message from the trusted producer. The signature is verified against the given values on-chain.
 
-Aggregating these oracle calls with the actual trade call requires routing via the [Multicall contract](https://www.multicall3.com/). Thus, the message sender is not the user anymore and a signature is required to ensure the integrity of the trade information.
+Aggregating these oracle calls with the actual trade call requires routing via the [Multicall contract](https://explorer.reya.network/address/0xED28d27dFcA47AD2513C9f2e2d3C098C2eA5A47F?tab=contract). Thus, the message sender is not the user anymore and a signature is required to ensure the integrity of the trade information.
 
 Prerequisites for calling `execute_trade()`:
 - Ensure your private key is included in the .env file as per the example

@@ -62,8 +62,8 @@ Because the msg.sender will not be the account owner anymore, the trade is autho
 To encode the transaction, these steps are followed:
 - encode trade command and sign the command using the margin account owner's private key
 - encode call to 'executeBySig' function of Reya Core, pass the command and signature as arguments
-- aggregate all price updates into an optional Mulicall2 'tryAggregate', get calldata
-- aggregate the Multicall2 oracle updates and the Reya Core call into a strict an optional Mulicall2 'tryAggregate'
+- aggregate all price updates into an optional Mulicall2 'tryAggregatePreservingError', get calldata
+- aggregate the Multicall oracle updates and the Reya Core call into a strict an optional Mulicall 'tryAggregatePreservingError'
 '''
 
 def execute_trade(configs, base, price_limit, market_id, account_id, price_payloads) -> bool:
@@ -82,28 +82,21 @@ def execute_trade(configs, base, price_limit, market_id, account_id, price_paylo
         core_execution_calldata = _encode_core_match_order(
             w3, account, configs, base, price_limit, market_id, account_id, core_sig_nonce)
 
-        # Encode Multicall2 oracle updates
-        multicall2 = w3.eth.contract(
-            address=configs['multicall2_address'], abi=configs['multicall_abi'])
+        # Encode Multicall oracle updates
+        multicall = w3.eth.contract(
+            address=configs['multicall_address'], abi=configs['multicall_abi'])
         oracle_update_calldata = _encode_price_update_calls(
-            w3, configs['oracle_abi'], price_payloads, configs['oracle_adapter_proxy_address'], multicall2)
+            w3, configs['oracle_abi'], price_payloads, configs['oracle_adapter_proxy_address'], multicall)
 
         # Aggregate oracle updates and match order
-        calls = [(configs['multicall2_address'], oracle_update_calldata),
+        calls = [(configs['multicall_address'], oracle_update_calldata),
                  (configs['core_proxy_address'], core_execution_calldata)]
-        # # Success is required
-        tx_hash = multicall2.functions.tryAggregate(
+    
+        # Success is required
+        tx_hash = multicall.functions.tryAggregatePreservingError(
             True, calls).transact({'from': account.address})
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         print("Receipt", tx_receipt)
-
-        # Simulation example
-        # res = multicall2.functions.tryAggregate(
-        #     False, calls).call({'from': account.address})
-        # (succes1, output1) = res[0]
-        # (succes2, output2) = res[1]
-        # print("Result from oracle updates", succes1, output1.hex())
-        # print("Result from trade", succes2, output2.hex())
 
         return True
     except Exception as e:
@@ -138,7 +131,7 @@ def _encode_core_match_order(w3, account, configs, base, price_limit, market_id,
     sig = sign_core_commands(
         signer=account,
         reya_chain_id=configs['chain_id'],
-        caller=configs['multicall2_address'],
+        caller=configs['multicall_address'],
         account_id=account_id,
         commands=commands,
         nonce=current_core_nonce + 1,
@@ -150,7 +143,7 @@ def _encode_core_match_order(w3, account, configs, base, price_limit, market_id,
     return core_proxy.encode_abi(fn_name="executeBySig", args=[account_id, commands, sig, extra_data])
 
 
-def _encode_price_update_calls(w3, oracle_adapter_abi, pricePayloads, oracle_adapter_proxy_address, multicall2):
+def _encode_price_update_calls(w3, oracle_adapter_abi, pricePayloads, oracle_adapter_proxy_address, multicall):
     oracle_adapter = w3.eth.contract(
         address=oracle_adapter_proxy_address, abi=oracle_adapter_abi)
 
@@ -166,8 +159,8 @@ def _encode_price_update_calls(w3, oracle_adapter_abi, pricePayloads, oracle_ada
                                       OracleProvider.Stork.value, encoded_payload])
         ))
 
-    # Encode an Multicall2 call, without required success for each call
-    return multicall2.encode_abi(fn_name="tryAggregate", args=[False, encoded_calls])
+    # Encode an Multicall call, without required success for each call
+    return multicall.encode_abi(fn_name="tryAggregatePreservingError", args=[False, encoded_calls])
 
 
 '''Gathering configuration from environemnt variables and ABIs'''
@@ -181,13 +174,13 @@ def getConfigs():
     pool_id = 2 if chain_id == 1729 else 4
     rpc_url = 'https://rpc.reya.network' if chain_id == 1729 else 'https://rpc.reya-cronos.gelato.digital'
     core_proxy_address = "0xA763B6a5E09378434406C003daE6487FbbDc1a80" if chain_id == 1729 else "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72"
-    multicall2_address = "0x82a55eB2346277d85D5D0A60101ebD0F02680B0D" if chain_id == 1729 else "0xd9f0F399f5264fAac91476Dbd950574726D18633"
+    multicall_address = "0xED28d27dFcA47AD2513C9f2e2d3C098C2eA5A47F" if chain_id == 1729 else "0x5abde4F0aF8Eaf3c9967f7fA126E59A103357b5C"
     oracle_adapter_proxy_address = "0x32edABC058C1207fE0Ec5F8557643c28E4FF379e" if chain_id == 1729 else "0xc501A2356703CD351703D68963c6F4136120f7CF"
 
     f = open('examples/abis/CoreProxy.json')
     core_abi = json.load(f)
 
-    f = open('examples/abis/Multicall2.json')
+    f = open('examples/abis/Multicall.json')
     multicall_abi = json.load(f)
 
     f = open('examples/abis/OracleAdapterProxy.json')
@@ -195,7 +188,7 @@ def getConfigs():
 
     return {
         'core_proxy_address': core_proxy_address,
-        'multicall2_address': multicall2_address,
+        'multicall_address': multicall_address,
         'oracle_adapter_proxy_address': oracle_adapter_proxy_address,
         'private_key': os.environ['PRIVATE_KEY'],
         'pool_id': pool_id,
