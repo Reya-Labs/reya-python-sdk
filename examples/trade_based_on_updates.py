@@ -1,10 +1,10 @@
-from examples.utils.consts import MarketPriceStreams
+from examples.utils.consts import MarketIds, MarketPriceStreams
 from web3 import Web3
 from reya_data_feed.consumer import ReyaSocket
 from examples.consume_data_feed import on_error
 import asyncio
 import random
-from examples.utils.trade import MarketIds, execute_trade, getConfigs
+from examples.utils.trade import execute_trade, getConfigs
 
 import os
 from dotenv import load_dotenv
@@ -28,7 +28,7 @@ def on_ws_message(ws: ReyaSocket, message: dict):
     if message["type"] == "channel_data":
         # Store prices and funding rates
         if message["channel"] == 'prices':
-            global_signed_payloads[message['id']] = message["contents"]
+            global_signed_payloads[message['id']] = message["contents"]["signedPrice"]
         # Note: funding-rates update every 30 seconds
         elif message["channel"] == 'funding-rates':
             global_funding_rates[message['id']] = message["contents"]
@@ -46,7 +46,7 @@ def on_ws_message(ws: ReyaSocket, message: dict):
 ''' Mock function that decides if a trade should be executed based on current market conditions '''
 
 
-def decide_execution(_):
+def decide_execution(_, __):
     return random.random() < 0.1
 
 
@@ -58,7 +58,7 @@ def run_trades():
 
     # order inputs (TODO: replace with your own inputs)
     order_base = -0.1
-    market_id = MarketIds.SOLUSD.value
+    market_id = MarketIds.SOL.value
     price_limit = 0 if order_base < 0 else 1_000_000_000
 
     # input formatting

@@ -114,10 +114,10 @@ def _encode_price_update_calls(w3, oracle_adapter_abi, signed_payloads, oracle_a
             ['(address,(string,uint256,uint256),bytes32,bytes32,uint8)'],
             [[
                 signed_payload['oraclePubKey'],
-                [price_payload['assetPairId'], math.floor(price_payload['timestamp'] / 1e9), price_payload['price']],
+                [price_payload['assetPairId'], math.floor(int(price_payload['timestamp']) / 1e9), int(price_payload['price'])],
                 Web3.to_bytes(hexstr=signed_payload['r']),
                 Web3.to_bytes(hexstr=signed_payload['s']),
-                int(signed_payload['v'], 16),
+                signed_payload['v'],
             ]]
         )
 
