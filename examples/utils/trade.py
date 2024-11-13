@@ -8,39 +8,44 @@ from decimal import *
 from examples.utils.sign import sign_core_commands
 from web3.middleware import construct_sign_and_send_raw_middleware
 from time import time
-import argparse
 
 load_dotenv()
 
 
 class CommandType(Enum):
-    Deposit = 0
-    Withdraw = 1
-    DutchLiquidation = 2
-    MatchOrder = 3
+    Deposit                       = 0
+    Withdraw                      = 1
+    DutchLiquidation              = 2
+    MatchOrder                    = 3
     TransferBetweenMarginAccounts = 4
-
 
 # Note: the list of markets keeps updating, please check with the team for the updated ids
 class MarketIds(Enum):
-    ETH = 1
-    BTC = 2
-    SOL = 3
-    ARB = 4
-    OP = 5
-    AVAX = 6
-    MKRUSDMARK = 7
-    LINKUSDMARK = 8
-    AAVEUSDMARK = 9
-    CRVUSDMARK = 10
-    UNIUSDMARK = 11
-    SUIUSDMARK = 12
-    TIAUSDMARK = 13
-    SEIUSDMARK = 14
-    ZROUSDMARK = 15
-    XRPUSDMARK = 16
-    WIFUSDMARK = 17
-    PEPEUSDMARK = 18
+    ETHUSDMARK        = 1
+    BTCUSDMARK        = 2
+    SOLUSDMARK        = 3
+    ARBUSDMARK        = 4
+    OPUSDMARK         = 5
+    AVAXUSDMARK       = 6
+    MKRUSDMARK        = 7
+    LINKUSDMARK       = 8
+    AAVEUSDMARK       = 9
+    CRVUSDMARK        = 10
+    UNIUSDMARK        = 11
+    SUIUSDMARK        = 12
+    TIAUSDMARK        = 13
+    SEIUSDMARK        = 14
+    ZROUSDMARK        = 15
+    XRPUSDMARK        = 16
+    WIFUSDMARK        = 17
+    "1000PEPEUSDMARK" = 18
+    POPCATUSDMARK     = 19
+    DOGEUSDMARK       = 20
+    "1000SHIBUSDMARK" = 21
+    "1000BONKUSDMARK" = 22
+    APTUSDMARK        = 23
+    BNBUSDMARK        = 24
+    JTOUSDMARK        = 25
 
 
 class OracleProvider(Enum):
@@ -61,8 +66,7 @@ To encode the transaction, these steps are followed:
 - aggregate the Multicall2 oracle updates and the Reya Core call into a strict an optional Mulicall2 'tryAggregate'
 '''
 
-
-def execute_trade(configs, base, price_limit, market_id, account_id, current_core_nonce, price_payloads) -> bool:
+def execute_trade(configs, base, price_limit, market_id, account_id, price_payloads) -> bool:
     try:
         # Initialise provider with signer
         w3 = Web3(Web3.HTTPProvider(configs['rpc_url']))
@@ -70,10 +74,13 @@ def execute_trade(configs, base, price_limit, market_id, account_id, current_cor
         w3.eth.default_account = account.address
         w3.middleware_onion.add(
             construct_sign_and_send_raw_middleware(account))
+        
+        # Get current core signature nonce
+        core_sig_nonce = _get_core_sig_nonce(w3, configs, account_id)
 
         # Encode Core Command
         core_execution_calldata = _encode_core_match_order(
-            w3, account, configs, base, price_limit, market_id, account_id, current_core_nonce)
+            w3, account, configs, base, price_limit, market_id, account_id, core_sig_nonce)
 
         # Encode Multicall2 oracle updates
         multicall2 = w3.eth.contract(
@@ -102,6 +109,14 @@ def execute_trade(configs, base, price_limit, market_id, account_id, current_cor
     except Exception as e:
         print("Failed to execute trade:", e)
         return False
+
+def _get_core_sig_nonce(w3, configs, account_id): 
+    core_proxy = w3.eth.contract(
+        address=configs['core_proxy_address'], abi=configs['core_abi'])
+    
+    core_sig_nonce = core_proxy.functions.getAccountOwnerNonce(account_id).call()
+
+    return core_sig_nonce
 
 
 def _encode_core_match_order(w3, account, configs, base, price_limit, market_id, account_id, current_core_nonce):

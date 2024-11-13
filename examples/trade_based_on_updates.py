@@ -1,19 +1,16 @@
+from web3 import Web3
 from reya_data_feed.consumer import ReyaSocket
 from examples.consume_data_feed import on_error
 import asyncio
 import random
-from examples.utils.trade import execute_trade, getConfigs
+from examples.utils.trade import MarketIds, execute_trade, getConfigs
 
 import os
 from dotenv import load_dotenv
-import argparse
 
 # Note: the list of markets keeps updating, please check with the team for the updated ids
-market_ids = ["ETHUSDMARK", "BTCUSDMARK", "SOLUSDMARK", "ARBUSDMARK", "OPUSDMARK", "AVAXUSDMARK", "MKRUSDMARK", "LINKUSDMARK", "AAVEUSDMARK", "CRVUSDMARK", "UNIUSDMARK", "SUIUSDMARK", "TIAUSDMARK", "SEIUSDMARK", "ZROUSDMARK", "XRPUSDMARK", "WIFUSDMARK", "1000PEPEUSDMARK"]
-global_price_payloads = {key: None for key in market_ids}
-global_funding_rates = {key: None for key in market_ids}
-
-current_nonce = 1
+global_price_payloads = {key: None for key in MarketIds}
+global_funding_rates = {key: None for key in MarketIds}
 
 '''Listen to price changes and funding rate changes and trade based on this information'''
 
@@ -21,7 +18,7 @@ current_nonce = 1
 def on_message_prices(ws: ReyaSocket, message: dict):
     if message["type"] == "connected":
         print("Connected")
-        for market_id in market_ids:
+        for market_id in MarketIds:
             ws.prices.subscribe(id=market_id)
             ws.funding_rates.subscribe(id=market_id)
 
@@ -60,19 +57,25 @@ def decide_execution(_, __):
 
 def run_trades():
     configs = getConfigs()
-    global current_nonce
-    success = execute_trade(
+
+    # order inputs (TODO: replace with your own inputs)
+    order_base = -0.1
+    market_id = MarketIds.SOL.value
+    price_limit = 0 if order_base < 0 else 1_000_000_000
+
+    # input formatting
+    scaled_abs_order_base = Web3.to_wei(abs(order_base), 'ether')
+    actual_order_base = scaled_abs_order_base if order_base > 0 else -scaled_abs_order_base
+    actual_price_limit = Web3.to_wei(price_limit, 'ether')
+
+    execute_trade(
         configs=configs,
-        base= < REPLACE_ME > , # e.g. -10**18 for short trade, WAD precision
-        price_limit= < REPLACE_ME >, # e.g. 2678 * (10 **18), WAD precision
-        market_id= < REPLACE_ME > , # e.g. MarketIds.SOL.value,
+        base=actual_order_base,
+        price_limit=actual_price_limit,
+        market_id=market_id,
         account_id=configs['account_id'],  # your margin account id
-        # sigature nonce of owner address stored in Reya Core
-        current_core_nonce=current_nonce,
         price_payloads=list(map(_map_payloads, global_price_payloads.values()))
     )
-    # incrememnt nonce aftre every successful trade
-    current_nonce += 1 if success else 0
 
 
 async def main():
@@ -82,13 +85,6 @@ async def main():
     await ws.connect()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Example script for demonstration.")
-    parser.add_argument('--current-nonce', type=str, default="1",
-                        help="Current nonce of the margin account owner, tracked in Core")
-    args = parser.parse_args()
-    current_nonce = int(args.current_nonce)
-
     print("... Start")
     asyncio.run(main())
     print("... End")

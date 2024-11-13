@@ -1,10 +1,9 @@
 from web3 import Web3
 from decimal import *
-import argparse
 from examples.utils.trade import execute_trade, getConfigs, MarketIds
 
 
-def main(current_nonce):
+def main():
     '''Example trade
     This executes a short trade on account 12, of base 1 (notional = base * price).
     The price limit constrains the slippage. For simplicity, any slippage is allowed, meaning the limit
@@ -22,6 +21,11 @@ def main(current_nonce):
     market_id = MarketIds.SOL.value
     price_limit = 0 if order_base < 0 else 1_000_000_000
 
+    # input formatting
+    scaled_abs_order_base = Web3.to_wei(abs(order_base), 'ether')
+    actual_order_base = scaled_abs_order_base if order_base > 0 else -scaled_abs_order_base
+    actual_price_limit = Web3.to_wei(price_limit, 'ether')
+
     # price payloads
     price_payloads = [{
             'oraclePubKey': '0x0a803F9b1CCe32e2773e0d2e98b37E0775cA5d44',
@@ -36,30 +40,16 @@ def main(current_nonce):
             'v': '0x1b',
         }]
 
-    # input formatting
-    scaled_abs_order_base = Web3.to_wei(abs(order_base), 'ether')
-    actual_order_base = scaled_abs_order_base if order_base > 0 else -scaled_abs_order_base
-    actual_price_limit = Web3.to_wei(price_limit, 'ether')
-
     execute_trade(
         configs=configs,
         base=actual_order_base,  # WAD precision
         price_limit=actual_price_limit,  # WAD precision
         market_id=market_id,
         account_id=configs['account_id'],  # your margin account id
-        # sigature nonce of owner address stored in Reya Core
-        current_core_nonce=int(current_nonce),
         # example payload, replace with new data
         price_payloads=price_payloads
     )
 
 
 if __name__ == "__main__":
-    # Parse script inputs
-    parser = argparse.ArgumentParser(
-        description="Example script for demonstration.")
-    parser.add_argument('--current-nonce', type=str, default="1",
-                        help="Current nonce of the margin account owner, tracked in Core")
-
-    args = parser.parse_args()
-    main(args.current_nonce)
+    main()

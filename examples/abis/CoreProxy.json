@@ -1,240 +1,259 @@
 [
-    {
-        "type": "function",
-        "name": "execute",
-        "inputs": [
-          {
-            "name": "accountId",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "commands",
-            "type": "tuple[]",
-            "internalType": "struct Command[]",
-            "components": [
-              {
-                "name": "commandType",
-                "type": "uint8",
-                "internalType": "enum CommandType"
-              },
-              {
-                "name": "inputs",
-                "type": "bytes",
-                "internalType": "bytes"
-              },
-              {
-                "name": "marketId",
-                "type": "uint128",
-                "internalType": "uint128"
-              },
-              {
-                "name": "exchangeId",
-                "type": "uint128",
-                "internalType": "uint128"
-              }
-            ]
-          }
-        ],
-        "outputs": [
-          {
-            "name": "outputs",
-            "type": "bytes[]",
-            "internalType": "bytes[]"
-          },
-          {
-            "name": "usdNodeMarginInfo",
-            "type": "tuple",
-            "internalType": "struct MarginInfo",
-            "components": [
-              {
-                "name": "collateral",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "marginBalance",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "realBalance",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "initialDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "maintenanceDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "liquidationDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "dutchDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "adlDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "initialBufferDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "liquidationMarginRequirement",
-                "type": "uint256",
-                "internalType": "uint256"
-              }
-            ]
-          }
-        ],
-        "stateMutability": "nonpayable"
+  {
+    "type": "function",
+    "name": "execute",
+    "inputs": [
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
       },
       {
-        "type": "function",
-        "name": "executeBySig",
-        "inputs": [
+        "name": "commands",
+        "type": "tuple[]",
+        "internalType": "struct Command[]",
+        "components": [
           {
-            "name": "accountId",
+            "name": "commandType",
+            "type": "uint8",
+            "internalType": "enum CommandType"
+          },
+          {
+            "name": "inputs",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "marketId",
             "type": "uint128",
             "internalType": "uint128"
           },
           {
-            "name": "commands",
-            "type": "tuple[]",
-            "internalType": "struct Command[]",
-            "components": [
-              {
-                "name": "commandType",
-                "type": "uint8",
-                "internalType": "enum CommandType"
-              },
-              {
-                "name": "inputs",
-                "type": "bytes",
-                "internalType": "bytes"
-              },
-              {
-                "name": "marketId",
-                "type": "uint128",
-                "internalType": "uint128"
-              },
-              {
-                "name": "exchangeId",
-                "type": "uint128",
-                "internalType": "uint128"
-              }
-            ]
+            "name": "exchangeId",
+            "type": "uint128",
+            "internalType": "uint128"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "outputs",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      },
+      {
+        "name": "usdNodeMarginInfo",
+        "type": "tuple",
+        "internalType": "struct MarginInfo",
+        "components": [
+          {
+            "name": "collateral",
+            "type": "address",
+            "internalType": "address"
           },
           {
-            "name": "sig",
-            "type": "tuple",
-            "internalType": "struct EIP712Signature",
-            "components": [
-              {
-                "name": "v",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "r",
-                "type": "bytes32",
-                "internalType": "bytes32"
-              },
-              {
-                "name": "s",
-                "type": "bytes32",
-                "internalType": "bytes32"
-              },
-              {
-                "name": "deadline",
-                "type": "uint256",
-                "internalType": "uint256"
-              }
-            ]
+            "name": "marginBalance",
+            "type": "int256",
+            "internalType": "int256"
           },
           {
-            "name": "extraSignatureData",
+            "name": "realBalance",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "initialDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "maintenanceDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "liquidationDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "dutchDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "adlDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "initialBufferDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "liquidationMarginRequirement",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeBySig",
+    "inputs": [
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "commands",
+        "type": "tuple[]",
+        "internalType": "struct Command[]",
+        "components": [
+          {
+            "name": "commandType",
+            "type": "uint8",
+            "internalType": "enum CommandType"
+          },
+          {
+            "name": "inputs",
             "type": "bytes",
             "internalType": "bytes"
-          }
-        ],
-        "outputs": [
-          {
-            "name": "outputs",
-            "type": "bytes[]",
-            "internalType": "bytes[]"
           },
           {
-            "name": "usdNodeMarginInfo",
-            "type": "tuple",
-            "internalType": "struct MarginInfo",
-            "components": [
-              {
-                "name": "collateral",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "marginBalance",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "realBalance",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "initialDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "maintenanceDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "liquidationDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "dutchDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "adlDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "initialBufferDelta",
-                "type": "int256",
-                "internalType": "int256"
-              },
-              {
-                "name": "liquidationMarginRequirement",
-                "type": "uint256",
-                "internalType": "uint256"
-              }
-            ]
+            "name": "marketId",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "exchangeId",
+            "type": "uint128",
+            "internalType": "uint128"
           }
-        ],
-        "stateMutability": "nonpayable"
+        ]
+      },
+      {
+        "name": "sig",
+        "type": "tuple",
+        "internalType": "struct EIP712Signature",
+        "components": [
+          {
+            "name": "v",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "r",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "s",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "extraSignatureData",
+        "type": "bytes",
+        "internalType": "bytes"
       }
+    ],
+    "outputs": [
+      {
+        "name": "outputs",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      },
+      {
+        "name": "usdNodeMarginInfo",
+        "type": "tuple",
+        "internalType": "struct MarginInfo",
+        "components": [
+          {
+            "name": "collateral",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "marginBalance",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "realBalance",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "initialDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "maintenanceDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "liquidationDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "dutchDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "adlDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "initialBufferDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "liquidationMarginRequirement",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getAccountOwnerNonce",
+    "inputs": [
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  }
 ]
