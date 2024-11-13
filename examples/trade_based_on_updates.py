@@ -60,7 +60,7 @@ def run_trades():
 
     # order inputs (TODO: replace with your own inputs)
     order_base = -0.1
-    market_id = MarketIds.SOL.value
+    market_id = MarketIds.SOLUSD.value
     price_limit = 0 if order_base < 0 else 1_000_000_000
 
     # input formatting

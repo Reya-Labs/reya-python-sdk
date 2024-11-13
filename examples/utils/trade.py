@@ -21,31 +21,31 @@ class CommandType(Enum):
 
 # Note: the list of markets keeps updating, please check with the team for the updated ids
 class MarketIds(Enum):
-    ETHUSDMARK        = 1
-    BTCUSDMARK        = 2
-    SOLUSDMARK        = 3
-    ARBUSDMARK        = 4
-    OPUSDMARK         = 5
-    AVAXUSDMARK       = 6
-    MKRUSDMARK        = 7
-    LINKUSDMARK       = 8
-    AAVEUSDMARK       = 9
-    CRVUSDMARK        = 10
-    UNIUSDMARK        = 11
-    SUIUSDMARK        = 12
-    TIAUSDMARK        = 13
-    SEIUSDMARK        = 14
-    ZROUSDMARK        = 15
-    XRPUSDMARK        = 16
-    WIFUSDMARK        = 17
-    "1000PEPEUSDMARK" = 18
-    POPCATUSDMARK     = 19
-    DOGEUSDMARK       = 20
-    "1000SHIBUSDMARK" = 21
-    "1000BONKUSDMARK" = 22
-    APTUSDMARK        = 23
-    BNBUSDMARK        = 24
-    JTOUSDMARK        = 25
+    ETHUSD    = 1
+    BTCUSD    = 2
+    SOLUSD    = 3
+    ARBUSD    = 4
+    OPUSD     = 5
+    AVAXUSD   = 6
+    MKRUSD    = 7
+    LINKUSD   = 8
+    AAVEUSD   = 9
+    CRVUSD    = 10
+    UNIUSD    = 11
+    SUIUSD    = 12
+    TIAUSD    = 13
+    SEIUSD    = 14
+    ZROUSD    = 15
+    XRPUSD    = 16
+    WIFUSD    = 17
+    kPEPEUSD  = 18
+    POPCATUSD = 19
+    DOGEUSD   = 20
+    kSHIBUSD  = 21
+    kBONKUSD  = 22
+    APTUSD    = 23
+    BNBUSD    = 24
+    JTOUSD    = 25
 
 
 class OracleProvider(Enum):
