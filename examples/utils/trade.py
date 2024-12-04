@@ -33,29 +33,32 @@ def execute_trade(configs, base, price_limit, market_id, account_id, signed_payl
         w3.eth.default_account = account.address
         w3.middleware_onion.add(
             construct_sign_and_send_raw_middleware(account))
+
+        # Update oracle prices
+        if len(signed_payloads) > 0:
+            multicall = w3.eth.contract(
+                address=configs['multicall_address'], abi=configs['multicall_abi'])
+            
+            calls = _get_oracle_update_calls(
+                w3, configs['oracle_abi'], signed_payloads, configs['oracle_adapter_proxy_address'])
+
+            tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({'from': account.address})
+            tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            print("Prices updated:", tx_receipt)
+
+        # Execute core commands
+        core = w3.eth.contract(
+            address=configs['core_proxy_address'], abi=configs['core_abi'])
         
         # Get current core signature nonce
         core_sig_nonce = _get_core_sig_nonce(w3, configs, account_id)
-
-        # Encode Core Command
-        core_execution_calldata = _encode_core_match_order(
-            w3, account, configs, base, price_limit, market_id, account_id, core_sig_nonce)
-
-        # Encode Multicall oracle updates
-        multicall = w3.eth.contract(
-            address=configs['multicall_address'], abi=configs['multicall_abi'])
-        oracle_update_calldata = _encode_price_update_calls(
-            w3, configs['oracle_abi'], signed_payloads, configs['oracle_adapter_proxy_address'], multicall)
-
-        # Aggregate oracle updates and match order
-        calls = [(configs['multicall_address'], oracle_update_calldata),
-                 (configs['core_proxy_address'], core_execution_calldata)]
-    
-        # Success is required
-        tx_hash = multicall.functions.tryAggregatePreservingError(
-            True, calls).transact({'from': account.address})
+        
+        command_args = _encode_core_match_order(
+            account, configs, base, price_limit, market_id, account_id, core_sig_nonce)
+        
+        tx_hash = core.functions.executeBySig(*command_args).transact({'from': account.address})
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        print("Receipt", tx_receipt)
+        print("Trade executed:", tx_receipt)
 
         return True
     except Exception as e:
@@ -71,10 +74,7 @@ def _get_core_sig_nonce(w3, configs, account_id):
     return core_sig_nonce
 
 
-def _encode_core_match_order(w3, account, configs, base, price_limit, market_id, account_id, current_core_nonce):
-    core_proxy = w3.eth.contract(
-        address=configs['core_proxy_address'], abi=configs['core_abi'])
-
+def _encode_core_match_order(account, configs, base, price_limit, market_id, account_id, current_core_nonce):
     counterparty_ids: list = [configs['pool_id']]
     extra_data = encode([], [])  # empty for this example
 
@@ -90,7 +90,7 @@ def _encode_core_match_order(w3, account, configs, base, price_limit, market_id,
     sig = sign_core_commands(
         signer=account,
         reya_chain_id=configs['chain_id'],
-        caller=configs['multicall_address'],
+        caller=account.address,
         account_id=account_id,
         commands=commands,
         nonce=current_core_nonce + 1,
@@ -99,10 +99,10 @@ def _encode_core_match_order(w3, account, configs, base, price_limit, market_id,
         core_proxy_address=configs['core_proxy_address']
     )
 
-    return core_proxy.encode_abi(fn_name="executeBySig", args=[account_id, commands, sig, extra_data])
+    return [account_id, commands, sig, extra_data]
 
 
-def _encode_price_update_calls(w3, oracle_adapter_abi, signed_payloads, oracle_adapter_proxy_address, multicall):
+def _get_oracle_update_calls(w3, oracle_adapter_abi, signed_payloads, oracle_adapter_proxy_address):
     oracle_adapter = w3.eth.contract(
         address=oracle_adapter_proxy_address, abi=oracle_adapter_abi)
 
@@ -126,8 +126,8 @@ def _encode_price_update_calls(w3, oracle_adapter_abi, signed_payloads, oracle_a
             oracle_adapter.encode_abi(fn_name="fulfillOracleQuery", args=[encoded_payload])
         ))
 
-    # Encode an Multicall call, without required success for each call
-    return multicall.encode_abi(fn_name="tryAggregatePreservingError", args=[False, encoded_calls])
+    # Returns the encoded calls
+    return encoded_calls
 
 
 '''Gathering configuration from environment variables and ABIs'''
