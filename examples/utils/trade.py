@@ -44,7 +44,7 @@ def execute_trade(configs, base, price_limit, market_id, account_id, signed_payl
 
             tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({'from': account.address})
             tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-            print("Prices updated:", tx_receipt.hash)
+            print("Prices updated:", tx_receipt)
 
         # Execute core commands
         core = w3.eth.contract(
@@ -58,7 +58,7 @@ def execute_trade(configs, base, price_limit, market_id, account_id, signed_payl
         
         tx_hash = core.functions.executeBySig(*command_args).transact({'from': account.address})
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        print("Trade executed:", tx_receipt.hash)
+        print("Trade executed:", tx_receipt)
 
         return True
     except Exception as e:
@@ -90,7 +90,7 @@ def _encode_core_match_order(account, configs, base, price_limit, market_id, acc
     sig = sign_core_commands(
         signer=account,
         reya_chain_id=configs['chain_id'],
-        caller=configs['multicall_address'],
+        caller=account.address,
         account_id=account_id,
         commands=commands,
         nonce=current_core_nonce + 1,
