@@ -6,7 +6,6 @@ import json
 import os
 from dotenv import load_dotenv
 from decimal import *
-from examples.utils.sign import sign_core_commands
 from web3.middleware import construct_sign_and_send_raw_middleware
 from time import time
 
@@ -50,13 +49,9 @@ def execute_trade(configs, base, price_limit, market_id, account_id, signed_payl
         core = w3.eth.contract(
             address=configs['core_proxy_address'], abi=configs['core_abi'])
         
-        # Get current core signature nonce
-        core_sig_nonce = _get_core_sig_nonce(w3, configs, account_id)
+        command_args = _encode_core_match_order(configs, base, price_limit, market_id, account_id)
         
-        command_args = _encode_core_match_order(
-            account, configs, base, price_limit, market_id, account_id, core_sig_nonce)
-        
-        tx_hash = core.functions.executeBySig(*command_args).transact({'from': account.address})
+        tx_hash = core.functions.execute(*command_args).transact({'from': account.address})
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         print("Trade executed:", tx_receipt)
 
@@ -65,18 +60,8 @@ def execute_trade(configs, base, price_limit, market_id, account_id, signed_payl
         print("Failed to execute trade:", e)
         return False
 
-def _get_core_sig_nonce(w3, configs, account_id): 
-    core_proxy = w3.eth.contract(
-        address=configs['core_proxy_address'], abi=configs['core_abi'])
-    
-    core_sig_nonce = core_proxy.functions.getAccountOwnerNonce(account_id).call()
-
-    return core_sig_nonce
-
-
-def _encode_core_match_order(account, configs, base, price_limit, market_id, account_id, current_core_nonce):
+def _encode_core_match_order(configs, base, price_limit, market_id, account_id):
     counterparty_ids: list = [configs['pool_id']]
-    extra_data = encode([], [])  # empty for this example
 
     trade_inputs_encoded = encode(['int256', 'uint256'], [base, price_limit])
     match_order_inputs_encoded = encode(
@@ -86,20 +71,7 @@ def _encode_core_match_order(account, configs, base, price_limit, market_id, acc
                match_order_inputs_encoded, market_id, configs['exchange_id'])
     commands: list = [command]
 
-    # Get EIP712 signature from margin account owner
-    sig = sign_core_commands(
-        signer=account,
-        reya_chain_id=configs['chain_id'],
-        caller=account.address,
-        account_id=account_id,
-        commands=commands,
-        nonce=current_core_nonce + 1,
-        deadline=int(time()) + 60 * 5,  # 5 mins buffer
-        extra_signature_data=extra_data,
-        core_proxy_address=configs['core_proxy_address']
-    )
-
-    return [account_id, commands, sig, extra_data]
+    return [account_id, commands]
 
 
 def _get_oracle_update_calls(w3, oracle_adapter_abi, signed_payloads, oracle_adapter_proxy_address):
