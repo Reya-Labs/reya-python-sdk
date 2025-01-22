@@ -255,5 +255,95 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createAccount",
+    "inputs": [
+      {
+        "name": "accountOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getUsdNodeMarginInfo",
+    "inputs": [
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct MarginInfo",
+        "components": [
+          {
+            "name": "collateral",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "marginBalance",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "realBalance",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "initialDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "maintenanceDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "liquidationDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "dutchDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "adlDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "initialBufferDelta",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "liquidationMarginRequirement",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   }
 ]
