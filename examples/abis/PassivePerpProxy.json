@@ -1,0 +1,78 @@
+[
+  {
+    "type": "event",
+    "name": "PassivePerpMatchOrder",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint128",
+        "indexed": true,
+        "internalType": "uint128"
+      },
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "indexed": true,
+        "internalType": "uint128"
+      },
+      {
+        "name": "orderBase",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "SD59x18"
+      },
+      {
+        "name": "matchOrderFees",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct MatchOrderFees",
+        "components": [
+          {
+            "name": "protocolFeeCredit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "exchangeFeeCredit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "takerFeeDebit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "makerPayments",
+            "type": "int256[]",
+            "internalType": "int256[]"
+          },
+          {
+            "name": "referrerFeeCredit",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      },
+      {
+        "name": "executedOrderPrice",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "UD60x18"
+      },
+      {
+        "name": "referrerAccountId",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "blockTimestamp",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  }
+]
