@@ -74,5 +74,99 @@
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "function",
+    "name": "getUpdatedPositionInfo",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct PerpPosition",
+        "components": [
+          {
+            "name": "base",
+            "type": "int256",
+            "internalType": "SD59x18"
+          },
+          {
+            "name": "realizedPnL",
+            "type": "int256",
+            "internalType": "SD59x18"
+          },
+          {
+            "name": "lastPriceData",
+            "type": "tuple",
+            "internalType": "struct PriceData",
+            "components": [
+              {
+                "name": "price",
+                "type": "uint256",
+                "internalType": "UD60x18"
+              },
+              {
+                "name": "timestamp",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          },
+          {
+            "name": "trackers",
+            "type": "tuple",
+            "internalType": "struct FundingAndADLTrackers",
+            "components": [
+              {
+                "name": "fundingValue",
+                "type": "int256",
+                "internalType": "SD59x18"
+              },
+              {
+                "name": "baseMultiplier",
+                "type": "uint256",
+                "internalType": "UD60x18"
+              },
+              {
+                "name": "adlUnwindPrice",
+                "type": "uint256",
+                "internalType": "UD60x18"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getInstantaneousPoolPrice",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "UD60x18"
+      }
+    ],
+    "stateMutability": "view"
   }
 ]
