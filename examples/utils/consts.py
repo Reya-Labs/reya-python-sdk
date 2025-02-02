@@ -35,6 +35,31 @@ class MarketIds(Enum):
     APT    = 23
     BNB    = 24
     JTO    = 25
+    ADA    = 26
+    LDO    = 27
+    POL    = 28
+    NEAR   = 29
+    FTM    = 30
+    ENA    = 31
+    EIGEN  = 32
+    PENDLE = 33
+    GOAT   = 34
+    GRASS  = 35
+    kNEIRO = 36
+    DOT    = 37
+    LTC    = 38
+    PYTH   = 39
+    JUP    = 40
+    PENGU  = 41
+    TRUMP  = 42
+    HYPE   = 43
+    VIRTUAL= 44
+    AI16Z  = 45
+    AIXBT  = 46
+    S      = 47
+    FARTCOIN = 48
+
+
 
 class MarketTickers(Enum):
     ETH    = "ETH-rUSD"
@@ -62,6 +87,29 @@ class MarketTickers(Enum):
     APT    = "APT-rUSD"
     BNB    = "BNB-rUSD"
     JTO    = "JTO-rUSD"
+    ADA    = "ADA-rUSD"
+    LDO    = "LDO-rUSD"
+    POL    = "POL-rUSD"
+    NEAR   = "NEAR-rUSD"
+    FTM    = "FTM-rUSD"
+    ENA    = "ENA-rUSD"
+    EIGEN  = "EIGEN-rUSD"
+    PENDLE = "PENDLE-rUSD"
+    GOAT   = "GOAT-rUSD"
+    GRASS  = "GRASS-rUSD"
+    kNEIRO = "kNEIRO-rUSD"
+    DOT    = "DOT-rUSD"
+    LTC    = "LTC-rUSD"
+    PYTH   = "PYTH-rUSD"
+    JUP    = "JUP-rUSD"
+    PENGU  = "PENGU-rUSD"
+    TRUMP  = "TRUMP-rUSD"
+    HYPE   = "HYPE-rUSD"
+    VIRTUAL= "VIRTUAL-rUSD"
+    AI16Z  = "AI16Z-rUSD"
+    AIXBT  = "AIXBT-rUSD"
+    S      = "S-rUSD"
+    FARTCOIN = "FARTCOIN-rUSD"
 
 class MarketPriceStreams(Enum):
     ETH = "ETHUSDMARK"
