@@ -159,7 +159,7 @@ class MarketPriceStreams(Enum):
     PENDLE      = "PENDLEUSDMARK"
     GOAT        = "GOATUSDMARK"
     GRASS       = "GRASSUSDMARK"
-    kNEIRO      = "kNEIROUSDMARK"
+    kNEIRO      = "1000NEIROUSDMARK"
     DOT         = "DOTUSDMARK"
     LTC         = "LTCUSDMARK"
     PYTH        = "PYTHUSDMARK"
