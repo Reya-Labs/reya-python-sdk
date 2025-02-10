@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from eth_account.messages import encode_typed_data
 from typing import Dict, Any
 

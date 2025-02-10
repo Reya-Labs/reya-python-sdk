@@ -33,7 +33,7 @@ def get_sample_signed_payloads(chain_id):
 
 def main():
     '''Example trade
-    This executes a short trade on account 12, of base 1 (notional = base * price).
+    This executes a short trade on configured account, of base 0.1 (notional = base * price).
     The price limit constrains the slippage. For simplicity, any slippage is allowed, meaning the limit
     is 0 for short trades or max uint256 for long trades.
 
