@@ -40,6 +40,9 @@ def getConfigs() -> dict:
 
     f = open('examples/abis/PeripheryProxy.json')
     periphery_abi = json.load(f)
+    
+    f = open('examples/abis/Erc20.json')
+    erc20_abi = json.load(f)
 
     w3 = Web3(Web3.HTTPProvider(rpc_url))
     w3account = w3.eth.account.from_key(private_key)
@@ -68,6 +71,10 @@ def getConfigs() -> dict:
         address=periphery_address, abi=periphery_abi
     )
 
+    w3rusd = w3.eth.contract(
+        address=rusd_address, abi=erc20_abi
+    )
+
     return {
         'arbitrum_rpc_url': 'https://arb1.arbitrum.io/rpc',
         'chain_id': chain_id,
@@ -91,4 +98,5 @@ def getConfigs() -> dict:
         'w3oracle_adapter': w3oracle_adapter,
         'w3passive_pool': w3passive_pool,
         'w3periphery': w3periphery,
+        'w3rusd': w3rusd,
     }

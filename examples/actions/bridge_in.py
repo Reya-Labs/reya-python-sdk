@@ -8,7 +8,7 @@ class BridgeInParams:
     amount: int
     fee_limit: int
 
-f = open('examples/abis/VaultWithPayload.json')
+f = open('examples/abis/SocketVaultWithPayload.json')
 vault_abi = json.load(f)
 
 f = open('examples/abis/Erc20.json')
@@ -78,6 +78,6 @@ def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     ).transact({'from': account_address, 'value': socket_fees})
 
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print('Initiated bridge:', tx_hash.hex())
+    print('Initiated bridge in:', tx_hash.hex())
 
     return tx_receipt
