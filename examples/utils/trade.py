@@ -25,7 +25,7 @@ To encode the transaction, these steps are followed:
 - aggregate the Multicall oracle updates and the Reya Core call into a strict an optional Mulicall 'tryAggregatePreservingError'
 '''
 
-def execute_trade(configs: dict, params: MatchOrderParams) -> bool:
+def trade(configs: dict, params: MatchOrderParams) -> bool:
     try:
         # Get current core signature nonce
         w3 = configs['w3']

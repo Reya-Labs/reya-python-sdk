@@ -3,7 +3,7 @@ from examples.utils.consts import MarketIds
 from examples.utils.update_prices import update_oracle_prices
 from web3 import Web3
 from decimal import *
-from examples.utils.trade import MatchOrderParams, execute_trade
+from examples.utils.trade import MatchOrderParams, trade
 import os
 from dotenv import load_dotenv
 
@@ -69,7 +69,7 @@ def main():
         signed_payloads=signed_payloads
     )
 
-    execute_trade(
+    trade(
         configs=configs,
         params=MatchOrderParams(
             account_id=account_id,
