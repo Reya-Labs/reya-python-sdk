@@ -10,18 +10,14 @@ class DepositParams:
     amount: int
 
 def deposit(configs: dict, params: DepositParams) -> bool:
-    try:
-        inputs_encoded = encode(
-            ['(address,uint256)'], 
-            [[params.collateral, params.amount]]
-        )
-        command = (CommandType.Deposit.value, inputs_encoded, 0, 0)
-        commands: list = [command]
+    inputs_encoded = encode(
+        ['(address,uint256)'], 
+        [[params.collateral, params.amount]]
+    )
+    command = (CommandType.Deposit.value, inputs_encoded, 0, 0)
+    commands: list = [command]
         
-        tx_receipt = execute_core_commands(configs, params.account_id, commands)
-        print("Deposit executed:", tx_receipt)
+    tx_receipt = execute_core_commands(configs, params.account_id, commands)
+    print("Deposit executed:", tx_receipt)
 
-        return True
-    except Exception as e:
-        print("Failed to execute deposit:", e)
-        return False
+    return tx_receipt
