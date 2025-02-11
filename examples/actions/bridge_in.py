@@ -14,6 +14,7 @@ vault_abi = json.load(f)
 f = open('examples/abis/Erc20.json')
 erc20_abi = json.load(f)
 
+
 def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     # Ensure Reya Network is configured in configs 
     chain_id = configs['chain_id']
