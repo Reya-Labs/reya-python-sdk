@@ -39,7 +39,7 @@ The prices updates can be obtained from the websocket API as seen in `examples/t
 
 Aggregating these oracle calls with the actual trade call requires routing via the [Multicall contract](https://explorer.reya.network/address/0xED28d27dFcA47AD2513C9f2e2d3C098C2eA5A47F?tab=contract). Thus, the message sender is not the user anymore and a signature is required to ensure the integrity of the trade information.
 
-Prerequisites for calling `execute_trade()`:
+Prerequisites for calling `trade()`:
 - Ensure your private key is included in the .env file as per the example
 - Ensure the chain_id is included in the .env file as per the example
 - Ensure you already have a Reya margin account funded with enough collateral and mentioned in the .env file. Create one in the app [dashboard](https://app.reya.xyz). Examples of how to achieve this programmatically are coming soon.

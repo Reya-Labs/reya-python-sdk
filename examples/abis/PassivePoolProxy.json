@@ -1,0 +1,94 @@
+[
+    {
+        "type": "function",
+        "name": "addLiquidityV2",
+        "inputs": [
+            {
+                "name": "poolId",
+                "type": "uint128",
+                "internalType": "uint128"
+            },
+            {
+                "name": "input",
+                "type": "tuple",
+                "internalType": "struct AddLiquidityV2Input",
+                "components": [
+                    {
+                        "name": "token",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "amount",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "owner",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "minShares",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "outputs": [
+            {
+                "name": "mintAmount",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "removeLiquidityV2",
+        "inputs": [
+            {
+                "name": "poolId",
+                "type": "uint128",
+                "internalType": "uint128"
+            },
+            {
+                "name": "input",
+                "type": "tuple",
+                "internalType": "struct RemoveLiquidityV2Input",
+                "components": [
+                    {
+                        "name": "token",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "sharesAmount",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "receiver",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "minOut",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "outputs": [
+            {
+                "name": "tokenAmount",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable"
+    }
+]
