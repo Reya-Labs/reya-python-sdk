@@ -6,13 +6,14 @@ from examples.utils.consts import CommandType
 @dataclass
 class WithdrawParams:
     account_id: int
-    collateral: str
     amount: int
 
 def withdraw(configs: dict, params: WithdrawParams) -> bool:
+    rusd_address = configs['rusd_address']
+
     inputs_encoded = encode(
         ['(address,uint256)'], 
-        [[params.collateral, params.amount]]
+        [[rusd_address, params.amount]]
     )
     command = (CommandType.Withdraw.value, inputs_encoded, 0, 0)
     commands: list = [command]
