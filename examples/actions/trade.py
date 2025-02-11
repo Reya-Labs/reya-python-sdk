@@ -24,28 +24,24 @@ To encode the transaction, these steps are followed:
 '''
 
 def trade(configs: dict, params: MatchOrderParams) -> bool:
-    try:
-        pool_id = configs['pool_id']
-        exchange_id = configs['exchange_id']
+    pool_id = configs['pool_id']
+    exchange_id = configs['exchange_id']
 
-        counterparty_ids: list = [pool_id]
-        trade_inputs_encoded = encode(['int256', 'uint256'], [params.base, params.price_limit])
-        match_order_inputs_encoded = encode(
-            ['uint128[]', 'bytes'], [counterparty_ids, trade_inputs_encoded])
+    counterparty_ids: list = [pool_id]
+    trade_inputs_encoded = encode(['int256', 'uint256'], [params.base, params.price_limit])
+    match_order_inputs_encoded = encode(
+        ['uint128[]', 'bytes'], [counterparty_ids, trade_inputs_encoded])
 
-        command = (
-            CommandType.MatchOrder.value,
-            match_order_inputs_encoded, 
-            params.market_id, 
-            exchange_id
-        )
+    command = (
+        CommandType.MatchOrder.value,
+        match_order_inputs_encoded, 
+        params.market_id, 
+        exchange_id
+    )
 
-        commands: list = [command]
+    commands: list = [command]
 
-        tx_receipt = execute_core_commands(configs, params.account_id, commands)
-        print("Trade executed:", tx_receipt)
+    tx_receipt = execute_core_commands(configs, params.account_id, commands)
+    print("Trade executed:", tx_receipt)
 
-        return True
-    except Exception as e:
-        print("Failed to execute trade:", e)
-        return False
+    return tx_receipt
