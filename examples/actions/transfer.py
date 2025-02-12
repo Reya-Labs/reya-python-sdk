@@ -10,11 +10,11 @@ class TransferParams:
     to_account_id: int
 
 def transfer(configs: dict, params: TransferParams) -> bool:
-    rusd_address = configs['rusd_address']
+    rusd = configs['w3contracts']['rusd']
 
     inputs_encoded = encode(
         ['(uint128,address,uint256)'], 
-        [[params.to_account_id, rusd_address, params.amount]]
+        [[params.to_account_id, rusd.address, params.amount]]
     )
     command = (CommandType.TransferBetweenMarginAccounts.value, inputs_encoded, 0, 0)
     commands: list = [command]

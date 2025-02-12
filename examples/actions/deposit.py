@@ -9,11 +9,11 @@ class DepositParams:
     amount: int
 
 def deposit(configs: dict, params: DepositParams) -> bool:
-    rusd_address = configs['rusd_address']
+    rusd = configs['w3contracts']['rusd']
 
     inputs_encoded = encode(
         ['(address,uint256)'], 
-        [[rusd_address, params.amount]]
+        [[rusd.address, params.amount]]
     )
     command = (CommandType.Deposit.value, inputs_encoded, 0, 0)
     commands: list = [command]

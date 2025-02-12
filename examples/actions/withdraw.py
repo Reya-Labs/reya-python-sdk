@@ -9,11 +9,11 @@ class WithdrawParams:
     amount: int
 
 def withdraw(configs: dict, params: WithdrawParams) -> bool:
-    rusd_address = configs['rusd_address']
+    rusd = configs['w3contracts']['rusd']
 
     inputs_encoded = encode(
         ['(address,uint256)'], 
-        [[rusd_address, params.amount]]
+        [[rusd.address, params.amount]]
     )
     command = (CommandType.Withdraw.value, inputs_encoded, 0, 0)
     commands: list = [command]

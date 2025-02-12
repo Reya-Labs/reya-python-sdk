@@ -17,16 +17,14 @@ erc20_abi = json.load(f)
 
 def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     # Ensure Reya Network is configured in configs 
+    arbitrum_rpc_url = 'https://arb1.arbitrum.io/rpc'
+    private_key = configs['private_key']
     chain_id = configs['chain_id']
 
     if not chain_id == 1729:
         raise Exception("Bridging function requires setup for Reya Network")
     
-    # Grab the configurations
-    arbitrum_rpc_url = configs['arbitrum_rpc_url']
-    private_key = configs['private_key']
-    
-    # Create w3 instance for Arbitrum and given private key
+    # Create w3 instance for Arbitrum using the given private key
     w3 = Web3(Web3.HTTPProvider(arbitrum_rpc_url))
     w3account = w3.eth.account.from_key(private_key)
     account_address = w3account.address
@@ -62,15 +60,14 @@ def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     print('USDC approved for vault:', tx_hash.hex())
 
     # Initiate the bridging transaction
-    periphery = configs['w3periphery']
-    periphery_address = configs['periphery_address']
+    periphery = configs['w3contracts']['periphery']
     reya_usdc_address = '0x3B860c0b53f2e8bd5264AA7c3451d41263C933F2'
     socket_bridge_options = Web3.to_bytes(hexstr='0x')
 
     periphery_calldata = periphery.encodeABI(fn_name="deposit", args=[(account_address, reya_usdc_address)])
     
     tx_hash = vault.functions.bridge(
-        periphery_address,
+        periphery.address,
         params.amount,
         socket_msg_gas_limit,
         usdc_connector_address,

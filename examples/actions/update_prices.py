@@ -5,24 +5,22 @@ from decimal import *
 
 def update_oracle_prices(configs, signed_payloads) -> bool:
     w3 = configs['w3']
-    account_address = configs['w3account'].address
-    multicall = configs['w3multicall']
-    oracle_adapter = configs['w3oracle_adapter']
-    oracle_adapter_address = configs['oracle_adapter_address']
+    account = configs['w3account']
+    multicall = configs['w3contracts']['multicall']
+    oracle_adapter = configs['w3contracts']['oracle_adapter']
 
     calls = get_oracle_update_calls(
         oracle_adapter=oracle_adapter,
         signed_payloads=signed_payloads,
-        oracle_adapter_address=oracle_adapter_address
     )
 
-    tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({'from': account_address})
+    tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print("Prices updated:", tx_receipt)
 
     return tx_receipt
 
-def get_oracle_update_calls(oracle_adapter, signed_payloads, oracle_adapter_address):
+def get_oracle_update_calls(oracle_adapter, signed_payloads):
     # list of payloads should contain an update for every market
     encoded_calls: list = []
     for signed_payload in signed_payloads:
@@ -39,7 +37,7 @@ def get_oracle_update_calls(oracle_adapter, signed_payloads, oracle_adapter_addr
         )
 
         encoded_calls.append((
-            oracle_adapter_address,
+            oracle_adapter.address,
             oracle_adapter.encode_abi(fn_name="fulfillOracleQuery", args=[encoded_payload])
         ))
 
