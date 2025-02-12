@@ -24,10 +24,10 @@ To encode the transaction, these steps are followed:
 '''
 
 def trade(configs: dict, params: MatchOrderParams) -> bool:
-    pool_id = configs['pool_id']
+    pool_account_id = configs['pool_account_id']
     exchange_id = configs['exchange_id']
 
-    counterparty_ids: list = [pool_id]
+    counterparty_ids: list = [pool_account_id]
     trade_inputs_encoded = encode(['int256', 'uint256'], [params.base, params.price_limit])
     match_order_inputs_encoded = encode(
         ['uint128[]', 'bytes'], [counterparty_ids, trade_inputs_encoded])

@@ -12,7 +12,7 @@ def getConfigs() -> dict:
     if chain_id not in [1729, 89346162]:
         raise Exception("Wrong chain id")
 
-    pool_id = 2 if chain_id == 1729 else 4
+    pool_account_id = 2 if chain_id == 1729 else 4
     rpc_url = 'https://rpc.reya.network' if chain_id == 1729 else 'https://rpc.reya-cronos.gelato.digital'
     core_address = "0xA763B6a5E09378434406C003daE6487FbbDc1a80" if chain_id == 1729 else "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72"
     multicall_address = "0xED28d27dFcA47AD2513C9f2e2d3C098C2eA5A47F" if chain_id == 1729 else "0x5abde4F0aF8Eaf3c9967f7fA126E59A103357b5C"
@@ -88,7 +88,7 @@ def getConfigs() -> dict:
         'passive_perp_abi': passive_perp_abi,
         'passive_perp_address': passive_perp_address,
         'periphery_address': periphery_address,
-        'pool_id': pool_id,
+        'pool_account_id': pool_account_id,
         'private_key': private_key,
         'rusd_address': rusd_address,
         'w3': w3,
