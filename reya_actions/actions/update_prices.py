@@ -2,7 +2,7 @@ import math
 from web3 import Web3
 from eth_abi import encode
 
-def update_oracle_prices(config, signed_payloads) -> bool:
+def update_oracle_prices(config, signed_payloads):
     w3 = config['w3']
     account = config['w3account']
     multicall = config['w3contracts']['multicall']
@@ -17,7 +17,9 @@ def update_oracle_prices(config, signed_payloads) -> bool:
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print("Updated oracle prices:", tx_receipt.transactionHash.hex())
 
-    return tx_receipt
+    return {
+        'transaction_receipt': tx_receipt,
+    }
 
 def get_oracle_update_calls(oracle_adapter, signed_payloads):
     # list of payloads should contain an update for every market

@@ -10,22 +10,9 @@ class TradeParams:
     base: float
     price_limit: float
 
-''' Executes an on-chain trade
-
-To execute an on-chain trade, prices need to be updated very closely to the trade to prevet price staleness.
-This function appends the oracle price updates to a trade transaction and executes them together. 
-Because the msg.sender will not be the account owner anymore, the trade is authorised using the owner's signature.
-
-To encode the transaction, these steps are followed:
-- encode trade command and sign the command using the margin account owner's private key
-- encode call to 'executeBySig' function of Reya Core, pass the command and signature as arguments
-- aggregate all price updates into an optional Mulicall2 'tryAggregatePreservingError', get calldata
-- aggregate the Multicall oracle updates and the Reya Core call into a strict an optional Mulicall 'tryAggregatePreservingError'
-'''
-
-def trade(configs: dict, params: TradeParams) -> bool:
-    passive_pool_account_id = configs['passive_pool_account_id']
-    exchange_id = configs['exchange_id']
+def trade(config: dict, params: TradeParams):
+    passive_pool_account_id = config['passive_pool_account_id']
+    exchange_id = config['exchange_id']
 
     counterparty_ids: list = [passive_pool_account_id]
     trade_inputs_encoded = encode(['int256', 'uint256'], [params.base, params.price_limit])
@@ -41,7 +28,9 @@ def trade(configs: dict, params: TradeParams) -> bool:
 
     commands: list = [command]
 
-    tx_receipt = execute_core_commands(configs, params.account_id, commands)
+    tx_receipt = execute_core_commands(config, params.account_id, commands)
     print("Executed trade:", tx_receipt.transactionHash.hex())
 
-    return tx_receipt
+    return {
+        'transaction_receipt': tx_receipt,
+    }

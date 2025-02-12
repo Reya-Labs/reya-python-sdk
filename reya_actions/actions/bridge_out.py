@@ -12,17 +12,17 @@ controller_abi = json.load(f)
 f = open('reya_actions/abis/Erc20.json')
 erc20_abi = json.load(f)
 
-def bridge_out_to_arbitrum(configs: dict, params: BridgeOutParams) -> bool:
-    # Ensure Reya Network is configured in configs 
-    chain_id = configs['chain_id']
+def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
+    # Ensure Reya Network is configured in configs
+    chain_id = config['chain_id']
 
     if not chain_id == 1729:
         raise Exception("Bridging function requires setup for Reya Network")
     
-    w3 = configs['w3']
-    account = configs['w3account']
-    periphery = configs['w3contracts']['periphery']
-    rusd = configs['w3contracts']['rusd']
+    w3 = config['w3']
+    account = config['w3account']
+    periphery = config['w3contracts']['periphery']
+    rusd = config['w3contracts']['rusd']
     arbitrum_chain_id = 42161
 
     # Get the bridging fee, add 10% buffer and check against the set limit
@@ -58,4 +58,6 @@ def bridge_out_to_arbitrum(configs: dict, params: BridgeOutParams) -> bool:
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print('Initiated bridge out:', tx_receipt.transactionHash.hex())
 
-    return tx_receipt
+    return {
+        'transaction_receipt': tx_receipt,
+    }

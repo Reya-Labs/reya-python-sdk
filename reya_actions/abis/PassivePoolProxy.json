@@ -90,5 +90,60 @@
             }
         ],
         "stateMutability": "nonpayable"
+    },
+    {
+        "type": "event",
+        "name": "ShareBalanceUpdated",
+        "inputs": [
+            {
+                "name": "poolId",
+                "type": "uint128",
+                "indexed": true,
+                "internalType": "uint128"
+            },
+            {
+                "name": "account",
+                "type": "address",
+                "indexed": true,
+                "internalType": "address"
+            },
+            {
+                "name": "shareDelta",
+                "type": "int256",
+                "indexed": false,
+                "internalType": "int256"
+            },
+            {
+                "name": "newShareBalance",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            },
+            {
+                "name": "tokenDelta",
+                "type": "int256",
+                "indexed": false,
+                "internalType": "int256"
+            },
+            {
+                "name": "blockTimestamp",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            },
+            {
+                "name": "token",
+                "type": "address",
+                "indexed": false,
+                "internalType": "address"
+            },
+            {
+                "name": "tokenDeltaInQuote",
+                "type": "int256",
+                "indexed": false,
+                "internalType": "int256"
+            }
+        ],
+        "anonymous": false
     }
 ]

@@ -14,12 +14,11 @@ vault_abi = json.load(f)
 f = open('reya_actions/abis/Erc20.json')
 erc20_abi = json.load(f)
 
-
-def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
+def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
     # Ensure Reya Network is configured in configs 
     arbitrum_rpc_url = 'https://arb1.arbitrum.io/rpc'
-    private_key = configs['private_key']
-    chain_id = configs['chain_id']
+    private_key = config['private_key']
+    chain_id = config['chain_id']
 
     if not chain_id == 1729:
         raise Exception("Bridging function requires setup for Reya Network")
@@ -60,7 +59,7 @@ def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     print('Approved USDC to vault:', tx_receipt.transactionHash.hex())
 
     # Initiate the bridging transaction
-    periphery = configs['w3contracts']['periphery']
+    periphery = config['w3contracts']['periphery']
     reya_usdc_address = '0x3B860c0b53f2e8bd5264AA7c3451d41263C933F2'
     socket_bridge_options = Web3.to_bytes(hexstr='0x')
 
@@ -78,4 +77,6 @@ def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print('Initiated bridge in:', tx_receipt.transactionHash.hex())
 
-    return tx_receipt
+    return {
+        'transaction_receipt': tx_receipt,
+    }

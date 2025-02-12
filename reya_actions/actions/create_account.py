@@ -1,10 +1,10 @@
 from web3 import Web3
 from hexbytes import HexBytes
 
-def create_account(configs: dict) -> int:
-    w3 = configs['w3']
-    core = configs['w3contracts']['core']
-    account = configs['w3account']
+def create_account(config: dict):
+    w3 = config['w3']
+    core = config['w3contracts']['core']
+    account = config['w3account']
     
     # Send the transaction to create the account
     tx_hash = core.functions.createAccount(account.address).transact({'from': account.address})
@@ -20,6 +20,9 @@ def create_account(configs: dict) -> int:
         raise Exception("Failed to decode transaction receipt for account creations")
     
     event = core.events.AccountCreated().process_log(filtered_logs[0])
-    
     account_id = int(event["args"]["accountId"])
-    return account_id
+
+    return {
+        'transaction_receipt': tx_receipt,
+        'account_id': account_id,
+    }

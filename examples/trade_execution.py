@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 def main():
     load_dotenv()
     account_id = int(os.environ['ACCOUNT_ID'])
-    configs = get_config()
+    config = get_config()
 
     def trade_on_sol(order_base):
         market_id = MarketIds.SOL.value
@@ -18,7 +18,7 @@ def main():
         actual_price_limit = Web3.to_wei(price_limit, 'ether')
 
         trade(
-            configs=configs,
+            config=config,
             params=TradeParams(
                 account_id=account_id,
                 market_id=market_id,
