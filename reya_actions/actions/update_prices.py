@@ -15,7 +15,7 @@ def update_oracle_prices(config, signed_payloads) -> bool:
 
     tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print("Prices updated:", tx_receipt.transactionHash.hex())
+    print("Updated oracle prices:", tx_receipt.transactionHash.hex())
 
     return tx_receipt
 

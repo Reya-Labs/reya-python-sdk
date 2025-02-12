@@ -42,6 +42,6 @@ def trade(configs: dict, params: TradeParams) -> bool:
     commands: list = [command]
 
     tx_receipt = execute_core_commands(configs, params.account_id, commands)
-    print("Trade executed:", tx_receipt.transactionHash.hex())
+    print("Executed trade:", tx_receipt.transactionHash.hex())
 
     return tx_receipt

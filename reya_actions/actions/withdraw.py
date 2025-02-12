@@ -19,6 +19,6 @@ def withdraw(configs: dict, params: WithdrawParams) -> bool:
     commands: list = [command]
         
     tx_receipt = execute_core_commands(configs, params.account_id, commands)
-    print("Withdrawal executed:", tx_receipt.transactionHash.hex())
+    print("Withdrawn from margin account:", tx_receipt.transactionHash.hex())
 
     return tx_receipt

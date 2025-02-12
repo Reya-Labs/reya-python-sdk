@@ -6,10 +6,12 @@ def create_account(configs: dict) -> int:
     core = configs['w3contracts']['core']
     account = configs['w3account']
     
+    # Send the transaction to create the account
     tx_hash = core.functions.createAccount(account.address).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print("Created account:", tx_receipt.transactionHash.hex())
 
+    # Decode the logs to get the newly created account id
     logs = tx_receipt["logs"]
     event_sig = Web3.keccak(text="AccountCreated(uint128,address,address,uint256)").hex()
     filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
@@ -19,5 +21,5 @@ def create_account(configs: dict) -> int:
     
     event = core.events.AccountCreated().process_log(filtered_logs[0])
     
-    account_id = event["args"]["accountId"]
+    account_id = int(event["args"]["accountId"])
     return account_id
