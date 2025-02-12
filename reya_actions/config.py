@@ -5,7 +5,7 @@ from web3.middleware import construct_sign_and_send_raw_middleware
 from dotenv import load_dotenv
 
 '''Gathering configuration from environment variables and ABIs'''
-def getConfig() -> dict:
+def get_config() -> dict:
     load_dotenv()
 
     chain_id = int(os.environ['CHAIN_ID'])

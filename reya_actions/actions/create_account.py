@@ -8,7 +8,7 @@ def create_account(configs: dict) -> int:
     
     tx_hash = core.functions.createAccount(account.address).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print("Created account:", tx_hash.hex())
+    print("Created account:", tx_receipt.transactionHash.hex())
 
     logs = tx_receipt["logs"]
     event_sig = Web3.keccak(text="AccountCreated(uint128,address,address,uint256)").hex()

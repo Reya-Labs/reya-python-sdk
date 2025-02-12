@@ -19,6 +19,6 @@ def deposit(configs: dict, params: DepositParams) -> bool:
     commands: list = [command]
         
     tx_receipt = execute_core_commands(configs, params.account_id, commands)
-    print("Deposit executed:", tx_receipt)
+    print("Deposit executed:", tx_receipt.transactionHash.hex())
 
     return tx_receipt

@@ -57,7 +57,7 @@ def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
 
     tx_hash = usdc.functions.approve(usdc_vault_address, params.amount).transact({'from': account_address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print('USDC approved for vault:', tx_hash.hex())
+    print('USDC approved for vault:', tx_receipt.transactionHash.hex())
 
     # Initiate the bridging transaction
     periphery = configs['w3contracts']['periphery']
@@ -76,6 +76,6 @@ def bridge_in_from_arbitrum(configs: dict, params: BridgeInParams) -> bool:
     ).transact({'from': account_address, 'value': socket_fees})
 
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print('Initiated bridge in:', tx_hash.hex())
+    print('Initiated bridge in:', tx_receipt.transactionHash.hex())
 
     return tx_receipt

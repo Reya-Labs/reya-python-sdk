@@ -2,11 +2,11 @@ import math
 from web3 import Web3
 from eth_abi import encode
 
-def update_oracle_prices(configs, signed_payloads) -> bool:
-    w3 = configs['w3']
-    account = configs['w3account']
-    multicall = configs['w3contracts']['multicall']
-    oracle_adapter = configs['w3contracts']['oracle_adapter']
+def update_oracle_prices(config, signed_payloads) -> bool:
+    w3 = config['w3']
+    account = config['w3account']
+    multicall = config['w3contracts']['multicall']
+    oracle_adapter = config['w3contracts']['oracle_adapter']
 
     calls = get_oracle_update_calls(
         oracle_adapter=oracle_adapter,
@@ -15,7 +15,7 @@ def update_oracle_prices(configs, signed_payloads) -> bool:
 
     tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print("Prices updated:", tx_receipt)
+    print("Prices updated:", tx_receipt.transactionHash.hex())
 
     return tx_receipt
 

@@ -20,6 +20,6 @@ def transfer(configs: dict, params: TransferParams) -> bool:
     commands: list = [command]
         
     tx_receipt = execute_core_commands(configs, params.account_id, commands)
-    print("Transfer executed:", tx_receipt)
+    print("Prices updated:", tx_receipt.transactionHash.hex())
 
     return tx_receipt
