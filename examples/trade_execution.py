@@ -3,7 +3,7 @@ from examples.utils.consts import MarketIds
 from examples.actions.update_prices import update_oracle_prices
 from web3 import Web3
 from decimal import *
-from examples.actions.trade import MatchOrderParams, trade
+from examples.actions.trade import TradeParams, trade
 import os
 from dotenv import load_dotenv
 
@@ -71,7 +71,7 @@ def main():
 
     trade(
         configs=configs,
-        params=MatchOrderParams(
+        params=TradeParams(
             account_id=account_id,
             market_id=market_id,
             base=actual_order_base,

@@ -4,7 +4,7 @@ from examples.utils.consts import CommandType
 from eth_abi import encode
 
 @dataclass
-class MatchOrderParams:
+class TradeParams:
     account_id: int
     market_id: int
     base: float
@@ -23,7 +23,7 @@ To encode the transaction, these steps are followed:
 - aggregate the Multicall oracle updates and the Reya Core call into a strict an optional Mulicall 'tryAggregatePreservingError'
 '''
 
-def trade(configs: dict, params: MatchOrderParams) -> bool:
+def trade(configs: dict, params: TradeParams) -> bool:
     passive_pool_account_id = configs['passive_pool_account_id']
     exchange_id = configs['exchange_id']
 
