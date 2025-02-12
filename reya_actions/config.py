@@ -5,7 +5,7 @@ from web3.middleware import construct_sign_and_send_raw_middleware
 from dotenv import load_dotenv
 
 '''Gathering configuration from environment variables and ABIs'''
-def getConfigs() -> dict:
+def getConfig() -> dict:
     load_dotenv()
 
     chain_id = int(os.environ['CHAIN_ID'])
@@ -40,25 +40,25 @@ def getConfigs() -> dict:
     else:
         raise Exception("Invalid chain id! It's neither 1729 (Reya Network) nor 89346162 (Reya Cronos).")
     
-    f = open('examples/abis/CoreProxy.json')
+    f = open('reya_actions/abis/CoreProxy.json')
     core_abi = json.load(f)
 
-    f = open('examples/abis/Multicall.json')
+    f = open('reya_actions/abis/Multicall.json')
     multicall_abi = json.load(f)
 
-    f = open('examples/abis/OracleAdapterProxy.json')
+    f = open('reya_actions/abis/OracleAdapterProxy.json')
     oracle_adapter_abi = json.load(f)
 
-    f = open('examples/abis/PassivePerpProxy.json')
+    f = open('reya_actions/abis/PassivePerpProxy.json')
     passive_perp_abi = json.load(f)
 
-    f = open('examples/abis/PassivePoolProxy.json')
+    f = open('reya_actions/abis/PassivePoolProxy.json')
     passive_pool_abi = json.load(f)
 
-    f = open('examples/abis/PeripheryProxy.json')
+    f = open('reya_actions/abis/PeripheryProxy.json')
     periphery_abi = json.load(f)
     
-    f = open('examples/abis/Erc20.json')
+    f = open('reya_actions/abis/Erc20.json')
     erc20_abi = json.load(f)
 
     w3 = Web3(Web3.HTTPProvider(rpc_url))

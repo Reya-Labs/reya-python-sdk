@@ -1,9 +1,6 @@
-from examples.utils.config import getConfigs
-from examples.utils.consts import MarketIds
-from examples.actions.update_prices import update_oracle_prices
 from web3 import Web3
-from decimal import *
-from examples.actions.trade import TradeParams, trade
+from reya_actions import MarketIds, TradeParams
+from reya_actions import getConfig, update_oracle_prices, trade
 import os
 from dotenv import load_dotenv
 
@@ -49,7 +46,7 @@ def main():
 
     load_dotenv()
     account_id = int(os.environ['ACCOUNT_ID'])
-    configs = getConfigs()
+    configs = getConfig()
 
     # order inputs
     order_base = -0.1

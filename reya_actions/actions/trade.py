@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from examples.utils import execute_core_commands
-from examples.utils.consts import CommandType
 from eth_abi import encode
+from reya_actions.types import CommandType
+from reya_actions.utils import execute_core_commands
 
 @dataclass
 class TradeParams:

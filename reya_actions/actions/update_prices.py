@@ -1,7 +1,6 @@
 import math
 from web3 import Web3
 from eth_abi import encode
-from decimal import *
 
 def update_oracle_prices(configs, signed_payloads) -> bool:
     w3 = configs['w3']

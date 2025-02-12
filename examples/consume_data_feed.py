@@ -1,5 +1,5 @@
-from examples.utils.consts import MarketPriceStreams, MarketTickers, MarketIds
-from reya_data_feed.consumer import ReyaSocket
+from reya_actions import MarketPriceStreams, MarketTickers, MarketIds
+from reya_data_feed import ReyaSocket
 import asyncio
 import os
 from dotenv import load_dotenv

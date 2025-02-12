@@ -6,10 +6,10 @@ class BridgeOutParams:
     amount: int
     fee_limit: int
 
-f = open('examples/abis/SocketControllerWithPayload.json')
+f = open('reya_actions/abis/SocketControllerWithPayload.json')
 controller_abi = json.load(f)
 
-f = open('examples/abis/Erc20.json')
+f = open('reya_actions/abis/Erc20.json')
 erc20_abi = json.load(f)
 
 def bridge_out_to_arbitrum(configs: dict, params: BridgeOutParams) -> bool:

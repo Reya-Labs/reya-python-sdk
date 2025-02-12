@@ -8,10 +8,10 @@ class BridgeInParams:
     amount: int
     fee_limit: int
 
-f = open('examples/abis/SocketVaultWithPayload.json')
+f = open('reya_actions/abis/SocketVaultWithPayload.json')
 vault_abi = json.load(f)
 
-f = open('examples/abis/Erc20.json')
+f = open('reya_actions/abis/Erc20.json')
 erc20_abi = json.load(f)
 
 
