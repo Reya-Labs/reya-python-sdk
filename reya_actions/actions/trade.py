@@ -1,3 +1,5 @@
+from web3 import Web3
+from hexbytes import HexBytes
 from dataclasses import dataclass
 from eth_abi import encode
 from reya_actions.types import CommandType
@@ -11,6 +13,7 @@ class TradeParams:
     price_limit: float
 
 def trade(config: dict, params: TradeParams):
+    passive_perp = config['w3contracts']['passive_perp']
     passive_pool_account_id = config['passive_pool_account_id']
     exchange_id = config['exchange_id']
 
@@ -31,6 +34,20 @@ def trade(config: dict, params: TradeParams):
     tx_receipt = execute_core_commands(config, params.account_id, commands)
     print("Executed trade:", tx_receipt.transactionHash.hex())
 
+    # Decode the logs to get the resulting shares amount
+    logs = tx_receipt["logs"]
+    event_sig = Web3.keccak(text="PassivePerpMatchOrder(uint128,uint128,int256,(uint256,uint256,uint256,int256[],uint256),uint256,uint128,uint256)").hex()
+    filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
+
+    if not len(filtered_logs) == 1:
+        raise Exception("Failed to decode transaction receipt for trade")
+    
+    event = passive_perp.events.PassivePerpMatchOrder().process_log(filtered_logs[0])
+    execution_price = int(event["args"]["executedOrderPrice"])
+    fees = int(event["args"]["matchOrderFees"]["takerFeeDebit"])
+
     return {
         'transaction_receipt': tx_receipt,
+        'execution_price': execution_price,
+        'fees': fees,
     }

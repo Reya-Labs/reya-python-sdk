@@ -17,7 +17,7 @@ def main():
         actual_order_base = scaled_abs_order_base if order_base > 0 else -scaled_abs_order_base
         actual_price_limit = Web3.to_wei(price_limit, 'ether')
 
-        trade(
+        result = trade(
             config=config,
             params=TradeParams(
                 account_id=account_id,
@@ -26,6 +26,8 @@ def main():
                 price_limit=actual_price_limit
             )
         )
+
+        print("Trade information:", "execution price:", result['execution_price'] / 1e18, "and paid fees:", result['fees'] / 1e6)
 
     # long trade
     trade_on_sol(order_base=0.1)
