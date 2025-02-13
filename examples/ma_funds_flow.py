@@ -8,10 +8,10 @@ def main():
     a = create_account(config)
     b = create_account(config)
 
-    amount = int(1e6)
-    deposit(config, DepositParams(account_id=a, amount=amount))
-    transfer(config, TransferParams(account_id=a, amount=amount, to_account_id=b))
-    withdraw(config, WithdrawParams(account_id=b, amount=amount))
+    amount_e6 = int(1e6)
+    deposit(config, DepositParams(account_id=a, amount=amount_e6))
+    transfer(config, TransferParams(account_id=a, amount=amount_e6, to_account_id=b))
+    withdraw(config, WithdrawParams(account_id=b, amount=amount_e6))
 
 
 if __name__ == "__main__":

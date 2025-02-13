@@ -44,7 +44,7 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
     # Approve the rUSD token to be used by the periphery
     tx_hash = rusd.functions.approve(periphery.address, params.amount).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print('Approved rUSD to periphery:', tx_receipt.transactionHash.hex())
+    print(f'Approved rUSD to periphery: ${tx_receipt.transactionHash.hex()}')
 
     # Initiate the bridging transaction
     tx_hash = periphery.functions.withdraw((
@@ -56,7 +56,7 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
     )).transact({'from': account.address, 'value': socket_fees})
 
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print('Initiated bridge out:', tx_receipt.transactionHash.hex())
+    print(f'Initiated bridge out: ${tx_receipt.transactionHash.hex()}')
 
     return {
         'transaction_receipt': tx_receipt,

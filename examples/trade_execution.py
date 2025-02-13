@@ -13,21 +13,21 @@ def main():
         market_id = MarketIds.SOL.value
         price_limit = 0 if order_base < 0 else 1_000_000_000
 
-        scaled_abs_order_base = Web3.to_wei(abs(order_base), 'ether')
-        actual_order_base = scaled_abs_order_base if order_base > 0 else -scaled_abs_order_base
-        actual_price_limit = Web3.to_wei(price_limit, 'ether')
+        abs_order_base_e18 = Web3.to_wei(abs(order_base), 'ether')
+        order_base_e18 = abs_order_base_e18 if order_base > 0 else -abs_order_base_e18
+        price_limit_e18 = Web3.to_wei(price_limit, 'ether')
 
         result = trade(
             config=config,
             params=TradeParams(
                 account_id=account_id,
                 market_id=market_id,
-                base=actual_order_base,
-                price_limit=actual_price_limit
+                base=order_base_e18,
+                price_limit=price_limit_e18
             )
         )
 
-        print("Trade information:", "execution price:", result['execution_price'] / 1e18, "and paid fees:", result['fees'] / 1e6)
+        print(f'Trade information: execution price = {result['execution_price'] / 1e18} and paid fees = ${result['fees'] / 1e6} rUSD')
 
     # long trade
     trade_on_sol(order_base=0.1)
