@@ -45,7 +45,6 @@ def trade(config: dict, params: TradeParams):
         params.market_id, 
         exchange_id
     )
-
     commands: list = [command]
 
     # Execute the trade transaction
