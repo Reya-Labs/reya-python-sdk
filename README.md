@@ -1,5 +1,5 @@
 # reya-python-examples
-This repo contains Python examples of how to interact with the Reya ecosystem. It shows how to subscribe to the Reya Websocket for market data updates and how to execute on-chain trades via the RPC.
+This repo contains Python examples of how to interact with the Reya ecosystem. It shows how to subscribe to the Reya Websocket for market data updates and how to execute on-chain actions (e.g. trade) via the RPC.
 
 ## Get Started
 
