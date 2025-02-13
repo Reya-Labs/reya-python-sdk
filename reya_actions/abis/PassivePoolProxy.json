@@ -1,7 +1,7 @@
 [
     {
         "type": "function",
-        "name": "addLiquidityV2",
+        "name": "addLiquidity",
         "inputs": [
             {
                 "name": "poolId",
@@ -9,36 +9,24 @@
                 "internalType": "uint128"
             },
             {
-                "name": "input",
-                "type": "tuple",
-                "internalType": "struct AddLiquidityV2Input",
-                "components": [
-                    {
-                        "name": "token",
-                        "type": "address",
-                        "internalType": "address"
-                    },
-                    {
-                        "name": "amount",
-                        "type": "uint256",
-                        "internalType": "uint256"
-                    },
-                    {
-                        "name": "owner",
-                        "type": "address",
-                        "internalType": "address"
-                    },
-                    {
-                        "name": "minShares",
-                        "type": "uint256",
-                        "internalType": "uint256"
-                    }
-                ]
+                "name": "owner",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "amount",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "minShares",
+                "type": "uint256",
+                "internalType": "uint256"
             }
         ],
         "outputs": [
             {
-                "name": "mintAmount",
+                "name": "",
                 "type": "uint256",
                 "internalType": "uint256"
             }
@@ -47,7 +35,7 @@
     },
     {
         "type": "function",
-        "name": "removeLiquidityV2",
+        "name": "removeLiquidity",
         "inputs": [
             {
                 "name": "poolId",
@@ -55,36 +43,19 @@
                 "internalType": "uint128"
             },
             {
-                "name": "input",
-                "type": "tuple",
-                "internalType": "struct RemoveLiquidityV2Input",
-                "components": [
-                    {
-                        "name": "token",
-                        "type": "address",
-                        "internalType": "address"
-                    },
-                    {
-                        "name": "sharesAmount",
-                        "type": "uint256",
-                        "internalType": "uint256"
-                    },
-                    {
-                        "name": "receiver",
-                        "type": "address",
-                        "internalType": "address"
-                    },
-                    {
-                        "name": "minOut",
-                        "type": "uint256",
-                        "internalType": "uint256"
-                    }
-                ]
+                "name": "sharesAmount",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "minOut",
+                "type": "uint256",
+                "internalType": "uint256"
             }
         ],
         "outputs": [
             {
-                "name": "tokenAmount",
+                "name": "",
                 "type": "uint256",
                 "internalType": "uint256"
             }

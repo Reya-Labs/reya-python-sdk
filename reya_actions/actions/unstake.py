@@ -11,10 +11,9 @@ def unstake(config: dict, params: UnstakingParams):
     w3 = config['w3']
     account = config['w3account']
     passive_pool = config['w3contracts']['passive_pool']
-    rusd = config['w3contracts']['rusd']
     
     # Unstake rUSD from the passive pool
-    tx_hash = passive_pool.functions.removeLiquidityV2(1, [rusd.address, params.shares_amount, account.address, params.min_tokens]).transact({'from': account.address})
+    tx_hash = passive_pool.functions.removeLiquidity(1, params.shares_amount, params.min_tokens).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f'Unstaked from passive pool: {tx_receipt.transactionHash.hex()}')
 
