@@ -4,16 +4,29 @@ from dataclasses import dataclass
 
 @dataclass
 class StakingParams:
-    token_amount: int
-    min_shares: int
+    """Data class to store staking parameters."""
+    token_amount: int  # Amount of rUSD to stake (scaled by 10^6)
+    min_shares: int  # Minimum amount of liquidity shares expected from the stake (scaled by 10^30)
 
 def stake(config: dict, params: StakingParams):
+    """
+    Stakes rUSD into the passive pool on Reya DEX.
+
+    Args:
+        config (dict): Configuration dictionary containing Web3 contract instances and IDs. Check out config.py for more details.
+        params (StakingParams): Staking parameters including rUSD amount and minimum liquidity shares expected.
+
+    Returns:
+        dict: Contains transaction receipt and the amount of liquidity shares received.
+    """
+
+    # Retrieve relevant fields from config
     w3 = config['w3']
     account = config['w3account']
     passive_pool = config['w3contracts']['passive_pool']
     rusd = config['w3contracts']['rusd']
 
-    # Approve the rUSD token to be used by the periphery
+    # Approve the rUSD token for staking in the passive pool
     tx_hash = rusd.functions.approve(passive_pool.address, params.token_amount).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f'Approved rUSD to core: {tx_receipt.transactionHash.hex()}')
@@ -23,17 +36,24 @@ def stake(config: dict, params: StakingParams):
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f'Staked in passive pool: {tx_receipt.transactionHash.hex()}')
 
-    # Decode the logs to get the resulting shares amount
+    # Extract logs from the transaction receipt
     logs = tx_receipt["logs"]
+
+    # Compute event signature for filtering relevant log
     event_sig = Web3.keccak(text="ShareBalanceUpdated(uint128,address,int256,uint256,int256,uint256,address,int256)").hex()
+    
+    # Filter logs for the expected event
     filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
 
+    # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
         raise Exception("Failed to decode transaction receipt for staking to passive pool")
     
+    # Decode event log to extract the received liquidity shares amount
     event = passive_pool.events.ShareBalanceUpdated().process_log(filtered_logs[0])
     shares_amount = int(event["args"]["shareDelta"])
 
+    # Return transaction receipt and received shares amount (scaled by 10^30)
     return {
         'transaction_receipt': tx_receipt,
         'shares_amount': shares_amount,
