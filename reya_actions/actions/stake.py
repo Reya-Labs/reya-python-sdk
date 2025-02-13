@@ -26,7 +26,7 @@ def stake(config: dict, params: StakingParams):
     passive_pool = config['w3contracts']['passive_pool']
     rusd = config['w3contracts']['rusd']
 
-    # Approve the rUSD token for staking in the passive pool
+    # Execute the transaction to approve rUSD to be spent by the passive pool contract
     tx_hash = rusd.functions.approve(passive_pool.address, params.token_amount).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f'Approved rUSD to core: {tx_receipt.transactionHash.hex()}')
