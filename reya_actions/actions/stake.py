@@ -16,12 +16,12 @@ def stake(config: dict, params: StakingParams):
     # Approve the rUSD token to be used by the periphery
     tx_hash = rusd.functions.approve(passive_pool.address, params.token_amount).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f'Approved rUSD to core: ${tx_receipt.transactionHash.hex()}')
+    print(f'Approved rUSD to core: {tx_receipt.transactionHash.hex()}')
     
     # Stake rUSD in the passive pool
     tx_hash = passive_pool.functions.addLiquidityV2(1, [rusd.address, params.token_amount, account.address, params.min_shares]).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f'Staked in passive pool: ${tx_receipt.transactionHash.hex()}')
+    print(f'Staked in passive pool: {tx_receipt.transactionHash.hex()}')
 
     # Decode the logs to get the resulting shares amount
     logs = tx_receipt["logs"]

@@ -27,7 +27,7 @@ def main():
             )
         )
 
-        print(f'Trade information: execution price = {result['execution_price'] / 1e18} and paid fees = ${result['fees'] / 1e6} rUSD')
+        print(f'Trade information: execution price = {result['execution_price'] / 1e18} and paid fees = {result['fees'] / 1e6} rUSD')
 
     # long trade
     trade_on_sol(order_base=0.1)

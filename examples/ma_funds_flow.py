@@ -5,8 +5,8 @@ from reya_actions import get_config
 def main():
     config = get_config()
 
-    a = create_account(config)
-    b = create_account(config)
+    a = create_account(config)["account_id"]
+    b = create_account(config)["account_id"]
 
     amount_e6 = int(1e6)
     deposit(config, DepositParams(account_id=a, amount=amount_e6))

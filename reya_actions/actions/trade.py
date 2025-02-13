@@ -32,7 +32,7 @@ def trade(config: dict, params: TradeParams):
     commands: list = [command]
 
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f'Executed trade: ${tx_receipt.transactionHash.hex()}')
+    print(f'Executed trade: {tx_receipt.transactionHash.hex()}')
 
     # Decode the logs to get the resulting shares amount
     logs = tx_receipt["logs"]

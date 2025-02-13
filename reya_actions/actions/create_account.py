@@ -9,7 +9,7 @@ def create_account(config: dict):
     # Send the transaction to create the account
     tx_hash = core.functions.createAccount(account.address).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f'Created account: ${tx_receipt.transactionHash.hex()}')
+    print(f'Created account: {tx_receipt.transactionHash.hex()}')
 
     # Decode the logs to get the newly created account id
     logs = tx_receipt["logs"]

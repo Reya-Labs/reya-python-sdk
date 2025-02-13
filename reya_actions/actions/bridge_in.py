@@ -67,7 +67,7 @@ def bridge_in(config: dict, params: BridgeInParams, chain_rpc_url: str, vault_ad
 
     tx_hash = chain_usdc.functions.approve(vault_address, params.amount).transact({'from': account_address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f'Approved USDC to vault: ${tx_receipt.transactionHash.hex()}')
+    print(f'Approved USDC to vault: {tx_receipt.transactionHash.hex()}')
 
     # Initiate the bridging transaction
     periphery = config['w3contracts']['periphery']
@@ -80,13 +80,13 @@ def bridge_in(config: dict, params: BridgeInParams, chain_rpc_url: str, vault_ad
         periphery.address,
         params.amount,
         socket_msg_gas_limit,
-        reya_usdc.address,
+        connector_address,
         periphery_calldata,
         socket_bridge_options
     ).transact({'from': account_address, 'value': socket_fees})
 
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f'Initiated bridge in: ${tx_receipt.transactionHash.hex()}')
+    print(f'Initiated bridge in: {tx_receipt.transactionHash.hex()}')
 
     return {
         'transaction_receipt': tx_receipt,

@@ -17,7 +17,7 @@ def deposit(config: dict, params: DepositParams):
     # Approve the rUSD token to be used by the periphery
     tx_hash = rusd.functions.approve(core.address, params.amount).transact({'from': account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f'Approved rUSD to core: ${tx_receipt.transactionHash.hex()}')
+    print(f'Approved rUSD to core: {tx_receipt.transactionHash.hex()}')
 
     # Build the deposit command and execute it
     inputs_encoded = encode(
@@ -28,7 +28,7 @@ def deposit(config: dict, params: DepositParams):
     commands: list = [command]
         
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f'Deposited to margin account: ${tx_receipt.transactionHash.hex()}')
+    print(f'Deposited to margin account: {tx_receipt.transactionHash.hex()}')
 
     return {
         'transaction_receipt': tx_receipt,

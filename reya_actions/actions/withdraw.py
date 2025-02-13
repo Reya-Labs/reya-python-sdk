@@ -19,7 +19,7 @@ def withdraw(config: dict, params: WithdrawParams):
     commands: list = [command]
         
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f'Withdrawn from margin account: ${tx_receipt.transactionHash.hex()}')
+    print(f'Withdrawn from margin account: {tx_receipt.transactionHash.hex()}')
 
     return {
         'transaction_receipt': tx_receipt,
