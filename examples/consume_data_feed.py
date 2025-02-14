@@ -1,5 +1,5 @@
-from examples.utils.consts import MarketPriceStreams, MarketTickers, MarketIds
-from reya_data_feed.consumer import ReyaSocket
+from reya_actions import MarketPriceStreams, MarketTickers, MarketIds
+from reya_data_feed import ReyaSocket
 import asyncio
 import os
 from dotenv import load_dotenv
@@ -12,9 +12,11 @@ candles = {key: None for key in market_ids}
 funding_rates = {key: None for key in market_price_streams}
 prices = {key: None for key in market_price_streams}
 
+
 def on_error(_, message):
     print("Error in handling message:", message)
     exit(1)
+
 
 def on_message_candles(ws: ReyaSocket, message: dict):
     if message["type"] == "connected":
@@ -31,6 +33,7 @@ def on_message_candles(ws: ReyaSocket, message: dict):
         print("Uninitialized candles:", len(umarkets_ids), umarkets_ids)
         print()
 
+
 def on_message_funding_rates(ws: ReyaSocket, message: dict):
     print(message)
     if message["type"] == "connected":
@@ -42,7 +45,9 @@ def on_message_funding_rates(ws: ReyaSocket, message: dict):
 
         funding_rates[message["id"]] = message["contents"]
 
-        uprice_streams = list(filter(lambda x: funding_rates[x] is None, market_price_streams))
+        uprice_streams = list(
+            filter(lambda x: funding_rates[x] is None, market_price_streams)
+        )
         print("Uninitialized funding rates:", len(uprice_streams), uprice_streams)
         print()
 
@@ -56,15 +61,21 @@ def on_message_prices(ws: ReyaSocket, message: dict):
         print(message)
 
         prices[message["id"]] = message["contents"]
-        
-        uprices_streams = list(filter(lambda x: prices[x] is None, market_price_streams))
+
+        uprices_streams = list(
+            filter(lambda x: prices[x] is None, market_price_streams)
+        )
         print("Uninitialized prices:", len(uprices_streams), uprices_streams)
         print()
 
+
 async def main():
     load_dotenv()
-    ws = ReyaSocket(os.environ['REYA_WS_URL'], on_error=on_error, on_message=on_message_prices)
+    ws = ReyaSocket(
+        os.environ["REYA_WS_URL"], on_error=on_error, on_message=on_message_prices
+    )
     await ws.connect()
+
 
 if __name__ == "__main__":
     print("...Start")
