@@ -4,17 +4,18 @@ from reya_actions import get_config, trade
 import os
 from dotenv import load_dotenv
 
+
 def main():
     """
     Example script demonstrating how to execute long and short trades on SOL market.
     """
-    
+
     # Load environment variables from .env file
     load_dotenv()
 
     # Retrieve the margin account ID from environment variables
-    account_id = int(os.environ['ACCOUNT_ID'])
-    
+    account_id = int(os.environ["ACCOUNT_ID"])
+
     # Load configuration
     config = get_config()
 
@@ -26,7 +27,7 @@ def main():
             order_base (float): The trade size in base asset terms.
                                 Positive for long positions, negative for short.
         """
-    
+
         # Retrieve SOL market ID
         market_id = MarketIds.SOL.value
 
@@ -34,9 +35,9 @@ def main():
         price_limit = 0 if order_base < 0 else 1_000_000_000
 
         # Convert order size amd price limit to 18 decimal places (as required by smart contracts)
-        abs_order_base_e18 = Web3.to_wei(abs(order_base), 'ether')
+        abs_order_base_e18 = Web3.to_wei(abs(order_base), "ether")
         order_base_e18 = abs_order_base_e18 if order_base > 0 else -abs_order_base_e18
-        price_limit_e18 = Web3.to_wei(price_limit, 'ether')
+        price_limit_e18 = Web3.to_wei(price_limit, "ether")
 
         # Execute trade transaction
         result = trade(
@@ -45,11 +46,15 @@ def main():
                 account_id=account_id,
                 market_id=market_id,
                 base=order_base_e18,
-                price_limit=price_limit_e18
-            )
+                price_limit=price_limit_e18,
+            ),
         )
 
-        print(f'Trade information: execution price = {result['execution_price'] / 1e18} and paid fees = {result['fees'] / 1e6} rUSD')
+        execution_price = result["execution_price"] / 1e18
+        fees = result["fees"] / 1e6
+        print(
+            f"Trade information: execution price = {execution_price} and paid fees = {fees} rUSD"
+        )
 
     # Execute a long trade (buying SOL)
     trade_on_sol(order_base=0.1)

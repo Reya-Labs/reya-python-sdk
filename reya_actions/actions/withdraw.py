@@ -3,11 +3,14 @@ from eth_abi import encode
 from reya_actions.types import CommandType
 from reya_actions.utils.execute_core_commands import execute_core_commands
 
+
 @dataclass
 class WithdrawParams:
     """Data class to store withdrawal parameters."""
+
     account_id: int  # ID of the margin account performing the withdrawal
     amount: int  # Withdrawal amount in rUSD (scaled by 10^6)
+
 
 def withdraw(config: dict, params: WithdrawParams):
     """
@@ -22,23 +25,20 @@ def withdraw(config: dict, params: WithdrawParams):
     """
 
     # Retrieve rUSD contract from config
-    rusd = config['w3contracts']['rusd']
+    rusd = config["w3contracts"]["rusd"]
 
     # Encode withdrawal parameters for the contract call
-    inputs_encoded = encode(
-        ['(address,uint256)'], 
-        [[rusd.address, params.amount]]
-    )
+    inputs_encoded = encode(["(address,uint256)"], [[rusd.address, params.amount]])
 
     # Build the withdrawal command to be executed using core
     command = (CommandType.Withdraw.value, inputs_encoded, 0, 0)
     commands: list = [command]
-        
+
     # Execute the withdrawal transaction
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f'Withdrawn from margin account: {tx_receipt.transactionHash.hex()}')
+    print(f"Withdrawn from margin account: {tx_receipt.transactionHash.hex()}")
 
     # Return transaction receipt
     return {
-        'transaction_receipt': tx_receipt,
+        "transaction_receipt": tx_receipt,
     }

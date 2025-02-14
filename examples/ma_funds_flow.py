@@ -2,9 +2,10 @@ from reya_actions import create_account, deposit, withdraw, transfer
 from reya_actions import DepositParams, WithdrawParams, TransferParams
 from reya_actions import get_config
 
+
 def main():
     """
-    Example script demonstrating the full flow of creating margin accounts, 
+    Example script demonstrating the full flow of creating margin accounts,
     depositing rUSD, transferring funds between accounts, and withdrawing funds.
     """
 
