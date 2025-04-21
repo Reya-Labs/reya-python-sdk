@@ -51,6 +51,37 @@ def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
         connector_address=connector_address,
     )
 
+def bridge_in_from_arbitrum_sepolia(config: dict, params: BridgeInParams):
+    """
+    Bridges USDC into Reya Cronos from Arbitrum Sepolia.
+
+    Args:
+        config (dict): Configuration dictionary containing Web3 contract instances and IDs. Check out config.py for more details.
+        params (BridgeInParams): Bridging parameters including USDC amount and maximum fee limit.
+
+    Returns:
+        dict: Contains transaction receipt of the bridging transaction.
+    """
+
+    # Define Arbitrum-specific parameters
+    arbitrum_sepolia_rpc_url = "https://sepolia-rollup.arbitrum.io/rpc"
+    vault_address = "0x8fa5F65033193e8e0b4880C256B199916d6965F8"
+    connector_address = "0xDefB236eB69b7f94490786375B093C6c8271214A"
+    chain_id = config["chain_id"]
+
+    # Ensure Reya Network is correctly configured
+    if not chain_id == 89346162:
+        raise Exception("Bridging function requires setup for Reya Cronos")
+
+    # Call the general bridge function with Arbitrum parameters
+    return bridge_in(
+        config=config,
+        params=params,
+        chain_rpc_url=arbitrum_sepolia_rpc_url,
+        vault_address=vault_address,
+        connector_address=connector_address,
+    )
+
 
 def bridge_in(
     config: dict,

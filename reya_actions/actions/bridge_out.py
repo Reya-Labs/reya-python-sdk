@@ -49,6 +49,36 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
         socket_msg_gas_limit=socket_msg_gas_limit,
     )
 
+def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
+    """
+    Bridges rUSD from Reya Cronos to Arbitrum Sepolia.
+
+    Args:
+        config (dict): Configuration dictionary containing Web3 contract instances and IDs. Check out config.py for more details.
+        params (BridgeOutParams): Bridging parameters including rUSD amount and maximum fee limit.
+
+    Returns:
+        dict: Contains transaction receipt of the bridging transaction.
+    """
+
+    # Define Arbitrum-specific parameters
+    connector_address = "0x41CC670dae3f91160f6B64AF46e939223E5C99F9"
+    socket_msg_gas_limit = 20_000_000
+    arbitrum_chain_id = 421614
+    chain_id = config["chain_id"]
+
+    # Ensure Reya Network is correctly configured
+    if not chain_id == 89346162:
+        raise Exception("Bridging function requires setup for Reya Cronos")
+
+    # Call the general bridge function with Arbitrum parameters
+    return bridge_out(
+        config=config,
+        params=params,
+        dest_chain_id=arbitrum_chain_id,
+        connector_address=connector_address,
+        socket_msg_gas_limit=socket_msg_gas_limit,
+    )
 
 def bridge_out(
     config: dict,
