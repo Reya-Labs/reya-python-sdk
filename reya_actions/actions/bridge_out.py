@@ -32,6 +32,7 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
 
     # Define Arbitrum-specific parameters
     connector_address = "0x3F19417872BC9F5037Bc0D40cE7389D05Cf847Ad"
+    controller_address = "0x1d43076909Ca139BFaC4EbB7194518bE3638fc76"
     socket_msg_gas_limit = 20_000_000
     arbitrum_chain_id = 42161
     chain_id = config["chain_id"]
@@ -46,6 +47,7 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
         params=params,
         dest_chain_id=arbitrum_chain_id,
         connector_address=connector_address,
+        controller_address=controller_address,
         socket_msg_gas_limit=socket_msg_gas_limit,
     )
 
@@ -63,6 +65,7 @@ def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
 
     # Define Arbitrum-specific parameters
     connector_address = "0x41CC670dae3f91160f6B64AF46e939223E5C99F9"
+    controller_address = "0xf565F766EcafEE809EBaF0c71dCd60ad5EfE0F9e"
     socket_msg_gas_limit = 20_000_000
     arbitrum_chain_id = 421614
     chain_id = config["chain_id"]
@@ -77,6 +80,7 @@ def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
         params=params,
         dest_chain_id=arbitrum_chain_id,
         connector_address=connector_address,
+        controller_address=controller_address,
         socket_msg_gas_limit=socket_msg_gas_limit,
     )
 
@@ -85,6 +89,7 @@ def bridge_out(
     params: BridgeOutParams,
     dest_chain_id: int,
     connector_address: str,
+    controller_address: str,
     socket_msg_gas_limit: int,
 ):
     """
@@ -108,7 +113,6 @@ def bridge_out(
     rusd = config["w3contracts"]["rusd"]
 
     # Set parameters for the bridge transaction
-    controller_address = "0x1d43076909Ca139BFaC4EbB7194518bE3638fc76"
     socket_empty_payload_size = 160
 
     # Build the Socket controller contract

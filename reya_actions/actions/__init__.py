@@ -1,5 +1,5 @@
-from reya_actions.actions.bridge_in import bridge_in_from_arbitrum, BridgeInParams
-from reya_actions.actions.bridge_out import bridge_out_to_arbitrum, BridgeOutParams
+from reya_actions.actions.bridge_in import bridge_in_from_arbitrum, bridge_in_from_arbitrum_sepolia, BridgeInParams
+from reya_actions.actions.bridge_out import bridge_out_to_arbitrum, bridge_out_to_arbitrum_sepolia, BridgeOutParams
 from reya_actions.actions.create_account import create_account
 from reya_actions.actions.deposit import deposit, DepositParams
 from reya_actions.actions.stake import stake, StakingParams
