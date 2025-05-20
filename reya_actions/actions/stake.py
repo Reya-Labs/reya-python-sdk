@@ -38,7 +38,7 @@ def stake(config: dict, params: StakingParams):
 
     # Stake rUSD in the passive pool
     tx_hash = passive_pool.functions.addLiquidity(
-        1, account.address, params.token_amount, params.min_shares
+        1, account.address, params.token_amount, params.min_shares, (1, account.address)
     ).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Staked in passive pool: {tx_receipt.transactionHash.hex()}")
