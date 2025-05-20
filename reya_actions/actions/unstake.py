@@ -30,7 +30,7 @@ def unstake(config: dict, params: UnstakingParams):
 
     # Unstake rUSD from the passive pool
     tx_hash = passive_pool.functions.removeLiquidity(
-        1, params.shares_amount, params.min_tokens
+        1, params.shares_amount, params.min_tokens, (2, account.address)
     ).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Unstaked from passive pool: {tx_receipt.transactionHash.hex()}")
