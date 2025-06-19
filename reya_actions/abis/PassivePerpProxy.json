@@ -168,5 +168,41 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAccountPnLComponents",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "accountId",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct PnLComponents",
+        "components": [
+          {
+            "name": "realizedPnL",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "unrealizedPnL",
+            "type": "int256",
+            "internalType": "int256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   }
 ]
