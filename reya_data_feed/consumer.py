@@ -34,7 +34,7 @@ class Candles(Channel):
 
 
 class Prices(Channel):
-    channel = "prices"
+    channel = "/api/trading/markets/data"
 
     def subscribe(self, id, batched=False) -> Self:
         return super().subscribe(id=id, batched=batched)

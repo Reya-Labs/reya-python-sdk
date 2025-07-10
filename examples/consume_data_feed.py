@@ -57,7 +57,8 @@ def on_message_prices(ws: ReyaSocket, message: dict):
         print("Connected")
         for price_stream in market_price_streams:
             ws.prices.subscribe(id=price_stream)
-    if message["type"] == "channel_data":
+    
+    if message["type"] == "subscribed":
         print(message)
 
         prices[message["id"]] = message["contents"]
