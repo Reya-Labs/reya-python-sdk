@@ -52,13 +52,14 @@ class ReyaSocket(websocket.WebSocketApp):
             on_message: Callback for message events.
             on_error: Callback for error events.
             on_close: Callback for connection close events.
-            config: WebSocket configuration. If None, loads from environment.
-            environment: Environment name for configuration. If provided, overrides config.
+            config: WebSocket configuration. If None, loads from .env file.
+            environment: Deprecated. Kept for backward compatibility.
             *args: Additional arguments for WebSocketApp.
             **kwargs: Additional keyword arguments for WebSocketApp.
         """
         # Set up configuration
-        self.config = config or get_config(environment)
+        # Ignoring environment parameter as we only use .env configuration now
+        self.config = config or get_config()
         url = url or self.config.url
         
         # Initialize resources

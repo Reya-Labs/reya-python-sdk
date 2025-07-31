@@ -2,9 +2,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Generic, Optional, TypeVar, Union
 
-# Type variable for resource data
-T = TypeVar('T')  
-
 class WebSocketResource(ABC):
     """Base class for all WebSocket resources."""
     

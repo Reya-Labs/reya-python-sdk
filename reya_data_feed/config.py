@@ -4,6 +4,9 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
+# Default values
+DEFAULT_TRADING_API_PREFIX = "/api/trading/"
+
 @dataclass
 class WebSocketConfig:
     """Configuration for the WebSocket client."""
@@ -17,7 +20,7 @@ class WebSocketConfig:
     ssl_verify: bool = True
     
     # API-specific settings
-    trading_api_prefix: str = "/api/trading/"
+    trading_api_prefix: str = DEFAULT_TRADING_API_PREFIX
     subscription_batch_size: int = 10
     
     @classmethod
@@ -26,7 +29,7 @@ class WebSocketConfig:
         load_dotenv()
         
         return cls(
-            url=os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/"),
+            url=os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/"),  # Use direct URL from .env
             ping_interval=int(os.environ.get("REYA_WS_PING_INTERVAL", "30")),
             ping_timeout=int(os.environ.get("REYA_WS_PING_TIMEOUT", "10")),
             connection_timeout=int(os.environ.get("REYA_WS_CONNECTION_TIMEOUT", "30")),
@@ -34,24 +37,9 @@ class WebSocketConfig:
             reconnect_delay=int(os.environ.get("REYA_WS_RECONNECT_DELAY", "5")),
             enable_compression=os.environ.get("REYA_WS_ENABLE_COMPRESSION", "True").lower() == "true",
             ssl_verify=os.environ.get("REYA_WS_SSL_VERIFY", "True").lower() == "true",
-            trading_api_prefix=os.environ.get("REYA_TRADING_API_PREFIX", "/api/trading/"),
+            trading_api_prefix=os.environ.get("REYA_TRADING_API_PREFIX", DEFAULT_TRADING_API_PREFIX),
         )
 
-# Environment-specific configurations
-ENVIRONMENT_CONFIGS = {
-    "mainnet": WebSocketConfig(
-        url="wss://ws.reya.xyz/",
-        ssl_verify=True,
-    ),
-    "testnet": WebSocketConfig(
-        url="wss://websocket-testnet.reya.xyz/",
-        ssl_verify=True,
-    ),
-}
-
-def get_config(environment: str = None) -> WebSocketConfig:
-    """Get configuration for a specific environment."""
-    if environment and environment in ENVIRONMENT_CONFIGS:
-        return ENVIRONMENT_CONFIGS[environment]
-    
+def get_config() -> WebSocketConfig:
+    """Get configuration from environment."""
     return WebSocketConfig.from_env()
