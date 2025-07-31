@@ -79,46 +79,76 @@ REYA_WS_URL=wss://ws.reya.xyz/  # Use wss://websocket-testnet.reya.xyz/ for test
 
 ## WebSocket API Usage
 
-### Backward Compatibility
-
-The SDK maintains backward compatibility with the legacy implementation:
-
-```python
-# Legacy implementation
-from reya_data_feed import LegacyReyaSocket
-
-# Use the legacy implementation as before
-ws = LegacyReyaSocket(url="wss://ws.reya.xyz/", on_message=on_message)
-```
-
 ### Basic Usage
 
 Here's how to use the new resource-oriented WebSocket API:
 
 ```python
+import os
+import json
+import logging
+from dotenv import load_dotenv
 from reya_data_feed import ReyaSocket
 
-def on_message(ws, message):
-    if message["type"] == "connected":
-        print("Connected!")
-        
-        # Subscribe to all markets data
-        ws.market.all_markets.subscribe()
-        
-        # Subscribe to a specific market
-        ws.market.market_data("BTCUSDMARK").subscribe()
-        
-        # Subscribe to wallet positions
-        wallet_address = "0x123..."
-        ws.wallet.positions(wallet_address).subscribe()
-        
-    elif message["type"] == "channel_data":
-        print(f"Received data for {message['channel']}:")
-        print(message["contents"])
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("reya.example")
 
-# Create and connect the socket
-socket = ReyaSocket(on_message=on_message)
-socket.connect()
+def on_open(ws):
+    """Handle WebSocket connection open event."""
+    logger.info("Connection established, subscribing to market data")
+    # Subscribe to market data for market ID 1
+    ws.market.market_data(1).subscribe()
+
+def on_message(ws, message):
+    """Handle WebSocket messages."""
+    message_type = message.get("type")
+    
+    if message_type == "subscribed":
+        channel = message.get("channel", "unknown")
+        logger.info(f"Successfully subscribed to {channel}")
+        
+    elif message_type == "channel_data":
+        channel = message.get("channel", "unknown")
+        logger.info(f"Received data from {channel}")
+        logger.info(f"Data: {message}")
+    
+    elif message_type == "error":
+        logger.error(f"Error: {message.get('message', 'unknown error')}")
+
+def main():
+    # Load environment variables
+    load_dotenv()
+    
+    # Get WebSocket URL from environment
+    ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
+    
+    # Create the WebSocket
+    ws = ReyaSocket(
+        url=ws_url,
+        on_open=on_open,
+        on_message=on_message,
+    )
+    
+    # Connect to the WebSocket server - this is a blocking call
+    logger.info("Connecting to WebSocket and starting event loop")
+    logger.info("Press Ctrl+C to exit")
+    
+    try:
+        # This will run forever until interrupted
+        ws.connect()
+    except KeyboardInterrupt:
+        logger.info("Exiting gracefully")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+    finally:
+        logger.info("WebSocket connection closed")
+
+if __name__ == "__main__":
+    main()
 ```
 
 ### Resource-Based API Structure
@@ -128,52 +158,60 @@ The API is organized around resources:
 ```
 ReyaSocket
 ├── market
-│   ├── all_markets
+│   ├── all_markets               # /api/trading/markets/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── market_data(market_id)
+│   ├── market_data(market_id)    # /api/trading/market/:marketId/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   └── market_orders(market_id)
+│   └── market_orders(market_id)  # /api/trading/market/:marketId/orders
 │       ├── subscribe()
 │       └── unsubscribe()
 └── wallet
-    ├── positions(address)
+    ├── positions(address)          # /api/trading/wallet/:address/positions
     │   ├── subscribe()
     │   └── unsubscribe()
-    ├── orders(address)
+    ├── orders(address)             # /api/trading/wallet/:address/orders
     │   ├── subscribe()
     │   └── unsubscribe()
-    └── balances(address)
+    └── balances(address)           # /api/trading/wallet/:address/accounts/balances
         ├── subscribe()
         └── unsubscribe()
 ```
 
-### Environment-Specific Configuration
+### Configuration via Environment Variables
 
-You can easily connect to different environments:
+All configuration is now handled via environment variables, making it easier to deploy and maintain:
 
-```python
-from reya_data_feed import ReyaSocket
+```bash
+# WebSocket URL (defaults to mainnet if not specified)
+REYA_WS_URL="wss://ws.reya.xyz/"
 
-# Connect to mainnet (default)
-mainnet_socket = ReyaSocket(environment="mainnet")
+# Connection parameters
+REYA_WS_PING_INTERVAL=30     # Send ping every 30 seconds
+REYA_WS_PING_TIMEOUT=10      # Wait 10 seconds for pong response
+REYA_WS_CONNECTION_TIMEOUT=30 # Connection timeout in seconds
+REYA_WS_RECONNECT_ATTEMPTS=3  # Number of reconnection attempts
+REYA_WS_RECONNECT_DELAY=5     # Delay between reconnection attempts
+REYA_WS_ENABLE_COMPRESSION=true # Enable WebSocket compression
+REYA_WS_SSL_VERIFY=true       # Verify SSL certificate
 
-# Connect to testnet
-testnet_socket = ReyaSocket(environment="testnet")
-
-# Connect to local development environment
-local_socket = ReyaSocket(environment="local")
+# API prefix
+REYA_TRADING_API_PREFIX="/api/trading/"
 ```
 
 ### Custom Configuration
 
-You can customize the WebSocket behavior:
+You can customize the WebSocket behavior by passing parameters directly or loading from environment:
 
 ```python
 from reya_data_feed import ReyaSocket
 from reya_data_feed.config import WebSocketConfig
 
+# Load config from environment variables
+config = WebSocketConfig.from_env()
+
+# Or create custom config
 custom_config = WebSocketConfig(
     url="wss://custom-websocket.example.com/",
     ping_interval=15,
@@ -191,8 +229,8 @@ The repository includes example scripts demonstrating how to use the SDK:
 
 ### WebSocket Examples
 
-- `examples/websocket_v2/basic_market_data.py` - Basic subscription to market data
-- `examples/websocket_v2/wallet_monitoring.py` - Monitoring wallet positions and orders
+- `examples/basic_market_data.py` - Basic subscription to market data
+- `examples/wallet_monitoring.py` - Monitoring wallet positions and orders
 
 ### Running Examples
 
@@ -203,7 +241,7 @@ To run the examples, use Python from the project root with the Poetry environmen
 poetry shell
 
 # Run an example
-python3 -m examples.websocket_v2.basic_market_data
+python3 -m examples.basic_market_data
 
 # Run another example
 python3 -m examples.trade_execution
@@ -225,7 +263,6 @@ ReyaSocket(
     on_error=None,           # Error callback
     on_close=None,           # Connection close callback
     config=None,             # Custom configuration
-    environment=None         # Environment name (mainnet, testnet, local)
 )
 ```
 
