@@ -15,6 +15,7 @@ class WalletResource:
         self._positions = WalletPositionsResource(socket)
         self._orders = WalletOrdersResource(socket)
         self._balances = WalletBalancesResource(socket)
+        self._conditional_orders = WalletConditionalOrdersResource(socket)
     
     def positions(self, address: str) -> 'WalletPositionsSubscription':
         """Get positions for a specific wallet address.
@@ -48,6 +49,17 @@ class WalletResource:
             A subscription object for the wallet balances.
         """
         return self._balances.for_wallet(address)
+    
+    def conditional_orders(self, address: str) -> 'WalletConditionalOrdersSubscription':
+        """Get conditional orders for a specific wallet address.
+        
+        Args:
+            address: The wallet address.
+            
+        Returns:
+            A subscription object for the wallet conditional orders.
+        """
+        return self._conditional_orders.for_wallet(address)
 
 class WalletPositionsResource(SubscribableParameterizedResource):
     """Resource for accessing wallet positions."""
@@ -191,4 +203,52 @@ class WalletBalancesSubscription:
     
     def unsubscribe(self) -> None:
         """Unsubscribe from wallet account balances."""
+        self.socket.send_unsubscribe(channel=self.path)
+
+class WalletConditionalOrdersResource(SubscribableParameterizedResource):
+    """Resource for accessing wallet conditional orders."""
+    
+    def __init__(self, socket: 'ReyaSocket'):
+        """Initialize the wallet conditional orders resource.
+        
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket, "/api/trading/wallet/{address}/conditionalOrders")
+    
+    def for_wallet(self, address: str) -> 'WalletConditionalOrdersSubscription':
+        """Create a subscription for a specific wallet's conditional orders.
+        
+        Args:
+            address: The wallet address.
+            
+        Returns:
+            A subscription object for the wallet conditional orders.
+        """
+        return WalletConditionalOrdersSubscription(self.socket, address)
+
+class WalletConditionalOrdersSubscription:
+    """Manages a subscription to conditional orders for a specific wallet."""
+    
+    def __init__(self, socket: 'ReyaSocket', address: str):
+        """Initialize a wallet conditional orders subscription.
+        
+        Args:
+            socket: The WebSocket connection to use for this subscription.
+            address: The wallet address.
+        """
+        self.socket = socket
+        self.address = address
+        self.path = f"/api/trading/wallet/{address}/conditionalOrders"
+    
+    def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to wallet conditional orders.
+        
+        Args:
+            batched: Whether to receive updates in batches.
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+    
+    def unsubscribe(self) -> None:
+        """Unsubscribe from wallet conditional orders."""
         self.socket.send_unsubscribe(channel=self.path)

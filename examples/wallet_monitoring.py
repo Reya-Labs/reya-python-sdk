@@ -66,6 +66,9 @@ def on_open(ws):
     
     # Subscribe to wallet orders
     # ws.wallet.orders(wallet_address).subscribe()
+
+    # Subscribe to wallet conditional orders
+    # ws.wallet.conditional_orders(wallet_address).subscribe()
     
     # Subscribe to wallet account balances
     ws.wallet.balances(wallet_address).subscribe()

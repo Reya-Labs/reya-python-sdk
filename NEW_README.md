@@ -158,13 +158,13 @@ The API is organized around resources:
 ```
 ReyaSocket
 ├── market
-│   ├── all_markets               # /api/trading/markets/data
+│   ├── all_markets                 # /api/trading/markets/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── market_data(market_id)    # /api/trading/market/:marketId/data
+│   ├── market_data(market_id)      # /api/trading/market/:marketId/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   └── market_orders(market_id)  # /api/trading/market/:marketId/orders
+│   └── market_orders(market_id)    # /api/trading/market/:marketId/orders
 │       ├── subscribe()
 │       └── unsubscribe()
 └── wallet
@@ -174,7 +174,10 @@ ReyaSocket
     ├── orders(address)             # /api/trading/wallet/:address/orders
     │   ├── subscribe()
     │   └── unsubscribe()
-    └── balances(address)           # /api/trading/wallet/:address/accounts/balances
+    ├── balances(address)           # /api/trading/wallet/:address/accounts/balances
+    │   ├── subscribe()
+    │   └── unsubscribe()
+    └── conditional_orders(address) # /api/trading/wallet/:address/conditionalOrders
         ├── subscribe()
         └── unsubscribe()
 ```
