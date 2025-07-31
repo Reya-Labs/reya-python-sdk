@@ -25,26 +25,7 @@ def as_json(on_message: Optional[Callable[[Any, Any], None]]) -> Callable[[Any, 
     def wrapper(ws, message: str):
         # Always log raw message for debugging
         logger.debug(f"RAW WEBSOCKET MESSAGE: {message!r}")
-        
-        try:
-            if isinstance(message, str):
-                parsed = json.loads(message)
-                logger.debug(f"PARSED JSON: {parsed!r}")
-                if on_message:
-                    on_message(ws, parsed)
-                else:
-                    logger.debug(f"Received message but no handler configured")
-            else:
-                logger.warning(f"Received non-string message: {type(message)}: {message!r}")
-                if on_message:
-                    on_message(ws, message)
-                else:
-                    logger.debug(f"Received non-string message but no handler configured")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse message as JSON: {message!r}, error: {e}")
-            if on_message:
-                # Pass through the original message
-                on_message(ws, message)
+        return on_message(ws, json.loads(message))
     
     return wrapper
 
@@ -169,8 +150,7 @@ class ReyaSocket(websocket.WebSocketApp):
         
         logger.info(f"Connecting to {self.url}")
         
-        # Simple approach - run the WebSocket directly
-        # This matches how consumer.py implements the connection
+        # Run the WebSocket directly
         self.run_forever(
             sslopt=sslopt,
             ping_interval=self.config.ping_interval,
@@ -189,13 +169,9 @@ class ReyaSocket(websocket.WebSocketApp):
         
         if message_type == "connected":
             logger.info("Connection established with server")
-            # You can trigger actions upon confirmed connection
-            # Similar to what we do with pong
             
         elif message_type == "pong":
             logger.info("Connection confirmed via pong response")
-            # No automatic action needed, the specific resource handlers will subscribe
-            # when needed through the subscription methods
             
         elif message_type == "subscribed":
             channel = message.get("channel", "unknown")

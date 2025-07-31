@@ -23,7 +23,7 @@ logger = logging.getLogger("reya.example")
 
 def on_open(ws):
     """Handle WebSocket connection open event."""
-    logger.info("Connection established, subscribing to market data...")
+    logger.info("Connection established, subscribing to market data")
     # Subscribe to market data for market ID 1
     ws.market.market_data(1).subscribe()
 
@@ -74,14 +74,14 @@ def main():
     )
 
     # Connect to the WebSocket server - this is a blocking call
-    logger.info("Connecting to WebSocket and starting event loop...")
+    logger.info("Connecting to WebSocket and starting event loop")
     logger.info("Press Ctrl+C to exit")
     
     try:
         # This will run forever until interrupted
         ws.connect()
     except KeyboardInterrupt:
-        logger.info("Exiting gracefully...")
+        logger.info("Exiting gracefully")
     except Exception as e:
         logger.error(f"Error: {e}")
     finally:
