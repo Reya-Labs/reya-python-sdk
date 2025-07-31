@@ -40,7 +40,6 @@ class ReyaSocket(websocket.WebSocketApp):
         on_error: Optional[Callable[[websocket.WebSocket, Any], None]] = None,
         on_close: Optional[Callable[[websocket.WebSocket, int, str], None]] = None,
         config: Optional[WebSocketConfig] = None,
-        environment: Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -53,12 +52,10 @@ class ReyaSocket(websocket.WebSocketApp):
             on_error: Callback for error events.
             on_close: Callback for connection close events.
             config: WebSocket configuration. If None, loads from .env file.
-            environment: Deprecated. Kept for backward compatibility.
             *args: Additional arguments for WebSocketApp.
             **kwargs: Additional keyword arguments for WebSocketApp.
         """
         # Set up configuration
-        # Ignoring environment parameter as we only use .env configuration now
         self.config = config or get_config()
         url = url or self.config.url
         

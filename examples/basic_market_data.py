@@ -6,7 +6,6 @@ for a specific market using asyncio.
 
 import os
 import logging
-import asyncio
 from dotenv import load_dotenv
 
 # Import the new resource-oriented WebSocket client
@@ -24,6 +23,13 @@ logger = logging.getLogger("reya.example")
 def on_open(ws):
     """Handle WebSocket connection open event."""
     logger.info("Connection established, subscribing to market data")
+
+    # Subscribe to all market data
+    # ws.market.all_markets.subscribe()
+
+    # Subscribe to market data orders
+    # ws.market.market_orders(1).subscribe()
+
     # Subscribe to market data for market ID 1
     ws.market.market_data(1).subscribe()
 
@@ -50,6 +56,13 @@ def on_message(ws, message):
                 logger.info(f"Market update: {contents['result']}")
             else:
                 logger.warning(f"Received data in unexpected format: {contents}")
+    
+    elif message_type == "ping":
+        logger.info("Received ping, sending pong response")
+        ws.send(json.dumps({"type": "pong"}))
+
+    elif message_type == "pong":
+        logger.info("Connection confirmed via pong response")
     
     elif message_type == "error":
         logger.error(f"Error: {message.get('message', 'unknown error')}")

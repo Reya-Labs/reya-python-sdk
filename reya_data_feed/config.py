@@ -29,7 +29,7 @@ class WebSocketConfig:
         load_dotenv()
         
         return cls(
-            url=os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/"),  # Use direct URL from .env
+            url=os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/"),
             ping_interval=int(os.environ.get("REYA_WS_PING_INTERVAL", "30")),
             ping_timeout=int(os.environ.get("REYA_WS_PING_TIMEOUT", "10")),
             connection_timeout=int(os.environ.get("REYA_WS_CONNECTION_TIMEOUT", "30")),
