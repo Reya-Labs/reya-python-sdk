@@ -186,8 +186,8 @@ class SignatureGenerator:
             message_types=types,
             message_data=message
         )
-        
-        return signed_message.signature.hex()
+
+        return f"0x{signed_message.signature.hex()}"
     
     def sign_conditional_order(
         self,
@@ -278,7 +278,7 @@ class SignatureGenerator:
         # Sign the message
         signed_message = Account.sign_message(message, self._private_key)
         
-        return signed_message.signature.hex()
+        return f"0x{signed_message.signature.hex()}"
     
     def sign_cancel_order(self, order_id: str) -> str:
         """
@@ -306,4 +306,4 @@ class SignatureGenerator:
         # Sign the message
         signed_message = Account.sign_message(signable_message, private_key=self._private_key)
         
-        return signed_message.signature.hex()
+        return f"0x{signed_message.signature.hex()}"
