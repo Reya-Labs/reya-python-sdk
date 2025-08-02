@@ -46,8 +46,8 @@ def main():
     client.create_limit_order(
         market_id=1,
         is_buy=True,
-        price=10,
-        size=1,
+        price="10",
+        size="1",
         type={
             "limit": {
                 "timeInForce": "GTC"

@@ -61,15 +61,13 @@ class LimitOrderRequest:
     signer_wallet: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        size_val = str(self.size) if isinstance(self.size, float) else self.size
-        price_val = str(self.price) if isinstance(self.price, float) else self.price
 
         return {
             "accountId": self.account_id,
             "marketId": self.market_id,
             "isBuy": self.is_buy,
-            "price": "10",
-            "size": "1",
+            "price": self.price,
+            "size": self.size,
             "reduceOnly": self.reduce_only,
             "type": self.type,
             "signature": self.signature,
