@@ -10,7 +10,7 @@ import secrets
 from typing import Dict, Any, List, Union, Tuple, Optional
 from decimal import Decimal
 from eth_abi import encode
-from eth_account.messages import encode_structured_data
+from eth_account.messages import encode_typed_data
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -268,7 +268,7 @@ class SignatureGenerator:
             },
         }
 
-        message = encode_structured_data({
+        message = encode_typed_data({
             "types": types,
             "domain": domain,
             "primaryType": "ConditionalOrder",
