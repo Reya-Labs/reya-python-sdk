@@ -27,22 +27,22 @@ class AccountResource(BaseResource):
         endpoint = f"trading/account/{account_id}"
         return self._get(endpoint)
     
-    def get_positions(self, account_id: int) -> List[Dict[str, Any]]:
+    def get_positions(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get positions for an account.
+        Get positions for a wallet address.
         
         Args:
-            account_id: The Reya account ID
+            wallet_address: The wallet address
             
         Returns:
-            List of positions
+            Positions data
             
         Raises:
             ValueError: If the API returns an error
         """
-        endpoint = f"trading/account/{account_id}/positions"
+        endpoint = f"api/trading/wallet/{wallet_address}/positions"
         response_data = self._get(endpoint)
-        return response_data.get("positions", [])
+        return response_data
     
     def get_balance(self, account_id: int) -> Dict[str, Any]:
         """

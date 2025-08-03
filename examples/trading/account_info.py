@@ -41,6 +41,7 @@ def main():
             
             for i, order in enumerate(conditional_orders):
                 # Extract order details
+                account_id = order.get("account_id", "unknown")
                 order_id = order.get("id", "unknown")
                 market_id = order.get("market_id", "unknown")
                 order_type = order.get("order_type", "unknown")
@@ -55,6 +56,7 @@ def main():
                 
                 # Print order details
                 print(f"Order {i+1}:")
+                print(f"  Account ID: {account_id}")
                 print(f"  ID: {order_id}")
                 print(f"  Market ID: {market_id}")
                 print(f"  Type: {order_type}")

@@ -54,9 +54,24 @@ class Trigger:
 @dataclass
 class LimitOrderType:
     limit: Limit
+    
+    def to_dict(self):
+        return {
+            "limit": {
+                "timeInForce": self.limit.timeInForce.value
+            }
+        }
 
 @dataclass
 class TriggerOrderType:
     trigger: Trigger
+    
+    def to_dict(self):
+        return {
+            "trigger": {
+                "triggerPx": self.trigger.triggerPx,
+                "tpsl": self.trigger.tpsl.value
+            }
+        }
 
 UnifiedOrderType = Union[LimitOrderType, TriggerOrderType]

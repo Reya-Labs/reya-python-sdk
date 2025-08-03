@@ -66,20 +66,13 @@ class BaseResource:
             
         Returns:
             Parsed JSON response
-            
-        Raises:
-            ValueError: If the API returns an error
+
         """
         try:
             data = response.json()
         except ValueError:
             self.logger.error(f"Failed to parse JSON response: {response.text}")
             raise ValueError(f"{error_msg}: Invalid JSON response")
-            
-        if not response.ok:
-            error = data.get("message", str(response.status_code))
-            self.logger.error(f"API error ({response.status_code}): {error}")
-            raise ValueError(f"{error_msg}: {error}")
             
         return data
         

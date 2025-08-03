@@ -259,24 +259,24 @@ class ReyaTradingClient:
         return response
     
     # Get positions
-    def get_positions(self, account_id: Optional[int] = None) -> Dict[str, Any]:
+    def get_positions(self, wallet_address: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get positions for an account.
+        Get positions for a wallet address.
         
         Args:
-            account_id: Optional account ID (defaults to config.account_id)
+            wallet_address: Optional wallet address (defaults to current wallet)
             
         Returns:
-            List of positions
+            Positions data
             
         Raises:
-            ValueError: If no account ID is available or API returns an error
+            ValueError: If no wallet address is available or API returns an error
         """
-        account_id_to_use = account_id or self._config.account_id
-        if account_id_to_use is None:
-            raise ValueError("account_id must be provided or set in the config")
+        wallet = wallet_address or self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.account.get_positions(account_id_to_use)
+        return self.account.get_positions(wallet)
         
     @property
     def wallet_address(self) -> Optional[str]:

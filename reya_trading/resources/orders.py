@@ -55,6 +55,9 @@ class OrdersResource(BaseResource):
         size_val = str(size) if isinstance(size, float) else size
         price_val = str(price) if isinstance(price, float) else price
         
+        # Determine if this is a buy or sell order
+        is_buy = float(size_val) > 0
+        
         # Sign the order
         signature = self.signature_generator.sign_market_order(
             account_id=account_id,
@@ -70,12 +73,14 @@ class OrdersResource(BaseResource):
         order_request = MarketOrderRequest(
             account_id=account_id,
             market_id=market_id,
-            size=size_val,
+            size=abs(float(size_val)),  # API expects positive size
             price=price_val,
+            is_buy=is_buy,
             reduce_only=reduce_only,
             nonce=nonce,
-            deadline=deadline,
-            signature=signature
+            signature=signature,
+            signer_wallet=self.signature_generator._public_address,
+            expires_after=deadline
         )
         
         # Make the API request
@@ -115,6 +120,7 @@ class OrdersResource(BaseResource):
         # Sign the order
         signature = self.signature_generator.sign_conditional_order(
             market_id=market_id,
+            order_type=ConditionalOrderType.LIMIT_ORDER,
             is_buy=is_buy,
             trigger_price=price,
             order_base=size,
@@ -130,10 +136,10 @@ class OrdersResource(BaseResource):
             price=price,
             size=size,
             reduce_only=False,
-            type=type,
+            type=type.to_dict() if hasattr(type, 'to_dict') else {"limit": {"timeInForce": "GTC"}},
             signature=signature,
             nonce=nonce,
-            signer_wallet=self.config.wallet_address,
+            signer_wallet=self.signature_generator._public_address,
         )
         
         # Make the API request
@@ -196,12 +202,11 @@ class OrdersResource(BaseResource):
         
         # Sign the order
         signature = self.signature_generator.sign_conditional_order(
-            account_id=account_id,
             market_id=market_id,
             order_type=order_type,
             is_buy=is_buy,
             trigger_price=float(trigger_price_val),
-            price_limit=float(price_val),
+            order_price_limit=float(price_val),
             order_base=order_base,
             nonce=nonce,
             deadline=deadline
@@ -215,9 +220,11 @@ class OrdersResource(BaseResource):
             price=price_val,
             is_buy=is_buy,
             trigger_type=trigger_type,
+            size="",  # SL/TP orders typically have 0 size
+            reduce_only=False,
             nonce=nonce,
-            deadline=deadline,
-            signature=signature
+            signature=signature,
+            signer_wallet=self.signature_generator._public_address
         )
         
         # Make the API request

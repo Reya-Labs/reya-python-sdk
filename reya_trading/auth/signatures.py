@@ -100,6 +100,112 @@ class SignatureGenerator:
         else:
             raise ValueError(f"Unsupported order type: {order_type}")
     
+    def create_orders_gateway_nonce(
+        self,
+        account_id: int,
+        market_id: int,
+        timestamp_ms: int
+    ) -> int:
+        """Create a nonce for Orders Gateway orders."""
+        # Validate the input ranges
+        if market_id < 0 or market_id >= 2 ** 32:
+            raise ValueError('marketId is out of range')
+        if account_id < 0 or account_id >= 2 ** 128:
+            raise ValueError('accountId is out of range')
+        if timestamp_ms < 0 or timestamp_ms >= 2 ** 64:
+            raise ValueError('timestamp is out of range')
+
+        hash_uint256 = (
+            (account_id << 98) |
+            (timestamp_ms << 32) |
+            market_id
+        )
+
+        return hash_uint256
+    
+    def sign_orders_gateway_order(
+        self,
+        account_id: int,
+        market_id: int,
+        exchange_id: int,
+        counterparty_account_ids: list,
+        order_type: int,
+        inputs: str,  # hex-encoded ABI data
+        deadline: int,
+        creation_timestamp_ms: int,
+    ) -> str:
+        """
+        Sign an Orders Gateway order using EIP-712.
+        
+        Args:
+            account_id: The Reya account ID
+            market_id: The market ID for this order
+            exchange_id: Exchange ID (usually 2)
+            counterparty_account_ids: List of counterparty account IDs
+            order_type: Order type enum value
+            inputs: ABI-encoded order inputs
+            deadline: Signature expiration timestamp
+            creation_timestamp_ms: Order creation timestamp in milliseconds
+            
+        Returns:
+            Hex-encoded signature
+        """
+        nonce = self.create_orders_gateway_nonce(
+            account_id, market_id, creation_timestamp_ms
+        )
+        
+        # Define EIP-712 domain
+        domain = {
+            "name": "Reya",
+            "version": "1",
+            "verifyingContract": self._orders_gateway_address
+        }
+        
+        # Define the message types for EIP-712 (conditional order format)
+        types = {
+            "ConditionalOrder": [
+                {"name": "verifyingChainId", "type": "uint256"},
+                {"name": "deadline", "type": "uint256"},
+                {"name": "order", "type": "ConditionalOrderDetails"}
+            ],
+            "ConditionalOrderDetails": [
+                {"name": "accountId", "type": "uint128"},
+                {"name": "marketId", "type": "uint128"},
+                {"name": "exchangeId", "type": "uint128"},
+                {"name": "counterpartyAccountIds", "type": "uint128[]"},
+                {"name": "orderType", "type": "uint8"},
+                {"name": "inputs", "type": "bytes"},
+                {"name": "signer", "type": "address"},
+                {"name": "nonce", "type": "uint256"}
+            ]
+        }
+        
+        # Create the message to sign
+        message = {
+            "verifyingChainId": self._chain_id,
+            "deadline": deadline,
+            "order": {
+                "accountId": account_id,
+                "marketId": market_id,
+                "exchangeId": exchange_id,
+                "counterpartyAccountIds": counterparty_account_ids,
+                "orderType": order_type,
+                "inputs": f"0x{inputs}",
+                "signer": self._public_address,
+                "nonce": nonce
+            }
+        }
+        
+        # Sign the message using the correct eth-account format
+        signed_message = Account.sign_typed_data(
+            self._private_key,
+            domain,
+            types,
+            message
+        )
+
+        return f"0x{signed_message.signature.hex()}"
+    
     def sign_market_order(
         self,
         account_id: int,
@@ -111,7 +217,7 @@ class SignatureGenerator:
         deadline: Optional[int] = None,
     ) -> str:
         """
-        Sign a market (IOC) order using EIP-712.
+        Sign a market (IOC) order using the Orders Gateway signature format.
         
         Args:
             account_id: The Reya account ID
@@ -125,160 +231,90 @@ class SignatureGenerator:
         Returns:
             Hex-encoded signature
         """
-        if nonce is None:
-            nonce = self.generate_nonce()
-            
         if deadline is None:
-            deadline = self.get_signature_deadline()
+            deadline = int(time.time()) + 3  # Current time + 3 seconds for market orders
         
-        # Define EIP-712 domain
-        domain = {
-            "name": "Reya",
-            "version": "1",
-            "chainId": self._chain_id,
-            "verifyingContract": self._orders_gateway_address
-        }
+        # ABI encode the inputs: ['int256', 'uint256'] → [size, price]
+        # Size needs to be scaled to E18 and signed
+        # Price needs to be scaled to E18
+        scaler = self.scale(18)
+        size_e18 = scaler(size)
+        price_e18 = scaler(price)
         
-        # Define the message types for EIP-712
-        types = {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"}
-            ],
-            "PlaceIOCOrder": [
-                {"name": "sender", "type": "address"},
-                {"name": "accountId", "type": "uint32"},
-                {"name": "marketId", "type": "uint32"},
-                {"name": "size", "type": "int128"},
-                {"name": "price", "type": "uint128"},
-                {"name": "reduceOnly", "type": "bool"},
-                {"name": "nonce", "type": "uint32"},
-                {"name": "deadline", "type": "uint64"},
-            ]
-        }
-        
-        # Convert size to smart contract format (positive for buy, negative for sell)
-        size_value = abs(size) * 10**18
-        if size < 0:
-            size_value = -size_value
-            
-        # Convert price to smart contract format
-        price_value = int(price * 10**6)
-        
-        # Create the message to sign
-        message = {
-            "sender": self._public_address,
-            "accountId": account_id,
-            "marketId": market_id,
-            "size": int(size_value),
-            "price": price_value,
-            "reduceOnly": reduce_only,
-            "nonce": nonce,
-            "deadline": deadline
-        }
-        
-        # Sign the message
-        signed_message = Account.sign_typed_data(
-            self._private_key,
-            domain_data=domain,
-            message_types=types,
-            message_data=message
+        inputs_encoded = encode(
+            ['int256', 'uint256'],
+            [size_e18, price_e18]
         )
-
-        return f"0x{signed_message.signature.hex()}"
+        
+        # Determine order type
+        order_type = 4 if reduce_only else 3  # REDUCE_ONLY_MARKET_ORDER : MARKET_ORDER
+        
+        # Get counterparty account IDs (pool account ID)
+        pool_account_id = 2 if self._chain_id == 1729 else 2  # TODO: verify testnet value
+        
+        return self.sign_orders_gateway_order(
+            account_id=account_id,
+            market_id=market_id,
+            exchange_id=2,  # REYA_DEX_ID
+            counterparty_account_ids=[pool_account_id],
+            order_type=order_type,
+            inputs=inputs_encoded.hex(),
+            deadline=deadline,
+            creation_timestamp_ms=int(time.time() * 1000)
+        )
     
     def sign_conditional_order(
         self,
         market_id: int,
+        order_type: ConditionalOrderType,
         is_buy: bool,
-        trigger_price: str,
-        order_base: str,
+        trigger_price: Union[str, float],
+        order_base: Union[str, float] = 0,
+        order_price_limit: Optional[Union[str, float]] = None,
         nonce: Optional[int] = None,
         deadline: Optional[int] = None,
-        order_price_limit: Optional[str] = None,
     ) -> str:
         """
         Sign a conditional order (limit, take profit, stop loss) using EIP-712.
         
         Args:
-            account_id: The Reya account ID
             market_id: The market ID for this order
             order_type: The type of conditional order
             is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
-            price_limit: Limit price for the order
             order_base: Base amount of the order
+            order_price_limit: Limit price for the order
             nonce: Random nonce (will generate one if not provided)
             deadline: Signature expiration timestamp (will generate one if not provided)
             
         Returns:
             Hex-encoded signature
         """
+        if nonce is None:
+            nonce = self.generate_nonce()
+            
+        if deadline is None:
+            deadline = int(time.time()) + 3  # Current time + 3 seconds for conditional orders
         
-        # Define EIP-712 domain
-        domain = {
-            "name": "Reya",
-            "version": "1",
-            "verifyingContract": self._orders_gateway_address
-        }
+        # Encode inputs based on order type
+        inputs = self.encode_inputs(
+            order_type, is_buy, trigger_price, order_base, order_price_limit
+        )
         
-        # Define the message types for EIP-712 to match conditionalOrderTypes
-        types = {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-            "ConditionalOrder": [
-                {"name": "verifyingChainId", "type": "uint256"},
-                {"name": "deadline", "type": "uint256"},
-                {"name": "order", "type": "ConditionalOrderDetails"},
-            ],
-            "ConditionalOrderDetails": [
-                {"name": "accountId", "type": "uint128"},
-                {"name": "marketId", "type": "uint128"},
-                {"name": "exchangeId", "type": "uint128"},
-                {"name": "counterpartyAccountIds", "type": "uint128[]"},
-                {"name": "orderType", "type": "uint8"},
-                {"name": "inputs", "type": "bytes"},
-                {"name": "signer", "type": "address"},
-                {"name": "nonce", "type": "uint256"},
-            ],
-        }
+        # Get counterparty account IDs (pool account ID)
+        # For mainnet: 2, for testnet: might be different
+        pool_account_id = 2 if self._chain_id == 1729 else 2  # TODO: verify testnet value
         
-        # Convert order inputs to contract format
-        # TODO: for now, this only works for LIMIT_ORDER
-        inputs = self.encode_inputs(ConditionalOrderType.LIMIT_ORDER, is_buy, trigger_price, order_base, order_price_limit)
-        
-        # Create the message to sign
-        value = {
-            "verifyingChainId": self._chain_id,
-            "deadline": int(deadline),
-            "order": {
-                "accountId": int(self.config.account_id),
-                "marketId": int(market_id),
-                "exchangeId": 2, # TODO: figure out what to send here
-                "counterpartyAccountIds": [2], # TODO: figure out what to send here
-                "orderType": int(ConditionalOrderType.LIMIT_ORDER),
-                "inputs": inputs,  # bytes
-                "signer": self.config.wallet_address,
-                "nonce": int(nonce),
-            },
-        }
-
-        message = encode_typed_data({
-            "types": types,
-            "domain": domain,
-            "primaryType": "ConditionalOrder",
-            "message": value,
-        })
-        
-        # Sign the message
-        signed_message = Account.sign_message(message, self._private_key)
-        
-        return f"0x{signed_message.signature.hex()}"
+        return self.sign_orders_gateway_order(
+            account_id=self.config.account_id,
+            market_id=market_id,
+            exchange_id=2,  # REYA_DEX_ID
+            counterparty_account_ids=[pool_account_id],
+            order_type=order_type.value,
+            inputs=inputs.hex(),
+            deadline=deadline,
+            creation_timestamp_ms=int(time.time() * 1000)
+        )
     
     def sign_cancel_order(self, order_id: str) -> str:
         """
