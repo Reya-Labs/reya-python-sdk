@@ -45,7 +45,7 @@ class MarketOrderRequest(OrderRequest):
                 }
             },
             "signature": self.signature,
-            "nonce": self.nonce,
+            "nonce": str(self.nonce),
             "signerWallet": self.signer_wallet,
             "expiresAfter": self.expires_after
         }
@@ -77,7 +77,7 @@ class LimitOrderRequest:
             "reduceOnly": self.reduce_only,
             "type": self.type,
             "signature": self.signature,
-            "nonce": self.nonce,
+            "nonce": str(self.nonce),
             "signerWallet": self.signer_wallet,
         }
 
@@ -113,7 +113,7 @@ class TriggerOrderRequest(OrderRequest):
                 }
             },
             "signature": self.signature,
-            "nonce": self.nonce,
+            "nonce": str(self.nonce),
             "signerWallet": self.signer_wallet
         }
 

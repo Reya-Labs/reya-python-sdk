@@ -20,6 +20,8 @@ import time
 import logging
 from decimal import Decimal
 from dotenv import load_dotenv
+from eth_keys.validation import validate_signature_r_or_s
+
 from reya_trading import ReyaTradingClient
 from reya_trading.constants.enums import LimitOrderType, Limit, TimeInForce, TriggerOrderType, Trigger, TpslType
 
@@ -67,196 +69,174 @@ def handle_order_response(order_type: str, response):
 def test_market_orders(client: ReyaTradingClient):
     """Test IOC (Immediate or Cancel) market orders."""
     print_separator("TESTING IOC MARKET ORDERS")
-    
-    try:
-        # Test buy market order
-        logger.info("Creating IOC market buy order...")
-        response = client.create_market_order(
-            market_id=1,
-            size="0.1",  # Buy 0.1 units
-            price="500",  # Max price willing to pay
-            reduce_only=False
-        )
-        handle_order_response("IOC Market Buy", response)
-        time.sleep(1)
-        
-        # Test sell market order
-        logger.info("Creating IOC market sell order...")
-        response = client.create_market_order(
-            market_id=1,
-            size="-0.1",  # Sell 0.1 units (negative size)
-            price="40000",  # Min price willing to accept
-            reduce_only=False
-        )
-        handle_order_response("IOC Market Sell", response)
-        time.sleep(1)
-        
-        # Test reduce-only market order
-        logger.info("Creating reduce-only IOC market order...")
-        response = client.create_market_order(
-            market_id=1,
-            size="-0.05",  # Reduce position by 0.05 units
-            price="45000",
-            reduce_only=True
-        )
-        handle_order_response("IOC Reduce-Only Market", response)
-        
-    except Exception as e:
-        logger.error(f"❌ Error testing market orders: {e}")
 
+    # Test buy market order
+    logger.info("Creating IOC market buy order...")
+    response = client.create_market_order(
+        market_id=1,
+        size="0.1",  # Buy 0.1 units
+        price="500",  # Max price willing to pay
+        reduce_only=False
+    )
+    handle_order_response("IOC Market Buy", response)
+    time.sleep(1)
+
+    # Test sell market order
+    logger.info("Creating IOC market sell order...")
+    response = client.create_market_order(
+        market_id=1,
+        size="-0.1",  # Sell 0.1 units (negative size)
+        price="40000",  # Min price willing to accept
+        reduce_only=False
+    )
+    handle_order_response("IOC Market Sell", response)
+    time.sleep(1)
+
+    # Test reduce-only market order
+    logger.info("Creating reduce-only IOC market order...")
+    response = client.create_market_order(
+        market_id=1,
+        size="-0.05",  # Reduce position by 0.05 units
+        price="45000",
+        reduce_only=True
+    )
+    handle_order_response("IOC Reduce-Only Market", response)
 
 def test_limit_orders(client: ReyaTradingClient):
     """Test GTC (Good Till Cancel) limit orders."""
     print_separator("TESTING GTC LIMIT ORDERS")
-    
-    try:
-        # Test buy limit order
-        logger.info("Creating GTC limit buy order...")
-        limit_type = LimitOrderType(limit=Limit(timeInForce=TimeInForce.GTC))
-        response = client.create_limit_order(
-            market_id=1,
-            is_buy=True,
-            price="45000",  # Buy at or below $45,000
-            size="0.1",
-            type=limit_type
-        )
-        buy_order_response = handle_order_response("GTC Limit Buy", response)
-        time.sleep(1)
-        
-        # Test sell limit order
-        logger.info("Creating GTC limit sell order...")
-        response = client.create_limit_order(
-            market_id=1,
-            is_buy=False,
-            price="55000",  # Sell at or above $55,000
-            size="0.1",
-            type=limit_type
-        )
-        sell_order_response = handle_order_response("GTC Limit Sell", response)
-        
-        # Return order IDs for potential cancellation testing
-        buy_order_id = None
-        sell_order_id = None
-        
-        if hasattr(buy_order_response, 'raw_response') and 'orderId' in buy_order_response.raw_response:
-            buy_order_id = buy_order_response.raw_response['orderId']
-            
-        if hasattr(sell_order_response, 'raw_response') and 'orderId' in sell_order_response.raw_response:
-            sell_order_id = sell_order_response.raw_response['orderId']
-            
-        return buy_order_id, sell_order_id
-        
-    except Exception as e:
-        logger.error(f"❌ Error testing limit orders: {e}")
-        return None, None
+
+    # Test buy limit order
+    logger.info("Creating GTC limit buy order...")
+    limit_type = LimitOrderType(limit=Limit(timeInForce=TimeInForce.GTC))
+    response = client.create_limit_order(
+        market_id=1,
+        is_buy=True,
+        price="45000",  # Buy at or below $45,000
+        size="0.1",
+        type=limit_type
+    )
+    buy_order_response = handle_order_response("GTC Limit Buy", response)
+    time.sleep(1)
+
+    # Test sell limit order
+    logger.info("Creating GTC limit sell order...")
+    response = client.create_limit_order(
+        market_id=1,
+        is_buy=False,
+        price="55000",  # Sell at or above $55,000
+        size="0.1",
+        type=limit_type
+    )
+    sell_order_response = handle_order_response("GTC Limit Sell", response)
+
+    # Return order IDs for potential cancellation testing
+    buy_order_id = None
+    sell_order_id = None
+
+    if hasattr(buy_order_response, 'raw_response') and 'orderId' in buy_order_response.raw_response:
+        buy_order_id = buy_order_response.raw_response['orderId']
+
+    if hasattr(sell_order_response, 'raw_response') and 'orderId' in sell_order_response.raw_response:
+        sell_order_id = sell_order_response.raw_response['orderId']
+
+    return buy_order_id, sell_order_id
 
 
 def test_stop_loss_orders(client: ReyaTradingClient):
     """Test Stop Loss orders."""
     print_separator("TESTING STOP LOSS ORDERS")
     
-    try:
-        # Test stop loss for long position (sell when price drops)
-        logger.info("Creating stop loss for long position...")
-        response = client.create_stop_loss_order(
-            market_id=1,
-            trigger_price="47000",  # Trigger when price drops to $47,000
-            price="46500",  # Execute at minimum $46,500
-            is_buy=False  # Sell to close long position
-        )
-        long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
-        time.sleep(1)
-        
-        # Test stop loss for short position (buy when price rises)
-        logger.info("Creating stop loss for short position...")
-        response = client.create_stop_loss_order(
-            market_id=1,
-            trigger_price="53000",  # Trigger when price rises to $53,000
-            price="53500",  # Execute at maximum $53,500
-            is_buy=True  # Buy to close short position
-        )
-        short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
-        
-        # Return order IDs
-        long_sl_id = None
-        short_sl_id = None
-        
-        if hasattr(long_sl_response, 'raw_response') and 'orderId' in long_sl_response.raw_response:
-            long_sl_id = long_sl_response.raw_response['orderId']
-            
-        if hasattr(short_sl_response, 'raw_response') and 'orderId' in short_sl_response.raw_response:
-            short_sl_id = short_sl_response.raw_response['orderId']
-            
-        return long_sl_id, short_sl_id
-        
-    except Exception as e:
-        logger.error(f"❌ Error testing stop loss orders: {e}")
-        return None, None
+    # Test stop loss for long position (sell when price drops)
+    logger.info("Creating stop loss for long position...")
+    response = client.create_stop_loss_order(
+        market_id=1,
+        trigger_price="47000",  # Trigger when price drops to $47,000
+        price="46500",  # Execute at minimum $46,500
+        is_buy=False  # Sell to close long position
+    )
+    long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
+    time.sleep(1)
+
+    # Test stop loss for short position (buy when price rises)
+    logger.info("Creating stop loss for short position...")
+    response = client.create_stop_loss_order(
+        market_id=1,
+        trigger_price="53000",  # Trigger when price rises to $53,000
+        price="53500",  # Execute at maximum $53,500
+        is_buy=True  # Buy to close short position
+    )
+    short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
+
+    # Return order IDs
+    long_sl_id = None
+    short_sl_id = None
+
+    if hasattr(long_sl_response, 'raw_response') and 'orderId' in long_sl_response.raw_response:
+        long_sl_id = long_sl_response.raw_response['orderId']
+
+    if hasattr(short_sl_response, 'raw_response') and 'orderId' in short_sl_response.raw_response:
+        short_sl_id = short_sl_response.raw_response['orderId']
+
+    return long_sl_id, short_sl_id
 
 
 def test_take_profit_orders(client: ReyaTradingClient):
     """Test Take Profit orders."""
     print_separator("TESTING TAKE PROFIT ORDERS")
-    
-    try:
-        # Test take profit for long position (sell when price rises)
-        logger.info("Creating take profit for long position...")
-        response = client.create_take_profit_order(
-            market_id=1,
-            trigger_price="55000",  # Trigger when price rises to $55,000
-            price="54500",  # Execute at minimum $54,500
-            is_buy=False  # Sell to close long position
-        )
-        long_tp_response = handle_order_response("Take Profit (Long Position)", response)
-        time.sleep(1)
-        
-        # Test take profit for short position (buy when price drops)
-        logger.info("Creating take profit for short position...")
-        response = client.create_take_profit_order(
-            market_id=1,
-            trigger_price="45000",  # Trigger when price drops to $45,000
-            price="45500",  # Execute at maximum $45,500
-            is_buy=True  # Buy to close short position
-        )
-        short_tp_response = handle_order_response("Take Profit (Short Position)", response)
-        
-        # Return order IDs
-        long_tp_id = None
-        short_tp_id = None
-        
-        if hasattr(long_tp_response, 'raw_response') and 'orderId' in long_tp_response.raw_response:
-            long_tp_id = long_tp_response.raw_response['orderId']
-            
-        if hasattr(short_tp_response, 'raw_response') and 'orderId' in short_tp_response.raw_response:
-            short_tp_id = short_tp_response.raw_response['orderId']
-            
-        return long_tp_id, short_tp_id
-        
-    except Exception as e:
-        logger.error(f"❌ Error testing take profit orders: {e}")
-        return None, None
+
+    # Test take profit for long position (sell when price rises)
+    logger.info("Creating take profit for long position...")
+    response = client.create_take_profit_order(
+        market_id=1,
+        trigger_price="55000",  # Trigger when price rises to $55,000
+        price="54500",  # Execute at minimum $54,500
+        is_buy=False  # Sell to close long position
+    )
+    long_tp_response = handle_order_response("Take Profit (Long Position)", response)
+    time.sleep(1)
+
+    # Test take profit for short position (buy when price drops)
+    logger.info("Creating take profit for short position...")
+    response = client.create_take_profit_order(
+        market_id=1,
+        trigger_price="45000",  # Trigger when price drops to $45,000
+        price="45500",  # Execute at maximum $45,500
+        is_buy=True  # Buy to close short position
+    )
+    short_tp_response = handle_order_response("Take Profit (Short Position)", response)
+
+    # Return order IDs
+    long_tp_id = None
+    short_tp_id = None
+
+    if hasattr(long_tp_response, 'raw_response') and 'orderId' in long_tp_response.raw_response:
+        long_tp_id = long_tp_response.raw_response['orderId']
+
+    if hasattr(short_tp_response, 'raw_response') and 'orderId' in short_tp_response.raw_response:
+        short_tp_id = short_tp_response.raw_response['orderId']
+
+    return long_tp_id, short_tp_id
 
 
 def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
     """Test order cancellation."""
     print_separator("TESTING ORDER CANCELLATION")
-    
-    valid_order_ids = [oid for oid in order_ids if oid is not None]
+
+    valid_order_ids = ['389fc941-c7c6-4c2b-be2b-348c3726ccf1']
+
+    #valid_order_ids = [oid for oid in order_ids if oid is not None]
     
     if not valid_order_ids:
         logger.warning("⚠️  No valid order IDs available for cancellation testing")
         return
-    
-    try:
-        # Cancel the first available order
-        order_id = valid_order_ids[0]
-        logger.info(f"Attempting to cancel order: {order_id}")
-        
-        response = client.cancel_order(order_id=order_id)
-        handle_order_response("Order Cancellation", response)
-        
-    except Exception as e:
-        logger.error(f"❌ Error testing order cancellation: {e}")
+
+    # Cancel the first available order
+    order_id = valid_order_ids[0]
+    logger.info(f"Attempting to cancel order: {order_id}")
+
+    response = client.cancel_order(order_id=order_id)
+    handle_order_response("Order Cancellation", response)
 
 
 def test_order_retrieval(client: ReyaTradingClient):
@@ -326,8 +306,8 @@ def main():
         all_order_ids = []
         
         # Test 1: IOC Market Orders
-        test_market_orders(client)
-        time.sleep(2)
+        #test_market_orders(client)
+        #time.sleep(2)
         
         # Test 2: GTC Limit Orders
         buy_limit_id, sell_limit_id = test_limit_orders(client)
@@ -350,7 +330,7 @@ def main():
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
-        # test_order_cancellation(client, all_order_ids)
+        test_order_cancellation(client, all_order_ids)
         
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")

@@ -32,6 +32,14 @@ class TradingConfig:
             return "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"  # Testnet address
     
     @property
+    def default_conditional_orders_address(self) -> str:
+        """Get default ConditionalOrders proxy contract address based on chain ID"""
+        if self.is_mainnet:
+            return "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"  # Mainnet address
+        else:
+            return "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"  # Testnet address
+    
+    @property
     def pool_account_id(self) -> int:
         """Get pool account ID based on chain ID"""
         return 2 if self.is_mainnet else 4

@@ -42,16 +42,11 @@ class SignatureGenerator:
             config.default_orders_gateway_address
         )
         
+        # Conditional orders use the same address for now
+        self._conditional_orders_address = config.default_conditional_orders_address
+
         # Calculate public address from private key
         self._public_address = Account.from_key(self._private_key).address
-    
-    def generate_nonce(self) -> int:
-        """Generate a time-based nonce for order signatures.
-        
-        Returns:
-            Current timestamp in milliseconds as nonce
-        """
-        return int(time.time() * 1000)  # Current time in milliseconds
     
     def get_signature_deadline(self, validity_seconds: int = 60) -> int:
         """
@@ -132,7 +127,7 @@ class SignatureGenerator:
         order_type: int,
         inputs: str,  # hex-encoded ABI data
         deadline: int,
-        creation_timestamp_ms: int,
+        nonce: int,
     ) -> str:
         """
         Sign an Orders Gateway order using EIP-712.
@@ -145,20 +140,16 @@ class SignatureGenerator:
             order_type: Order type enum value
             inputs: ABI-encoded order inputs
             deadline: Signature expiration timestamp
-            creation_timestamp_ms: Order creation timestamp in milliseconds
+            nonce: The nonce to use for this order (must match the nonce passed to the API)
             
         Returns:
             Hex-encoded signature
         """
-        nonce = self.create_orders_gateway_nonce(
-            account_id, market_id, creation_timestamp_ms
-        )
-        
         # Define EIP-712 domain
         domain = {
             "name": "Reya",
             "version": "1",
-            "verifyingContract": self._orders_gateway_address
+            "verifyingContract": self._conditional_orders_address
         }
         
         # Define the message types for EIP-712 (conditional order format)
@@ -190,7 +181,7 @@ class SignatureGenerator:
                 "exchangeId": exchange_id,
                 "counterpartyAccountIds": counterparty_account_ids,
                 "orderType": order_type,
-                "inputs": f"0x{inputs}",
+                "inputs": inputs if inputs.startswith('0x') else f"0x{inputs}",
                 "signer": self._public_address,
                 "nonce": nonce
             }
@@ -213,8 +204,8 @@ class SignatureGenerator:
         size: float,
         price: float,
         reduce_only: bool,
-        nonce: Optional[int] = None,
-        deadline: Optional[int] = None,
+        nonce: int,
+        deadline: int,
     ) -> str:
         """
         Sign a market (IOC) order using the Orders Gateway signature format.
@@ -225,8 +216,8 @@ class SignatureGenerator:
             size: Order size (positive for buy, negative for sell)
             price: Limit price for the order
             reduce_only: Whether this is a reduce-only order
-            nonce: Random nonce (will generate one if not provided)
-            deadline: Signature expiration timestamp (will generate one if not provided)
+            nonce: Random nonce
+            deadline: Signature expiration timestamp
             
         Returns:
             Hex-encoded signature
@@ -260,7 +251,7 @@ class SignatureGenerator:
             order_type=order_type,
             inputs=inputs_encoded.hex(),
             deadline=deadline,
-            creation_timestamp_ms=int(time.time() * 1000)
+            nonce=nonce
         )
     
     def sign_conditional_order(
@@ -269,10 +260,9 @@ class SignatureGenerator:
         order_type: ConditionalOrderType,
         is_buy: bool,
         trigger_price: Union[str, float],
+        nonce: int,
         order_base: Union[str, float] = 0,
         order_price_limit: Optional[Union[str, float]] = None,
-        nonce: Optional[int] = None,
-        deadline: Optional[int] = None,
     ) -> str:
         """
         Sign a conditional order (limit, take profit, stop loss) using EIP-712.
@@ -284,17 +274,14 @@ class SignatureGenerator:
             trigger_price: Price at which the order triggers
             order_base: Base amount of the order
             order_price_limit: Limit price for the order
-            nonce: Random nonce (will generate one if not provided)
-            deadline: Signature expiration timestamp (will generate one if not provided)
+            nonce: Random nonce
+            deadline: Signature expiration timestamp
             
         Returns:
             Hex-encoded signature
         """
-        if nonce is None:
-            nonce = self.generate_nonce()
-            
-        if deadline is None:
-            deadline = int(time.time()) + 3  # Current time + 3 seconds for conditional orders
+
+        deadline = 10 ** 18  # CONDITIONAL_ORDER_SIG_DEADLINE
         
         # Encode inputs based on order type
         inputs = self.encode_inputs(
@@ -313,7 +300,7 @@ class SignatureGenerator:
             order_type=order_type.value,
             inputs=inputs.hex(),
             deadline=deadline,
-            creation_timestamp_ms=int(time.time() * 1000)
+            nonce=nonce
         )
     
     def sign_cancel_order(self, order_id: str) -> str:

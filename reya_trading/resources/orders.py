@@ -3,6 +3,7 @@ Orders resource for Reya Trading API.
 
 This module provides resources for creating and managing orders.
 """
+import time
 from typing import Dict, Any, Optional, Union, List
 import logging
 
@@ -48,7 +49,7 @@ class OrdersResource(BaseResource):
             raise ValueError("Private key is required for creating orders")
             
         # Generate nonce and deadline
-        nonce = self.signature_generator.generate_nonce()
+        nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
         deadline = self.signature_generator.get_signature_deadline()
         
         # Convert size and price to strings if they are floats
@@ -114,9 +115,8 @@ class OrdersResource(BaseResource):
         if self.signature_generator is None:
             raise ValueError("Private key is required for creating orders")
 
-        nonce = self.signature_generator.generate_nonce()
-        deadline = self.signature_generator.get_signature_deadline()
-        
+        nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
+
         # Sign the order
         signature = self.signature_generator.sign_conditional_order(
             market_id=market_id,
@@ -125,7 +125,6 @@ class OrdersResource(BaseResource):
             trigger_price=price,
             order_base=size,
             nonce=nonce,
-            deadline=deadline
         )
         
         # Create the order request
@@ -188,9 +187,8 @@ class OrdersResource(BaseResource):
         )
         
         # Generate nonce and deadline
-        nonce = self.signature_generator.generate_nonce()
-        deadline = self.signature_generator.get_signature_deadline()
-        
+        nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
+
         # Convert prices to strings if they are floats
         trigger_price_val = str(trigger_price) if isinstance(trigger_price, float) else trigger_price
         price_val = str(price) if isinstance(price, float) else price
@@ -209,7 +207,6 @@ class OrdersResource(BaseResource):
             order_price_limit=float(price_val),
             order_base=order_base,
             nonce=nonce,
-            deadline=deadline
         )
         
         # Create the order request
