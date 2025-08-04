@@ -79,18 +79,20 @@ class SignatureGenerator:
         if order_type == ConditionalOrderType.LIMIT_ORDER:
             if order_base is None or trigger_price is None:
                 raise ValueError("LIMIT_ORDER requires order_base and trigger_price")
-            return encode(
+            encoded = encode(
                 ['int256', 'uint256'],
                 [scaler(order_base), scaler(trigger_price)]
             )
+            return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
         elif order_type in (ConditionalOrderType.STOP_LOSS, ConditionalOrderType.TAKE_PROFIT):
             if is_buy is None or trigger_price is None or order_price_limit is None:
                 raise ValueError("STOP_LOSS / TAKE_PROFIT require is_buy, trigger_price, and order_price_limit")
-            return encode(
+            encoded = encode(
                 ['bool', 'uint256', 'uint256'],
                 [bool(is_buy), scaler(trigger_price), scaler(order_price_limit)]
             )
+            return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
     
     def create_orders_gateway_nonce(
         self,
@@ -191,8 +193,8 @@ class SignatureGenerator:
             types,
             message
         )
-
-        return signed_message.signature.hex()
+        
+        return signed_message.signature.hex() if signed_message.signature.hex().startswith("0x") else f"0x{signed_message.signature.hex()}"
     
     def sign_market_order(
         self,
@@ -229,10 +231,11 @@ class SignatureGenerator:
         size_e18 = scaler(size)
         price_e18 = scaler(price)
         
-        inputs_encoded = encode(
+        inputs = encode(
             ['int256', 'uint256'],
             [size_e18, price_e18]
         )
+        inputs_encoded = inputs.hex() if inputs.hex().startswith("0x") else f"0x{inputs.hex()}"
         
         # Determine order type
         order_type = OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if reduce_only else OrdersGatewayOrderType.MARKET_ORDER
@@ -243,7 +246,7 @@ class SignatureGenerator:
             exchange_id=self.config.dex_id,
             counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type,
-            inputs=inputs_encoded.hex(),
+            inputs=inputs_encoded,
             deadline=deadline,
             nonce=nonce
         )
@@ -288,7 +291,7 @@ class SignatureGenerator:
             exchange_id=self.config.dex_id,
             counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type.value,
-            inputs=inputs.hex(),
+            inputs=inputs,
             deadline=deadline,
             nonce=nonce
         )
@@ -319,4 +322,4 @@ class SignatureGenerator:
         # Sign the message
         signed_message = Account.sign_message(signable_message, private_key=self._private_key)
         
-        return signed_message.signature.hex()
+        return signed_message.signature.hex() if signed_message.signature.hex().startswith("0x") else f"0x{signed_message.signature.hex()}"

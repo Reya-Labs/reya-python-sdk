@@ -33,11 +33,38 @@ pipx install poetry
 
 > **Note**: If `pipx` is not installed on your system, follow the [official installation guide](https://pipx.pypa.io/stable/installation/).
 
-To create the shell dedicated to running the examples, run this from the root of the repository:
+### Setting up with Poetry
+
+Follow these steps to set up your development environment:
+
+1. Clone the repository and navigate to the project directory:
+
 ```bash
-cd examples && poetry shell
-poetry install --no-root
-cd ..
+git clone https://github.com/Reya-Labs/reya-python-sdk.git
+cd reya-python-sdk
+```
+
+2. Create a virtual environment and install dependencies using Poetry:
+
+```bash
+poetry install
+```
+
+3. Activate the Poetry shell (virtual environment):
+
+```bash
+poetry shell
+```
+
+This will create and activate a virtual environment with all required dependencies installed.
+
+### Running Examples
+
+To run the examples, make sure you have activated the Poetry shell first:
+
+```bash
+poetry shell
+python -m examples.trading.order_entry  # Run a specific example
 ```
 
 ## Finding Your Account ID
@@ -230,10 +257,21 @@ socket = ReyaSocket(config=custom_config)
 
 The repository includes example scripts demonstrating how to use the SDK:
 
-### WebSocket Examples
+### Available Examples
 
-- `examples/basic_market_data.py` - Basic subscription to market data
-- `examples/wallet_monitoring.py` - Monitoring wallet positions and orders
+- **Data Feed Examples**
+  - `examples/basic_market_data.py` - Basic subscription to market data
+  - `examples/wallet_monitoring.py` - Monitoring wallet positions and orders
+  - `examples/consume_data_feed.py` - Working with the WebSocket data feed
+
+- **Trading Examples**
+  - `examples/trading/order_entry.py` - Creating various order types
+  - `examples/trading/account_info.py` - Retrieving account information
+
+- **Action Examples**
+  - `examples/bridge_in_and_deposit.py` - Bridge in and deposit funds
+  - `examples/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
+  - `examples/update_oracle_prices.py` - Update oracle prices
 
 ### Running Examples
 
@@ -243,11 +281,9 @@ To run the examples, use Python from the project root with the Poetry environmen
 # Activate the Poetry environment (if not already activated)
 poetry shell
 
-# Run an example
-python3 -m examples.basic_market_data
-
-# Run another example
-python3 -m examples.trade_execution
+# Run an example (use the module format)
+python -m examples.basic_market_data
+python -m examples.trading.order_entry
 ```
 
 ## API Reference
