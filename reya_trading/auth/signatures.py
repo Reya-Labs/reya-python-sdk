@@ -6,15 +6,12 @@ and message signatures for order cancellation.
 """
 import time
 import json
-import secrets
-from typing import Dict, Any, List, Union, Tuple, Optional
+from typing import Union, Optional
 from decimal import Decimal
 from eth_abi import encode
-from eth_account.messages import encode_typed_data
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from web3 import Web3
 
 from ..config import TradingConfig
 from ..constants.enums import ConditionalOrderType, ConditionalOrderStatus, OrdersGatewayOrderType
@@ -67,7 +64,7 @@ class SignatureGenerator:
             return int(Decimal(value) * factor)
         return _scale
     
-    def encode_inputs(self, order_type: ConditionalOrderType, is_buy=None, trigger_price=None, order_base=None, order_price_limit=None) -> bytes:
+    def encode_inputs(self, order_type: OrdersGatewayOrderType, is_buy=None, trigger_price=None, order_base=None, order_price_limit=None) -> str:
         """
         Encode order inputs for signature based on the conditional order type.
 
@@ -76,16 +73,8 @@ class SignatureGenerator:
         """
         scaler = self.scale(18)
 
-        if order_type == ConditionalOrderType.LIMIT_ORDER:
-            if order_base is None or trigger_price is None:
-                raise ValueError("LIMIT_ORDER requires order_base and trigger_price")
-            encoded = encode(
-                ['int256', 'uint256'],
-                [scaler(order_base), scaler(trigger_price)]
-            )
-            return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
-        elif order_type in (ConditionalOrderType.STOP_LOSS, ConditionalOrderType.TAKE_PROFIT):
+        if order_type in (ConditionalOrderType.STOP_LOSS, ConditionalOrderType.TAKE_PROFIT):
             if is_buy is None or trigger_price is None or order_price_limit is None:
                 raise ValueError("STOP_LOSS / TAKE_PROFIT require is_buy, trigger_price, and order_price_limit")
             encoded = encode(
@@ -93,7 +82,16 @@ class SignatureGenerator:
                 [bool(is_buy), scaler(trigger_price), scaler(order_price_limit)]
             )
             return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
-    
+
+
+        if order_base is None or trigger_price is None:
+            raise ValueError("LIMIT_ORDER requires order_base and trigger_price")
+        encoded = encode(
+            ['int256', 'uint256'],
+            [scaler(order_base), scaler(trigger_price)]
+        )
+        return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
+
     def create_orders_gateway_nonce(
         self,
         account_id: int,
@@ -254,11 +252,11 @@ class SignatureGenerator:
     def sign_conditional_order(
         self,
         market_id: int,
-        order_type: ConditionalOrderType,
+        order_type: OrdersGatewayOrderType,
         is_buy: bool,
         trigger_price: Union[str, float],
         nonce: int,
-        order_base: Optional[Union[str, float]] = None,
+        size: Optional[Union[str, float]] = None,
         order_price_limit: Optional[Union[str, float]] = None,
     ) -> str:
         """
@@ -269,11 +267,10 @@ class SignatureGenerator:
             order_type: The type of conditional order
             is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
-            order_base: Base amount of the order
+            size: Base amount of the order
             order_price_limit: Limit price for the order
             nonce: Random nonce
-            deadline: Signature expiration timestamp
-            
+
         Returns:
             Hex-encoded signature
         """
@@ -282,7 +279,7 @@ class SignatureGenerator:
         
         # Encode inputs based on order type
         inputs = self.encode_inputs(
-            order_type, is_buy, trigger_price, order_base, order_price_limit
+            order_type, is_buy, trigger_price, size, order_price_limit
         )
         
         return self.sign_orders_gateway_order(

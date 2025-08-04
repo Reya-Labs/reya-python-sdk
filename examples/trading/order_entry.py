@@ -18,12 +18,10 @@ Before running this example, ensure you have a .env file with the following vari
 import os
 import time
 import logging
-from decimal import Decimal
 from dotenv import load_dotenv
-from eth_keys.validation import validate_signature_r_or_s
 
 from reya_trading import ReyaTradingClient
-from reya_trading.constants.enums import LimitOrderType, Limit, TimeInForce, TriggerOrderType, Trigger, TpslType
+from reya_trading.constants.enums import LimitOrderType, Limit, TimeInForce
 
 # Set up logging
 logging.basicConfig(
@@ -114,7 +112,6 @@ def test_limit_orders(client: ReyaTradingClient):
         is_buy=True,
         price="45000",  # Buy at or below $45,000
         size="0.1",
-        type=limit_type
     )
     buy_order_response = handle_order_response("GTC Limit Buy", response)
     time.sleep(1)
@@ -126,7 +123,6 @@ def test_limit_orders(client: ReyaTradingClient):
         is_buy=False,
         price="55000",  # Sell at or above $55,000
         size="0.1",
-        type=limit_type
     )
     sell_order_response = handle_order_response("GTC Limit Sell", response)
 
@@ -151,8 +147,8 @@ def test_stop_loss_orders(client: ReyaTradingClient):
     logger.info("Creating stop loss for long position...")
     response = client.create_stop_loss_order(
         market_id=1,
-        trigger_price="47000",  # Trigger when price drops to $47,000
-        price="46500",  # Execute at minimum $46,500
+        trigger_price="1000",  # Trigger when price drops to $47,000
+        price="1000",  # Execute at minimum $46,500
         is_buy=False  # Sell to close long position
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
@@ -162,8 +158,8 @@ def test_stop_loss_orders(client: ReyaTradingClient):
     logger.info("Creating stop loss for short position...")
     response = client.create_stop_loss_order(
         market_id=1,
-        trigger_price="53000",  # Trigger when price rises to $53,000
-        price="53500",  # Execute at maximum $53,500
+        trigger_price="9000",  # Trigger when price rises to $53,000
+        price="9000",  # Execute at maximum $53,500
         is_buy=True  # Buy to close short position
     )
     short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
@@ -189,8 +185,8 @@ def test_take_profit_orders(client: ReyaTradingClient):
     logger.info("Creating take profit for long position...")
     response = client.create_take_profit_order(
         market_id=1,
-        trigger_price="55000",  # Trigger when price rises to $55,000
-        price="54500",  # Execute at minimum $54,500
+        trigger_price="10000",  # Trigger when price rises to $55,000
+        price="10000",  # Execute at minimum $54,500
         is_buy=False  # Sell to close long position
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
@@ -200,8 +196,8 @@ def test_take_profit_orders(client: ReyaTradingClient):
     logger.info("Creating take profit for short position...")
     response = client.create_take_profit_order(
         market_id=1,
-        trigger_price="45000",  # Trigger when price drops to $45,000
-        price="45500",  # Execute at maximum $45,500
+        trigger_price="1500",  # Trigger when price drops to $45,000
+        price="1500",  # Execute at maximum $45,500
         is_buy=True  # Buy to close short position
     )
     short_tp_response = handle_order_response("Take Profit (Short Position)", response)
@@ -223,9 +219,7 @@ def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
     """Test order cancellation."""
     print_separator("TESTING ORDER CANCELLATION")
 
-    valid_order_ids = ['6222318d-7b98-4550-b778-c1d68aa17ca0']
-
-    #valid_order_ids = [oid for oid in order_ids if oid is not None]
+    valid_order_ids = [oid for oid in order_ids if oid is not None]
     
     if not valid_order_ids:
         logger.warning("⚠️  No valid order IDs available for cancellation testing")
@@ -312,22 +306,22 @@ def main():
         
         # Test 2: GTC Limit Orders
         buy_limit_id, sell_limit_id = test_limit_orders(client)
-        # all_order_ids.extend([buy_limit_id, sell_limit_id])
-        # time.sleep(2)
+        all_order_ids.extend([buy_limit_id, sell_limit_id])
+        time.sleep(2)
         
         # Test 3: Stop Loss Orders
-        # long_sl_id, short_sl_id = test_stop_loss_orders(client)
-        # all_order_ids.extend([long_sl_id, short_sl_id])
-        # time.sleep(2)
+        long_sl_id, short_sl_id = test_stop_loss_orders(client)
+        all_order_ids.extend([long_sl_id, short_sl_id])
+        time.sleep(2)
         
         # Test 4: Take Profit Orders
-        # long_tp_id, short_tp_id = test_take_profit_orders(client)
-        # all_order_ids.extend([long_tp_id, short_tp_id])
-        # time.sleep(2)
+        long_tp_id, short_tp_id = test_take_profit_orders(client)
+        all_order_ids.extend([long_tp_id, short_tp_id])
+        time.sleep(2)
         
         # Test 5: Order Retrieval
-        # test_order_retrieval(client)
-        # time.sleep(2)
+        test_order_retrieval(client)
+        time.sleep(2)
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation

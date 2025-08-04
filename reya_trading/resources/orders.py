@@ -14,7 +14,7 @@ from ..models.orders import (
     CancelOrderRequest,
     OrderResponse
 )
-from ..constants.enums import TpslType, ConditionalOrderType, UnifiedOrderType, LimitOrderType, TimeInForce, Limit
+from ..constants.enums import TpslType, OrdersGatewayOrderType, UnifiedOrderType, LimitOrderType, TimeInForce, Limit, TriggerOrderType, Trigger
 from .base import BaseResource
 
 
@@ -75,10 +75,10 @@ class OrdersResource(BaseResource):
             price=price,
             size=abs(float(size)),  # API expects positive size
             reduce_only=reduce_only,
-            type=LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC)),
+            order_type=LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC)),
             nonce=nonce,
             signature=signature,
-            signer_wallet=self.signature_generator._public_address,
+            signer_wallet=self.config.wallet_address,
             expires_after=deadline
         )
         
@@ -91,13 +91,13 @@ class OrdersResource(BaseResource):
         is_buy: bool,
         price: Union[float, str],
         size: Union[float, str],
-        type: UnifiedOrderType
     ) -> OrderResponse:
         """
         Create a limit (GTC) order.
         
         Args:
             market_id: The market ID for this order
+            is_buy: Whether this is a buy order
             size: Order size (positive for buy, negative for sell)
             price: Limit price for the order
             
@@ -115,11 +115,11 @@ class OrdersResource(BaseResource):
         # Sign the order
         signature = self.signature_generator.sign_conditional_order(
             market_id=market_id,
-            order_type=ConditionalOrderType.LIMIT_ORDER,
+            order_type=OrdersGatewayOrderType.LIMIT_ORDER,
             is_buy=is_buy,
             trigger_price=price,
             nonce=nonce,
-            order_base=size
+            size=size
         )
         
         # Create the order request
@@ -131,10 +131,10 @@ class OrdersResource(BaseResource):
             price=price,
             size=size,
             reduce_only=False,
-            type=type,
+            order_type=LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC)),
             signature=signature,
             nonce=nonce,
-            signer_wallet=self.signature_generator._public_address,
+            signer_wallet=self.config.wallet_address
         )
         
         # Make the API request
@@ -148,7 +148,6 @@ class OrdersResource(BaseResource):
         price: Union[float, str],
         is_buy: bool,
         trigger_type: TpslType,  # TP or SL
-        size: Optional[Union[float, str]] = 0 # Usually 0 for SL/TP orders
     ) -> OrderResponse:
         """
         Create a trigger order (Take Profit or Stop Loss).
@@ -170,8 +169,7 @@ class OrdersResource(BaseResource):
         if self.signature_generator is None:
             raise ValueError("Private key is required for creating orders")
         
-        # Determine order type based on trigger type
-        order_type = ConditionalOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else ConditionalOrderType.STOP_LOSS
+        order_type = OrdersGatewayOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
         
         # Generate nonce and deadline
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
@@ -183,24 +181,30 @@ class OrdersResource(BaseResource):
             is_buy=is_buy,
             trigger_price=trigger_price,
             nonce=nonce,
-            order_base=size,
+            size=None,
             order_price_limit=price
         )
+        
+        # Create the trigger order type
+        trigger = Trigger(
+            trigger_px=str(trigger_price),
+            tpsl=trigger_type
+        )
+        order_type = TriggerOrderType(trigger=trigger)
         
         # Create the order request
         order_request = TriggerOrderRequest(
             account_id=account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-            trigger_price=trigger_price,
             price=price,
             is_buy=is_buy,
-            trigger_type=trigger_type,
-            size=size,
+            size="",  # Size must be empty for SL/TP orders
             reduce_only=False,
+            order_type=order_type,
             nonce=nonce,
             signature=signature,
-            signer_wallet=self.signature_generator._public_address
+            signer_wallet=self.config.wallet_address
         )
         
         # Make the API request

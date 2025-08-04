@@ -70,7 +70,7 @@ class TriggerOrderType:
         return {
             "trigger": {
                 "triggerPx": self.trigger.trigger_px,
-                "tpsl": self.trigger.tpsl.value
+                "tpsl": self.trigger.tpsl
             }
         }
 

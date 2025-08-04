@@ -4,13 +4,14 @@ Reya Trading Client - Main entry point for the Reya Trading API.
 This module provides a client for interacting with the Reya Trading REST API.
 """
 import logging
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, Union
 
 from .config import TradingConfig, get_config
 from .auth.signatures import SignatureGenerator
 from .resources.orders import OrdersResource
 from .resources.wallet import WalletResource
-from .constants.enums import UnifiedOrderType, LimitOrderType, TriggerOrderType
+from .constants.enums import  TpslType
+from .models.orders import OrderResponse
 
 
 class ReyaTradingClient:
@@ -102,7 +103,7 @@ class ReyaTradingClient:
         price: Union[float, str],
         account_id: Optional[int] = None,
         reduce_only: bool = False
-    ) -> Dict[str, Any]:
+    ) -> OrderResponse:
         """
         Create a market (IOC) order.
         
@@ -139,8 +140,7 @@ class ReyaTradingClient:
         is_buy: bool,
         price: Union[float, str],
         size: Union[float, str],
-        type: UnifiedOrderType
-    ) -> Dict[str, Any]:
+    ) -> OrderResponse:
         """
         Create a limit (GTC) order.
         
@@ -149,7 +149,6 @@ class ReyaTradingClient:
             is_buy: Whether this is a buy order
             price: Limit price for the order
             size: Order size (positive for buy, negative for sell)
-            reduce_only: Whether this is a reduce-only order
             type: The type of order (defaults to LimitOrderType)
             
         Returns:
@@ -164,7 +163,6 @@ class ReyaTradingClient:
             is_buy=is_buy,
             price=price,
             size=size,
-            type=type
         )
         
         return response
@@ -176,7 +174,7 @@ class ReyaTradingClient:
         price: Union[float, str],
         is_buy: bool,
         account_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+    ) -> OrderResponse:
         """
         Create a take profit order.
         
@@ -203,7 +201,7 @@ class ReyaTradingClient:
             trigger_price=trigger_price,
             price=price,
             is_buy=is_buy,
-            trigger_type="TP"
+            trigger_type=TpslType.TP
         )
         
         return response
@@ -215,7 +213,7 @@ class ReyaTradingClient:
         price: Union[float, str],
         is_buy: bool,
         account_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+    ) -> OrderResponse:
         """
         Create a stop loss order.
         
@@ -242,12 +240,12 @@ class ReyaTradingClient:
             trigger_price=trigger_price,
             price=price,
             is_buy=is_buy,
-            trigger_type="SL"
+            trigger_type=TpslType.SL
         )
         
         return response
     
-    def cancel_order(self, order_id: str) -> Dict[str, Any]:
+    def cancel_order(self, order_id: str) -> OrderResponse:
         """
         Cancel an existing order.
         
@@ -282,7 +280,7 @@ class ReyaTradingClient:
             
         return self.wallet.get_positions(wallet_address=wallet)
     
-    def get_conditional_orders(self) -> List[Dict[str, Any]]:
+    def get_conditional_orders(self) -> Dict[str, Any]:
         """
         Get conditional orders (limit, stop loss, take profit) for the authenticated wallet.
         

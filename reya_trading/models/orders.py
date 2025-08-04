@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Union
-from datetime import datetime
 
-from ..constants.enums import TimeInForce, TpslType, UnifiedOrderType
+from ..constants.enums import UnifiedOrderType
 
 
 @dataclass(frozen=True)
@@ -12,13 +11,13 @@ class OrderRequest:
     market_id: int
     exchange_id: int
     is_buy: bool
-    price: Union[float, str]
-    size: Union[float, str]
-    reduce_only: bool = False
-    type: Optional[UnifiedOrderType] = None
-    signature: Optional[str] = None
-    nonce: Optional[int] = None
-    signer_wallet: Optional[str] = None
+    price: Optional[Union[float, str]]
+    size: Optional[Union[float, str]]
+    order_type: UnifiedOrderType
+    signature: str
+    nonce: int
+    signer_wallet: str
+    reduce_only: Optional[bool] = None
     expires_after: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -39,7 +38,7 @@ class MarketOrderRequest(OrderRequest):
             "price": str(self.price),
             "size": str(self.size),
             "reduceOnly": self.reduce_only,
-            "type": self.type.to_dict(),
+            "type": self.order_type.to_dict(),
             "signature": self.signature,
             "nonce": str(self.nonce),
             "signerWallet": self.signer_wallet,
@@ -62,7 +61,7 @@ class LimitOrderRequest(OrderRequest):
             "price": str(self.price),
             "size": str(self.size),
             "reduceOnly": self.reduce_only,
-            "type": self.type.to_dict(),
+            "type": self.order_type.to_dict(),
             "signature": self.signature,
             "nonce": str(self.nonce),
             "signerWallet": self.signer_wallet,
@@ -82,7 +81,7 @@ class TriggerOrderRequest(OrderRequest):
             "price": str(self.price),
             "size": str(self.size),
             "reduceOnly": self.reduce_only,
-            "type": self.type.to_dict(),
+            "type": self.order_type.to_dict(),
             "signature": self.signature,
             "nonce": str(self.nonce),
             "signerWallet": self.signer_wallet
@@ -108,23 +107,15 @@ class OrderResponse:
     order_id: Optional[str] = None
     status: Optional[str] = None
     message: Optional[str] = None
-    created_at: Optional[datetime] = None
     raw_response: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_api_response(cls, response_data: Dict[str, Any]) -> 'OrderResponse':
-        created_at = None
-        if "createdAt" in response_data and response_data["createdAt"]:
-            try:
-                created_at = datetime.fromisoformat(
-                    response_data["createdAt"].replace("Z", "+00:00")
-                )
-            except (ValueError, TypeError):
-                pass
         return cls(
             order_id=response_data.get("orderId"),
             status=response_data.get("status"),
             message=response_data.get("message"),
-            created_at=created_at,
             raw_response=response_data
         )
+
+## TODO: CancelOrderResponse missing, it's a different type
