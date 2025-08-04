@@ -191,7 +191,7 @@ class OrdersResource(BaseResource):
         order_request = TriggerOrderRequest(
             account_id=account_id,
             market_id=market_id,
-            exchange_id=self.config.exchange_id,
+            exchange_id=self.config.dex_id,
             trigger_price=trigger_price,
             price=price,
             is_buy=is_buy,
