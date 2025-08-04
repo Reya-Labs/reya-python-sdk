@@ -14,7 +14,7 @@ from ..models.orders import (
     CancelOrderRequest,
     OrderResponse
 )
-from ..constants.enums import TpslType, ConditionalOrderType, UnifiedOrderType
+from ..constants.enums import TpslType, ConditionalOrderType, UnifiedOrderType, LimitOrderType, TimeInForce, Limit
 from .base import BaseResource
 
 
@@ -52,19 +52,15 @@ class OrdersResource(BaseResource):
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
         deadline = self.signature_generator.get_signature_deadline()
         
-        # Convert size and price to strings if they are floats
-        size_val = str(size) if isinstance(size, float) else size
-        price_val = str(price) if isinstance(price, float) else price
-        
         # Determine if this is a buy or sell order
-        is_buy = float(size_val) > 0
+        is_buy = float(size) > 0
         
         # Sign the order
         signature = self.signature_generator.sign_market_order(
             account_id=account_id,
             market_id=market_id,
-            size=float(size_val),
-            price=float(price_val),
+            price=price,
+            size=size,
             reduce_only=reduce_only,
             nonce=nonce,
             deadline=deadline
@@ -74,11 +70,12 @@ class OrdersResource(BaseResource):
         order_request = MarketOrderRequest(
             account_id=account_id,
             market_id=market_id,
-            exchange_id=self.config.exchange_id,
-            size=abs(float(size_val)),  # API expects positive size
-            price=price_val,
+            exchange_id=self.config.dex_id,
             is_buy=is_buy,
+            price=price,
+            size=abs(float(size)),  # API expects positive size
             reduce_only=reduce_only,
+            type=LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC)),
             nonce=nonce,
             signature=signature,
             signer_wallet=self.signature_generator._public_address,

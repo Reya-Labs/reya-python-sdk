@@ -198,8 +198,8 @@ class SignatureGenerator:
         self,
         account_id: int,
         market_id: int,
-        size: float,
         price: float,
+        size: float,
         reduce_only: bool,
         nonce: int,
         deadline: int,
@@ -210,8 +210,8 @@ class SignatureGenerator:
         Args:
             account_id: The Reya account ID
             market_id: The market ID for this order
-            size: Order size (positive for buy, negative for sell)
             price: Limit price for the order
+            size: Order size (positive for buy, negative for sell)
             reduce_only: Whether this is a reduce-only order
             nonce: Random nonce
             deadline: Signature expiration timestamp

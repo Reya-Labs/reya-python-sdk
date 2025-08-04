@@ -307,11 +307,11 @@ def main():
         all_order_ids = []
         
         # Test 1: IOC Market Orders
-        #test_market_orders(client)
-        #time.sleep(2)
+        test_market_orders(client)
+        time.sleep(2)
         
         # Test 2: GTC Limit Orders
-        buy_limit_id, sell_limit_id = test_limit_orders(client)
+        # buy_limit_id, sell_limit_id = test_limit_orders(client)
         # all_order_ids.extend([buy_limit_id, sell_limit_id])
         # time.sleep(2)
         
