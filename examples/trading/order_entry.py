@@ -108,7 +108,7 @@ def test_limit_orders(client: ReyaTradingClient):
 
     # Test buy limit order
     logger.info("Creating GTC limit buy order...")
-    limit_type = LimitOrderType(limit=Limit(timeInForce=TimeInForce.GTC))
+    limit_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
     response = client.create_limit_order(
         market_id=1,
         is_buy=True,
@@ -223,7 +223,7 @@ def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
     """Test order cancellation."""
     print_separator("TESTING ORDER CANCELLATION")
 
-    valid_order_ids = ['389fc941-c7c6-4c2b-be2b-348c3726ccf1']
+    valid_order_ids = ['6222318d-7b98-4550-b778-c1d68aa17ca0']
 
     #valid_order_ids = [oid for oid in order_ids if oid is not None]
     
@@ -257,7 +257,8 @@ def test_order_retrieval(client: ReyaTradingClient):
         # Get positions
         logger.info("Retrieving positions...")
         positions = client.get_positions()
-        logger.info(f"📊 Found {len(positions.get('data', []))} positions")
+        data = client.get_positions().get("data", positions) if isinstance(positions, dict) else (positions or [])
+        logger.info(f"📊 Found {len(data)} positions")
         
         # Print summary of first few items (if any)
         if orders.get('data'):
@@ -311,26 +312,26 @@ def main():
         
         # Test 2: GTC Limit Orders
         buy_limit_id, sell_limit_id = test_limit_orders(client)
-        all_order_ids.extend([buy_limit_id, sell_limit_id])
-        time.sleep(2)
+        # all_order_ids.extend([buy_limit_id, sell_limit_id])
+        # time.sleep(2)
         
         # Test 3: Stop Loss Orders
-        long_sl_id, short_sl_id = test_stop_loss_orders(client)
-        all_order_ids.extend([long_sl_id, short_sl_id])
-        time.sleep(2)
+        # long_sl_id, short_sl_id = test_stop_loss_orders(client)
+        # all_order_ids.extend([long_sl_id, short_sl_id])
+        # time.sleep(2)
         
         # Test 4: Take Profit Orders
-        long_tp_id, short_tp_id = test_take_profit_orders(client)
-        all_order_ids.extend([long_tp_id, short_tp_id])
-        time.sleep(2)
+        # long_tp_id, short_tp_id = test_take_profit_orders(client)
+        # all_order_ids.extend([long_tp_id, short_tp_id])
+        # time.sleep(2)
         
         # Test 5: Order Retrieval
-        test_order_retrieval(client)
-        time.sleep(2)
+        # test_order_retrieval(client)
+        # time.sleep(2)
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
-        test_order_cancellation(client, all_order_ids)
+        # test_order_cancellation(client, all_order_ids)
         
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")

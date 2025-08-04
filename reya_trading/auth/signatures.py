@@ -17,7 +17,7 @@ from eth_account.messages import encode_defunct
 from web3 import Web3
 
 from ..config import TradingConfig
-from ..constants.enums import ConditionalOrderType, ConditionalOrderStatus
+from ..constants.enums import ConditionalOrderType, ConditionalOrderStatus, OrdersGatewayOrderType
 
 
 class SignatureGenerator:
@@ -67,12 +67,12 @@ class SignatureGenerator:
             return int(Decimal(value) * factor)
         return _scale
     
-    def encode_inputs(self, order_type: ConditionalOrderType, is_long=None, trigger_price=None, order_base=None, order_price_limit=None) -> bytes:
+    def encode_inputs(self, order_type: ConditionalOrderType, is_buy=None, trigger_price=None, order_base=None, order_price_limit=None) -> bytes:
         """
         Encode order inputs for signature based on the conditional order type.
 
         - LIMIT_ORDER: ['int256', 'uint256'] → order_base (size), trigger_price (limit price)
-        - STOP_LOSS / TAKE_PROFIT: ['bool', 'uint256', 'uint256'] → is_long, trigger_price, order_price_limit
+        - STOP_LOSS / TAKE_PROFIT: ['bool', 'uint256', 'uint256'] → is_buy, trigger_price, order_price_limit
         """
         scaler = self.scale(18)
 
@@ -85,15 +85,12 @@ class SignatureGenerator:
             )
 
         elif order_type in (ConditionalOrderType.STOP_LOSS, ConditionalOrderType.TAKE_PROFIT):
-            if is_long is None or trigger_price is None or order_price_limit is None:
-                raise ValueError("STOP_LOSS / TAKE_PROFIT require is_long, trigger_price, and order_price_limit")
+            if is_buy is None or trigger_price is None or order_price_limit is None:
+                raise ValueError("STOP_LOSS / TAKE_PROFIT require is_buy, trigger_price, and order_price_limit")
             return encode(
                 ['bool', 'uint256', 'uint256'],
-                [bool(is_long), scaler(trigger_price), scaler(order_price_limit)]
+                [bool(is_buy), scaler(trigger_price), scaler(order_price_limit)]
             )
-
-        else:
-            raise ValueError(f"Unsupported order type: {order_type}")
     
     def create_orders_gateway_nonce(
         self,
@@ -181,7 +178,7 @@ class SignatureGenerator:
                 "exchangeId": exchange_id,
                 "counterpartyAccountIds": counterparty_account_ids,
                 "orderType": order_type,
-                "inputs": inputs if inputs.startswith('0x') else f"0x{inputs}",
+                "inputs": inputs,
                 "signer": self._public_address,
                 "nonce": nonce
             }
@@ -195,7 +192,7 @@ class SignatureGenerator:
             message
         )
 
-        return f"0x{signed_message.signature.hex()}"
+        return signed_message.signature.hex()
     
     def sign_market_order(
         self,
@@ -238,16 +235,13 @@ class SignatureGenerator:
         )
         
         # Determine order type
-        order_type = 4 if reduce_only else 3  # REDUCE_ONLY_MARKET_ORDER : MARKET_ORDER
-        
-        # Get counterparty account IDs (pool account ID)
-        pool_account_id = 2 if self._chain_id == 1729 else 2  # TODO: verify testnet value
+        order_type = OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if reduce_only else OrdersGatewayOrderType.MARKET_ORDER
         
         return self.sign_orders_gateway_order(
             account_id=account_id,
             market_id=market_id,
-            exchange_id=2,  # REYA_DEX_ID
-            counterparty_account_ids=[pool_account_id],
+            exchange_id=self.config.dex_id,
+            counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type,
             inputs=inputs_encoded.hex(),
             deadline=deadline,
@@ -261,7 +255,7 @@ class SignatureGenerator:
         is_buy: bool,
         trigger_price: Union[str, float],
         nonce: int,
-        order_base: Union[str, float] = 0,
+        order_base: Optional[Union[str, float]] = None,
         order_price_limit: Optional[Union[str, float]] = None,
     ) -> str:
         """
@@ -288,15 +282,11 @@ class SignatureGenerator:
             order_type, is_buy, trigger_price, order_base, order_price_limit
         )
         
-        # Get counterparty account IDs (pool account ID)
-        # For mainnet: 2, for testnet: might be different
-        pool_account_id = 2 if self._chain_id == 1729 else 2  # TODO: verify testnet value
-        
         return self.sign_orders_gateway_order(
             account_id=self.config.account_id,
             market_id=market_id,
-            exchange_id=2,  # REYA_DEX_ID
-            counterparty_account_ids=[pool_account_id],
+            exchange_id=self.config.dex_id,
+            counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type.value,
             inputs=inputs.hex(),
             deadline=deadline,
@@ -329,4 +319,4 @@ class SignatureGenerator:
         # Sign the message
         signed_message = Account.sign_message(signable_message, private_key=self._private_key)
         
-        return f"0x{signed_message.signature.hex()}"
+        return signed_message.signature.hex()

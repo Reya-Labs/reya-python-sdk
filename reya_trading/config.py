@@ -7,6 +7,7 @@ from typing import Dict, Optional, Any
 from dotenv import load_dotenv
 
 MAINNET_CHAIN_ID = 1729
+REYA_DEX_ID = 2
 
 @dataclass
 class TradingConfig:
@@ -22,6 +23,11 @@ class TradingConfig:
     def is_mainnet(self) -> bool:
         """Determine if current chain ID is mainnet"""
         return self.chain_id == MAINNET_CHAIN_ID
+
+    @property
+    def dex_id(self) -> int:
+        """Get DEX ID based on chain ID"""
+        return REYA_DEX_ID
     
     @property
     def default_orders_gateway_address(self) -> str:

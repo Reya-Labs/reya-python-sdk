@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, Union, List
 from .config import TradingConfig, get_config
 from .auth.signatures import SignatureGenerator
 from .resources.orders import OrdersResource
-from .resources.account import AccountResource
+from .resources.wallet import WalletResource
 from .constants.enums import UnifiedOrderType, LimitOrderType, TriggerOrderType
 
 
@@ -68,7 +68,7 @@ class ReyaTradingClient:
         
         # Initialize resources
         self._orders = OrdersResource(self._config, self._signature_generator)
-        self._account = AccountResource(self._config, self._signature_generator)
+        self._wallet = WalletResource(self._config, self._signature_generator)
     
     @property
     def orders(self) -> OrdersResource:
@@ -76,16 +76,25 @@ class ReyaTradingClient:
         return self._orders
     
     @property
-    def account(self) -> AccountResource:
-        """Get the account resource."""
-        return self._account
+    def wallet(self) -> WalletResource:
+        """Get the wallet resource."""
+        return self._wallet
     
     @property
     def config(self) -> TradingConfig:
         """Get the current configuration."""
         return self._config
+
+    @property
+    def wallet_address(self) -> Optional[str]:
+        """Get the wallet address from config or signature generator."""
+        # First check if wallet address is directly provided in config
+        if self._config.wallet_address:
+            return self._config.wallet_address
+            
+        # Otherwise derive it from private key if available
+        return self._signature_generator._public_address if self._signature_generator else None
     
-    # Market orders
     def create_market_order(
         self,
         market_id: int,
@@ -124,14 +133,13 @@ class ReyaTradingClient:
         
         return response
     
-    # Limit orders
     def create_limit_order(
         self,
         market_id: int,
         is_buy: bool,
         price: Union[float, str],
         size: Union[float, str],
-        type: UnifiedOrderType = LimitOrderType
+        type: UnifiedOrderType
     ) -> Dict[str, Any]:
         """
         Create a limit (GTC) order.
@@ -161,7 +169,6 @@ class ReyaTradingClient:
         
         return response
     
-    # Take profit orders
     def create_take_profit_order(
         self,
         market_id: int,
@@ -201,7 +208,6 @@ class ReyaTradingClient:
         
         return response
     
-    # Stop loss orders
     def create_stop_loss_order(
         self,
         market_id: int,
@@ -241,7 +247,6 @@ class ReyaTradingClient:
         
         return response
     
-    # Cancel order
     def cancel_order(self, order_id: str) -> Dict[str, Any]:
         """
         Cancel an existing order.
@@ -257,8 +262,7 @@ class ReyaTradingClient:
         """
         response = self.orders.cancel_order(order_id)
         return response
-    
-    # Get positions
+
     def get_positions(self, wallet_address: Optional[str] = None) -> Dict[str, Any]:
         """
         Get positions for a wallet address.
@@ -276,34 +280,8 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.account.get_positions(wallet)
-        
-    @property
-    def wallet_address(self) -> Optional[str]:
-        """Get the wallet address from config or signature generator."""
-        # First check if wallet address is directly provided in config
-        if self._config.wallet_address:
-            return self._config.wallet_address
-            
-        # Otherwise derive it from private key if available
-        return self._signature_generator._public_address if self._signature_generator else None
-        
-    def get_orders(self) -> Dict[str, Any]:
-        """
-        Get filled orders for the authenticated wallet.
-        
-        Returns:
-            Dictionary containing orders data and metadata
-            
-        Raises:
-            ValueError: If no wallet address is available or API returns an error
-        """
-        wallet = self.wallet_address
-        if not wallet:
-            raise ValueError("No wallet address available. Private key must be provided.")
-            
-        return self.orders.get_orders(wallet_address=wallet)
-        
+        return self.wallet.get_positions(wallet_address=wallet)
+    
     def get_conditional_orders(self) -> List[Dict[str, Any]]:
         """
         Get conditional orders (limit, stop loss, take profit) for the authenticated wallet.
@@ -318,4 +296,52 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.orders.get_conditional_orders(wallet_address=wallet)
+        return self.wallet.get_conditional_orders(wallet_address=wallet)
+    
+    def get_balances(self) -> Dict[str, Any]:
+        """
+        Get account balance.
+        
+        Returns:
+            Account balance information
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return self.wallet.get_balances(wallet_address=wallet)
+    
+    def get_configuration(self) -> Dict[str, Any]:
+        """
+        Get account configuration.
+        
+        Returns:
+            Account configuration information
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return self.wallet.get_configuration(wallet_address=wallet)
+    
+    def get_orders(self) -> Dict[str, Any]:
+        """
+        Get filled orders for the authenticated wallet.
+        
+        Returns:
+            Dictionary containing orders data and metadata
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return self.wallet.get_orders(wallet_address=wallet)

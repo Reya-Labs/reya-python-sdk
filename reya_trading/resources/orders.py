@@ -4,7 +4,7 @@ Orders resource for Reya Trading API.
 This module provides resources for creating and managing orders.
 """
 import time
-from typing import Dict, Any, Optional, Union, List
+from typing import Union, Optional
 import logging
 
 from ..models.orders import (
@@ -74,6 +74,7 @@ class OrdersResource(BaseResource):
         order_request = MarketOrderRequest(
             account_id=account_id,
             market_id=market_id,
+            exchange_id=self.config.exchange_id,
             size=abs(float(size_val)),  # API expects positive size
             price=price_val,
             is_buy=is_buy,
@@ -85,10 +86,7 @@ class OrdersResource(BaseResource):
         )
         
         # Make the API request
-        endpoint = "api/trading/create-order"
-        response_data = self._post(endpoint, order_request.to_dict())
-        
-        return OrderResponse.from_api_response(response_data)
+        return self.create_order(order_request=order_request)
     
     def create_limit_order(
         self,
@@ -123,29 +121,27 @@ class OrdersResource(BaseResource):
             order_type=ConditionalOrderType.LIMIT_ORDER,
             is_buy=is_buy,
             trigger_price=price,
-            order_base=size,
             nonce=nonce,
+            order_base=size
         )
         
         # Create the order request
         order_request = LimitOrderRequest(
             account_id=self.config.account_id,
             market_id=market_id,
+            exchange_id=self.config.dex_id,
             is_buy=is_buy,
             price=price,
             size=size,
             reduce_only=False,
-            type=type.to_dict() if hasattr(type, 'to_dict') else {"limit": {"timeInForce": "GTC"}},
+            type=type,
             signature=signature,
             nonce=nonce,
             signer_wallet=self.signature_generator._public_address,
         )
         
         # Make the API request
-        endpoint = "api/trading/create-order"
-        response_data = self._post(endpoint, order_request.to_dict())
-        
-        return OrderResponse.from_api_response(response_data)
+        return self.create_order(order_request=order_request)
     
     def create_trigger_order(
         self,
@@ -154,7 +150,8 @@ class OrdersResource(BaseResource):
         trigger_price: Union[float, str],
         price: Union[float, str],
         is_buy: bool,
-        trigger_type: str  # TP or SL
+        trigger_type: TpslType,  # TP or SL
+        size: Optional[Union[float, str]] = 0 # Usually 0 for SL/TP orders
     ) -> OrderResponse:
         """
         Create a trigger order (Take Profit or Stop Loss).
@@ -175,49 +172,34 @@ class OrdersResource(BaseResource):
         """
         if self.signature_generator is None:
             raise ValueError("Private key is required for creating orders")
-            
-        # Validate trigger type
-        if trigger_type not in (TpslType.TP, TpslType.SL):
-            raise ValueError(f"Invalid trigger type: {trigger_type}. Must be 'TP' or 'SL'.")
         
         # Determine order type based on trigger type
-        order_type = (
-            ConditionalOrderType.TAKE_PROFIT if trigger_type == TpslType.TP
-            else ConditionalOrderType.STOP_LOSS
-        )
+        order_type = ConditionalOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else ConditionalOrderType.STOP_LOSS
         
         # Generate nonce and deadline
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
-
-        # Convert prices to strings if they are floats
-        trigger_price_val = str(trigger_price) if isinstance(trigger_price, float) else trigger_price
-        price_val = str(price) if isinstance(price, float) else price
-        
-        # For trigger orders, the order base is set based on position size
-        # This is typically set to a reasonable value like 1.0 for the signature
-        # The actual order size will be based on the position being closed
-        order_base = 1.0
         
         # Sign the order
         signature = self.signature_generator.sign_conditional_order(
             market_id=market_id,
             order_type=order_type,
             is_buy=is_buy,
-            trigger_price=float(trigger_price_val),
-            order_price_limit=float(price_val),
-            order_base=order_base,
+            trigger_price=trigger_price,
             nonce=nonce,
+            order_base=size,
+            order_price_limit=price
         )
         
         # Create the order request
         order_request = TriggerOrderRequest(
             account_id=account_id,
             market_id=market_id,
-            trigger_price=trigger_price_val,
-            price=price_val,
+            exchange_id=self.config.exchange_id,
+            trigger_price=trigger_price,
+            price=price,
             is_buy=is_buy,
             trigger_type=trigger_type,
-            size="",  # SL/TP orders typically have 0 size
+            size=size,
             reduce_only=False,
             nonce=nonce,
             signature=signature,
@@ -225,7 +207,22 @@ class OrdersResource(BaseResource):
         )
         
         # Make the API request
-        endpoint = "api/trading/create-order"
+        return self.create_order(order_request=order_request)
+    
+    def create_order(self, order_request: Union[LimitOrderRequest, TriggerOrderRequest, MarketOrderRequest]) -> OrderResponse:
+        """
+        Create a new order.
+        
+        Args:
+            order_request: Order request object
+            
+        Returns:
+            API response for the order creation
+            
+        Raises:
+            ValueError: If the API returns an error
+        """
+        endpoint = "api/trading/createOrder"
         response_data = self._post(endpoint, order_request.to_dict())
         
         return OrderResponse.from_api_response(response_data)
@@ -256,54 +253,7 @@ class OrdersResource(BaseResource):
         )
         
         # Make the API request
-        endpoint = "api/trading/cancel-order"
+        endpoint = "api/trading/cancelOrder"
         response_data = self._post(endpoint, cancel_request.to_dict())
         
         return OrderResponse.from_api_response(response_data)
-    
-    def get_orders(
-        self,
-        wallet_address: str,
-    ) -> Dict[str, Any]:
-        """
-        Get filled orders for a wallet address.
-        
-        Args:
-            wallet_address: The wallet address to get orders for
-            
-        Returns:
-            Dictionary containing orders data and metadata
-            
-        Raises:
-            ValueError: If the API returns an error
-        """
-
-        # Make the API request
-        endpoint = f"api/trading/wallet/{wallet_address}/orders"
-        response_data = self._get(endpoint)
-        
-        return response_data
-        
-    def get_conditional_orders(
-        self,
-        wallet_address: str,
-    ) -> List[Dict[str, Any]]:
-        """
-        Get conditional orders (limit, stop loss, take profit) for a wallet address.
-        
-        Args:
-            wallet_address: The wallet address to get orders for
-            
-        Returns:
-            List of conditional orders
-            
-        Raises:
-            ValueError: If the API returns an error
-        """
-        
-        # Make the API request
-        endpoint = f"api/trading/wallet/{wallet_address}/conditionalOrders"
-        response_data = self._get(endpoint)
-        
-        # The response is directly a list of orders
-        return response_data

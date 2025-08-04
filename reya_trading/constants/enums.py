@@ -2,7 +2,7 @@
 Enumeration classes for Reya Trading API.
 """
 from enum import Enum, IntEnum
-from typing import Dict, List, Any, Union
+from typing import Union
 from dataclasses import dataclass
 
 
@@ -44,11 +44,11 @@ class ConditionalOrderStatus(str, Enum):
 
 @dataclass
 class Limit:
-    timeInForce: TimeInForce
+    time_in_force: TimeInForce
 
 @dataclass
 class Trigger:
-    triggerPx: str
+    trigger_px: str
     tpsl: TpslType
 
 @dataclass
@@ -58,7 +58,7 @@ class LimitOrderType:
     def to_dict(self):
         return {
             "limit": {
-                "timeInForce": self.limit.timeInForce.value
+                "timeInForce": self.limit.time_in_force.value
             }
         }
 
@@ -69,7 +69,7 @@ class TriggerOrderType:
     def to_dict(self):
         return {
             "trigger": {
-                "triggerPx": self.trigger.triggerPx,
+                "triggerPx": self.trigger.trigger_px,
                 "tpsl": self.trigger.tpsl.value
             }
         }
