@@ -9,7 +9,7 @@ Before running this example, ensure you have a .env file with the following vari
 """
 from dotenv import load_dotenv
 
-from reya_trading import ReyaTradingClient
+from sdk.reya_rest_api import ReyaTradingClient
 
 
 def main():

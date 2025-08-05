@@ -1,6 +1,6 @@
 from web3 import Web3
-from reya_actions import MarketIds, TradeParams
-from reya_actions import get_config, trade
+from sdk.reya_rpc import MarketIds, TradeParams
+from sdk.reya_rpc import get_config, trade
 import os
 from dotenv import load_dotenv
 

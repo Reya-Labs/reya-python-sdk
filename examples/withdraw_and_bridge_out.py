@@ -1,6 +1,6 @@
-from reya_actions import withdraw, bridge_out_to_arbitrum
-from reya_actions import get_config
-from reya_actions.actions import WithdrawParams, BridgeOutParams
+from sdk.reya_rpc import withdraw, bridge_out_to_arbitrum
+from sdk.reya_rpc import get_config
+from sdk.reya_rpc.actions import WithdrawParams, BridgeOutParams
 import os
 from dotenv import load_dotenv
 

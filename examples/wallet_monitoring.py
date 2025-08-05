@@ -12,7 +12,7 @@ import threading
 from dotenv import load_dotenv
 
 # Import the new resource-oriented WebSocket client
-from reya_data_feed import ReyaSocket
+from sdk.reya_websocket import ReyaSocket
 
 # Set up logging
 logging.basicConfig(

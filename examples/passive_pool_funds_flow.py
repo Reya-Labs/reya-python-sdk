@@ -1,6 +1,6 @@
-from reya_actions import get_config
-from reya_actions import stake, unstake
-from reya_actions import StakingParams, UnstakingParams
+from sdk.reya_rpc import get_config
+from sdk.reya_rpc import stake, unstake
+from sdk.reya_rpc import StakingParams, UnstakingParams
 
 
 def main():

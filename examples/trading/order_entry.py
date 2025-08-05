@@ -20,8 +20,8 @@ import time
 import logging
 from dotenv import load_dotenv
 
-from reya_trading import ReyaTradingClient
-from reya_trading.constants.enums import LimitOrderType, Limit, TimeInForce
+from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.constants.enums import LimitOrderType, Limit, TimeInForce
 
 # Set up logging
 logging.basicConfig(

@@ -115,7 +115,7 @@ import os
 import json
 import logging
 from dotenv import load_dotenv
-from reya_data_feed import ReyaSocket
+from sdk.reya_websocket import ReyaSocket
 
 # Set up logging
 logging.basicConfig(
@@ -235,8 +235,8 @@ REYA_TRADING_API_PREFIX="/api/trading/"
 You can customize the WebSocket behavior by passing parameters directly or loading from environment:
 
 ```python
-from reya_data_feed import ReyaSocket
-from reya_data_feed.config import WebSocketConfig
+from sdk.reya_websocket import ReyaSocket
+from sdk.reya_websocket.config import WebSocketConfig
 
 # Load config from environment variables
 config = WebSocketConfig.from_env()

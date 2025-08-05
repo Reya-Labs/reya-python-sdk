@@ -1,4 +1,4 @@
-from reya_actions import get_config, update_oracle_prices
+from sdk.reya_rpc import get_config, update_oracle_prices
 
 
 def main():

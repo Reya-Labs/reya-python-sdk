@@ -1,6 +1,6 @@
-from reya_actions import DepositParams, BridgeInParams
-from reya_actions import bridge_in_from_arbitrum, deposit
-from reya_actions import get_config
+from sdk.reya_rpc import DepositParams, BridgeInParams
+from sdk.reya_rpc import bridge_in_from_arbitrum, deposit
+from sdk.reya_rpc import get_config
 import os
 from dotenv import load_dotenv
 
