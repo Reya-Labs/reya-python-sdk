@@ -2,8 +2,9 @@
 Base resource class for Reya Trading API resources.
 """
 import logging
+import asyncio
 from typing import Dict, Any, Optional, Union
-import requests
+import httpx
 
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
@@ -52,9 +53,9 @@ class BaseResource:
             
         return f"{base_url}/{path}"
     
-    def _handle_response(
+    async def _handle_response(
         self, 
-        response: requests.Response,
+        response: httpx.Response,
         error_msg: str = "API request failed"
     ) -> Dict[str, Any]:
         """
@@ -76,9 +77,9 @@ class BaseResource:
             
         return data
         
-    def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Make a GET request to the API.
+        Make an async GET request to the API.
         
         Args:
             endpoint: API endpoint path
@@ -90,17 +91,18 @@ class BaseResource:
         url = self._get_endpoint_url(endpoint)
         self.logger.debug(f"GET {url} with params: {params}")
         
-        response = requests.get(url, params=params)
-        return self._handle_response(response, f"GET {endpoint} failed")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params)
+            return await self._handle_response(response, f"GET {endpoint} failed")
         
-    def _post(
+    async def _post(
         self, 
         endpoint: str, 
         data: Dict[str, Any],
         headers: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
-        Make a POST request to the API.
+        Make an async POST request to the API.
         
         Args:
             endpoint: API endpoint path
@@ -113,5 +115,6 @@ class BaseResource:
         url = self._get_endpoint_url(endpoint)
         self.logger.debug(f"POST {url} with data: {data}")
         
-        response = requests.post(url, json=data, headers=headers)
-        return self._handle_response(response, f"POST {endpoint} failed")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=data, headers=headers)
+            return await self._handle_response(response, f"POST {endpoint} failed")

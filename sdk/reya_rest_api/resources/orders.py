@@ -23,7 +23,7 @@ class OrdersResource(BaseResource):
     
     logger = logging.getLogger(__name__)
     
-    def create_market_order(
+    async def create_market_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -83,9 +83,9 @@ class OrdersResource(BaseResource):
         )
         
         # Make the API request
-        return self.create_order(order_request=order_request)
+        return await self.create_order(order_request=order_request)
     
-    def create_limit_order(
+    async def create_limit_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -139,9 +139,9 @@ class OrdersResource(BaseResource):
         )
         
         # Make the API request
-        return self.create_order(order_request=order_request)
+        return await self.create_order(order_request=order_request)
     
-    def create_trigger_order(
+    async def create_trigger_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -206,11 +206,11 @@ class OrdersResource(BaseResource):
         )
         
         # Make the API request
-        return self.create_order(order_request=order_request)
+        return await self.create_order(order_request=order_request)
     
-    def create_order(self, order_request: Union[LimitOrderRequest, TriggerOrderRequest, MarketOrderRequest]) -> OrderResponse:
+    async def create_order(self, order_request: Union[LimitOrderRequest, TriggerOrderRequest, MarketOrderRequest]) -> OrderResponse:
         """
-        Create a new order.
+        Create a new order asynchronously.
         
         Args:
             order_request: Order request object
@@ -222,17 +222,16 @@ class OrdersResource(BaseResource):
             ValueError: If the API returns an error
         """
 
-        # Make the API request
+        # Make the async API request
         endpoint = "api/trading/createOrder"
-        self.logger.debug(f"POST {endpoint} with data: {order_request.to_dict()}")
-        response_data = self._post(endpoint, order_request.to_dict())
+        response_data = await self._post(endpoint, order_request.to_dict())
         self.logger.debug(f"Response: {response_data}")
         
         return OrderResponse.from_api_response(response_data)
     
-    def cancel_order(self, order_id: str) -> OrderResponse:
+    async def cancel_order(self, order_id: str) -> OrderResponse:
         """
-        Cancel an existing order.
+        Cancel an existing order asynchronously.
         
         Args:
             order_id: ID of the order to cancel
@@ -255,10 +254,9 @@ class OrdersResource(BaseResource):
             signature=signature
         )
         
-        # Make the API request
+        # Make the async API request
         endpoint = "api/trading/cancelOrder"
-        self.logger.debug(f"POST {endpoint} with data: {cancel_request.to_dict()}")
-        response_data = self._post(endpoint, cancel_request.to_dict())
+        response_data = await self._post(endpoint, cancel_request.to_dict())
         self.logger.debug(f"Response: {response_data}")
         
         return OrderResponse.from_api_response(response_data)

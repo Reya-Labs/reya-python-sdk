@@ -18,6 +18,7 @@ Before running this example, ensure you have a .env file with the following vari
 import os
 import time
 import logging
+import asyncio
 from dotenv import load_dotenv
 
 from sdk.reya_rest_api import ReyaTradingClient
@@ -64,13 +65,13 @@ def handle_order_response(order_type: str, response):
     return response
 
 
-def test_market_orders(client: ReyaTradingClient):
-    """Test IOC (Immediate or Cancel) market orders."""
+async def test_market_orders(client: ReyaTradingClient):
+    """Test IOC (Immediate or Cancel) market orders asynchronously."""
     print_separator("TESTING IOC MARKET ORDERS")
 
     # Test buy market order
     logger.info("Creating IOC market buy order...")
-    response = client.create_market_order(
+    response = await client.create_market_order(
         market_id=1,
         is_buy=True,
         price="500",  # Max price willing to pay
@@ -78,11 +79,11 @@ def test_market_orders(client: ReyaTradingClient):
         reduce_only=False
     )
     handle_order_response("IOC Market Buy", response)
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Test sell market order
     logger.info("Creating IOC market sell order...")
-    response = client.create_market_order(
+    response = await client.create_market_order(
         market_id=1,
         is_buy=False,
         price="40000",  # Min price willing to accept
@@ -90,11 +91,11 @@ def test_market_orders(client: ReyaTradingClient):
         reduce_only=False
     )
     handle_order_response("IOC Market Sell", response)
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Test reduce-only market order
     logger.info("Creating reduce-only IOC market order...")
-    response = client.create_market_order(
+    response = await client.create_market_order(
         market_id=1,
         is_buy=False,
         price="45000",
@@ -103,14 +104,14 @@ def test_market_orders(client: ReyaTradingClient):
     )
     handle_order_response("IOC Reduce-Only Market", response)
 
-def test_limit_orders(client: ReyaTradingClient):
-    """Test GTC (Good Till Cancel) limit orders."""
+async def test_limit_orders(client: ReyaTradingClient):
+    """Test GTC (Good Till Cancel) limit orders asynchronously."""
     print_separator("TESTING GTC LIMIT ORDERS")
 
     # Test buy limit order
     logger.info("Creating GTC limit buy order...")
     order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
-    response = client.create_limit_order(
+    response = await client.create_limit_order(
         market_id=1,
         is_buy=True,
         price="10",  # Buy at or below $45,000
@@ -118,11 +119,11 @@ def test_limit_orders(client: ReyaTradingClient):
         order_type=order_type,
     )
     buy_order_response = handle_order_response("GTC Limit Buy", response)
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Test sell limit order
     logger.info("Creating GTC limit sell order...")
-    response = client.create_limit_order(
+    response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
         price="55000",  # Sell at or above $55,000
@@ -144,24 +145,24 @@ def test_limit_orders(client: ReyaTradingClient):
     return buy_order_id, sell_order_id
 
 
-def test_stop_loss_orders(client: ReyaTradingClient):
-    """Test Stop Loss orders."""
+async def test_stop_loss_orders(client: ReyaTradingClient):
+    """Test Stop Loss orders asynchronously."""
     print_separator("TESTING STOP LOSS ORDERS")
     
     # Test stop loss for long position (sell when price drops)
     logger.info("Creating stop loss for long position...")
-    response = client.create_stop_loss_order(
+    response = await client.create_stop_loss_order(
         market_id=1,
         is_buy=False, # Sell to close long position
         trigger_price="1000",  # Trigger when price drops to $47,000
         price="1000",  # Execute at minimum $46,500
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Test stop loss for short position (buy when price rises)
     logger.info("Creating stop loss for short position...")
-    response = client.create_stop_loss_order(
+    response = await client.create_stop_loss_order(
         market_id=1,
         is_buy=True, # Buy to close short position
         trigger_price="9000",  # Trigger when price rises to $53,000
@@ -182,24 +183,24 @@ def test_stop_loss_orders(client: ReyaTradingClient):
     return long_sl_id, short_sl_id
 
 
-def test_take_profit_orders(client: ReyaTradingClient):
-    """Test Take Profit orders."""
+async def test_take_profit_orders(client: ReyaTradingClient):
+    """Test Take Profit orders asynchronously."""
     print_separator("TESTING TAKE PROFIT ORDERS")
 
     # Test take profit for long position (sell when price rises)
     logger.info("Creating take profit for long position...")
-    response = client.create_take_profit_order(
+    response = await client.create_take_profit_order(
         market_id=1,
         is_buy=False,  # Sell to close long position
         trigger_price="10000",  # Trigger when price rises to $55,000
         price="10000",  # Execute at minimum $54,500
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Test take profit for short position (buy when price drops)
     logger.info("Creating take profit for short position...")
-    response = client.create_take_profit_order(
+    response = await client.create_take_profit_order(
         market_id=1,
         is_buy=True,  # Buy to close short position
         trigger_price="1500",  # Trigger when price drops to $45,000
@@ -220,8 +221,8 @@ def test_take_profit_orders(client: ReyaTradingClient):
     return long_tp_id, short_tp_id
 
 
-def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
-    """Test order cancellation."""
+async def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
+    """Test order cancellation asynchronously."""
     print_separator("TESTING ORDER CANCELLATION")
 
     valid_order_ids = [oid for oid in order_ids if oid is not None]
@@ -234,29 +235,29 @@ def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
     order_id = valid_order_ids[0]
     logger.info(f"Attempting to cancel order: {order_id}")
 
-    response = client.cancel_order(order_id=order_id)
+    response = await client.cancel_order(order_id=order_id)
     handle_order_response("Order Cancellation", response)
 
 
-def test_order_retrieval(client: ReyaTradingClient):
-    """Test retrieving orders and positions."""
+async def test_order_retrieval(client: ReyaTradingClient):
+    """Test retrieving orders and positions asynchronously."""
     print_separator("TESTING ORDER AND POSITION RETRIEVAL")
     
     try:
         # Get filled orders
         logger.info("Retrieving filled orders...")
-        orders = client.get_orders()
+        orders = await client.get_orders()
         logger.info(f"📊 Found {len(orders.get('data', []))} filled orders")
         
         # Get conditional orders
         logger.info("Retrieving conditional orders...")
-        conditional_orders = client.get_conditional_orders()
+        conditional_orders = await client.get_conditional_orders()
         logger.info(f"📊 Found {len(conditional_orders)} conditional orders")
         
         # Get positions
         logger.info("Retrieving positions...")
-        positions = client.get_positions()
-        data = client.get_positions().get("data", positions) if isinstance(positions, dict) else (positions or [])
+        positions = await client.get_positions()
+        data = positions.get("data", positions) if isinstance(positions, dict) else (positions or [])
         logger.info(f"📊 Found {len(data)} positions")
         
         # Print summary of first few items (if any)
@@ -277,8 +278,8 @@ def test_order_retrieval(client: ReyaTradingClient):
         logger.error(f"❌ Error retrieving orders/positions: {e}")
 
 
-def main():
-    """Run comprehensive order testing."""
+async def main():
+    """Run comprehensive order testing asynchronously."""
     logger.info("🚀 Starting comprehensive Reya DEX order testing...")
     
     # Load environment variables
@@ -306,31 +307,31 @@ def main():
         all_order_ids = []
         
         # Test 1: IOC Market Orders
-        # test_market_orders(client)
-        # time.sleep(2)
+        await test_market_orders(client)
+        await asyncio.sleep(2)
         
         # Test 2: GTC Limit Orders
-        buy_limit_id, sell_limit_id = test_limit_orders(client)
+        buy_limit_id, sell_limit_id = await test_limit_orders(client)
         all_order_ids.extend([buy_limit_id, sell_limit_id])
-        time.sleep(2)
+        await asyncio.sleep(2)
         
         # Test 3: Stop Loss Orders
-        # long_sl_id, short_sl_id = test_stop_loss_orders(client)
-        # all_order_ids.extend([long_sl_id, short_sl_id])
-        time.sleep(2)
+        long_sl_id, short_sl_id = await test_stop_loss_orders(client)
+        all_order_ids.extend([long_sl_id, short_sl_id])
+        await asyncio.sleep(2)
         
         # Test 4: Take Profit Orders
-        # long_tp_id, short_tp_id = test_take_profit_orders(client)
-        # all_order_ids.extend([long_tp_id, short_tp_id])
-        # time.sleep(2)
+        long_tp_id, short_tp_id = await test_take_profit_orders(client)
+        all_order_ids.extend([long_tp_id, short_tp_id])
+        await asyncio.sleep(2)
         
         # Test 5: Order Retrieval
-        # test_order_retrieval(client)
-        # time.sleep(2)
+        await test_order_retrieval(client)
+        await asyncio.sleep(2)
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
-        # test_order_cancellation(client, all_order_ids)
+        await test_order_cancellation(client, all_order_ids)
         
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")
@@ -343,4 +344,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

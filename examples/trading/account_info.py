@@ -7,13 +7,14 @@ Before running this example, ensure you have a .env file with the following vari
 - ACCOUNT_ID: Your Reya account ID
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 """
+import asyncio
 from dotenv import load_dotenv
 
 from sdk.reya_rest_api import ReyaTradingClient
 
 
-def main():
-    """Run the example to get conditional orders."""
+async def main():
+    """Run the example to get conditional orders asynchronously."""
     # Load environment variables
     load_dotenv()
     
@@ -34,7 +35,7 @@ def main():
     
     try:
         # Get all conditional orders for the wallet
-        conditional_orders = client.get_conditional_orders()
+        conditional_orders = await client.get_conditional_orders()
         
         if conditional_orders:
             print(f"Found {len(conditional_orders)} conditional orders:\n")
@@ -74,4 +75,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

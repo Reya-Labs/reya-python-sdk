@@ -4,6 +4,7 @@ Reya Trading Client - Main entry point for the Reya Trading API.
 This module provides a client for interacting with the Reya Trading REST API.
 """
 import logging
+import asyncio
 from typing import Dict, Any, Optional, Union
 
 from sdk.reya_rest_api.config import TradingConfig, get_config
@@ -96,7 +97,7 @@ class ReyaTradingClient:
         # Otherwise derive it from private key if available
         return self._signature_generator._public_address if self._signature_generator else None
     
-    def create_market_order(
+    async def create_market_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -105,7 +106,7 @@ class ReyaTradingClient:
         reduce_only: bool = False
     ) -> OrderResponse:
         """
-        Create a market (IOC) order.
+        Create a market (IOC) order asynchronously.
         
         Args:
             market_id: The market ID for this order
@@ -118,7 +119,7 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
-        response = self.orders.create_market_order(
+        response = await self.orders.create_market_order(
             market_id=market_id,
             is_buy=is_buy,
             price=price,
@@ -128,7 +129,7 @@ class ReyaTradingClient:
         
         return response
     
-    def create_limit_order(
+    async def create_limit_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -137,7 +138,7 @@ class ReyaTradingClient:
         order_type: LimitOrderType,
     ) -> OrderResponse:
         """
-        Create a limit (GTC) order.
+        Create a limit (GTC) order asynchronously.
         
         Args:
             market_id: The market ID for this order
@@ -149,18 +150,17 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
-        
-        response = self.orders.create_limit_order(
+        response = await self.orders.create_limit_order(
             market_id=market_id,
             is_buy=is_buy,
             price=price,
             size=size,
-            order_type=order_type
+            order_type=order_type,
         )
         
         return response
     
-    def create_take_profit_order(
+    async def create_take_profit_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -168,7 +168,7 @@ class ReyaTradingClient:
         price: Union[float, str],
     ) -> OrderResponse:
         """
-        Create a take profit order.
+        Create a take profit order asynchronously.
         
         Args:
             market_id: The market ID for this order
@@ -180,7 +180,7 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
-        response = self.orders.create_trigger_order(
+        response = await self.orders.create_trigger_order(
             market_id=market_id,
             is_buy=is_buy,
             trigger_price=trigger_price,
@@ -190,7 +190,7 @@ class ReyaTradingClient:
         
         return response
     
-    def create_stop_loss_order(
+    async def create_stop_loss_order(
         self,
         market_id: int,
         is_buy: bool,
@@ -198,7 +198,7 @@ class ReyaTradingClient:
         price: Union[float, str],
     ) -> OrderResponse:
         """
-        Create a stop loss order.
+        Create a stop loss order asynchronously.
         
         Args:
             market_id: The market ID for this order
@@ -210,7 +210,7 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
-        response = self.orders.create_trigger_order(
+        response = await self.orders.create_trigger_order(
             market_id=market_id,
             is_buy=is_buy,
             trigger_price=trigger_price,
@@ -220,9 +220,9 @@ class ReyaTradingClient:
         
         return response
     
-    def cancel_order(self, order_id: str) -> OrderResponse:
+    async def cancel_order(self, order_id: str) -> OrderResponse:
         """
-        Cancel an existing order.
+        Cancel an existing order asynchronously.
         
         Args:
             order_id: ID of the order to cancel
@@ -233,12 +233,12 @@ class ReyaTradingClient:
         Raises:
             ValueError: If the API returns an error
         """
-        response = self.orders.cancel_order(order_id)
+        response = await self.orders.cancel_order(order_id)
         return response
 
-    def get_positions(self, wallet_address: Optional[str] = None) -> Dict[str, Any]:
+    async def get_positions(self, wallet_address: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get positions for a wallet address.
+        Get positions for a wallet address asynchronously.
         
         Args:
             wallet_address: Optional wallet address (defaults to current wallet)
@@ -253,11 +253,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.wallet.get_positions(wallet_address=wallet)
+        return await self.wallet.get_positions(wallet_address=wallet)
     
-    def get_conditional_orders(self) -> Dict[str, Any]:
+    async def get_conditional_orders(self) -> Dict[str, Any]:
         """
-        Get conditional orders (limit, stop loss, take profit) for the authenticated wallet.
+        Get conditional orders (limit, stop loss, take profit) for the authenticated wallet asynchronously.
         
         Returns:
             List of conditional orders
@@ -269,11 +269,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.wallet.get_conditional_orders(wallet_address=wallet)
+        return await self.wallet.get_conditional_orders(wallet_address=wallet)
     
-    def get_balances(self) -> Dict[str, Any]:
+    async def get_balances(self) -> Dict[str, Any]:
         """
-        Get account balance.
+        Get account balance asynchronously.
         
         Returns:
             Account balance information
@@ -285,11 +285,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.wallet.get_balances(wallet_address=wallet)
+        return await self.wallet.get_balances(wallet_address=wallet)
     
-    def get_configuration(self) -> Dict[str, Any]:
+    async def get_configuration(self) -> Dict[str, Any]:
         """
-        Get account configuration.
+        Get account configuration asynchronously.
         
         Returns:
             Account configuration information
@@ -301,11 +301,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.wallet.get_configuration(wallet_address=wallet)
+        return await self.wallet.get_configuration(wallet_address=wallet)
     
-    def get_orders(self) -> Dict[str, Any]:
+    async def get_orders(self) -> Dict[str, Any]:
         """
-        Get filled orders for the authenticated wallet.
+        Get filled orders for the authenticated wallet asynchronously.
         
         Returns:
             Dictionary containing orders data and metadata
@@ -317,4 +317,4 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return self.wallet.get_orders(wallet_address=wallet)
+        return await self.wallet.get_orders(wallet_address=wallet)
