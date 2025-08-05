@@ -14,31 +14,33 @@ from ..models.orders import (
     CancelOrderRequest,
     OrderResponse
 )
-from ..constants.enums import TpslType, OrdersGatewayOrderType, UnifiedOrderType, LimitOrderType, TimeInForce, Limit, TriggerOrderType, Trigger
+from ..constants.enums import TpslType, OrdersGatewayOrderType, LimitOrderType, TimeInForce, Limit, TriggerOrderType, Trigger
 from .base import BaseResource
 
 
 class OrdersResource(BaseResource):
     """Resource for managing orders."""
     
+    logger = logging.getLogger(__name__)
+    
     def create_market_order(
         self,
-        account_id: int,
         market_id: int,
-        size: Union[float, str],
+        is_buy: bool,
         price: Union[float, str],
+        size: Union[float, str],
         reduce_only: bool = False
     ) -> OrderResponse:
         """
         Create a market (IOC) order.
         
         Args:
-            account_id: The Reya account ID
             market_id: The market ID for this order
-            size: Order size (positive for buy, negative for sell)
+            is_buy: Whether this is a buy order
             price: Limit price for the order
+            size: Order size (always positive)
             reduce_only: Whether this is a reduce-only order
-            
+
         Returns:
             API response for the order creation
             
@@ -48,38 +50,36 @@ class OrdersResource(BaseResource):
         if self.signature_generator is None:
             raise ValueError("Private key is required for creating orders")
             
+        # Determine order type
+        order_type = OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if reduce_only else OrdersGatewayOrderType.MARKET_ORDER
+        
         # Generate nonce and deadline
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
-        deadline = self.signature_generator.get_signature_deadline()
-        
-        # Determine if this is a buy or sell order
-        is_buy = float(size) > 0
         
         # Sign the order
-        signature = self.signature_generator.sign_market_order(
-            account_id=account_id,
+        signature = self.signature_generator.sign_order(
             market_id=market_id,
-            price=price,
-            size=size,
-            reduce_only=reduce_only,
+            order_type=order_type,
             nonce=nonce,
-            deadline=deadline
+            is_buy=is_buy,
+            price=price,
+            size=size
         )
         
         # Create the order request
         order_request = MarketOrderRequest(
-            account_id=account_id,
+            account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
             is_buy=is_buy,
             price=price,
-            size=abs(float(size)),  # API expects positive size
+            size=size,
             reduce_only=reduce_only,
             order_type=LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC)),
             nonce=nonce,
             signature=signature,
             signer_wallet=self.config.wallet_address,
-            expires_after=deadline
+            expires_after=self.signature_generator.get_signature_deadline()
         )
         
         # Make the API request
@@ -91,6 +91,7 @@ class OrdersResource(BaseResource):
         is_buy: bool,
         price: Union[float, str],
         size: Union[float, str],
+        order_type: LimitOrderType,
     ) -> OrderResponse:
         """
         Create a limit (GTC) order.
@@ -98,8 +99,8 @@ class OrdersResource(BaseResource):
         Args:
             market_id: The market ID for this order
             is_buy: Whether this is a buy order
-            size: Order size (positive for buy, negative for sell)
             price: Limit price for the order
+            size: Order size (always positive)
             
         Returns:
             API response for the order creation
@@ -113,13 +114,13 @@ class OrdersResource(BaseResource):
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
 
         # Sign the order
-        signature = self.signature_generator.sign_conditional_order(
+        signature = self.signature_generator.sign_order(
             market_id=market_id,
             order_type=OrdersGatewayOrderType.LIMIT_ORDER,
-            is_buy=is_buy,
-            trigger_price=price,
             nonce=nonce,
-            size=size
+            is_buy=is_buy,
+            price=price,
+            size=size,
         )
         
         # Create the order request
@@ -131,7 +132,7 @@ class OrdersResource(BaseResource):
             price=price,
             size=size,
             reduce_only=False,
-            order_type=LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC)),
+            order_type=order_type,
             signature=signature,
             nonce=nonce,
             signer_wallet=self.config.wallet_address
@@ -142,22 +143,20 @@ class OrdersResource(BaseResource):
     
     def create_trigger_order(
         self,
-        account_id: int,
         market_id: int,
+        is_buy: bool,
         trigger_price: Union[float, str],
         price: Union[float, str],
-        is_buy: bool,
         trigger_type: TpslType,  # TP or SL
     ) -> OrderResponse:
         """
         Create a trigger order (Take Profit or Stop Loss).
         
         Args:
-            account_id: The Reya account ID
             market_id: The market ID for this order
+            is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
             price: Limit price for the order
-            is_buy: Whether this is a buy order
             trigger_type: Type of trigger order (TP or SL)
             
         Returns:
@@ -175,13 +174,12 @@ class OrdersResource(BaseResource):
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
         
         # Sign the order
-        signature = self.signature_generator.sign_conditional_order(
+        signature = self.signature_generator.sign_order(
             market_id=market_id,
             order_type=order_type,
-            is_buy=is_buy,
-            trigger_price=trigger_price,
             nonce=nonce,
-            size=None,
+            is_buy=is_buy,
+            price=trigger_price,
             order_price_limit=price
         )
         
@@ -194,7 +192,7 @@ class OrdersResource(BaseResource):
         
         # Create the order request
         order_request = TriggerOrderRequest(
-            account_id=account_id,
+            account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
             price=price,
@@ -223,8 +221,12 @@ class OrdersResource(BaseResource):
         Raises:
             ValueError: If the API returns an error
         """
+
+        # Make the API request
         endpoint = "api/trading/createOrder"
+        self.logger.debug(f"POST {endpoint} with data: {order_request.to_dict()}")
         response_data = self._post(endpoint, order_request.to_dict())
+        self.logger.debug(f"Response: {response_data}")
         
         return OrderResponse.from_api_response(response_data)
     
@@ -255,6 +257,8 @@ class OrdersResource(BaseResource):
         
         # Make the API request
         endpoint = "api/trading/cancelOrder"
+        self.logger.debug(f"POST {endpoint} with data: {cancel_request.to_dict()}")
         response_data = self._post(endpoint, cancel_request.to_dict())
+        self.logger.debug(f"Response: {response_data}")
         
         return OrderResponse.from_api_response(response_data)

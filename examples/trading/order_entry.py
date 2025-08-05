@@ -72,8 +72,9 @@ def test_market_orders(client: ReyaTradingClient):
     logger.info("Creating IOC market buy order...")
     response = client.create_market_order(
         market_id=1,
-        size="0.1",  # Buy 0.1 units
+        is_buy=True,
         price="500",  # Max price willing to pay
+        size="0.1",  # Buy 0.1 units
         reduce_only=False
     )
     handle_order_response("IOC Market Buy", response)
@@ -83,8 +84,9 @@ def test_market_orders(client: ReyaTradingClient):
     logger.info("Creating IOC market sell order...")
     response = client.create_market_order(
         market_id=1,
-        size="-0.1",  # Sell 0.1 units (negative size)
+        is_buy=False,
         price="40000",  # Min price willing to accept
+        size="-0.1",  # Sell 0.1 units (negative size)
         reduce_only=False
     )
     handle_order_response("IOC Market Sell", response)
@@ -94,8 +96,9 @@ def test_market_orders(client: ReyaTradingClient):
     logger.info("Creating reduce-only IOC market order...")
     response = client.create_market_order(
         market_id=1,
-        size="-0.05",  # Reduce position by 0.05 units
+        is_buy=False,
         price="45000",
+        size="-0.05",  # Reduce position by 0.05 units
         reduce_only=True
     )
     handle_order_response("IOC Reduce-Only Market", response)
@@ -106,12 +109,13 @@ def test_limit_orders(client: ReyaTradingClient):
 
     # Test buy limit order
     logger.info("Creating GTC limit buy order...")
-    limit_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
+    order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
     response = client.create_limit_order(
         market_id=1,
         is_buy=True,
-        price="45000",  # Buy at or below $45,000
-        size="0.1",
+        price="10",  # Buy at or below $45,000
+        size="1",
+        order_type=order_type,
     )
     buy_order_response = handle_order_response("GTC Limit Buy", response)
     time.sleep(1)
@@ -122,7 +126,8 @@ def test_limit_orders(client: ReyaTradingClient):
         market_id=1,
         is_buy=False,
         price="55000",  # Sell at or above $55,000
-        size="0.1",
+        size="1",
+        order_type=order_type,
     )
     sell_order_response = handle_order_response("GTC Limit Sell", response)
 
@@ -147,9 +152,9 @@ def test_stop_loss_orders(client: ReyaTradingClient):
     logger.info("Creating stop loss for long position...")
     response = client.create_stop_loss_order(
         market_id=1,
+        is_buy=False, # Sell to close long position
         trigger_price="1000",  # Trigger when price drops to $47,000
         price="1000",  # Execute at minimum $46,500
-        is_buy=False  # Sell to close long position
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
     time.sleep(1)
@@ -158,9 +163,9 @@ def test_stop_loss_orders(client: ReyaTradingClient):
     logger.info("Creating stop loss for short position...")
     response = client.create_stop_loss_order(
         market_id=1,
+        is_buy=True, # Buy to close short position
         trigger_price="9000",  # Trigger when price rises to $53,000
         price="9000",  # Execute at maximum $53,500
-        is_buy=True  # Buy to close short position
     )
     short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
 
@@ -185,9 +190,9 @@ def test_take_profit_orders(client: ReyaTradingClient):
     logger.info("Creating take profit for long position...")
     response = client.create_take_profit_order(
         market_id=1,
+        is_buy=False,  # Sell to close long position
         trigger_price="10000",  # Trigger when price rises to $55,000
         price="10000",  # Execute at minimum $54,500
-        is_buy=False  # Sell to close long position
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
     time.sleep(1)
@@ -196,9 +201,9 @@ def test_take_profit_orders(client: ReyaTradingClient):
     logger.info("Creating take profit for short position...")
     response = client.create_take_profit_order(
         market_id=1,
+        is_buy=True,  # Buy to close short position
         trigger_price="1500",  # Trigger when price drops to $45,000
         price="1500",  # Execute at maximum $45,500
-        is_buy=True  # Buy to close short position
     )
     short_tp_response = handle_order_response("Take Profit (Short Position)", response)
 
@@ -302,7 +307,7 @@ def main():
         
         # Test 1: IOC Market Orders
         # test_market_orders(client)
-        time.sleep(2)
+        # time.sleep(2)
         
         # Test 2: GTC Limit Orders
         buy_limit_id, sell_limit_id = test_limit_orders(client)
@@ -310,18 +315,18 @@ def main():
         time.sleep(2)
         
         # Test 3: Stop Loss Orders
-        long_sl_id, short_sl_id = test_stop_loss_orders(client)
-        all_order_ids.extend([long_sl_id, short_sl_id])
+        # long_sl_id, short_sl_id = test_stop_loss_orders(client)
+        # all_order_ids.extend([long_sl_id, short_sl_id])
         time.sleep(2)
         
         # Test 4: Take Profit Orders
-        long_tp_id, short_tp_id = test_take_profit_orders(client)
-        all_order_ids.extend([long_tp_id, short_tp_id])
-        time.sleep(2)
+        # long_tp_id, short_tp_id = test_take_profit_orders(client)
+        # all_order_ids.extend([long_tp_id, short_tp_id])
+        # time.sleep(2)
         
         # Test 5: Order Retrieval
-        test_order_retrieval(client)
-        time.sleep(2)
+        # test_order_retrieval(client)
+        # time.sleep(2)
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation

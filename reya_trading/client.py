@@ -10,7 +10,7 @@ from .config import TradingConfig, get_config
 from .auth.signatures import SignatureGenerator
 from .resources.orders import OrdersResource
 from .resources.wallet import WalletResource
-from .constants.enums import  TpslType
+from .constants.enums import  TpslType, LimitOrderType
 from .models.orders import OrderResponse
 
 
@@ -99,9 +99,9 @@ class ReyaTradingClient:
     def create_market_order(
         self,
         market_id: int,
-        size: Union[float, str],
+        is_buy: bool,
         price: Union[float, str],
-        account_id: Optional[int] = None,
+        size: Union[float, str],
         reduce_only: bool = False
     ) -> OrderResponse:
         """
@@ -109,26 +109,20 @@ class ReyaTradingClient:
         
         Args:
             market_id: The market ID for this order
-            size: Order size (positive for buy, negative for sell)
+            is_buy: Whether this is a buy order
             price: Limit price for the order
-            account_id: Optional account ID (defaults to config.account_id)
+            size: Order size (always positive)
             reduce_only: Whether this is a reduce-only order
             
         Returns:
             API response for the order creation
-            
-        Raises:
-            ValueError: If no account ID is available or API returns an error
         """
-        account_id_to_use = account_id or self._config.account_id
-        if account_id_to_use is None:
-            raise ValueError("account_id must be provided or set in the config")
-            
+
         response = self.orders.create_market_order(
-            account_id=account_id_to_use,
             market_id=market_id,
-            size=size,
+            is_buy=is_buy,
             price=price,
+            size=size,
             reduce_only=reduce_only
         )
         
@@ -140,6 +134,7 @@ class ReyaTradingClient:
         is_buy: bool,
         price: Union[float, str],
         size: Union[float, str],
+        order_type: LimitOrderType,
     ) -> OrderResponse:
         """
         Create a limit (GTC) order.
@@ -148,14 +143,11 @@ class ReyaTradingClient:
             market_id: The market ID for this order
             is_buy: Whether this is a buy order
             price: Limit price for the order
-            size: Order size (positive for buy, negative for sell)
-            type: The type of order (defaults to LimitOrderType)
+            size: Order size (always positive)
+            order_type: The type of order (LimitOrderType)
             
         Returns:
             API response for the order creation
-            
-        Raises:
-            ValueError: If no account ID is available or API returns an error
         """
         
         response = self.orders.create_limit_order(
@@ -163,6 +155,7 @@ class ReyaTradingClient:
             is_buy=is_buy,
             price=price,
             size=size,
+            order_type=order_type
         )
         
         return response
@@ -170,37 +163,28 @@ class ReyaTradingClient:
     def create_take_profit_order(
         self,
         market_id: int,
+        is_buy: bool,
         trigger_price: Union[float, str],
         price: Union[float, str],
-        is_buy: bool,
-        account_id: Optional[int] = None
     ) -> OrderResponse:
         """
         Create a take profit order.
         
         Args:
             market_id: The market ID for this order
+            is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
             price: Limit price for the order
-            is_buy: Whether this is a buy order
-            account_id: Optional account ID (defaults to config.account_id)
             
         Returns:
             API response for the order creation
-            
-        Raises:
-            ValueError: If no account ID is available or API returns an error
         """
-        account_id_to_use = account_id or self._config.account_id
-        if account_id_to_use is None:
-            raise ValueError("account_id must be provided or set in the config")
-            
+
         response = self.orders.create_trigger_order(
-            account_id=account_id_to_use,
             market_id=market_id,
+            is_buy=is_buy,
             trigger_price=trigger_price,
             price=price,
-            is_buy=is_buy,
             trigger_type=TpslType.TP
         )
         
@@ -209,37 +193,28 @@ class ReyaTradingClient:
     def create_stop_loss_order(
         self,
         market_id: int,
+        is_buy: bool,
         trigger_price: Union[float, str],
         price: Union[float, str],
-        is_buy: bool,
-        account_id: Optional[int] = None
     ) -> OrderResponse:
         """
         Create a stop loss order.
         
         Args:
             market_id: The market ID for this order
+            is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
             price: Limit price for the order
-            is_buy: Whether this is a buy order
-            account_id: Optional account ID (defaults to config.account_id)
             
         Returns:
             API response for the order creation
-            
-        Raises:
-            ValueError: If no account ID is available or API returns an error
         """
-        account_id_to_use = account_id or self._config.account_id
-        if account_id_to_use is None:
-            raise ValueError("account_id must be provided or set in the config")
-            
+
         response = self.orders.create_trigger_order(
-            account_id=account_id_to_use,
             market_id=market_id,
+            is_buy=is_buy,
             trigger_price=trigger_price,
             price=price,
-            is_buy=is_buy,
             trigger_type=TpslType.SL
         )
         
