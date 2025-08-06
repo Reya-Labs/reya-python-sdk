@@ -277,12 +277,12 @@ class ReyaTradingClient:
             
         return await self.wallet.get_configuration(wallet_address=wallet)
     
-    async def get_orders(self) -> Dict[str, Any]:
+    async def get_trades(self) -> Dict[str, Any]:
         """
-        Get filled orders for the authenticated wallet asynchronously.
+        Get trades for the authenticated wallet asynchronously.
         
         Returns:
-            Dictionary containing orders data and metadata
+            Dictionary containing trades data and metadata
             
         Raises:
             ValueError: If no wallet address is available or API returns an error
@@ -291,4 +291,4 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
             
-        return await self.wallet.get_orders(wallet_address=wallet)
+        return await self.wallet.get_trades(wallet_address=wallet)

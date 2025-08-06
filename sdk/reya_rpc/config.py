@@ -44,32 +44,38 @@ def get_config() -> dict:
             "Invalid chain id! It's neither 1729 (Reya Network) nor 89346162 (Reya Cronos)."
         )
 
-    f = open("reya_actions/abis/CoreProxy.json")
-    core_abi = json.load(f)
+    # Get the directory where this file is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Build path to the abis directory
+    abis_dir = os.path.join(current_dir, "abis")
+    
+    with open(os.path.join(abis_dir, "CoreProxy.json")) as f:
+        core_abi = json.load(f)
 
-    f = open("reya_actions/abis/Multicall.json")
-    multicall_abi = json.load(f)
+    with open(os.path.join(abis_dir, "Multicall.json")) as f:
+        multicall_abi = json.load(f)
 
-    f = open("reya_actions/abis/OracleAdapterProxy.json")
-    oracle_adapter_abi = json.load(f)
+    with open(os.path.join(abis_dir, "OracleAdapterProxy.json")) as f:
+        oracle_adapter_abi = json.load(f)
 
-    f = open("reya_actions/abis/PassivePerpProxy.json")
-    passive_perp_abi = json.load(f)
+    with open(os.path.join(abis_dir, "PassivePerpProxy.json")) as f:
+        passive_perp_abi = json.load(f)
 
-    f = open("reya_actions/abis/PassivePoolProxy.json")
-    passive_pool_abi = json.load(f)
+    with open(os.path.join(abis_dir, "PassivePoolProxy.json")) as f:
+        passive_pool_abi = json.load(f)
 
-    f = open("reya_actions/abis/PeripheryProxy.json")
-    periphery_abi = json.load(f)
+    with open(os.path.join(abis_dir, "PeripheryProxy.json")) as f:
+        periphery_abi = json.load(f)
 
-    f = open("reya_actions/abis/Erc20.json")
-    erc20_abi = json.load(f)
+    with open(os.path.join(abis_dir, "Erc20.json")) as f:
+        erc20_abi = json.load(f)
 
+    # Configure Web3 with modern approach for v7.x
     w3 = Web3(Web3.HTTPProvider(rpc_url))
     w3account = w3.eth.account.from_key(private_key)
+    
+    # Set default account
     w3.eth.default_account = w3account.address
-    w3.middleware_onion.add(signing.construct_sign_and_send_raw_middleware_factory(w3account))
-
     w3core = w3.eth.contract(address=core_address, abi=core_abi)
     w3multicall = w3.eth.contract(address=multicall_address, abi=multicall_abi)
     w3oracle_adapter = w3.eth.contract(

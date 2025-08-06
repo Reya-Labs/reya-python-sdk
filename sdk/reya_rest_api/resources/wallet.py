@@ -77,19 +77,19 @@ class WalletResource(BaseResource):
         endpoint = f"api/trading/wallet/{wallet_address}/configuration"
         return await self._get(endpoint)
     
-    async def get_orders(self, wallet_address: str) -> Dict[str, Any]:
+    async def get_trades(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get filled orders for a wallet address asynchronously.
+        Get trades for a wallet address asynchronously.
         
         Args:
-            wallet_address: The wallet address to get orders for
+            wallet_address: The wallet address to get trades for
             
         Returns:
-            List of filled orders
+            List of trades
             
         Raises:
             ValueError: If the API returns an error
         """
-        endpoint = f"api/trading/wallet/{wallet_address}/orders"
+        endpoint = f"api/trading/wallet/{wallet_address}/trades"
         response_data = await self._get(endpoint)
         return response_data

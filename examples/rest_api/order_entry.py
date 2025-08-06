@@ -72,43 +72,43 @@ async def test_ioc_limit_orders(client: ReyaTradingClient):
     # Set order type
     order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC))
 
-    # Test buy limit order
-    logger.info("Creating IOC limit buy order...")
-    response = await client.create_limit_order(
-        market_id=1,
-        is_buy=True,
-        price="3625",  # Max price willing to pay
-        size="0.1",  # Buy 0.1 units
-        order_type=order_type,
-        reduce_only=False
-    )
-    handle_order_response("IOC Limit Buy", response)
-    await asyncio.sleep(1)
+    # # Test buy limit order
+    # logger.info("Creating IOC limit buy order...")
+    # response = await client.create_limit_order(
+    #     market_id=1,
+    #     is_buy=True,
+    #     price="3625",  # Max price willing to pay
+    #     size="0.1",  # Buy 0.1 units
+    #     order_type=order_type,
+    #     reduce_only=False
+    # )
+    # handle_order_response("IOC Limit Buy", response)
+    # await asyncio.sleep(1)
 
     # Test sell limit order
     logger.info("Creating IOC limit sell order...")
     response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
-        price="40000",  # Min price willing to accept
-        size="0.1",  # Sell 0.1 units (negative size)
+        price="3600",  # Min price willing to accept
+        size=0.01,  # Sell 0.1 units (negative size)
         order_type=order_type,
         reduce_only=False,
     )
     handle_order_response("IOC Limit Sell", response)
     await asyncio.sleep(1)
 
-    # Test reduce-only limit order
-    logger.info("Creating reduce-only IOC limit order...")
-    response = await client.create_limit_order(
-        market_id=1,
-        is_buy=False,
-        price="45000",
-        size="0.05",  # Reduce position by 0.05 units
-        order_type=order_type,
-        reduce_only=True
-    )
-    handle_order_response("IOC Reduce-Only Limit", response)
+    # # Test reduce-only limit order
+    # logger.info("Creating reduce-only IOC limit order...")
+    # response = await client.create_limit_order(
+    #     market_id=1,
+    #     is_buy=False,
+    #     price="45000",
+    #     size="0.05",  # Reduce position by 0.05 units
+    #     order_type=order_type,
+    #     reduce_only=True
+    # )
+    # handle_order_response("IOC Reduce-Only Limit", response)
 
 async def test_gtc_limit_orders(client: ReyaTradingClient):
     """Test GTC (Good Till Cancel) limit orders asynchronously."""
@@ -252,35 +252,21 @@ async def test_order_retrieval(client: ReyaTradingClient):
     print_separator("TESTING ORDER AND POSITION RETRIEVAL")
     
     try:
-        # Get filled orders
-        logger.info("Retrieving filled orders...")
-        orders = await client.get_orders()
-        logger.info(f"📊 Found {len(orders.get('data', []))} filled orders")
+        # Get trades
+        logger.info("Retrieving trades...")
+        trades = await client.get_trades()
+        logger.info(f"📊 Found {len(trades.get('data', []))} trades")
         
-        # Get conditional orders
-        logger.info("Retrieving conditional orders...")
-        conditional_orders = await client.get_conditional_orders()
-        logger.info(f"📊 Found {len(conditional_orders)} conditional orders")
+        # Get open orders
+        logger.info("Retrieving open orders...")
+        open_orders = await client.get_open_orders()
+        logger.info(f"📊 Found {len(open_orders)} open orders")
         
         # Get positions
         logger.info("Retrieving positions...")
         positions = await client.get_positions()
         data = positions.get("data", positions) if isinstance(positions, dict) else (positions or [])
         logger.info(f"📊 Found {len(data)} positions")
-        
-        # Print summary of first few items (if any)
-        if orders.get('data'):
-            logger.info(f"📈 Latest filled order: {orders['data'][0].get('marketName', 'Unknown')} - {orders['data'][0].get('side', 'Unknown')}")
-            
-        if conditional_orders:
-            logger.info(f"📋 Latest conditional order: {conditional_orders[0].get('orderType', 'Unknown')} - Status: {conditional_orders[0].get('status', 'Unknown')}")
-            
-        if isinstance(positions, dict) and positions.get('data'):
-            logger.info(f"💼 Position: {positions['data'][0].get('marketName', 'Unknown')} - Size: {positions['data'][0].get('baseAmount', '0')}")
-        elif isinstance(positions, list) and positions:
-            logger.info(f"💼 Position: {positions[0].get('marketName', 'Unknown')} - Size: {positions[0].get('baseAmount', '0')}")
-        else:
-            logger.info("💼 No positions found")
             
     except Exception as e:
         logger.error(f"❌ Error retrieving orders/positions: {e}")
@@ -319,19 +305,19 @@ async def main():
         await asyncio.sleep(2)
         
         # Test 2: GTC Limit Orders
-        buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
-        all_order_ids.extend([buy_limit_id, sell_limit_id])
-        await asyncio.sleep(2)
+        # buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
+        # all_order_ids.extend([buy_limit_id, sell_limit_id])
+        # await asyncio.sleep(2)
         
-        # Test 3: Stop Loss Orders
-        long_sl_id, short_sl_id = await test_stop_loss_orders(client)
-        all_order_ids.extend([long_sl_id, short_sl_id])
-        await asyncio.sleep(2)
+        # # Test 3: Stop Loss Orders
+        # long_sl_id, short_sl_id = await test_stop_loss_orders(client)
+        # all_order_ids.extend([long_sl_id, short_sl_id])
+        # await asyncio.sleep(2)
         
-        # Test 4: Take Profit Orders
-        long_tp_id, short_tp_id = await test_take_profit_orders(client)
-        all_order_ids.extend([long_tp_id, short_tp_id])
-        await asyncio.sleep(2)
+        # # Test 4: Take Profit Orders
+        # long_tp_id, short_tp_id = await test_take_profit_orders(client)
+        # all_order_ids.extend([long_tp_id, short_tp_id])
+        # await asyncio.sleep(2)
         
         # Test 5: Order Retrieval
         await test_order_retrieval(client)
@@ -339,7 +325,7 @@ async def main():
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
-        await test_order_cancellation(client, all_order_ids)
+        # await test_order_cancellation(client, all_order_ids)
         
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")
