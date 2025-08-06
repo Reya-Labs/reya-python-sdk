@@ -65,52 +65,60 @@ def handle_order_response(order_type: str, response):
     return response
 
 
-async def test_market_orders(client: ReyaTradingClient):
-    """Test IOC (Immediate or Cancel) market orders asynchronously."""
-    print_separator("TESTING IOC MARKET ORDERS")
+async def test_ioc_limit_orders(client: ReyaTradingClient):
+    """Test IOC (Immediate or Cancel) limit orders asynchronously."""
+    print_separator("TESTING IOC LIMIT ORDERS")
 
-    # Test buy market order
-    logger.info("Creating IOC market buy order...")
-    response = await client.create_market_order(
+    # Set order type
+    order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC))
+
+    # Test buy limit order
+    logger.info("Creating IOC limit buy order...")
+    response = await client.create_limit_order(
         market_id=1,
         is_buy=True,
-        price="500",  # Max price willing to pay
+        price="3625",  # Max price willing to pay
         size="0.1",  # Buy 0.1 units
+        order_type=order_type,
         reduce_only=False
     )
-    handle_order_response("IOC Market Buy", response)
+    handle_order_response("IOC Limit Buy", response)
     await asyncio.sleep(1)
 
-    # Test sell market order
-    logger.info("Creating IOC market sell order...")
-    response = await client.create_market_order(
+    # Test sell limit order
+    logger.info("Creating IOC limit sell order...")
+    response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
         price="40000",  # Min price willing to accept
-        size="-0.1",  # Sell 0.1 units (negative size)
-        reduce_only=False
+        size="0.1",  # Sell 0.1 units (negative size)
+        order_type=order_type,
+        reduce_only=False,
     )
-    handle_order_response("IOC Market Sell", response)
+    handle_order_response("IOC Limit Sell", response)
     await asyncio.sleep(1)
 
-    # Test reduce-only market order
-    logger.info("Creating reduce-only IOC market order...")
-    response = await client.create_market_order(
+    # Test reduce-only limit order
+    logger.info("Creating reduce-only IOC limit order...")
+    response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
         price="45000",
-        size="-0.05",  # Reduce position by 0.05 units
+        size="0.05",  # Reduce position by 0.05 units
+        order_type=order_type,
         reduce_only=True
     )
-    handle_order_response("IOC Reduce-Only Market", response)
+    handle_order_response("IOC Reduce-Only Limit", response)
 
-async def test_limit_orders(client: ReyaTradingClient):
+async def test_gtc_limit_orders(client: ReyaTradingClient):
     """Test GTC (Good Till Cancel) limit orders asynchronously."""
     print_separator("TESTING GTC LIMIT ORDERS")
 
+    # Set order type
+    order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
+    
     # Test buy limit order
     logger.info("Creating GTC limit buy order...")
-    order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
     response = await client.create_limit_order(
         market_id=1,
         is_buy=True,
@@ -306,12 +314,12 @@ async def main():
         # Collect order IDs for cancellation testing
         all_order_ids = []
         
-        # Test 1: IOC Market Orders
-        await test_market_orders(client)
+        # Test 1: IOC Limit Orders
+        await test_ioc_limit_orders(client)
         await asyncio.sleep(2)
         
         # Test 2: GTC Limit Orders
-        buy_limit_id, sell_limit_id = await test_limit_orders(client)
+        buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
         all_order_ids.extend([buy_limit_id, sell_limit_id])
         await asyncio.sleep(2)
         

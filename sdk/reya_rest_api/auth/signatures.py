@@ -48,6 +48,12 @@ class SignatureGenerator:
     def get_signature_deadline(self) -> int:
         """Get signature deadline."""
         return 10 ** 18
+    
+    def get_deadline(self, expires_after: Optional[int] = None) -> int:
+        """
+        Returns expires_after if given, otherwise now (ms) + 5s.
+        """
+        return expires_after if expires_after is not None else int(time.time() * 1000) + 5000
 
     def scale(self, decimals: int):
         """Returns a function that scales a number (str, int, float, or Decimal) to an integer."""
@@ -198,6 +204,7 @@ class SignatureGenerator:
         market_id: int,
         order_type: OrdersGatewayOrderType,
         nonce: int,
+        deadline: int,
         is_buy: Optional[bool] = None,
         price: Optional[Union[str, float]] = None,
         size: Optional[Union[str, float]] = None,
@@ -236,7 +243,7 @@ class SignatureGenerator:
             counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type,
             inputs=inputs,
-            deadline=self.get_signature_deadline(),
+            deadline=deadline,
             nonce=nonce,
         )
     

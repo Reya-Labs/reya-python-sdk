@@ -12,7 +12,7 @@ from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.resources.orders import OrdersResource
 from sdk.reya_rest_api.resources.wallet import WalletResource
 from sdk.reya_rest_api.constants.enums import TpslType, LimitOrderType
-from sdk.reya_rest_api.models.orders import OrderResponse
+from sdk.reya_rest_api.models.orders import CreateOrderResponse, CancelOrderResponse
 
 
 class ReyaTradingClient:
@@ -97,38 +97,6 @@ class ReyaTradingClient:
         # Otherwise derive it from private key if available
         return self._signature_generator._public_address if self._signature_generator else None
     
-    async def create_market_order(
-        self,
-        market_id: int,
-        is_buy: bool,
-        price: Union[float, str],
-        size: Union[float, str],
-        reduce_only: bool = False
-    ) -> OrderResponse:
-        """
-        Create a market (IOC) order asynchronously.
-        
-        Args:
-            market_id: The market ID for this order
-            is_buy: Whether this is a buy order
-            price: Limit price for the order
-            size: Order size (always positive)
-            reduce_only: Whether this is a reduce-only order
-            
-        Returns:
-            API response for the order creation
-        """
-
-        response = await self.orders.create_market_order(
-            market_id=market_id,
-            is_buy=is_buy,
-            price=price,
-            size=size,
-            reduce_only=reduce_only
-        )
-        
-        return response
-    
     async def create_limit_order(
         self,
         market_id: int,
@@ -136,7 +104,9 @@ class ReyaTradingClient:
         price: Union[float, str],
         size: Union[float, str],
         order_type: LimitOrderType,
-    ) -> OrderResponse:
+        reduce_only: Optional[bool] = False,
+        expires_after: Optional[int] = None
+    ) -> CreateOrderResponse:
         """
         Create a limit (GTC) order asynchronously.
         
@@ -146,6 +116,8 @@ class ReyaTradingClient:
             price: Limit price for the order
             size: Order size (always positive)
             order_type: The type of order (LimitOrderType)
+            reduce_only: Whether this is a reduce-only order
+            expires_after: The expiration time for the order (only allowed for IOC orders)
             
         Returns:
             API response for the order creation
@@ -156,6 +128,8 @@ class ReyaTradingClient:
             price=price,
             size=size,
             order_type=order_type,
+            reduce_only=reduce_only,
+            expires_after=expires_after
         )
         
         return response
@@ -166,7 +140,7 @@ class ReyaTradingClient:
         is_buy: bool,
         trigger_price: Union[float, str],
         price: Union[float, str],
-    ) -> OrderResponse:
+    ) -> CreateOrderResponse:
         """
         Create a take profit order asynchronously.
         
@@ -196,7 +170,7 @@ class ReyaTradingClient:
         is_buy: bool,
         trigger_price: Union[float, str],
         price: Union[float, str],
-    ) -> OrderResponse:
+    ) -> CreateOrderResponse:
         """
         Create a stop loss order asynchronously.
         
@@ -220,7 +194,7 @@ class ReyaTradingClient:
         
         return response
     
-    async def cancel_order(self, order_id: str) -> OrderResponse:
+    async def cancel_order(self, order_id: str) -> CancelOrderResponse:
         """
         Cancel an existing order asynchronously.
         
