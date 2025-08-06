@@ -130,15 +130,19 @@ class ReyaSocket(websocket.WebSocketApp):
         logger.info(f"Unsubscribing from {channel}")
         self.send(json.dumps(message))
     
-    def connect(self, sslopt=None) -> None:
+    def connect(self, sslopt=None, blocking=True) -> None:
         """Connect to the WebSocket server.
         
         Args:
             sslopt: SSL options for the connection. If None, uses default options.
+            blocking: If True, this method is a blocking call that runs the WebSocket connection
+                     and will not return until the connection is closed. If False, it starts the
+                     connection in a background thread and returns immediately.
             
         Note:
-            This method is a blocking call that runs the WebSocket connection.
-            It will not return until the connection is closed.
+            When blocking=True, this method will not return until the connection is closed.
+            When blocking=False, this method will return immediately and the connection will
+            run in a background thread.
         """
         if sslopt is None:
             if self.config.ssl_verify:
@@ -148,12 +152,52 @@ class ReyaSocket(websocket.WebSocketApp):
         
         logger.info(f"Connecting to {self.url}")
         
-        # Run the WebSocket directly
-        self.run_forever(
-            sslopt=sslopt,
-            ping_interval=self.config.ping_interval,
-            ping_timeout=self.config.ping_timeout
-        )
+        if blocking:
+            # Run the WebSocket directly (blocking)
+            self.run_forever(
+                sslopt=sslopt,
+                ping_interval=self.config.ping_interval,
+                ping_timeout=self.config.ping_timeout
+            )
+        else:
+            # Run the WebSocket in a thread (non-blocking)
+            import threading
+            self._thread = threading.Thread(
+                target=self.run_forever,
+                kwargs={
+                    "sslopt": sslopt,
+                    "ping_interval": self.config.ping_interval,
+                    "ping_timeout": self.config.ping_timeout
+                }
+            )
+            self._thread.daemon = True
+            self._thread.start()
+            
+    async def async_connect(self, sslopt=None) -> None:
+        """Connect to the WebSocket server asynchronously.
+        
+        Args:
+            sslopt: SSL options for the connection. If None, uses default options.
+            
+        Note:
+            This method starts the WebSocket connection in a background thread and
+            returns immediately. It's an async method that can be awaited to ensure
+            the connection has been initiated, but it doesn't wait for the connection
+            to close.
+        """
+        if sslopt is None:
+            if self.config.ssl_verify:
+                sslopt = {}  # Use default SSL verification
+            else:
+                sslopt = {"cert_reqs": ssl.CERT_NONE}
+        
+        logger.info(f"Connecting asynchronously to {self.url}")
+        
+        # Start the connection in a thread
+        self.connect(sslopt=sslopt, blocking=False)
+        
+        # Give a short pause to allow connection to initialize
+        await asyncio.sleep(0.1)
     
     def _default_on_open(self, ws):
         """Default handler for connection open events."""

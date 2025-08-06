@@ -11,9 +11,8 @@ Before running this example, ensure you have a .env file with the following vari
 
 import os
 import json
-import time
 import logging
-import threading
+import asyncio
 from dotenv import load_dotenv
 
 # Import the new resource-oriented WebSocket client
@@ -28,16 +27,16 @@ logging.basicConfig(
 # Create a logger for this module
 logger = logging.getLogger("reya.example")
 
-# Ping sender function
-def start_ping_sender(ws, interval=30):
-    """Start a thread that sends periodic pings to the server."""
-    stop_event = threading.Event()
+# Ping sender function (using asyncio)
+async def start_ping_sender(ws, interval=30):
+    """Start an async task that sends periodic pings to the server."""
+    stop_event = asyncio.Event()
     
-    def send_pings():
+    async def send_pings():
         while not stop_event.is_set():
             try:
                 # Sleep first to let connection establish
-                time.sleep(interval)
+                await asyncio.sleep(interval)
                 if not stop_event.is_set():
                     logger.info(f"Sending ping message")
                     ws.send(json.dumps({"type": "ping"}))
@@ -46,13 +45,11 @@ def start_ping_sender(ws, interval=30):
                 if stop_event.is_set():
                     break
     
-    # Start ping sender thread
-    ping_thread = threading.Thread(target=send_pings)
-    ping_thread.daemon = True
-    ping_thread.start()
+    # Start ping sender task
+    task = asyncio.create_task(send_pings())
     
-    # Return the stop event for canceling
-    return stop_event
+    # Return both the task and stop event for canceling
+    return task, stop_event
 
 def on_open(ws):
     """Handle WebSocket connection open event."""
@@ -109,7 +106,7 @@ def on_message(ws, message):
         logger.debug(f"Received message of type: {message_type}")
         logger.debug(f"Message content: {message}")
         
-def main():
+async def main():
     """Main entry point for the example."""
     # Load environment variables
     load_dotenv()
@@ -135,25 +132,49 @@ def main():
     # Set up ping interval (in seconds)
     ping_interval = int(os.environ.get("REYA_WS_PING_INTERVAL", "30"))
     
-    # Connect to the WebSocket server (blocking call)
-    logger.info("Connecting to WebSocket server")
+    # Connect to the WebSocket server (non-blocking)
+    logger.info("Connecting to WebSocket server asynchronously")
+    
+    ping_task = None
+    ping_stop_event = None
+    
     try:
-        # Start the ping sender thread
-        ping_stop_event = start_ping_sender(ws, interval=ping_interval)
-        logger.info(f"Started ping sender thread (interval: {ping_interval}s)")
+        # Connect asynchronously
+        await ws.async_connect()
         
-        # This call is blocking and will run until interrupted
-        ws.connect()
+        # Start the ping sender task
+        ping_task, ping_stop_event = await start_ping_sender(ws, interval=ping_interval)
+        logger.info(f"Started ping sender task (interval: {ping_interval}s)")
+        
+        # Keep the main task running
+        while True:
+            # Perform any periodic tasks here
+            await asyncio.sleep(1)
+            
     except KeyboardInterrupt:
         logger.info("Exiting gracefully")
     except Exception as e:
         logger.error(f"Error: {e}")
     finally:
-        # Signal the ping thread to stop
-        if 'ping_stop_event' in locals():
+        # Signal the ping task to stop
+        if ping_stop_event:
             ping_stop_event.set()
-            logger.info("Ping sender stopped")
+            logger.info("Ping sender stopping")
+            
+            # Wait for the ping task to finish
+            if ping_task:
+                try:
+                    await asyncio.wait_for(ping_task, timeout=2.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Ping sender task didn't stop in time")
+                    
         logger.info("WebSocket connection closed")
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Exiting...")
+    finally:
+        print("WebSocket example complete.")
+

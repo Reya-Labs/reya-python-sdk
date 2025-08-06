@@ -9,7 +9,10 @@ Before running this example, ensure you have a .env file with the following vari
 """
 
 import os
+import json
+import time
 import logging
+import asyncio
 from dotenv import load_dotenv
 
 # Import the new resource-oriented WebSocket client
@@ -75,7 +78,22 @@ def on_message(ws, message):
         logger.debug(f"Received message type: {message_type}")
 
 
-def main():
+async def periodic_task():
+    """A simple task that runs concurrently with the WebSocket connection."""
+    counter = 0
+    while True:
+        counter += 1
+        logger.info(f"Concurrent task running (iteration {counter})")
+        
+        # Simulate some work (e.g., data processing, calculations, etc.)
+        await asyncio.sleep(2)  # Run every 2 seconds
+        
+        # Example of some additional operation
+        timestamp = time.time()
+        logger.info(f"Current timestamp: {timestamp:.2f} - Processing some data independently")
+
+
+async def main():
     """Main entry point for the example."""
     # Load environment variables
     load_dotenv()
@@ -90,19 +108,40 @@ def main():
         on_message=on_message,
     )
 
-    # Connect to the WebSocket server - this is a blocking call
-    logger.info("Connecting to WebSocket and starting event loop")
+    logger.info("Connecting to WebSocket asynchronously")
     logger.info("Press Ctrl+C to exit")
     
     try:
-        # This will run forever until interrupted
-        ws.connect()
+        # Connect asynchronously - this will return immediately
+        await ws.async_connect()
+        
+        # Start our concurrent task
+        task = asyncio.create_task(periodic_task())
+        
+        # Main application loop
+        while True:
+            await asyncio.sleep(1)
+            
     except KeyboardInterrupt:
         logger.info("Exiting gracefully")
     except Exception as e:
         logger.error(f"Error: {e}")
     finally:
+        # Cancel our concurrent task if it's still running
+        if 'task' in locals() and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                logger.info("Concurrent task was cancelled")
+                
         logger.info("WebSocket connection closed")
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Exiting...")
+    finally:
+        print("WebSocket example complete.")
+
