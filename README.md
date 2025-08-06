@@ -51,6 +51,9 @@ The resource-oriented WebSocket API client offers an intuitive, object-oriented 
   - Monitor wallet orders via `/api/trading/wallet/:address/orders`
   - Access account balances via `/api/trading/wallet/:address/accounts/balances`
 
+- **Price Resources**
+  - Real-time asset pair prices via `/api/trading/prices/:assetPairId`
+
 - **Clean, Maintainable API Design**
   - Resource-based organization
   - Fluent interface for building subscriptions
@@ -277,6 +280,10 @@ ReyaSocket
     └── open_orders(address)        # /api/trading/wallet/:address/openOrders
         ├── subscribe()
         └── unsubscribe()
+└── prices
+    └── asset_pair_price(asset_pair_id)  # /api/trading/prices/:assetPairId
+        ├── subscribe()
+        └── unsubscribe()
 ```
 
 ### Configuration via Environment Variables
@@ -338,8 +345,9 @@ The repository includes example scripts demonstrating how to use the SDK:
   - `examples/rest_api/account_info.py` - Getting open orders for a wallet
 
 - **WebSocket Data Feed Examples**
-  - `examples/basic_market_data.py` - Basic subscription to market data
-  - `examples/wallet_monitoring.py` - Monitoring wallet positions and orders
+  - `examples/websocket/market_monitoring.py` - Basic subscription to market data
+  - `examples/websocket/prices_monitoring.py` - Monitoring real-time prices for an asset pair
+  - `examples/websocket/wallet_monitoring.py` - Monitoring wallet positions and orders
   - `examples/consume_data_feed.py` - Working with the WebSocket data feed
 
 - **Action Examples**
@@ -411,6 +419,16 @@ Container for all wallet-related WebSocket resources.
 - `positions(address)` - Get positions for a specific wallet address
 - `orders(address)` - Get orders for a specific wallet address
 - `balances(address)` - Get account balances for a specific wallet address
+
+### Price Resources
+
+#### `PricesResource`
+
+Container for all price-related WebSocket resources.
+
+**Methods:**
+
+- `asset_pair_price(asset_pair_id)` - Get real-time price data for a specific asset pair
 
 ## Contributing
 
