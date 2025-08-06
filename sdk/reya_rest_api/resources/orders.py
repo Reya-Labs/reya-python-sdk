@@ -4,6 +4,7 @@ Orders resource for Reya Trading API.
 This module provides resources for creating and managing orders.
 """
 import time
+from decimal import Decimal
 from typing import Union, Optional
 import logging
 
@@ -27,8 +28,8 @@ class OrdersResource(BaseResource):
         self,
         market_id: int,
         is_buy: bool,
-        price: Union[float, str],
-        size: Union[float, str],
+        price: Decimal,
+        size: Decimal,
         order_type: LimitOrderType,
         reduce_only: bool,
         expires_after: Optional[int] = None

@@ -63,12 +63,12 @@ class SignatureGenerator:
         return _scale
     
     def encode_inputs(
-        self, 
-        order_type: OrdersGatewayOrderType, 
-        is_buy=None, 
-        trigger_price=None, 
-        order_base=None, 
-        order_price_limit=None
+        self,
+        order_type: OrdersGatewayOrderType,
+        is_buy: Optional[bool] = None,
+        trigger_price: Optional[Decimal] = None,
+        order_base: Optional[Decimal] = None,
+        order_price_limit: Optional[Decimal] = None
     ) -> str:
         """
         Encode order inputs for signature based on the order type.
@@ -76,9 +76,10 @@ class SignatureGenerator:
         - LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER: ['int256', 'uint256'] → order_base (size), trigger_price (price)
         - STOP_LOSS / TAKE_PROFIT: ['bool', 'uint256', 'uint256'] → is_buy, trigger_price, order_price_limit
         """
+
         scaler = self.scale(18)
 
-
+        # STOP_LOSS / TAKE_PROFIT Orders
         if order_type in (OrdersGatewayOrderType.STOP_LOSS, OrdersGatewayOrderType.TAKE_PROFIT):
             if is_buy is None or trigger_price is None or order_price_limit is None:
                 raise ValueError("STOP_LOSS / TAKE_PROFIT require is_buy, trigger_price, and order_price_limit")
@@ -88,12 +89,16 @@ class SignatureGenerator:
             )
             return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
+        # LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER
+        if order_base is None or trigger_price is None or is_buy is None:
+            raise ValueError("LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER require is_buy, order_base and trigger_price")
+        
+        # Negate order_base if it's a sell order
+        signed_order_base = order_base if is_buy else -order_base
 
-        if order_base is None or trigger_price is None:
-            raise ValueError("LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER require order_base and trigger_price")
         encoded = encode(
             ['int256', 'uint256'],
-            [scaler(order_base), scaler(trigger_price)]
+            [scaler(signed_order_base), scaler(trigger_price)]
         )
         return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
@@ -206,9 +211,9 @@ class SignatureGenerator:
         nonce: int,
         deadline: int,
         is_buy: Optional[bool] = None,
-        price: Optional[Union[str, float]] = None,
-        size: Optional[Union[str, float]] = None,
-        order_price_limit: Optional[Union[str, float]] = None,
+        price: Optional[Decimal] = None,
+        size: Optional[Decimal] = None,
+        order_price_limit: Optional[Decimal] = None,
     ) -> str:
         """
         Sign an order (market, reduce-only market, limit, take profit, stop loss) using the Orders Gateway signature format.

@@ -5,6 +5,7 @@ This module provides a client for interacting with the Reya Trading REST API.
 """
 import logging
 import asyncio
+from decimal import Decimal
 from typing import Dict, Any, Optional, Union
 
 from sdk.reya_rest_api.config import TradingConfig, get_config
@@ -97,12 +98,26 @@ class ReyaTradingClient:
         # Otherwise derive it from private key if available
         return self._signature_generator._public_address if self._signature_generator else None
     
+    def validate_inputs(self, **kwargs) -> None:
+        """
+        Validates that all provided keyword arguments are strings.
+
+        Args:
+            **kwargs: Key-value pairs to validate (e.g. price="123.45", size="10")
+
+        Raises:
+            ValueError: If any value is not a string.
+        """
+        for name, value in kwargs.items():
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string, got {type(value).__name__}")
+
     async def create_limit_order(
         self,
         market_id: int,
         is_buy: bool,
-        price: Union[float, str],
-        size: Union[float, str],
+        price: str,
+        size: str,
         order_type: LimitOrderType,
         reduce_only: Optional[bool] = False,
         expires_after: Optional[int] = None
@@ -122,11 +137,13 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
+        
+        self.validate_inputs(price=price, size=size)
         response = await self.orders.create_limit_order(
             market_id=market_id,
             is_buy=is_buy,
-            price=price,
-            size=size,
+            price=Decimal(price),
+            size=Decimal(size),
             order_type=order_type,
             reduce_only=reduce_only,
             expires_after=expires_after
@@ -138,8 +155,8 @@ class ReyaTradingClient:
         self,
         market_id: int,
         is_buy: bool,
-        trigger_price: Union[float, str],
-        price: Union[float, str],
+        trigger_price: str,
+        price: str,
     ) -> CreateOrderResponse:
         """
         Create a take profit order asynchronously.
@@ -153,12 +170,13 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
-
+        
+        self.validate_inputs(trigger_price=trigger_price, price=price)
         response = await self.orders.create_trigger_order(
             market_id=market_id,
             is_buy=is_buy,
-            trigger_price=trigger_price,
-            price=price,
+            trigger_price=Decimal(trigger_price),
+            price=Decimal(price),
             trigger_type=TpslType.TP
         )
         
@@ -168,8 +186,8 @@ class ReyaTradingClient:
         self,
         market_id: int,
         is_buy: bool,
-        trigger_price: Union[float, str],
-        price: Union[float, str],
+        trigger_price: str,
+        price: str,
     ) -> CreateOrderResponse:
         """
         Create a stop loss order asynchronously.
@@ -184,11 +202,12 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
+        self.validate_inputs(trigger_price=trigger_price, price=price)
         response = await self.orders.create_trigger_order(
             market_id=market_id,
             is_buy=is_buy,
-            trigger_price=trigger_price,
-            price=price,
+            trigger_price=Decimal(trigger_price),
+            price=Decimal(price),
             trigger_type=TpslType.SL
         )
         

@@ -72,18 +72,18 @@ async def test_ioc_limit_orders(client: ReyaTradingClient):
     # Set order type
     order_type = LimitOrderType(limit=Limit(time_in_force=TimeInForce.IOC))
 
-    # # Test buy limit order
-    # logger.info("Creating IOC limit buy order...")
-    # response = await client.create_limit_order(
-    #     market_id=1,
-    #     is_buy=True,
-    #     price="3625",  # Max price willing to pay
-    #     size="0.1",  # Buy 0.1 units
-    #     order_type=order_type,
-    #     reduce_only=False
-    # )
-    # handle_order_response("IOC Limit Buy", response)
-    # await asyncio.sleep(1)
+    # Test buy limit order
+    logger.info("Creating IOC limit buy order...")
+    response = await client.create_limit_order(
+        market_id=1,
+        is_buy=True,
+        price="3690",  # Max price willing to pay
+        size="0.01",  # Buy 0.1 units
+        order_type=order_type,
+        reduce_only=False
+    )
+    handle_order_response("IOC Limit Buy", response)
+    await asyncio.sleep(1)
 
     # Test sell limit order
     logger.info("Creating IOC limit sell order...")
@@ -91,20 +91,20 @@ async def test_ioc_limit_orders(client: ReyaTradingClient):
         market_id=1,
         is_buy=False,
         price="3600",  # Min price willing to accept
-        size=0.01,  # Sell 0.1 units (negative size)
+        size="0.01",  # Sell 0.1 units (negative size)
         order_type=order_type,
         reduce_only=False,
     )
     handle_order_response("IOC Limit Sell", response)
     await asyncio.sleep(1)
 
-    # # Test reduce-only limit order
+    # Test reduce-only limit order
     # logger.info("Creating reduce-only IOC limit order...")
     # response = await client.create_limit_order(
     #     market_id=1,
     #     is_buy=False,
     #     price="45000",
-    #     size="0.05",  # Reduce position by 0.05 units
+    #     size="0.01",  # Reduce position by 0.05 units
     #     order_type=order_type,
     #     reduce_only=True
     # )
@@ -298,26 +298,26 @@ async def main():
         logger.info(f"   Wallet: {client.wallet_address}")
         
         # Collect order IDs for cancellation testing
-        all_order_ids = []
+        all_order_ids = ["f0145eaa-ff7c-4d6c-a31f-0cc5f7f2a073"]
         
         # Test 1: IOC Limit Orders
         await test_ioc_limit_orders(client)
         await asyncio.sleep(2)
         
         # Test 2: GTC Limit Orders
-        # buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
-        # all_order_ids.extend([buy_limit_id, sell_limit_id])
-        # await asyncio.sleep(2)
+        buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
+        all_order_ids.extend([buy_limit_id, sell_limit_id])
+        await asyncio.sleep(2)
         
-        # # Test 3: Stop Loss Orders
-        # long_sl_id, short_sl_id = await test_stop_loss_orders(client)
-        # all_order_ids.extend([long_sl_id, short_sl_id])
-        # await asyncio.sleep(2)
+        # Test 3: Stop Loss Orders
+        long_sl_id, short_sl_id = await test_stop_loss_orders(client)
+        all_order_ids.extend([long_sl_id, short_sl_id])
+        await asyncio.sleep(2)
         
-        # # Test 4: Take Profit Orders
-        # long_tp_id, short_tp_id = await test_take_profit_orders(client)
-        # all_order_ids.extend([long_tp_id, short_tp_id])
-        # await asyncio.sleep(2)
+        # Test 4: Take Profit Orders
+        long_tp_id, short_tp_id = await test_take_profit_orders(client)
+        all_order_ids.extend([long_tp_id, short_tp_id])
+        await asyncio.sleep(2)
         
         # Test 5: Order Retrieval
         await test_order_retrieval(client)
@@ -325,7 +325,7 @@ async def main():
         
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
-        # await test_order_cancellation(client, all_order_ids)
+        await test_order_cancellation(client, all_order_ids)
         
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Dict, Any, Optional, Union
 
 from sdk.reya_rest_api.constants.enums import UnifiedOrderType
@@ -11,8 +12,8 @@ class OrderRequest:
     market_id: int
     exchange_id: int
     is_buy: bool
-    price: Optional[Union[float, str]]
-    size: Optional[Union[float, str]]
+    price: Optional[Decimal]
+    size: Optional[Decimal]
     order_type: UnifiedOrderType
     signature: str
     nonce: int
