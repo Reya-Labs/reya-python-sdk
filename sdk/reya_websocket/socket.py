@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Optional, Union
 
 from sdk.reya_websocket.resources.market import MarketResource
 from sdk.reya_websocket.resources.wallet import WalletResource
+from sdk.reya_websocket.resources.prices import PricesResource
 from sdk.reya_websocket.config import WebSocketConfig, get_config
 
 # Set up logging
@@ -62,6 +63,7 @@ class ReyaSocket(websocket.WebSocketApp):
         # Initialize resources
         self._market = MarketResource(self)
         self._wallet = WalletResource(self)
+        self._prices = PricesResource(self)
         
         # Default handlers if none provided
         if on_open is None:
@@ -95,6 +97,11 @@ class ReyaSocket(websocket.WebSocketApp):
     def wallet(self) -> WalletResource:
         """Access wallet-related resources."""
         return self._wallet
+    
+    @property
+    def prices(self) -> PricesResource:
+        """Access price-related resources."""
+        return self._prices
     
     def send_subscribe(self, channel: str, **kwargs) -> None:
         """Send a subscription message.
