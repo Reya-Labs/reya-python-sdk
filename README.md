@@ -4,9 +4,42 @@ This repository contains a Python SDK for interacting with the Reya ecosystem. I
 
 ## Features
 
+### REST API Client
+
+The REST API client provides a comprehensive interface for interacting with Reya's Trading API:
+
+- **Wallet Resource**
+  - Get wallet positions via `/api/trading/wallet/:address/positions`
+  - Get open orders via `/api/trading/wallet/:address/openOrders`
+  - Get account balances via `/api/trading/wallet/:address/accounts/balances`
+  - Get configuration via `/api/trading/wallet/:address/configuration`
+  - Get trades via `/api/trading/wallet/:address/trades`
+  - Get accounts via `/api/trading/wallet/:address/accounts`
+  - Get leverages via `/api/trading/wallet/:address/leverages`
+  - Get auto exchange settings via `/api/trading/wallet/:address/autoExchange`
+  - Get stats via `/api/trading/wallet/:address/stats`
+
+- **Orders Resource**
+  - Create and cancel various order types
+
+- **Markets Resource**
+  - Get all markets via `/api/trading/markets`
+  - Get market details via `/api/trading/market/:marketId`
+  - Get market trackers via `/api/trading/market/:marketId/trackers`
+  - Get market trades via `/api/trading/market/:marketId/trades`
+  - Get market configuration via `/api/trading/market/:marketId/configuration`
+  - Get market storage via `/api/trading/market/:marketId/storage`
+  - Get market data via `/api/trading/market/:marketId/data`
+
+- **Assets Resource**
+  - Get all assets via `/api/trading/assets`
+
+- **Prices Resource**
+  - Get all prices via `/api/trading/prices`
+
 ### WebSocket API Client (Resource-Oriented)
 
-The new resource-oriented WebSocket API client offers an intuitive, object-oriented interface for consuming real-time data from Reya:
+The resource-oriented WebSocket API client offers an intuitive, object-oriented interface for consuming real-time data from Reya:
 
 - **Market Resources**
   - Access all markets data via `/api/trading/markets/data`
@@ -180,7 +213,44 @@ if __name__ == "__main__":
 
 ### Resource-Based API Structure
 
-The API is organized around resources:
+#### REST API Structure
+
+The REST API client is organized around the following resources:
+
+```
+ReyaTradingClient
+├── wallet                           # Wallet resource
+│   ├── get_positions()              # /api/trading/wallet/:address/positions
+│   ├── get_open_orders()            # /api/trading/wallet/:address/openOrders
+│   ├── get_balances()               # /api/trading/wallet/:address/accounts/balances
+│   ├── get_configuration()          # /api/trading/wallet/:address/configuration
+│   ├── get_trades()                 # /api/trading/wallet/:address/trades
+│   ├── get_accounts()               # /api/trading/wallet/:address/accounts
+│   ├── get_leverages()              # /api/trading/wallet/:address/leverages
+│   ├── get_auto_exchange()          # /api/trading/wallet/:address/autoExchange
+│   └── get_stats()                  # /api/trading/wallet/:address/stats
+├── orders                           # Orders resource
+│   ├── create_limit_order()         # /api/trading/orders/limit
+│   ├── create_trigger_order()       # /api/trading/orders/trigger
+│   └── cancel_order()               # /api/trading/orders/:orderId/cancel
+├── markets                          # Markets resource
+│   ├── get_markets()                # /api/trading/markets
+│   ├── get_market()                 # /api/trading/market/:marketId
+│   ├── get_market_trackers()        # /api/trading/market/:marketId/trackers
+│   ├── get_market_trades()          # /api/trading/market/:marketId/trades
+│   ├── get_market_configuration()   # /api/trading/market/:marketId/configuration
+│   ├── get_market_storage()         # /api/trading/market/:marketId/storage
+│   └── get_market_data()            # /api/trading/market/:marketId/data
+├── assets                           # Assets resource
+│   └── get_assets()                 # /api/trading/assets
+└── prices                           # Prices resource
+    ├── get_prices()                 # /api/trading/prices
+    └── get_price()                  # /api/trading/prices/:assetPairId
+```
+
+#### WebSocket API Structure
+
+The WebSocket API client is organized around resources:
 
 ```
 ReyaSocket
@@ -259,14 +329,18 @@ The repository includes example scripts demonstrating how to use the SDK:
 
 ### Available Examples
 
-- **Data Feed Examples**
+- **REST API Examples**
+  - `examples/rest_api/wallet_example.py` - Comprehensive example of all wallet endpoints
+  - `examples/rest_api/markets_example.py` - Using markets-related endpoints
+  - `examples/rest_api/assets_example.py` - Retrieving assets information
+  - `examples/rest_api/prices_example.py` - Getting price information
+  - `examples/rest_api/order_entry.py` - Creating various order types
+  - `examples/rest_api/account_info.py` - Getting open orders for a wallet
+
+- **WebSocket Data Feed Examples**
   - `examples/basic_market_data.py` - Basic subscription to market data
   - `examples/wallet_monitoring.py` - Monitoring wallet positions and orders
   - `examples/consume_data_feed.py` - Working with the WebSocket data feed
-
-- **Trading Examples**
-  - `examples/trading/order_entry.py` - Creating various order types
-  - `examples/trading/account_info.py` - Retrieving account information
 
 - **Action Examples**
   - `examples/bridge_in_and_deposit.py` - Bridge in and deposit funds
