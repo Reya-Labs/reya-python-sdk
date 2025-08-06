@@ -93,3 +93,71 @@ class WalletResource(BaseResource):
         endpoint = f"api/trading/wallet/{wallet_address}/trades"
         response_data = await self._get(endpoint)
         return response_data
+    
+    async def get_accounts(self, wallet_address: str) -> Dict[str, Any]:
+        """
+        Get accounts for a wallet address asynchronously.
+        
+        Args:
+            wallet_address: The wallet address
+            
+        Returns:
+            Account information
+            
+        Raises:
+            ValueError: If the API returns an error
+        """
+        endpoint = f"api/trading/wallet/{wallet_address}/accounts"
+        response_data = await self._get(endpoint)
+        return response_data
+    
+    async def get_leverages(self, wallet_address: str) -> Dict[str, Any]:
+        """
+        Get leverages for a wallet address asynchronously.
+        
+        Args:
+            wallet_address: The wallet address
+            
+        Returns:
+            Leverage information
+            
+        Raises:
+            ValueError: If the API returns an error
+        """
+        endpoint = f"api/trading/wallet/{wallet_address}/leverages"
+        response_data = await self._get(endpoint)
+        return response_data
+    
+    async def get_auto_exchange(self, wallet_address: str) -> Dict[str, Any]:
+        """
+        Get auto exchange settings for a wallet address asynchronously.
+        
+        Args:
+            wallet_address: The wallet address
+            
+        Returns:
+            Auto exchange settings
+            
+        Raises:
+            ValueError: If the API returns an error
+        """
+        endpoint = f"api/trading/wallet/{wallet_address}/autoExchange"
+        response_data = await self._get(endpoint)
+        return response_data
+        
+    async def get_stats(self, wallet_address: str) -> Dict[str, Any]:
+        """
+        Get stats for a wallet address asynchronously.
+        
+        Args:
+            wallet_address: The wallet address
+            
+        Returns:
+            Wallet stats information
+            
+        Raises:
+            ValueError: If the API returns an error
+        """
+        endpoint = f"api/trading/wallet/{wallet_address}/stats"
+        response_data = await self._get(endpoint)
+        return response_data

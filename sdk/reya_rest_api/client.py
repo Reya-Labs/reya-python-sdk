@@ -12,6 +12,9 @@ from sdk.reya_rest_api.config import TradingConfig, get_config
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.resources.orders import OrdersResource
 from sdk.reya_rest_api.resources.wallet import WalletResource
+from sdk.reya_rest_api.resources.markets import MarketsResource
+from sdk.reya_rest_api.resources.assets import AssetsResource
+from sdk.reya_rest_api.resources.prices import PricesResource
 from sdk.reya_rest_api.constants.enums import TpslType, LimitOrderType
 from sdk.reya_rest_api.models.orders import CreateOrderResponse, CancelOrderResponse
 
@@ -72,6 +75,9 @@ class ReyaTradingClient:
         # Initialize resources
         self._orders = OrdersResource(self._config, self._signature_generator)
         self._wallet = WalletResource(self._config, self._signature_generator)
+        self._markets = MarketsResource(self._config, self._signature_generator)
+        self._assets = AssetsResource(self._config, self._signature_generator)
+        self._prices = PricesResource(self._config, self._signature_generator)
     
     @property
     def orders(self) -> OrdersResource:
@@ -82,6 +88,21 @@ class ReyaTradingClient:
     def wallet(self) -> WalletResource:
         """Get the wallet resource."""
         return self._wallet
+        
+    @property
+    def markets(self) -> MarketsResource:
+        """Get the markets resource."""
+        return self._markets
+        
+    @property
+    def assets(self) -> AssetsResource:
+        """Get the assets resource."""
+        return self._assets
+        
+    @property
+    def prices(self) -> PricesResource:
+        """Get the prices resource."""
+        return self._prices
     
     @property
     def config(self) -> TradingConfig:
@@ -311,3 +332,67 @@ class ReyaTradingClient:
             raise ValueError("No wallet address available. Private key must be provided.")
             
         return await self.wallet.get_trades(wallet_address=wallet)
+    
+    async def get_accounts(self) -> Dict[str, Any]:
+        """
+        Get accounts for the authenticated wallet asynchronously.
+        
+        Returns:
+            Account information
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return await self.wallet.get_accounts(wallet_address=wallet)
+    
+    async def get_leverages(self) -> Dict[str, Any]:
+        """
+        Get leverages for the authenticated wallet asynchronously.
+        
+        Returns:
+            Leverage information
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return await self.wallet.get_leverages(wallet_address=wallet)
+    
+    async def get_auto_exchange(self) -> Dict[str, Any]:
+        """
+        Get auto exchange settings for the authenticated wallet asynchronously.
+        
+        Returns:
+            Auto exchange settings
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return await self.wallet.get_auto_exchange(wallet_address=wallet)
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """
+        Get stats for the authenticated wallet asynchronously.
+        
+        Returns:
+            Wallet stats information
+            
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+            
+        return await self.wallet.get_stats(wallet_address=wallet)
