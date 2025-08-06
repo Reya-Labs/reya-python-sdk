@@ -28,20 +28,20 @@ class WalletResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
     
-    async def get_conditional_orders(self, wallet_address: str) -> Dict[str, Any]:
+    async def get_open_orders(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get conditional orders (limit, stop loss, take profit) for a wallet address asynchronously.
+        Get open orders (limit, stop loss, take profit) for a wallet address asynchronously.
         
         Args:
             wallet_address: The wallet address to get orders for
             
         Returns:
-            List of conditional orders
+            List of open orders
             
         Raises:
             ValueError: If the API returns an error
         """
-        endpoint = f"api/trading/wallet/{wallet_address}/conditionalOrders"
+        endpoint = f"api/trading/wallet/{wallet_address}/openOrders"
         response_data = await self._get(endpoint)
         return response_data
     

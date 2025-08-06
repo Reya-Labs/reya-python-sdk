@@ -15,7 +15,7 @@ class WalletResource:
         self._positions = WalletPositionsResource(socket)
         self._orders = WalletOrdersResource(socket)
         self._balances = WalletBalancesResource(socket)
-        self._conditional_orders = WalletConditionalOrdersResource(socket)
+        self._open_orders = WalletOpenOrdersResource(socket)
     
     def positions(self, address: str) -> 'WalletPositionsSubscription':
         """Get positions for a specific wallet address.
@@ -50,16 +50,16 @@ class WalletResource:
         """
         return self._balances.for_wallet(address)
     
-    def conditional_orders(self, address: str) -> 'WalletConditionalOrdersSubscription':
-        """Get conditional orders for a specific wallet address.
+    def open_orders(self, address: str) -> 'WalletOpenOrdersSubscription':
+        """Get open orders for a specific wallet address.
         
         Args:
             address: The wallet address.
             
         Returns:
-            A subscription object for the wallet conditional orders.
+            A subscription object for the wallet open orders.
         """
-        return self._conditional_orders.for_wallet(address)
+        return self._open_orders.for_wallet(address)
 
 class WalletPositionsResource(SubscribableParameterizedResource):
     """Resource for accessing wallet positions."""
@@ -205,33 +205,33 @@ class WalletBalancesSubscription:
         """Unsubscribe from wallet account balances."""
         self.socket.send_unsubscribe(channel=self.path)
 
-class WalletConditionalOrdersResource(SubscribableParameterizedResource):
-    """Resource for accessing wallet conditional orders."""
+class WalletOpenOrdersResource(SubscribableParameterizedResource):
+    """Resource for accessing wallet open orders."""
     
     def __init__(self, socket: 'ReyaSocket'):
-        """Initialize the wallet conditional orders resource.
+        """Initialize the wallet open orders resource.
         
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/api/trading/wallet/{address}/conditionalOrders")
+        super().__init__(socket, "/api/trading/wallet/{address}/openOrders")
     
-    def for_wallet(self, address: str) -> 'WalletConditionalOrdersSubscription':
-        """Create a subscription for a specific wallet's conditional orders.
+    def for_wallet(self, address: str) -> 'WalletOpenOrdersSubscription':
+        """Create a subscription for a specific wallet's open orders.
         
         Args:
             address: The wallet address.
             
         Returns:
-            A subscription object for the wallet conditional orders.
+            A subscription object for the wallet open orders.
         """
-        return WalletConditionalOrdersSubscription(self.socket, address)
+        return WalletOpenOrdersSubscription(self.socket, address)
 
-class WalletConditionalOrdersSubscription:
-    """Manages a subscription to conditional orders for a specific wallet."""
+class WalletOpenOrdersSubscription:
+    """Manages a subscription to open orders for a specific wallet."""
     
     def __init__(self, socket: 'ReyaSocket', address: str):
-        """Initialize a wallet conditional orders subscription.
+        """Initialize a wallet open orders subscription.
         
         Args:
             socket: The WebSocket connection to use for this subscription.
@@ -239,10 +239,10 @@ class WalletConditionalOrdersSubscription:
         """
         self.socket = socket
         self.address = address
-        self.path = f"/api/trading/wallet/{address}/conditionalOrders"
+        self.path = f"/api/trading/wallet/{address}/openOrders"
     
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to wallet conditional orders.
+        """Subscribe to wallet open orders.
         
         Args:
             batched: Whether to receive updates in batches.
@@ -250,5 +250,5 @@ class WalletConditionalOrdersSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
     
     def unsubscribe(self) -> None:
-        """Unsubscribe from wallet conditional orders."""
+        """Unsubscribe from wallet open orders."""
         self.socket.send_unsubscribe(channel=self.path)

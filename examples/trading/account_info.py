@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Example script showing how to get conditional orders for a wallet address using the Reya Trading SDK.
+Example script showing how to get open orders for a wallet address using the Reya Trading SDK.
 
 Before running this example, ensure you have a .env file with the following variables:
 - PRIVATE_KEY: Your Ethereum private key
@@ -14,7 +14,7 @@ from sdk.reya_rest_api import ReyaTradingClient
 
 
 async def main():
-    """Run the example to get conditional orders asynchronously."""
+    """Run the example to get open orders asynchronously."""
     # Load environment variables
     load_dotenv()
     
@@ -30,17 +30,17 @@ async def main():
     # Show the wallet address we're using
     print(f"Using wallet address: {client.wallet_address}")
     
-    # Get conditional orders for the wallet
-    print("\n--- Getting conditional orders ---")
+    # Get open orders for the wallet
+    print("\n--- Getting open orders ---")
     
     try:
-        # Get all conditional orders for the wallet
-        conditional_orders = await client.get_conditional_orders()
+        # Get all open orders for the wallet
+        open_orders = await client.get_open_orders()
         
-        if conditional_orders:
-            print(f"Found {len(conditional_orders)} conditional orders:\n")
+        if open_orders:
+            print(f"Found {len(open_orders)} open orders:\n")
             
-            for i, order in enumerate(conditional_orders):
+            for i, order in enumerate(open_orders):
                 # Extract order details
                 account_id = order.get("account_id", "unknown")
                 order_id = order.get("id", "unknown")
@@ -68,10 +68,10 @@ async def main():
                 print(f"  Created: {created_at}")
                 print()
         else:
-            print("No conditional orders found for this wallet address.")
+            print("No open orders found for this wallet address.")
             
     except Exception as e:
-        print(f"Error retrieving conditional orders: {e}")
+        print(f"Error retrieving open orders: {e}")
 
 
 if __name__ == "__main__":

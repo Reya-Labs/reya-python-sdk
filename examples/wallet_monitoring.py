@@ -1,7 +1,12 @@
 """Example of monitoring wallet positions, orders, and balances.
 
-This example connects to the Reya WebSocket API and subscribes to all
-wallet-related data streams for a specific wallet address.
+This example connects to the Reya WebSocket API and subscribes to all wallet-related data streams for a specific wallet address.
+
+Before running this example, ensure you have a .env file with the following variables:
+- PRIVATE_KEY: Your Ethereum private key
+- ACCOUNT_ID: Your Reya account ID
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- WALLET_ADDRESS: The wallet address to monitor
 """
 
 import os
@@ -67,15 +72,14 @@ def on_open(ws):
     # Subscribe to wallet orders
     # ws.wallet.orders(wallet_address).subscribe()
 
-    # Subscribe to wallet conditional orders
-    # ws.wallet.conditional_orders(wallet_address).subscribe()
+    # Subscribe to wallet open orders
+    ws.wallet.open_orders(wallet_address).subscribe()
     
     # Subscribe to wallet account balances
-    ws.wallet.balances(wallet_address).subscribe()
+    # ws.wallet.balances(wallet_address).subscribe()
 
 def on_message(ws, message):
-    """Handle WebSocket messages."""
-    # No need to reset ping timer anymore since we're sending at fixed intervals    
+    """Handle WebSocket messages."""    
     message_type = message.get("type")
     
     if message_type == "subscribed":

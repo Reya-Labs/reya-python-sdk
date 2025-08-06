@@ -1,7 +1,11 @@
 """Basic example of using the resource-oriented WebSocket API client.
 
-This example connects to the Reya WebSocket API and subscribes to market data
-for a specific market using asyncio.
+This example connects to the Reya WebSocket API and subscribes to market data for a specific market.
+
+Before running this example, ensure you have a .env file with the following variables:
+- PRIVATE_KEY: Your Ethereum private key
+- ACCOUNT_ID: Your Reya account ID
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 """
 
 import os

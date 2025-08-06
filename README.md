@@ -204,7 +204,7 @@ ReyaSocket
     ├── balances(address)           # /api/trading/wallet/:address/accounts/balances
     │   ├── subscribe()
     │   └── unsubscribe()
-    └── conditional_orders(address) # /api/trading/wallet/:address/conditionalOrders
+    └── open_orders(address)        # /api/trading/wallet/:address/openOrders
         ├── subscribe()
         └── unsubscribe()
 ```
