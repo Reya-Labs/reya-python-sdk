@@ -71,6 +71,8 @@ pipx install poetry
 
 ### Setting up with Poetry
 
+> **Note**: If you want `poetry` to create the virtual environment in the project directory, run `poetry config virtualenvs.in-project true`. This tells Poetry to create the .venv/ folder inside each project directory instead of the default global cache `(usually in ~/.cache/pypoetry/virtualenvs/...)`.
+
 Follow these steps to set up your development environment:
 
 1. Clone the repository and navigate to the project directory:
@@ -86,20 +88,20 @@ cd reya-python-sdk
 poetry install
 ```
 
-3. Activate the Poetry shell (virtual environment):
+3. Activate the virtual environment:
 
 ```bash
-poetry shell
+source $(poetry env info --path)/bin/activate
 ```
 
 This will create and activate a virtual environment with all required dependencies installed.
 
 ### Running Examples
 
-To run the examples, make sure you have activated the Poetry shell first:
+To run the examples, make sure you have activated the virtual environment first:
 
 ```bash
-poetry shell
+source $(poetry env info --path)/bin/activate
 python -m examples.trading.order_entry  # Run a specific example
 ```
 
