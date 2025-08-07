@@ -44,11 +44,11 @@ The resource-oriented WebSocket API client offers an intuitive, object-oriented 
 - **Market Resources**
   - Access all markets data via `/api/trading/markets/data`
   - Subscribe to specific market data via `/api/trading/market/:marketId/data`
-  - Monitor market orders via `/api/trading/market/:marketId/orders`
+  - Monitor market trades via `/api/trading/market/:marketId/trades`
 
 - **Wallet Resources**
   - Track wallet positions via `/api/trading/wallet/:address/positions`
-  - Monitor wallet orders via `/api/trading/wallet/:address/orders`
+  - Monitor wallet trades via `/api/trading/wallet/:address/trades`
   - Access account balances via `/api/trading/wallet/:address/accounts/balances`
 
 - **Price Resources**
@@ -235,9 +235,9 @@ ReyaTradingClient
 │   ├── get_auto_exchange()          # /api/trading/wallet/:address/autoExchange
 │   └── get_stats()                  # /api/trading/wallet/:address/stats
 ├── orders                           # Orders resource
-│   ├── create_limit_order()         # /api/trading/orders/limit
-│   ├── create_trigger_order()       # /api/trading/orders/trigger
-│   └── cancel_order()               # /api/trading/orders/:orderId/cancel
+│   ├── create_limit_order()         # /api/trading/createOrder
+│   ├── create_trigger_order()       # /api/trading/createOrder
+│   └── cancel_order()               # /api/trading/cancelOrder
 ├── markets                          # Markets resource
 │   ├── get_markets()                # /api/trading/markets
 │   ├── get_market()                 # /api/trading/market/:marketId
@@ -266,14 +266,14 @@ ReyaSocket
 │   ├── market_data(market_id)          # /api/trading/market/:marketId/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   └── market_orders(market_id)        # /api/trading/market/:marketId/orders
+│   └── market_orders(market_id)        # /api/trading/market/:marketId/trades
 │       ├── subscribe()
 │       └── unsubscribe()
 ├── wallet
 │   ├── positions(address)              # /api/trading/wallet/:address/positions
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── orders(address)                 # /api/trading/wallet/:address/orders
+│   ├── orders(address)                 # /api/trading/wallet/:address/trades
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
 │   ├── balances(address)               # /api/trading/wallet/:address/accounts/balances

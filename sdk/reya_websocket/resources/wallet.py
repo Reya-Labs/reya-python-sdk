@@ -13,7 +13,7 @@ class WalletResource:
         """
         self.socket = socket
         self._positions = WalletPositionsResource(socket)
-        self._orders = WalletOrdersResource(socket)
+        self._trades = WalletTradesResource(socket)
         self._balances = WalletBalancesResource(socket)
         self._open_orders = WalletOpenOrdersResource(socket)
     
@@ -28,16 +28,16 @@ class WalletResource:
         """
         return self._positions.for_wallet(address)
     
-    def orders(self, address: str) -> 'WalletOrdersSubscription':
-        """Get orders for a specific wallet address.
+    def trades(self, address: str) -> 'WalletTradesSubscription':
+        """Get trades for a specific wallet address.
         
         Args:
             address: The wallet address.
             
         Returns:
-            A subscription object for the wallet orders.
+            A subscription object for the wallet trades.
         """
-        return self._orders.for_wallet(address)
+        return self._trades.for_wallet(address)
     
     def balances(self, address: str) -> 'WalletBalancesSubscription':
         """Get account balances for a specific wallet address.
@@ -83,27 +83,27 @@ class WalletPositionsResource(SubscribableParameterizedResource):
         """
         return WalletPositionsSubscription(self.socket, address)
 
-class WalletOrdersResource(SubscribableParameterizedResource):
-    """Resource for accessing wallet orders."""
+class WalletTradesResource(SubscribableParameterizedResource):
+    """Resource for accessing wallet trades."""
     
     def __init__(self, socket: 'ReyaSocket'):
-        """Initialize the wallet orders resource.
+        """Initialize the wallet trades resource.
         
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/api/trading/wallet/{address}/orders")
+        super().__init__(socket, "/api/trading/wallet/{address}/trades")
     
-    def for_wallet(self, address: str) -> 'WalletOrdersSubscription':
-        """Create a subscription for a specific wallet's orders.
+    def for_wallet(self, address: str) -> 'WalletTradesSubscription':
+        """Create a subscription for a specific wallet's trades.
         
         Args:
             address: The wallet address.
             
         Returns:
-            A subscription object for the wallet orders.
+            A subscription object for the wallet trades.
         """
-        return WalletOrdersSubscription(self.socket, address)
+        return WalletTradesSubscription(self.socket, address)
 
 class WalletBalancesResource(SubscribableParameterizedResource):
     """Resource for accessing wallet account balances."""
@@ -153,11 +153,11 @@ class WalletPositionsSubscription:
         """Unsubscribe from wallet positions."""
         self.socket.send_unsubscribe(channel=self.path)
 
-class WalletOrdersSubscription:
-    """Manages a subscription to orders for a specific wallet."""
+class WalletTradesSubscription:
+    """Manages a subscription to trades for a specific wallet."""
     
     def __init__(self, socket: 'ReyaSocket', address: str):
-        """Initialize a wallet orders subscription.
+        """Initialize a wallet trades subscription.
         
         Args:
             socket: The WebSocket connection to use for this subscription.
@@ -165,10 +165,10 @@ class WalletOrdersSubscription:
         """
         self.socket = socket
         self.address = address
-        self.path = f"/api/trading/wallet/{address}/orders"
+        self.path = f"/api/trading/wallet/{address}/trades"
     
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to wallet orders.
+        """Subscribe to wallet trades.
         
         Args:
             batched: Whether to receive updates in batches.
@@ -176,7 +176,7 @@ class WalletOrdersSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
     
     def unsubscribe(self) -> None:
-        """Unsubscribe from wallet orders."""
+        """Unsubscribe from wallet trades."""
         self.socket.send_unsubscribe(channel=self.path)
 
 class WalletBalancesSubscription:

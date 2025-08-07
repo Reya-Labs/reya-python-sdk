@@ -14,7 +14,7 @@ class MarketResource:
         self.socket = socket
         self._all_markets = AllMarketsResource(socket)
         self._market_data = MarketDataResource(socket)
-        self._market_orders = MarketOrdersResource(socket)
+        self._market_trades = MarketTradesResource(socket)
     
     @property
     def all_markets(self) -> 'AllMarketsResource':
@@ -32,16 +32,16 @@ class MarketResource:
         """
         return self._market_data.for_market(market_id)
     
-    def market_orders(self, market_id: str) -> 'MarketOrdersSubscription':
+    def market_trades(self, market_id: str) -> 'MarketTradesSubscription':
         """Get orders for a specific market.
         
         Args:
             market_id: The ID of the market.
             
         Returns:
-            A subscription object for the specified market orders.
+            A subscription object for the specified market trades.
         """
-        return self._market_orders.for_market(market_id)
+        return self._market_trades.for_market(market_id)
 
 class AllMarketsResource(SubscribableResource):
     """Resource for accessing all markets data."""
@@ -89,27 +89,27 @@ class MarketDataResource(SubscribableParameterizedResource):
         """
         return MarketDataSubscription(self.socket, market_id)
 
-class MarketOrdersResource(SubscribableParameterizedResource):
-    """Resource for accessing market orders."""
+class MarketTradesResource(SubscribableParameterizedResource):
+    """Resource for accessing market trades."""
     
     def __init__(self, socket: 'ReyaSocket'):
-        """Initialize the market orders resource.
+        """Initialize the market trades resource.
         
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/api/trading/market/{market_id}/orders")
+        super().__init__(socket, "/api/trading/market/{market_id}/trades")
     
-    def for_market(self, market_id: str) -> 'MarketOrdersSubscription':
+    def for_market(self, market_id: str) -> 'MarketTradesSubscription':
         """Create a subscription for a specific market's orders.
         
         Args:
             market_id: The ID of the market.
             
         Returns:
-            A subscription object for the specified market orders.
+            A subscription object for the specified market trades.
         """
-        return MarketOrdersSubscription(self.socket, market_id)
+        return MarketTradesSubscription(self.socket, market_id)
 
 class MarketDataSubscription:
     """Manages a subscription to market data for a specific market."""
@@ -137,11 +137,11 @@ class MarketDataSubscription:
         """Unsubscribe from market data."""
         self.socket.send_unsubscribe(channel=self.path)
 
-class MarketOrdersSubscription:
-    """Manages a subscription to market orders for a specific market."""
+class MarketTradesSubscription:
+    """Manages a subscription to market trades for a specific market."""
     
     def __init__(self, socket: 'ReyaSocket', market_id: str):
-        """Initialize a market orders subscription.
+        """Initialize a market trades subscription.
         
         Args:
             socket: The WebSocket connection to use for this subscription.
@@ -149,10 +149,10 @@ class MarketOrdersSubscription:
         """
         self.socket = socket
         self.market_id = market_id
-        self.path = f"/api/trading/market/{market_id}/orders"
+        self.path = f"/api/trading/market/{market_id}/trades"
     
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to market orders.
+        """Subscribe to market trades.
         
         Args:
             batched: Whether to receive updates in batches.
@@ -160,5 +160,5 @@ class MarketOrdersSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
     
     def unsubscribe(self) -> None:
-        """Unsubscribe from market orders."""
+        """Unsubscribe from market trades."""
         self.socket.send_unsubscribe(channel=self.path)

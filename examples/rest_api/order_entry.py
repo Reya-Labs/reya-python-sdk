@@ -4,7 +4,7 @@ Comprehensive example of creating different types of orders with the Reya Tradin
 
 This example demonstrates all supported order types:
 - IOC (Immediate or Cancel) Market Orders
-- GTC (Good Till Cancel) Limit Orders 
+- GTC (Good Till Cancel) Limit Orders
 - Stop Loss (SL) Orders
 - Take Profit (TP) Orders
 - Order Cancellation
@@ -229,7 +229,7 @@ async def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
     print_separator("TESTING ORDER CANCELLATION")
 
     valid_order_ids = [oid for oid in order_ids if oid is not None]
-    
+
     if not valid_order_ids:
         logger.warning("⚠️  No valid order IDs available for cancellation testing")
         return
@@ -245,24 +245,24 @@ async def test_order_cancellation(client: ReyaTradingClient, order_ids: list):
 async def test_order_retrieval(client: ReyaTradingClient):
     """Test retrieving orders and positions asynchronously."""
     print_separator("TESTING ORDER AND POSITION RETRIEVAL")
-    
+
     try:
         # Get trades
         logger.info("Retrieving trades...")
         trades = await client.get_trades()
         logger.info(f"📊 Found {len(trades.get('data', []))} trades")
-        
+
         # Get open orders
         logger.info("Retrieving open orders...")
         open_orders = await client.get_open_orders()
         logger.info(f"📊 Found {len(open_orders)} open orders")
-        
+
         # Get positions
         logger.info("Retrieving positions...")
         positions = await client.get_positions()
         data = positions.get("data", positions) if isinstance(positions, dict) else (positions or [])
         logger.info(f"📊 Found {len(data)} positions")
-            
+
     except Exception as e:
         logger.error(f"❌ Error retrieving orders/positions: {e}")
 
@@ -270,19 +270,19 @@ async def test_order_retrieval(client: ReyaTradingClient):
 async def main():
     """Run comprehensive order testing asynchronously."""
     logger.info("🚀 Starting comprehensive Reya DEX order testing...")
-    
+
     # Load environment variables
     load_dotenv()
-    
+
     # Verify required environment variables
     required_vars = ['PRIVATE_KEY', 'ACCOUNT_ID']
     missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
+
     if missing_vars:
         logger.error(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
         logger.error("Please check your .env file and ensure all required variables are set.")
         return
-    
+
     try:
         # Create a client instance
         client = ReyaTradingClient()
@@ -291,10 +291,10 @@ async def main():
         logger.info(f"   Chain ID: {client.config.chain_id}")
         logger.info(f"   API URL: {client.config.api_url}")
         logger.info(f"   Wallet: {client.wallet_address}")
-        
+
         # Collect order IDs for cancellation testing
         all_order_ids = []
-        
+
         # Test 1: IOC Limit Orders
         await test_ioc_limit_orders(client)
 
@@ -316,12 +316,12 @@ async def main():
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
         await test_order_cancellation(client, all_order_ids)
-        
+
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")
         logger.info("💡 Review the logs above to see results for each order type.")
         logger.info("📝 Note: Some orders may fail due to market conditions, insufficient balance, or other constraints.")
-        
+
     except Exception as e:
         logger.error(f"❌ Error during testing: {e}")
         raise
