@@ -77,26 +77,24 @@ async def test_ioc_limit_orders(client: ReyaTradingClient):
     response = await client.create_limit_order(
         market_id=1,
         is_buy=True,
-        price="3690",  # Max price willing to pay
+        price="40000",  # Max price willing to pay
         size="0.01",  # Buy 0.1 units
         order_type=order_type,
         reduce_only=False
     )
     handle_order_response("IOC Limit Buy", response)
-    await asyncio.sleep(1)
 
     # Test sell limit order
     logger.info("Creating IOC limit sell order...")
     response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
-        price="3600",  # Min price willing to accept
+        price="20",  # Min price willing to accept
         size="0.01",  # Sell 0.1 units (negative size)
         order_type=order_type,
         reduce_only=False,
     )
     handle_order_response("IOC Limit Sell", response)
-    await asyncio.sleep(1)
 
     # Test reduce-only limit order
     # logger.info("Creating reduce-only IOC limit order...")
@@ -127,14 +125,13 @@ async def test_gtc_limit_orders(client: ReyaTradingClient):
         order_type=order_type,
     )
     buy_order_response = handle_order_response("GTC Limit Buy", response)
-    await asyncio.sleep(1)
 
     # Test sell limit order
     logger.info("Creating GTC limit sell order...")
     response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
-        price="100",
+        price="40000",
         size="0.01",
         order_type=order_type,
     )
@@ -166,7 +163,6 @@ async def test_stop_loss_orders(client: ReyaTradingClient):
         price="1000",  # Execute at minimum $46,500
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
-    await asyncio.sleep(1)
 
     # Test stop loss for short position (buy when price rises)
     logger.info("Creating stop loss for short position...")
@@ -204,7 +200,6 @@ async def test_take_profit_orders(client: ReyaTradingClient):
         price="10000",  # Execute at minimum $54,500
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
-    await asyncio.sleep(1)
 
     # Test take profit for short position (buy when price drops)
     logger.info("Creating take profit for short position...")
@@ -298,31 +293,26 @@ async def main():
         logger.info(f"   Wallet: {client.wallet_address}")
         
         # Collect order IDs for cancellation testing
-        all_order_ids = ["f0145eaa-ff7c-4d6c-a31f-0cc5f7f2a073"]
+        all_order_ids = []
         
         # Test 1: IOC Limit Orders
         await test_ioc_limit_orders(client)
-        await asyncio.sleep(2)
-        
+
         # Test 2: GTC Limit Orders
         buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
         all_order_ids.extend([buy_limit_id, sell_limit_id])
-        await asyncio.sleep(2)
-        
+
         # Test 3: Stop Loss Orders
         long_sl_id, short_sl_id = await test_stop_loss_orders(client)
         all_order_ids.extend([long_sl_id, short_sl_id])
-        await asyncio.sleep(2)
-        
+
         # Test 4: Take Profit Orders
         long_tp_id, short_tp_id = await test_take_profit_orders(client)
         all_order_ids.extend([long_tp_id, short_tp_id])
-        await asyncio.sleep(2)
-        
+
         # Test 5: Order Retrieval
         await test_order_retrieval(client)
-        await asyncio.sleep(2)
-        
+
         # Test 6: Order Cancellation (optional)
         # Uncomment the next line to test order cancellation
         await test_order_cancellation(client, all_order_ids)
