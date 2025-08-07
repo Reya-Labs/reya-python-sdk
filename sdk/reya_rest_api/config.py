@@ -25,7 +25,7 @@ class TradingConfig:
 
     @property
     def dex_id(self) -> int:
-        """Get DEX ID based on chain ID"""
+        """Get DEX ID"""
         return REYA_DEX_ID
     
     @property
