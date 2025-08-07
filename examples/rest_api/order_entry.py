@@ -122,8 +122,8 @@ async def test_gtc_limit_orders(client: ReyaTradingClient):
     response = await client.create_limit_order(
         market_id=1,
         is_buy=True,
-        price="10",  # Buy at or below $45,000
-        size="1",
+        price="10",
+        size="0.01",
         order_type=order_type,
     )
     buy_order_response = handle_order_response("GTC Limit Buy", response)
@@ -134,8 +134,8 @@ async def test_gtc_limit_orders(client: ReyaTradingClient):
     response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
-        price="55000",  # Sell at or above $55,000
-        size="1",
+        price="100",
+        size="0.01",
         order_type=order_type,
     )
     sell_order_response = handle_order_response("GTC Limit Sell", response)

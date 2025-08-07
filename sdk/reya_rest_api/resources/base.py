@@ -2,10 +2,10 @@
 Base resource class for Reya Trading API resources.
 """
 import logging
-import asyncio
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 import httpx
 
+from sdk import SDK_VERSION
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 
@@ -23,6 +23,10 @@ class BaseResource:
         """
         self.config = config
         self.api_url = config.api_url
+        self.headers = {
+            "X-SDK-Version": f"reya-python-sdk/{SDK_VERSION}",
+            "User-Agent": f"reya-python-sdk/{SDK_VERSION}",
+        }
         
         # Create signature generator if not provided
         if signature_generator is None and config.private_key:
@@ -91,7 +95,7 @@ class BaseResource:
         url = self._get_endpoint_url(endpoint)
         self.logger.debug(f"GET {url} with params: {params}")
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers=self.headers) as client:
             response = await client.get(url, params=params)
             return await self._handle_response(response, f"GET {endpoint} failed")
         
@@ -115,6 +119,6 @@ class BaseResource:
         url = self._get_endpoint_url(endpoint)
         self.logger.debug(f"POST {url} with data: {data}")
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers=self.headers) as client:
             response = await client.post(url, json=data, headers=headers)
             return await self._handle_response(response, f"POST {endpoint} failed")
