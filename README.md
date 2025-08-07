@@ -71,7 +71,7 @@ pipx install poetry
 
 ### Setting up with Poetry
 
-> **Note**: If you want `poetry` to create the virtual environment in the project directory, run `poetry config virtualenvs.in-project true`. This tells Poetry to create the .venv/ folder inside each project directory instead of the default global cache `(usually in ~/.cache/pypoetry/virtualenvs/...)`.
+> **Note**: If you want `poetry` to create the virtual environment in the project directory, run `poetry config virtualenvs.in-project true`. This tells Poetry to create the .venv/ folder inside each project directory instead of the default global cache.
 
 Follow these steps to set up your development environment:
 
