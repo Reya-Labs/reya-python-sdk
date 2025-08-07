@@ -260,30 +260,30 @@ The WebSocket API client is organized around resources:
 ```
 ReyaSocket
 ├── market
-│   ├── all_markets                 # /api/trading/markets/data
+│   ├── all_markets                      # /api/trading/markets/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── market_data(market_id)      # /api/trading/market/:marketId/data
+│   ├── market_data(market_id)          # /api/trading/market/:marketId/data
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   └── market_orders(market_id)    # /api/trading/market/:marketId/orders
+│   └── market_orders(market_id)        # /api/trading/market/:marketId/orders
 │       ├── subscribe()
 │       └── unsubscribe()
-└── wallet
-    ├── positions(address)          # /api/trading/wallet/:address/positions
-    │   ├── subscribe()
-    │   └── unsubscribe()
-    ├── orders(address)             # /api/trading/wallet/:address/orders
-    │   ├── subscribe()
-    │   └── unsubscribe()
-    ├── balances(address)           # /api/trading/wallet/:address/accounts/balances
-    │   ├── subscribe()
-    │   └── unsubscribe()
-    └── open_orders(address)        # /api/trading/wallet/:address/openOrders
-        ├── subscribe()
-        └── unsubscribe()
+├── wallet
+│   ├── positions(address)              # /api/trading/wallet/:address/positions
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   ├── orders(address)                 # /api/trading/wallet/:address/orders
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   ├── balances(address)               # /api/trading/wallet/:address/accounts/balances
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   └── open_orders(address)            # /api/trading/wallet/:address/openOrders
+│       ├── subscribe()
+│       └── unsubscribe()
 └── prices
-    └── asset_pair_price(asset_pair_id)  # /api/trading/prices/:assetPairId
+    └── asset_pair_price(asset_pair_id) # /api/trading/prices/:assetPairId
         ├── subscribe()
         └── unsubscribe()
 ```
