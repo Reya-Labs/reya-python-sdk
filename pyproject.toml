@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "reya-python-sdk"
-version = "0.1.0"
+version = "1.0.0"           # Keep in sync with sdk/__init__.py
 description = "SDK for interacting with Reya Labs APIs"
 authors = ["Reya Labs"]
 readme = "README.md"

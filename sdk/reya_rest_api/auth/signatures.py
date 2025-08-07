@@ -6,7 +6,7 @@ and message signatures for order cancellation.
 """
 import time
 import json
-from typing import Union, Optional
+from typing import Optional
 from decimal import Decimal
 from eth_abi import encode
 
@@ -14,7 +14,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.constants.enums import ConditionalOrderType, ConditionalOrderStatus, OrdersGatewayOrderType
+from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus, OrdersGatewayOrderType
 
 
 class SignatureGenerator:
@@ -33,14 +33,6 @@ class SignatureGenerator:
         
         if not self._private_key:
             raise ValueError("Private key is required for signing")
-        
-        self._orders_gateway_address = (
-            config.orders_gateway_address or 
-            config.default_orders_gateway_address
-        )
-        
-        # Conditional orders use the same address for now
-        self._conditional_orders_address = config.default_conditional_orders_address
 
         # Calculate public address from private key
         self._public_address = Account.from_key(self._private_key).address
@@ -156,7 +148,7 @@ class SignatureGenerator:
         domain = {
             "name": "Reya",
             "version": "1",
-            "verifyingContract": self._conditional_orders_address
+            "verifyingContract": self.config.default_orders_gateway_address
         }
         
         # Define the message types for EIP-712 (conditional order format)
