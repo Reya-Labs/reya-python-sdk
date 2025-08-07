@@ -77,8 +77,8 @@ async def test_ioc_limit_orders(client: ReyaTradingClient):
     response = await client.create_limit_order(
         market_id=1,
         is_buy=True,
-        price="40000",  # Max price willing to pay
-        size="0.01",  # Buy 0.1 units
+        price="40000",
+        size="0.02",
         order_type=order_type,
         reduce_only=False
     )
@@ -89,24 +89,24 @@ async def test_ioc_limit_orders(client: ReyaTradingClient):
     response = await client.create_limit_order(
         market_id=1,
         is_buy=False,
-        price="20",  # Min price willing to accept
-        size="0.01",  # Sell 0.1 units (negative size)
+        price="20",
+        size="0.01",
         order_type=order_type,
         reduce_only=False,
     )
     handle_order_response("IOC Limit Sell", response)
 
-    # Test reduce-only limit order
-    # logger.info("Creating reduce-only IOC limit order...")
-    # response = await client.create_limit_order(
-    #     market_id=1,
-    #     is_buy=False,
-    #     price="45000",
-    #     size="0.01",  # Reduce position by 0.05 units
-    #     order_type=order_type,
-    #     reduce_only=True
-    # )
-    # handle_order_response("IOC Reduce-Only Limit", response)
+    #Test reduce-only limit order
+    logger.info("Creating reduce-only IOC limit order...")
+    response = await client.create_limit_order(
+         market_id=1,
+         is_buy=False,
+         price="20",
+         size="0.01",
+         order_type=order_type,
+         reduce_only=True
+    )
+    handle_order_response("IOC Reduce-Only Limit", response)
 
 async def test_gtc_limit_orders(client: ReyaTradingClient):
     """Test GTC (Good Till Cancel) limit orders asynchronously."""
@@ -158,9 +158,9 @@ async def test_stop_loss_orders(client: ReyaTradingClient):
     logger.info("Creating stop loss for long position...")
     response = await client.create_stop_loss_order(
         market_id=1,
-        is_buy=False, # Sell to close long position
-        trigger_price="1000",  # Trigger when price drops to $47,000
-        price="1000",  # Execute at minimum $46,500
+        is_buy=False,
+        trigger_price="1000",
+        price="1000",
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
 
@@ -168,9 +168,9 @@ async def test_stop_loss_orders(client: ReyaTradingClient):
     logger.info("Creating stop loss for short position...")
     response = await client.create_stop_loss_order(
         market_id=1,
-        is_buy=True, # Buy to close short position
-        trigger_price="9000",  # Trigger when price rises to $53,000
-        price="9000",  # Execute at maximum $53,500
+        is_buy=True,
+        trigger_price="9000",
+        price="9000",
     )
     short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
 
@@ -195,9 +195,9 @@ async def test_take_profit_orders(client: ReyaTradingClient):
     logger.info("Creating take profit for long position...")
     response = await client.create_take_profit_order(
         market_id=1,
-        is_buy=False,  # Sell to close long position
-        trigger_price="10000",  # Trigger when price rises to $55,000
-        price="10000",  # Execute at minimum $54,500
+        is_buy=False,
+        trigger_price="10000",
+        price="10000",
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
 
@@ -205,9 +205,9 @@ async def test_take_profit_orders(client: ReyaTradingClient):
     logger.info("Creating take profit for short position...")
     response = await client.create_take_profit_order(
         market_id=1,
-        is_buy=True,  # Buy to close short position
-        trigger_price="1500",  # Trigger when price drops to $45,000
-        price="1500",  # Execute at maximum $45,500
+        is_buy=True,
+        trigger_price="1500",
+        price="1500",
     )
     short_tp_response = handle_order_response("Take Profit (Short Position)", response)
 
