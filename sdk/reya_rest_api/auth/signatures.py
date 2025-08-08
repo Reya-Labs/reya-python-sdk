@@ -17,6 +17,8 @@ from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus, OrdersGatewayOrderType
 
 
+DEFAULT_DEADLINE_MS = 5000
+
 class SignatureGenerator:
     """Generate signatures for Reya Trading API requests."""
 
@@ -37,11 +39,11 @@ class SignatureGenerator:
         # Calculate public address from private key
         self._public_address = Account.from_key(self._private_key).address
     
-    def get_deadline(self, expires_after: Optional[int] = None) -> int:
+    def get_default_expires_after(self, expires_after: Optional[int] = None) -> int:
         """
         Returns expires_after if given, otherwise now (ms) + 5s.
         """
-        return expires_after if expires_after is not None else int(time.time() * 1000) + 5000
+        return expires_after if expires_after is not None else int(time.time() * 1000) + DEFAULT_DEADLINE_MS
 
     def scale(self, decimals: int):
         """Returns a function that scales a number (str, int, float, or Decimal) to an integer."""

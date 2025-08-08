@@ -65,7 +65,7 @@ class OrdersResource(BaseResource):
 
         # Generate nonce and deadline
         nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
-        deadline = self.signature_generator.get_deadline(expires_after) if order_type.limit.time_in_force == TimeInForce.IOC else CONDITIONAL_ORDER_DEADLINE
+        deadline = self.signature_generator.get_default_expires_after(expires_after) if order_type.limit.time_in_force == TimeInForce.IOC else CONDITIONAL_ORDER_DEADLINE
 
         # Set expires_after to deadline if user did not provide it and the order is IOC
         if expires_after is None and order_type.limit.time_in_force == TimeInForce.IOC:
