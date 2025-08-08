@@ -3,21 +3,22 @@ Assets resource for Reya Trading API.
 
 This module provides asset-related functionality.
 """
-from typing import Dict, Any
+
+from typing import Any, Dict
 
 from sdk.reya_rest_api.resources.base import BaseResource
 
 
 class AssetsResource(BaseResource):
     """Resource for asset-related API endpoints."""
-    
-    async def get_assets(self) -> Dict[str, Any]:
+
+    async def get_assets(self) -> dict[str, Any]:
         """
         Get all assets asynchronously.
-        
+
         Returns:
             List of assets and their information
-            
+
         Raises:
             ValueError: If the API returns an error
         """

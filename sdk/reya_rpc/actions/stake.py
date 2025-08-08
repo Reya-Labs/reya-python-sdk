@@ -1,6 +1,7 @@
-from web3 import Web3
-from hexbytes import HexBytes
 from dataclasses import dataclass
+
+from hexbytes import HexBytes
+from web3 import Web3
 
 
 @dataclass
@@ -30,9 +31,7 @@ def stake(config: dict, params: StakingParams):
     rusd = config["w3contracts"]["rusd"]
 
     # Execute the transaction to approve rUSD to be spent by the passive pool contract
-    tx_hash = rusd.functions.approve(
-        passive_pool.address, params.token_amount
-    ).transact({"from": account.address})
+    tx_hash = rusd.functions.approve(passive_pool.address, params.token_amount).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Approved rUSD to core: {tx_receipt.transactionHash.hex()}")
 
@@ -52,15 +51,11 @@ def stake(config: dict, params: StakingParams):
     ).hex()
 
     # Filter logs for the expected event
-    filtered_logs = [
-        log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)
-    ]
+    filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
-        raise Exception(
-            "Failed to decode transaction receipt for staking to passive pool"
-        )
+        raise Exception("Failed to decode transaction receipt for staking to passive pool")
 
     # Decode event log to extract the received liquidity shares amount
     event = passive_pool.events.ShareBalanceUpdated().process_log(filtered_logs[0])

@@ -1,6 +1,7 @@
-from web3 import Web3
-from hexbytes import HexBytes
 from dataclasses import dataclass
+
+from hexbytes import HexBytes
+from web3 import Web3
 
 
 @dataclass
@@ -44,15 +45,11 @@ def unstake(config: dict, params: UnstakingParams):
     ).hex()
 
     # Filter logs for the expected event
-    filtered_logs = [
-        log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)
-    ]
+    filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
-        raise Exception(
-            "Failed to decode transaction receipt for staking to passive pool"
-        )
+        raise Exception("Failed to decode transaction receipt for staking to passive pool")
 
     # Decode event log to extract the received rUSD amount
     event = passive_pool.events.ShareBalanceUpdated().process_log(filtered_logs[0])

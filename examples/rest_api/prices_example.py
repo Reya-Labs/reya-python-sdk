@@ -5,6 +5,7 @@ Before running this example, ensure you have a .env file with the following vari
 - API_URL: (optional) The API URL to use
 """
 import asyncio
+
 from dotenv import load_dotenv
 
 from sdk.reya_rest_api import ReyaTradingClient
@@ -14,17 +15,17 @@ async def main():
     """Run the example to get price information asynchronously."""
     # Load environment variables
     load_dotenv()
-    
+
     # Create a client instance with configuration from environment variables
     client = ReyaTradingClient()
-    
+
     # Get all prices
     print("\n--- Getting all prices ---")
-    
+
     try:
         prices = await client.prices.get_prices()
         print(f"Retrieved {len(prices)} price entries")
-        
+
         # Print some sample price entries
         if prices:
             # Get a few keys as samples
@@ -32,7 +33,7 @@ async def main():
             print("\nSample price entries:")
             for key in sample_keys:
                 print(f"{key}: {prices[key]}")
-        
+
         # Extract a specific price from the prices response instead of making a separate API call
         # Choose an existing key from the response
         if "ETHUSDMARK" in prices:
@@ -47,7 +48,7 @@ async def main():
                     print(f"Oracle price in USD: ${oracle_price:.2f}")
                 except ValueError:
                     print(f"Could not convert price value: {oracle_price_wei}")
-            
+
     except Exception as e:
         print(f"Error retrieving prices information: {e}")
 

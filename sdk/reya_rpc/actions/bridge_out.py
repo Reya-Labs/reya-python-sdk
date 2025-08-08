@@ -1,5 +1,5 @@
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 
 
 @dataclass
@@ -51,6 +51,7 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
         socket_msg_gas_limit=socket_msg_gas_limit,
     )
 
+
 def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
     """
     Bridges rUSD from Reya Cronos to Arbitrum Sepolia.
@@ -83,6 +84,7 @@ def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
         controller_address=controller_address,
         socket_msg_gas_limit=socket_msg_gas_limit,
     )
+
 
 def bridge_out(
     config: dict,
@@ -129,9 +131,7 @@ def bridge_out(
         raise Exception("Socket fee is higher than maximum allowed amount")
 
     # Execute the transaction to approve rUSD to be spent by the periphery
-    tx_hash = rusd.functions.approve(periphery.address, params.amount).transact(
-        {"from": account.address}
-    )
+    tx_hash = rusd.functions.approve(periphery.address, params.amount).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Approved rUSD to periphery: {tx_receipt.transactionHash.hex()}")
 

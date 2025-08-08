@@ -4,11 +4,13 @@ def execute_core_commands(config, account_id: int, commands: list):
     core = config["w3contracts"]["core"]
 
     # Build the transaction
-    tx = core.functions.execute(account_id, commands).build_transaction({
-        "from": account.address,
-        "nonce": w3.eth.get_transaction_count(account.address),
-        "chainId": config["chain_id"],
-    })
+    tx = core.functions.execute(account_id, commands).build_transaction(
+        {
+            "from": account.address,
+            "nonce": w3.eth.get_transaction_count(account.address),
+            "chainId": config["chain_id"],
+        }
+    )
 
     # Sign the transaction
     signed_tx = w3.eth.account.sign_transaction(tx, private_key=account.key)

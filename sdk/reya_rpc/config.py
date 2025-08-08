@@ -1,8 +1,9 @@
 import json
 import os
+
+from dotenv import load_dotenv
 from web3 import Web3
 from web3.middleware import signing
-from dotenv import load_dotenv
 
 """Gathering configuration from environment variables and ABIs"""
 
@@ -40,15 +41,13 @@ def get_config() -> dict:
         periphery_address = "0x94ccAe812f1647696754412082dd6684C2366A7f"
         usdc_address = "0xfA27c7c6051344263533cc365274d9569b0272A8"
     else:
-        raise Exception(
-            "Invalid chain id! It's neither 1729 (Reya Network) nor 89346162 (Reya Cronos)."
-        )
+        raise Exception("Invalid chain id! It's neither 1729 (Reya Network) nor 89346162 (Reya Cronos).")
 
     # Get the directory where this file is located
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Build path to the abis directory
     abis_dir = os.path.join(current_dir, "abis")
-    
+
     with open(os.path.join(abis_dir, "CoreProxy.json")) as f:
         core_abi = json.load(f)
 
@@ -73,14 +72,12 @@ def get_config() -> dict:
     # Configure Web3 with modern approach for v7.x
     w3 = Web3(Web3.HTTPProvider(rpc_url))
     w3account = w3.eth.account.from_key(private_key)
-    
+
     # Set default account
     w3.eth.default_account = w3account.address
     w3core = w3.eth.contract(address=core_address, abi=core_abi)
     w3multicall = w3.eth.contract(address=multicall_address, abi=multicall_abi)
-    w3oracle_adapter = w3.eth.contract(
-        address=oracle_adapter_address, abi=oracle_adapter_abi
-    )
+    w3oracle_adapter = w3.eth.contract(address=oracle_adapter_address, abi=oracle_adapter_abi)
     w3passive_perp = w3.eth.contract(address=passive_perp_address, abi=passive_perp_abi)
     w3passive_pool = w3.eth.contract(address=passive_pool_address, abi=passive_pool_abi)
     w3periphery = w3.eth.contract(address=periphery_address, abi=periphery_abi)

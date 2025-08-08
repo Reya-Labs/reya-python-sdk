@@ -1,7 +1,9 @@
-from web3 import Web3
-from hexbytes import HexBytes
 from dataclasses import dataclass
+
 from eth_abi import encode
+from hexbytes import HexBytes
+from web3 import Web3
+
 from sdk.reya_rpc.types import CommandType
 from sdk.reya_rpc.utils.execute_core_commands import execute_core_commands
 
@@ -37,12 +39,8 @@ def trade(config: dict, params: TradeParams):
     counterparty_ids: list = [passive_pool_account_id]
 
     # Encode trade parameters for the contract call
-    trade_inputs_encoded = encode(
-        ["int256", "uint256"], [params.base, params.price_limit]
-    )
-    match_order_inputs_encoded = encode(
-        ["uint128[]", "bytes"], [counterparty_ids, trade_inputs_encoded]
-    )
+    trade_inputs_encoded = encode(["int256", "uint256"], [params.base, params.price_limit])
+    match_order_inputs_encoded = encode(["uint128[]", "bytes"], [counterparty_ids, trade_inputs_encoded])
 
     # Build the trade command to be executed using core
     command = (
@@ -66,9 +64,7 @@ def trade(config: dict, params: TradeParams):
     ).hex()
 
     # Filter logs for the expected event
-    filtered_logs = [
-        log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)
-    ]
+    filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:

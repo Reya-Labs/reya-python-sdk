@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+
 from eth_abi import encode
+
 from sdk.reya_rpc.types import CommandType
 from sdk.reya_rpc.utils.execute_core_commands import execute_core_commands
 
@@ -40,9 +42,7 @@ def transfer(config: dict, params: TransferParams):
 
     # Execute the transfer transaction
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(
-        f"Transferred rUSD between margin accounts: {tx_receipt.transactionHash.hex()}"
-    )
+    print(f"Transferred rUSD between margin accounts: {tx_receipt.transactionHash.hex()}")
 
     # Return transaction receipt
     return {

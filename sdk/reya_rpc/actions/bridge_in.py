@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
+
 from web3 import Web3
 from web3.middleware import signing
 
@@ -50,6 +51,7 @@ def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
         vault_address=vault_address,
         connector_address=connector_address,
     )
+
 
 def bridge_in_from_arbitrum_sepolia(config: dict, params: BridgeInParams):
     """
@@ -136,9 +138,7 @@ def bridge_in(
     chain_usdc = w3.eth.contract(address=chain_usdc_address, abi=erc20_abi)
 
     # Execute the transaction to approve USDC to be spent by the vault contract
-    tx_hash = chain_usdc.functions.approve(vault_address, params.amount).transact(
-        {"from": account_address}
-    )
+    tx_hash = chain_usdc.functions.approve(vault_address, params.amount).transact({"from": account_address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Approved USDC to vault: {tx_receipt.transactionHash.hex()}")
 
@@ -146,9 +146,7 @@ def bridge_in(
     periphery = config["w3contracts"]["periphery"]
     reya_usdc = config["w3contracts"]["usdc"]
     socket_bridge_options = Web3.to_bytes(hexstr="0x")
-    periphery_calldata = periphery.encodeABI(
-        fn_name="deposit", args=[(account_address, reya_usdc.address)]
-    )
+    periphery_calldata = periphery.encodeABI(fn_name="deposit", args=[(account_address, reya_usdc.address)])
 
     # Execute the bridging initiation transaction
     tx_hash = vault.functions.bridge(

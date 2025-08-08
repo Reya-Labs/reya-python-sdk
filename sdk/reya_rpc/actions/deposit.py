@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+
 from eth_abi import encode
+
 from sdk.reya_rpc.types import CommandType
 from sdk.reya_rpc.utils.execute_core_commands import execute_core_commands
 
@@ -31,9 +33,7 @@ def deposit(config: dict, params: DepositParams):
     rusd = config["w3contracts"]["rusd"]
 
     # Execute the transaction to approve rUSD to be spent by the core contract
-    tx_hash = rusd.functions.approve(core.address, params.amount).transact(
-        {"from": account.address}
-    )
+    tx_hash = rusd.functions.approve(core.address, params.amount).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Approved rUSD to core: {tx_receipt.transactionHash.hex()}")
 

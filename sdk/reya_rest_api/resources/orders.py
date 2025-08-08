@@ -3,23 +3,34 @@ Orders resource for Reya Trading API.
 
 This module provides resources for creating and managing orders.
 """
+
+from typing import Optional, Union
+
+import logging
 import time
 from decimal import Decimal
-from typing import Union, Optional
-import logging
 
+from sdk.reya_rest_api.constants.enums import (
+    Limit,
+    LimitOrderType,
+    OrdersGatewayOrderType,
+    TimeInForce,
+    TpslType,
+    Trigger,
+    TriggerOrderType,
+)
 from sdk.reya_rest_api.models.orders import (
+    CancelOrderRequest,
+    CancelOrderResponse,
+    CreateOrderResponse,
     LimitOrderRequest,
     TriggerOrderRequest,
-    CancelOrderRequest,
-    CreateOrderResponse,
-    CancelOrderResponse
 )
-from sdk.reya_rest_api.constants.enums import TpslType, OrdersGatewayOrderType, LimitOrderType, TimeInForce, Limit, TriggerOrderType, Trigger
 from sdk.reya_rest_api.resources.base import BaseResource
 
 CONDITIONAL_ORDER_DEADLINE = 10**18
 BUY_TRIGGER_ORDER_PRICE_LIMIT = 100000000000000000000
+
 
 class OrdersResource(BaseResource):
     """Resource for managing orders."""
@@ -34,7 +45,7 @@ class OrdersResource(BaseResource):
         size: Decimal,
         order_type: LimitOrderType,
         reduce_only: bool,
-        expires_after: Optional[int] = None
+        expires_after: Optional[int] = None,
     ) -> CreateOrderResponse:
         """
         Create a limit order (IOC / GTC).
@@ -64,8 +75,14 @@ class OrdersResource(BaseResource):
             raise ValueError("Unexpected True value for parameter reduce_only for GTC orders")
 
         # Generate nonce and deadline
-        nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
-        deadline = self.signature_generator.get_default_expires_after(expires_after) if order_type.limit.time_in_force == TimeInForce.IOC else CONDITIONAL_ORDER_DEADLINE
+        nonce = self.signature_generator.create_orders_gateway_nonce(
+            self.config.account_id, market_id, int(time.time_ns() / 1000000)
+        )  # ms since epoch (int(time.time())
+        deadline = (
+            self.signature_generator.get_default_expires_after(expires_after)
+            if order_type.limit.time_in_force == TimeInForce.IOC
+            else CONDITIONAL_ORDER_DEADLINE
+        )
 
         # Set expires_after to deadline if user did not provide it and the order is IOC
         if expires_after is None and order_type.limit.time_in_force == TimeInForce.IOC:
@@ -101,7 +118,7 @@ class OrdersResource(BaseResource):
             signature=signature,
             nonce=nonce,
             signer_wallet=self.config.wallet_address,
-            expires_after=expires_after
+            expires_after=expires_after,
         )
 
         # Make the API request
@@ -141,16 +158,18 @@ class OrdersResource(BaseResource):
             raise ValueError("Private key is required for creating orders")
 
         # Set order type
-        order_type = OrdersGatewayOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
+        order_type = (
+            OrdersGatewayOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
+        )
 
         # Generate nonce and deadline
-        nonce = self.signature_generator.create_orders_gateway_nonce(self.config.account_id, market_id, int(time.time_ns() / 1000000))  # ms since epoch (int(time.time())
+        nonce = self.signature_generator.create_orders_gateway_nonce(
+            self.config.account_id, market_id, int(time.time_ns() / 1000000)
+        )  # ms since epoch (int(time.time())
         deadline = CONDITIONAL_ORDER_DEADLINE
 
         inputs = self.signature_generator.encode_inputs_trigger_order(
-            is_buy=is_buy,
-            trigger_price=trigger_price,
-            limit_price=limit_price
+            is_buy=is_buy, trigger_price=trigger_price, limit_price=limit_price
         )
 
         signature = self.signature_generator.sign_raw_order(
@@ -165,10 +184,7 @@ class OrdersResource(BaseResource):
         )
 
         # Create the trigger order type
-        trigger = Trigger(
-            trigger_px=str(trigger_price),
-            tpsl=trigger_type
-        )
+        trigger = Trigger(trigger_px=str(trigger_price), tpsl=trigger_type)
         order_type = TriggerOrderType(trigger=trigger)
 
         # Create the order request
@@ -183,7 +199,7 @@ class OrdersResource(BaseResource):
             order_type=order_type,
             nonce=nonce,
             signature=signature,
-            signer_wallet=self.config.wallet_address
+            signer_wallet=self.config.wallet_address,
         )
 
         # Make the API request
@@ -230,10 +246,7 @@ class OrdersResource(BaseResource):
         signature = self.signature_generator.sign_cancel_order(order_id)
 
         # Create the cancellation request
-        cancel_request = CancelOrderRequest(
-            order_id=order_id,
-            signature=signature
-        )
+        cancel_request = CancelOrderRequest(order_id=order_id, signature=signature)
 
         # Make the async API request
         endpoint = "api/trading/cancelOrder"
@@ -244,6 +257,8 @@ class OrdersResource(BaseResource):
 
     def get_limit_order_gateway_type(self, order_type: LimitOrderType, reduce_only: bool) -> OrdersGatewayOrderType:
         if order_type.limit.time_in_force == TimeInForce.IOC:
-            return OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if reduce_only else OrdersGatewayOrderType.MARKET_ORDER
+            return (
+                OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if reduce_only else OrdersGatewayOrderType.MARKET_ORDER
+            )
         else:
             return OrdersGatewayOrderType.LIMIT_ORDER

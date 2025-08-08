@@ -1,13 +1,14 @@
 """
 Data models for Reya Trading API.
 """
+
 from sdk.reya_rest_api.models.orders import (
-    OrderRequest,
-    LimitOrderRequest, 
-    TriggerOrderRequest,
     CancelOrderRequest,
+    CancelOrderResponse,
     CreateOrderResponse,
-    CancelOrderResponse
+    LimitOrderRequest,
+    OrderRequest,
+    TriggerOrderRequest,
 )
 
 __all__ = [
@@ -16,5 +17,5 @@ __all__ = [
     "TriggerOrderRequest",
     "CancelOrderRequest",
     "CreateOrderResponse",
-    "CancelOrderResponse"
+    "CancelOrderResponse",
 ]
