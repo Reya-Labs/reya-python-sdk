@@ -131,7 +131,7 @@ class OrdersResource(BaseResource):
             ValueError: If the API returns an error
         """
 
-        # Set very small or very large limi price, essentially making sure that SLTP orders are always fulfilled
+        # Set very small or very large limit price, essentially making sure that SLTP orders are always fulfilled
         if is_buy:
             limit_price = int(BUY_TRIGGER_ORDER_PRICE_LIMIT)
         else:
