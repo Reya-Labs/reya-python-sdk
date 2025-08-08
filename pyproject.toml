@@ -1,0 +1,38 @@
+[tool.poetry]
+name = "reya-python-sdk"
+version = "1.0.0"
+description = "SDK for interacting with Reya Labs APIs"
+authors = ["Reya Labs"]
+readme = "README.md"
+packages = [
+    {include = "examples"},
+    {include = "sdk"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+# Core dependencies
+web3 = "^7.12.1"
+eth-account = "^0.13.7"
+eth-abi = "^5.2.0"
+typing-extensions = "^4.14.1"
+python-dotenv = "^1.1.1"
+requests = "^2.32.4"
+httpx = "^0.28.1"
+websocket-client = "^1.8.0"
+tomli = "^2.0.1"
+
+# Development and testing
+types-requests = "^2.32.4.20250611"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.7.0"
+isort = "^5.12.0"
+mypy = "^1.7.0"
+flake8 = "^7.0.0"
