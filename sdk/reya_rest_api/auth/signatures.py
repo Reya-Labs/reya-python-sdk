@@ -37,10 +37,6 @@ class SignatureGenerator:
         # Calculate public address from private key
         self._public_address = Account.from_key(self._private_key).address
     
-    def get_signature_deadline(self) -> int:
-        """Get signature deadline."""
-        return 10 ** 18
-    
     def get_deadline(self, expires_after: Optional[int] = None) -> int:
         """
         Returns expires_after if given, otherwise now (ms) + 5s.
@@ -54,43 +50,34 @@ class SignatureGenerator:
             return int(Decimal(value) * factor)
         return _scale
     
-    def encode_inputs(
+    def encode_inputs_limit_order(
         self,
-        order_type: OrdersGatewayOrderType,
-        is_buy: Optional[bool] = None,
-        trigger_price: Optional[Decimal] = None,
-        order_base: Optional[Decimal] = None,
-        order_price_limit: Optional[Decimal] = None
+        is_buy: bool,
+        limit_price: Decimal,
+        order_base: Decimal,
     ) -> str:
-        """
-        Encode order inputs for signature based on the order type.
-
-        - LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER: ['int256', 'uint256'] → order_base (size), trigger_price (price)
-        - STOP_LOSS / TAKE_PROFIT: ['bool', 'uint256', 'uint256'] → is_buy, trigger_price, order_price_limit
-        """
-
         scaler = self.scale(18)
 
-        # STOP_LOSS / TAKE_PROFIT Orders
-        if order_type in (OrdersGatewayOrderType.STOP_LOSS, OrdersGatewayOrderType.TAKE_PROFIT):
-            if is_buy is None or trigger_price is None or order_price_limit is None:
-                raise ValueError("STOP_LOSS / TAKE_PROFIT require is_buy, trigger_price, and order_price_limit")
-            encoded = encode(
-                ['bool', 'uint256', 'uint256'],
-                [bool(is_buy), scaler(trigger_price), scaler(order_price_limit)]
-            )
-            return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
-
-        # LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER
-        if order_base is None or trigger_price is None or is_buy is None:
-            raise ValueError("LIMIT_ORDER / MARKET_ORDER / REDUCE_ONLY_MARKET_ORDER require is_buy, order_base and trigger_price")
-        
         # Negate order_base if it's a sell order
         signed_order_base = order_base if is_buy else -order_base
 
         encoded = encode(
             ['int256', 'uint256'],
-            [scaler(signed_order_base), scaler(trigger_price)]
+            [scaler(signed_order_base), scaler(limit_price)]
+        )
+        return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
+
+    def encode_inputs_trigger_order(
+            self,
+            is_buy: bool,
+            trigger_price: Decimal,
+            limit_price: Decimal
+    ) -> str:
+        scaler = self.scale(18)
+
+        encoded = encode(
+            ['bool', 'uint256', 'uint256'],
+            [bool(is_buy), scaler(trigger_price), scaler(limit_price)]
         )
         return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
@@ -195,54 +182,6 @@ class SignatureGenerator:
         )
         
         return signed_message.signature.hex() if signed_message.signature.hex().startswith("0x") else f"0x{signed_message.signature.hex()}"
-    
-    def sign_order(
-        self,
-        market_id: int,
-        order_type: OrdersGatewayOrderType,
-        nonce: int,
-        deadline: int,
-        is_buy: Optional[bool] = None,
-        price: Optional[Decimal] = None,
-        size: Optional[Decimal] = None,
-        order_price_limit: Optional[Decimal] = None,
-    ) -> str:
-        """
-        Sign an order (market, reduce-only market, limit, take profit, stop loss) using the Orders Gateway signature format.
-
-        Args:
-            market_id: The market ID for this order.
-            order_type: The type of the order (market, limit, stop loss, take profit, etc.).
-            nonce: Random nonce for signature.
-            is_buy: Whether this is a buy order.
-            price: Price for the order (used for market and limit orders).
-            size: Order size (positive for buy, negative for sell).
-            order_price_limit: Limit price for conditional orders.
-
-        Returns:
-            Hex-encoded signature.
-        """
-        
-        # Encode inputs based on order type
-        inputs = self.encode_inputs(
-            order_type=order_type,
-            is_buy=is_buy,
-            trigger_price=price,
-            order_base=size,
-            order_price_limit=order_price_limit,
-        )
-
-        # Generate signature
-        return self.sign_raw_order(
-            account_id=self.config.account_id,
-            market_id=market_id,
-            exchange_id=self.config.dex_id,
-            counterparty_account_ids=[self.config.pool_account_id],
-            order_type=order_type,
-            inputs=inputs,
-            deadline=deadline,
-            nonce=nonce,
-        )
     
     def sign_cancel_order(self, order_id: str) -> str:
         """
