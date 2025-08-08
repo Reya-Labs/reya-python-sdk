@@ -7,7 +7,7 @@ This package provides modules for interacting with different Reya services:
 - reya_rpc: For making RPC calls to Reya's blockchain services
 """
 
-SDK_VERSION = "1.0.0"  # Keep in sync with pyproject.toml
+SDK_VERSION = "1.0.1"  # Keep in sync with pyproject.toml
 
 from sdk.reya_rest_api import ReyaTradingClient, TradingConfig
 from sdk.reya_websocket import ReyaSocket

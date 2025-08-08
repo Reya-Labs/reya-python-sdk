@@ -177,7 +177,6 @@ class ReyaTradingClient:
         market_id: int,
         is_buy: bool,
         trigger_price: str,
-        price: str,
     ) -> CreateOrderResponse:
         """
         Create a take profit order asynchronously.
@@ -192,12 +191,11 @@ class ReyaTradingClient:
             API response for the order creation
         """
         
-        self.validate_inputs(trigger_price=trigger_price, price=price)
+        self.validate_inputs(trigger_price=trigger_price)
         response = await self.orders.create_trigger_order(
             market_id=market_id,
             is_buy=is_buy,
             trigger_price=Decimal(trigger_price),
-            price=Decimal(price),
             trigger_type=TpslType.TP
         )
         
@@ -208,7 +206,6 @@ class ReyaTradingClient:
         market_id: int,
         is_buy: bool,
         trigger_price: str,
-        price: str,
     ) -> CreateOrderResponse:
         """
         Create a stop loss order asynchronously.
@@ -223,12 +220,11 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
-        self.validate_inputs(trigger_price=trigger_price, price=price)
+        self.validate_inputs(trigger_price=trigger_price)
         response = await self.orders.create_trigger_order(
             market_id=market_id,
             is_buy=is_buy,
             trigger_price=Decimal(trigger_price),
-            price=Decimal(price),
             trigger_type=TpslType.SL
         )
         

@@ -160,7 +160,6 @@ async def test_stop_loss_orders(client: ReyaTradingClient):
         market_id=1,
         is_buy=False,
         trigger_price="1000",
-        price="1000",
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
 
@@ -170,7 +169,6 @@ async def test_stop_loss_orders(client: ReyaTradingClient):
         market_id=1,
         is_buy=True,
         trigger_price="9000",
-        price="9000",
     )
     short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
 
@@ -197,7 +195,6 @@ async def test_take_profit_orders(client: ReyaTradingClient):
         market_id=1,
         is_buy=False,
         trigger_price="10000",
-        price="10000",
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
 
@@ -207,7 +204,6 @@ async def test_take_profit_orders(client: ReyaTradingClient):
         market_id=1,
         is_buy=True,
         trigger_price="1500",
-        price="1500",
     )
     short_tp_response = handle_order_response("Take Profit (Short Position)", response)
 
