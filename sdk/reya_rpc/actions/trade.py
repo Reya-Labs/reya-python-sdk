@@ -54,7 +54,7 @@ def trade(config: dict, params: TradeParams):
 
     # Execute the trade transaction
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f"Executed trade: {tx_receipt.transactionHash.hex()}")
+    print(f"Executed trade: {tx_receipt['transactionHash'].hex()}")
 
     # Extract logs from the transaction receipt
     logs = tx_receipt["logs"]

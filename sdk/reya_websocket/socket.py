@@ -71,6 +71,9 @@ class ReyaSocket(websocket.WebSocketApp):
         self._wallet = WalletResource(self)
         self._prices = PricesResource(self)
 
+        # Initialize thread attribute
+        self._thread = None
+
         # Default handlers if none provided
         if on_open is None:
             on_open = self._default_on_open

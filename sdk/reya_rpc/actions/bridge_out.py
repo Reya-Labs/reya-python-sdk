@@ -104,6 +104,7 @@ def bridge_out(
         params (BridgeOutParams): Bridging parameters including rUSD amount and maximum fee limit.
         dest_chain_id (int): ID of the destination blockchain.
         connector_address (str): Address of the connector contract on the destination chain.
+        controller_address (str): Address of the Socket controller contract on the destination chain.
         socket_msg_gas_limit (int): Gas limit for the socket bridge transaction.
 
     Returns:

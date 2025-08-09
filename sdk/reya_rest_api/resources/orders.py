@@ -152,7 +152,6 @@ class OrdersResource(BaseResource):
             market_id: The market ID for this order
             is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
-            price: Limit price for the order
             trigger_type: Type of trigger order (TP or SL)
 
         Returns:
@@ -164,9 +163,9 @@ class OrdersResource(BaseResource):
 
         # Set very small or very large limit price, essentially making sure that SLTP orders are always fulfilled
         if is_buy:
-            limit_price = int(BUY_TRIGGER_ORDER_PRICE_LIMIT)
+            limit_price = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT)
         else:
-            limit_price = 0
+            limit_price = Decimal(0)
 
         if self.signature_generator is None:
             raise ValueError("Private key is required for creating orders")

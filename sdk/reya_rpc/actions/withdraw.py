@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from eth_abi import encode
+from web3.types import TxReceipt
 
 from sdk.reya_rpc.types import CommandType
 from sdk.reya_rpc.utils.execute_core_commands import execute_core_commands

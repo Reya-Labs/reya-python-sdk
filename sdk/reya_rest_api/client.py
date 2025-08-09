@@ -193,7 +193,6 @@ class ReyaTradingClient:
             market_id: The market ID for this order
             is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
-            price: Limit price for the order
 
         Returns:
             API response for the order creation
@@ -219,7 +218,6 @@ class ReyaTradingClient:
             market_id: The market ID for this order
             is_buy: Whether this is a buy order
             trigger_price: Price at which the order triggers
-            price: Limit price for the order
 
         Returns:
             API response for the order creation
