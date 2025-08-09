@@ -233,7 +233,7 @@ async def test_order_retrieval(client: ReyaTradingClient):
     # Get trades
     logger.info("Retrieving trades...")
     trades = await client.get_trades()
-    logger.info(f"📊 Found {len(trades.get('data', []))} trades")
+    logger.info(f"📊 Found {len(trades)} trades")
 
     # Get open orders
     logger.info("Retrieving open orders...")

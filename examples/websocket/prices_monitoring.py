@@ -119,7 +119,7 @@ async def main():
     ws.connect()
 
     # Start our concurrent task
-    task = asyncio.create_task(periodic_task())
+    asyncio.create_task(periodic_task())
 
     # Keep the main task running
     while True:

@@ -93,7 +93,7 @@ class WalletResource(BaseResource):
         """
         endpoint = f"api/trading/wallet/{wallet_address}/trades"
         response_data = await self._get(endpoint)
-        return response_data
+        return response_data.get("data", [])
 
     async def get_accounts(self, wallet_address: str) -> list[dict[str, Any]]:
         """

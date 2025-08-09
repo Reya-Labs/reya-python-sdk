@@ -80,7 +80,7 @@ class BaseResource:
 
         return data
 
-    async def _get(self, endpoint: str, params: Optional[dict[str, Any]] = None) -> list[Any]:
+    async def _get(self, endpoint: str, params: Optional[dict[str, Any]] = None) -> Any:
         """
         Make an async GET request to the API.
 
