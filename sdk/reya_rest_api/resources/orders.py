@@ -23,9 +23,6 @@ from sdk.reya_rest_api.models.orders import (
     CancelOrderResponse,
     CreateOrderResponse,
     LimitOrderRequest,
-    OrderDetails,
-    OrderIdentifiers,
-    OrderSignature,
     TriggerOrderRequest,
 )
 from sdk.reya_rest_api.resources.base import BaseResource
@@ -100,31 +97,19 @@ class OrdersResource(BaseResource):
         if self.config.wallet_address is None:
             raise ValueError("Wallet address is required for order creation")
 
-        identifiers = OrderIdentifiers(
+        return LimitOrderRequest(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-        )
-
-        details = OrderDetails(
             is_buy=is_buy,
             price=price,
             size=size,
             order_type=order_type,
             expires_after=expires_after,
             reduce_only=reduce_only,
-        )
-
-        signature_info = OrderSignature(
             signature=signature,
             nonce=nonce,
             signer_wallet=self.config.wallet_address,
-        )
-
-        return LimitOrderRequest(
-            identifiers=identifiers,
-            details=details,
-            signature_info=signature_info,
         )
 
     def _prepare_trigger_order_signature_data(
@@ -182,31 +167,19 @@ class OrdersResource(BaseResource):
         trigger = Trigger(trigger_px=str(trigger_price), tpsl=trigger_type)
         order_type = TriggerOrderType(trigger=trigger)
 
-        identifiers = OrderIdentifiers(
+        return TriggerOrderRequest(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-        )
-
-        details = OrderDetails(
             is_buy=is_buy,
-            price=Decimal(limit_price),
+            price=limit_price,
             size=Decimal("0"),
             order_type=order_type,
-            expires_after=None,
+            expires_after=CONDITIONAL_ORDER_DEADLINE,
             reduce_only=False,
-        )
-
-        signature_info = OrderSignature(
             signature=signature,
             nonce=nonce,
             signer_wallet=self.config.wallet_address,
-        )
-
-        return TriggerOrderRequest(
-            identifiers=identifiers,
-            details=details,
-            signature_info=signature_info,
         )
 
     async def create_limit_order(
