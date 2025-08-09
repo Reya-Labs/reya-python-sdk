@@ -85,7 +85,6 @@ class TriggerOrderRequest(OrderRequest):
             "exchangeId": self.identifiers.exchange_id,
             "isBuy": self.details.is_buy,
             "price": str(self.details.price),
-            "size": str(self.details.size),
             "reduceOnly": self.details.reduce_only,
             "type": self.details.order_type.to_dict(),
             "signature": self.signature_info.signature,
