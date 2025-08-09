@@ -1,6 +1,6 @@
 """Transaction utility functions for RPC actions."""
 
-from typing import Any, Tuple
+from typing import Any
 
 from hexbytes import HexBytes
 from web3 import Web3
@@ -8,16 +8,16 @@ from web3 import Web3
 from sdk.reya_rpc.exceptions import TransactionReceiptError
 
 
-def extract_share_balance_updated_event(tx_receipt: Any, passive_perp: Any) -> Tuple[int, int]:
+def extract_share_balance_updated_event(tx_receipt: Any, passive_perp: Any) -> tuple[int, int]:
     """Extract ShareBalanceUpdated event from transaction receipt.
-    
+
     Args:
         tx_receipt: Transaction receipt containing logs
         passive_perp: Passive perp contract instance
-        
+
     Returns:
         tuple: (shares_delta, balance_delta) extracted from the event
-        
+
     Raises:
         TransactionReceiptError: If event cannot be found or decoded
     """
@@ -40,5 +40,5 @@ def extract_share_balance_updated_event(tx_receipt: Any, passive_perp: Any) -> T
     event = passive_perp.events.ShareBalanceUpdated().process_log(filtered_logs[0])
     shares_delta = int(event["args"]["sharesDelta"])
     balance_delta = int(event["args"]["balanceDelta"])
-    
+
     return shares_delta, balance_delta
