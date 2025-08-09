@@ -9,6 +9,7 @@ from sdk.reya_rest_api.constants.enums import UnifiedOrderType
 @dataclass(frozen=True)
 class OrderRequest:
     """Base class for order requests with all necessary fields."""
+
     account_id: int
     market_id: int
     exchange_id: int
