@@ -12,7 +12,7 @@ from sdk.reya_rest_api.resources.base import BaseResource
 class MarketsResource(BaseResource):
     """Resource for market-related API endpoints."""
 
-    async def get_markets(self) -> dict[str, Any]:
+    async def get_markets(self) -> list[dict[str, Any]]:
         """
         Get all markets asynchronously.
 
@@ -26,7 +26,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_market(self, market_id: str) -> dict[str, Any]:
+    async def get_market(self, market_id: str) -> list[dict[str, Any]]:
         """
         Get market by ID asynchronously.
 
@@ -43,7 +43,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_markets_configuration(self) -> dict[str, Any]:
+    async def get_markets_configuration(self) -> list[dict[str, Any]]:
         """
         Get markets configuration asynchronously.
 
@@ -57,7 +57,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_markets_storage(self) -> dict[str, Any]:
+    async def get_markets_storage(self) -> list[dict[str, Any]]:
         """
         Get markets storage information asynchronously.
 
@@ -71,7 +71,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_markets_trackers(self) -> dict[str, Any]:
+    async def get_markets_trackers(self) -> list[dict[str, Any]]:
         """
         Get all market trackers asynchronously.
 
@@ -85,7 +85,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_market_trackers(self, market_id: str) -> dict[str, Any]:
+    async def get_market_trackers(self, market_id: str) -> list[dict[str, Any]]:
         """
         Get trackers for a specific market asynchronously.
 
@@ -102,7 +102,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_market_trades(self, market_id: str) -> dict[str, Any]:
+    async def get_market_trades(self, market_id: str) -> list[dict[str, Any]]:
         """
         Get trades for a specific market asynchronously.
 
@@ -119,7 +119,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_market_data(self, market_id: str) -> dict[str, Any]:
+    async def get_market_data(self, market_id: str) -> list[dict[str, Any]]:
         """
         Get data for a specific market asynchronously.
 
@@ -136,7 +136,7 @@ class MarketsResource(BaseResource):
         response_data = await self._get(endpoint)
         return response_data
 
-    async def get_markets_data(self) -> dict[str, Any]:
+    async def get_markets_data(self) -> list[dict[str, Any]]:
         """
         Get data for all markets asynchronously.
 

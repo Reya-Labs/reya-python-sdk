@@ -230,30 +230,27 @@ async def test_order_retrieval(client: ReyaTradingClient):
     """Test retrieving orders and positions asynchronously."""
     print_separator("TESTING ORDER AND POSITION RETRIEVAL")
 
-    try:
-        # Get trades
-        logger.info("Retrieving trades...")
-        trades = await client.get_trades()
-        logger.info(f"📊 Found {len(trades.get('data', []))} trades")
+    # Get trades
+    logger.info("Retrieving trades...")
+    trades = await client.get_trades()
+    logger.info(f"📊 Found {len(trades.get('data', []))} trades")
 
-        # Get open orders
-        logger.info("Retrieving open orders...")
-        open_orders = await client.get_open_orders()
-        logger.info(f"📊 Found {len(open_orders)} open orders")
+    # Get open orders
+    logger.info("Retrieving open orders...")
+    open_orders = await client.get_open_orders()
+    logger.info(f"📊 Found {len(open_orders)} open orders")
 
-        # Get positions
-        logger.info("Retrieving positions...")
-        positions = await client.get_positions()
-        data = positions.get("data", positions) if isinstance(positions, dict) else (positions or [])
-        logger.info(f"📊 Found {len(data)} positions")
-
-    except Exception as e:
-        logger.error(f"❌ Error retrieving orders/positions: {e}")
+    # Get positions
+    logger.info("Retrieving positions...")
+    positions = await client.get_positions()
+    data = positions.get("data", positions) if isinstance(positions, dict) else (positions or [])
+    logger.info(f"📊 Found {len(data)} positions")
 
 
 async def main():
     """Run comprehensive order testing asynchronously."""
-    logger.info("🚀 Starting comprehensive Reya DEX order testing...")
+    print_separator("REYA TRADING API - COMPREHENSIVE ORDER ENTRY EXAMPLES")
+    logger.info("🚀 Starting comprehensive order testing...")
 
     # Load environment variables
     load_dotenv()
@@ -267,50 +264,43 @@ async def main():
         logger.error("Please check your .env file and ensure all required variables are set.")
         return
 
-    try:
-        # Create a client instance
-        client = ReyaTradingClient()
-        logger.info("✅ Client initialized successfully")
-        logger.info(f"   Account ID: {client.config.account_id}")
-        logger.info(f"   Chain ID: {client.config.chain_id}")
-        logger.info(f"   API URL: {client.config.api_url}")
-        logger.info(f"   Wallet: {client.wallet_address}")
+    # Create a client instance
+    client = ReyaTradingClient()
+    logger.info("✅ Client initialized successfully")
+    logger.info(f"   Account ID: {client.config.account_id}")
+    logger.info(f"   Chain ID: {client.config.chain_id}")
+    logger.info(f"   API URL: {client.config.api_url}")
+    logger.info(f"   Wallet: {client.wallet_address}")
 
-        # Collect order IDs for cancellation testing
-        all_order_ids = []
+    # Collect order IDs for cancellation testing
+    all_order_ids = []
 
-        # Test 1: IOC Limit Orders
-        await test_ioc_limit_orders(client)
+    # Test 1: IOC Limit Orders
+    await test_ioc_limit_orders(client)
 
-        # Test 2: GTC Limit Orders
-        buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
-        all_order_ids.extend([buy_limit_id, sell_limit_id])
+    # Test 2: GTC Limit Orders
+    buy_limit_id, sell_limit_id = await test_gtc_limit_orders(client)
+    all_order_ids.extend([buy_limit_id, sell_limit_id])
 
-        # Test 3: Stop Loss Orders
-        long_sl_id, short_sl_id = await test_stop_loss_orders(client)
-        all_order_ids.extend([long_sl_id, short_sl_id])
+    # Test 3: Stop Loss Orders
+    long_sl_id, short_sl_id = await test_stop_loss_orders(client)
+    all_order_ids.extend([long_sl_id, short_sl_id])
 
-        # Test 4: Take Profit Orders
-        long_tp_id, short_tp_id = await test_take_profit_orders(client)
-        all_order_ids.extend([long_tp_id, short_tp_id])
+    # Test 4: Take Profit Orders
+    long_tp_id, short_tp_id = await test_take_profit_orders(client)
+    all_order_ids.extend([long_tp_id, short_tp_id])
 
-        # Test 5: Order Retrieval
-        await test_order_retrieval(client)
+    # Test 5: Order Retrieval
+    await test_order_retrieval(client)
 
-        # Test 6: Order Cancellation (optional)
-        # Uncomment the next line to test order cancellation
-        await test_order_cancellation(client, all_order_ids)
+    # Test 6: Order Cancellation (optional)
+    # Uncomment the next line to test order cancellation
+    await test_order_cancellation(client, all_order_ids)
 
-        print_separator("TESTING COMPLETE")
-        logger.info("🎉 All order type tests completed!")
-        logger.info("💡 Review the logs above to see results for each order type.")
-        logger.info(
-            "📝 Note: Some orders may fail due to market conditions, insufficient balance, or other constraints."
-        )
-
-    except Exception as e:
-        logger.error(f"❌ Error during testing: {e}")
-        raise
+    print_separator("TESTING COMPLETE")
+    logger.info("🎉 All order type tests completed!")
+    logger.info("💡 Review the logs above to see results for each order type.")
+    logger.info("📝 Note: Some orders may fail due to market conditions, insufficient balance, or other constraints.")
 
 
 if __name__ == "__main__":

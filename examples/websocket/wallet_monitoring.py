@@ -33,16 +33,11 @@ async def start_ping_sender(ws, interval=30):
 
     async def send_pings():
         while not stop_event.is_set():
-            try:
-                # Sleep first to let connection establish
-                await asyncio.sleep(interval)
-                if not stop_event.is_set():
-                    logger.info("Sending ping message")
-                    ws.send(json.dumps({"type": "ping"}))
-            except Exception as e:
-                logger.error(f"Error sending ping: {e}")
-                if stop_event.is_set():
-                    break
+            # Sleep first to let connection establish
+            await asyncio.sleep(interval)
+            if not stop_event.is_set():
+                logger.info("Sending ping message")
+                ws.send(json.dumps({"type": "ping"}))
 
     # Start ping sender task
     task = asyncio.create_task(send_pings())
@@ -140,43 +135,18 @@ async def main():
     ping_task = None
     ping_stop_event = None
 
-    try:
-        # Connect
-        ws.connect()
+    # Connect
+    ws.connect()
 
-        # Start the ping sender task
-        ping_task, ping_stop_event = await start_ping_sender(ws, interval=ping_interval)
-        logger.info(f"Started ping sender task (interval: {ping_interval}s)")
+    # Start the ping sender task
+    ping_task, ping_stop_event = await start_ping_sender(ws, interval=ping_interval)
+    logger.info(f"Started ping sender task (interval: {ping_interval}s)")
 
-        # Keep the main task running
-        while True:
-            # Perform any periodic tasks here
-            await asyncio.sleep(1)
-
-    except KeyboardInterrupt:
-        logger.info("Exiting gracefully")
-    except Exception as e:
-        logger.error(f"Error: {e}")
-    finally:
-        # Signal the ping task to stop
-        if ping_stop_event:
-            ping_stop_event.set()
-            logger.info("Ping sender stopping")
-
-            # Wait for the ping task to finish
-            if ping_task:
-                try:
-                    await asyncio.wait_for(ping_task, timeout=2.0)
-                except asyncio.TimeoutError:
-                    logger.warning("Ping sender task didn't stop in time")
-
-        logger.info("WebSocket connection closed")
+    # Keep the main task running
+    while True:
+        # Perform any periodic tasks here
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nKeyboard interrupt received. Exiting...")
-    finally:
-        print("WebSocket example complete.")
+    asyncio.run(main())

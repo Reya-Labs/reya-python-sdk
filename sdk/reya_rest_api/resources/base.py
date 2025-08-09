@@ -60,7 +60,7 @@ class BaseResource:
 
         return f"{base_url}/{path}"
 
-    def _handle_response(self, response: httpx.Response, error_msg: str = "API request failed") -> dict[str, Any]:
+    def _handle_response(self, response: httpx.Response, error_msg: str = "API request failed") -> Any:
         """
         Handle API response, raising exceptions for errors.
 
@@ -73,14 +73,14 @@ class BaseResource:
 
         """
         try:
-            data: dict[str, Any] = response.json()
+            data: Any = response.json()
         except ValueError:
             self.logger.error(f"Failed to parse JSON response: {response.text}")
             raise ValueError(f"{error_msg}: Invalid JSON response")
 
         return data
 
-    async def _get(self, endpoint: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    async def _get(self, endpoint: str, params: Optional[dict[str, Any]] = None) -> list[Any]:
         """
         Make an async GET request to the API.
 

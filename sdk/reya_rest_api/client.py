@@ -246,7 +246,7 @@ class ReyaTradingClient:
         response = await self.orders.cancel_order(order_id)
         return response
 
-    async def get_positions(self, wallet_address: Optional[str] = None) -> dict[str, Any]:
+    async def get_positions(self, wallet_address: Optional[str] = None) -> list[dict[str, Any]]:
         """
         Get positions for a wallet address asynchronously.
 
@@ -265,7 +265,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_positions(wallet_address=wallet)
 
-    async def get_open_orders(self) -> dict[str, Any]:
+    async def get_open_orders(self) -> list[dict[str, Any]]:
         """
         Get open orders for the authenticated wallet asynchronously.
 
@@ -281,7 +281,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_open_orders(wallet_address=wallet)
 
-    async def get_balances(self) -> dict[str, Any]:
+    async def get_balances(self) -> list[dict[str, Any]]:
         """
         Get account balance asynchronously.
 
@@ -297,7 +297,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_balances(wallet_address=wallet)
 
-    async def get_configuration(self) -> dict[str, Any]:
+    async def get_configuration(self) -> list[dict[str, Any]]:
         """
         Get account configuration asynchronously.
 
@@ -313,7 +313,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_configuration(wallet_address=wallet)
 
-    async def get_trades(self) -> dict[str, Any]:
+    async def get_trades(self) -> list[dict[str, Any]]:
         """
         Get trades for the authenticated wallet asynchronously.
 
@@ -329,7 +329,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_trades(wallet_address=wallet)
 
-    async def get_accounts(self) -> dict[str, Any]:
+    async def get_accounts(self) -> list[dict[str, Any]]:
         """
         Get accounts for the authenticated wallet asynchronously.
 
@@ -345,7 +345,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_accounts(wallet_address=wallet)
 
-    async def get_leverages(self) -> dict[str, Any]:
+    async def get_leverages(self) -> list[dict[str, Any]]:
         """
         Get leverages for the authenticated wallet asynchronously.
 
@@ -361,7 +361,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_leverages(wallet_address=wallet)
 
-    async def get_auto_exchange(self) -> dict[str, Any]:
+    async def get_auto_exchange(self) -> list[dict[str, Any]]:
         """
         Get auto exchange settings for the authenticated wallet asynchronously.
 
@@ -377,7 +377,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_auto_exchange(wallet_address=wallet)
 
-    async def get_stats(self) -> dict[str, Any]:
+    async def get_stats(self) -> list[dict[str, Any]]:
         """
         Get stats for the authenticated wallet asynchronously.
 

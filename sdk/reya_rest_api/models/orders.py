@@ -14,10 +14,10 @@ class OrderRequest:
     market_id: int
     exchange_id: int
     is_buy: bool
-    price: Optional[Decimal]
+    price: Decimal
     size: Optional[Decimal]
     order_type: UnifiedOrderType
-    expires_after: int
+    expires_after: Optional[int]
     reduce_only: Optional[bool]
     signature: str
     nonce: int
