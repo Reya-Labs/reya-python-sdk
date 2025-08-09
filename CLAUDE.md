@@ -150,4 +150,3 @@ The project uses pytest with additional packages:
 - `pytest-recording` and `vcrpy` for HTTP request/response recording
 - `pytest-cov` for coverage reporting
 - Test files should be placed alongside source code or in dedicated test directories
-
