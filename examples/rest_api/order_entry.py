@@ -243,8 +243,7 @@ async def test_order_retrieval(client: ReyaTradingClient):
     # Get positions
     logger.info("Retrieving positions...")
     positions = await client.get_positions()
-    data = positions.get("data", positions) if isinstance(positions, dict) else (positions or [])
-    logger.info(f"📊 Found {len(data)} positions")
+    logger.info(f"📊 Found {len(positions)} positions")
 
 
 async def main():

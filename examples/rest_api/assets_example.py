@@ -28,8 +28,6 @@ async def main():
 
     if assets:
         print(f"Found {len(assets)} assets")
-        # Print a few sample assets if available
-        print(f"Sample assets (first 3): {assets[:3]}")
 
 
 if __name__ == "__main__":

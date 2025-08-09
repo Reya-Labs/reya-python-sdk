@@ -98,9 +98,7 @@ class BaseResource:
             response = await client.get(url, params=params)
             return self._handle_response(response, f"GET {endpoint} failed")
 
-    async def _post(
-        self, endpoint: str, data: dict[str, Any], headers: Optional[dict[str, str]] = None
-    ) -> dict[str, Any]:
+    async def _post(self, endpoint: str, data: dict[str, Any], headers: Optional[dict[str, str]] = None) -> Any:
         """
         Make an async POST request to the API.
 

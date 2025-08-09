@@ -23,7 +23,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = "api/trading/markets"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_market(self, market_id: str) -> list[dict[str, Any]]:
@@ -40,7 +40,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/market/{market_id}"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_markets_configuration(self) -> list[dict[str, Any]]:
@@ -54,7 +54,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = "api/trading/markets/configuration"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_markets_storage(self) -> list[dict[str, Any]]:
@@ -68,7 +68,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = "api/trading/markets/storage"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_markets_trackers(self) -> list[dict[str, Any]]:
@@ -82,7 +82,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = "api/trading/markets/trackers"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_market_trackers(self, market_id: str) -> list[dict[str, Any]]:
@@ -99,7 +99,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/market/{market_id}/trackers"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_market_trades(self, market_id: str) -> list[dict[str, Any]]:
@@ -116,7 +116,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/market/{market_id}/trades"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_market_data(self, market_id: str) -> list[dict[str, Any]]:
@@ -133,7 +133,7 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/market/{market_id}/data"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
     async def get_markets_data(self) -> list[dict[str, Any]]:
@@ -147,5 +147,5 @@ class MarketsResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = "api/trading/markets/data"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
