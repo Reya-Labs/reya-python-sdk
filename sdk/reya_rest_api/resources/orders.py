@@ -37,7 +37,6 @@ class OrdersResource(BaseResource):
 
     logger = logging.getLogger(__name__)
 
-
     async def create_limit_order(
         self,
         market_id: int,
@@ -161,7 +160,7 @@ class OrdersResource(BaseResource):
 
         limit_price = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if is_buy else Decimal(0)
 
-        order_type = (
+        order_type_int = (
             OrdersGatewayOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
         )
 
@@ -178,7 +177,7 @@ class OrdersResource(BaseResource):
             market_id=market_id,
             exchange_id=self.config.dex_id,
             counterparty_account_ids=[self.config.pool_account_id],
-            order_type=order_type,
+            order_type=order_type_int,
             inputs=inputs,
             deadline=CONDITIONAL_ORDER_DEADLINE,
             nonce=nonce,
@@ -189,9 +188,6 @@ class OrdersResource(BaseResource):
         if self.config.wallet_address is None:
             raise ValueError("Wallet address is required for order creation")
 
-        trigger = Trigger(trigger_px=str(trigger_price), tpsl=trigger_type)
-        order_type = TriggerOrderType(trigger=trigger)
-
         order_request = TriggerOrderRequest(
             account_id=self.config.account_id,
             market_id=market_id,
@@ -199,7 +195,7 @@ class OrdersResource(BaseResource):
             is_buy=is_buy,
             price=limit_price,
             size=Decimal("0"),
-            order_type=order_type,
+            order_type=TriggerOrderType(trigger=Trigger(trigger_px=str(trigger_price), tpsl=trigger_type)),
             expires_after=CONDITIONAL_ORDER_DEADLINE,
             reduce_only=False,
             signature=signature,
