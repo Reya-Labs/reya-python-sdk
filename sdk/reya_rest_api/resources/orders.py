@@ -28,6 +28,7 @@ from sdk.reya_rest_api.models.orders import (
 from sdk.reya_rest_api.resources.base import BaseResource
 
 CONDITIONAL_ORDER_DEADLINE = 10**18
+DEFAULT_DEADLINE_MS = 5000
 BUY_TRIGGER_ORDER_PRICE_LIMIT = 100000000000000000000
 
 
@@ -36,81 +37,11 @@ class OrdersResource(BaseResource):
 
     logger = logging.getLogger(__name__)
 
-    def _prepare_limit_order_signature_data(
-        self,
-        market_id: int,
-        order_type: LimitOrderType,
-        expires_after: Optional[int],
-        is_buy: bool,
-        price: Decimal,
-        size: Decimal,
-        reduce_only: bool,
-    ):
-        """Prepare signature data for limit order."""
-        if self.signature_generator is None:
-            raise ValueError("Signature generator is required for order signing")
-        if self.config.account_id is None:
-            raise ValueError("Account ID is required for order signing")
-
-        nonce = self.signature_generator.create_orders_gateway_nonce(
-            self.config.account_id, market_id, int(time.time_ns() / 1000000)
-        )
-        deadline = (
-            self.signature_generator.get_default_expires_after(expires_after)
-            if order_type.limit.time_in_force == TimeInForce.IOC
-            else CONDITIONAL_ORDER_DEADLINE
-        )
-
-        if expires_after is None and order_type.limit.time_in_force == TimeInForce.IOC:
-            expires_after = deadline
-
-        inputs = self.signature_generator.encode_inputs_limit_order(is_buy=is_buy, limit_price=price, order_base=size)
-
-        signature = self.signature_generator.sign_raw_order(
-            account_id=self.config.account_id,
-            market_id=market_id,
-            exchange_id=self.config.dex_id,
-            counterparty_account_ids=[self.config.pool_account_id],
-            order_type=self.get_limit_order_gateway_type(order_type, reduce_only),
-            inputs=inputs,
-            deadline=deadline,
-            nonce=nonce,
-        )
-
-        return nonce, signature, expires_after
-
-    def _build_limit_order_request(
-        self,
-        market_id: int,
-        is_buy: bool,
-        price: Decimal,
-        size: Decimal,
-        order_type: LimitOrderType,
-        reduce_only: bool,
-        expires_after: Optional[int],
-        nonce: int,
-        signature: str,
-    ):
-        """Build the limit order request object."""
-        if self.config.account_id is None:
-            raise ValueError("Account ID is required for order creation")
-        if self.config.wallet_address is None:
-            raise ValueError("Wallet address is required for order creation")
-
-        return LimitOrderRequest(
-            account_id=self.config.account_id,
-            market_id=market_id,
-            exchange_id=self.config.dex_id,
-            is_buy=is_buy,
-            price=price,
-            size=size,
-            order_type=order_type,
-            expires_after=expires_after,
-            reduce_only=reduce_only,
-            signature=signature,
-            nonce=nonce,
-            signer_wallet=self.config.wallet_address,
-        )
+    def _get_default_expires_after(self, expires_after: Optional[int] = None) -> int:
+        """
+        Returns expires_after if given, otherwise now (ms) + 5s.
+        """
+        return expires_after if expires_after is not None else int(time.time() * 1000) + DEFAULT_DEADLINE_MS
 
     def _prepare_trigger_order_signature_data(
         self, market_id: int, is_buy: bool, trigger_price: Union[Decimal, str], trigger_type: TpslType
@@ -220,13 +151,54 @@ class OrdersResource(BaseResource):
             raise ValueError("Unexpected True value for parameter reduce_only for GTC orders")
 
         # Prepare signature data
-        nonce, signature, expires_after = self._prepare_limit_order_signature_data(
-            market_id, order_type, expires_after, is_buy, price, size, reduce_only
+        if self.signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
+        if self.config.account_id is None:
+            raise ValueError("Account ID is required for order signing")
+
+        nonce = self.signature_generator.create_orders_gateway_nonce(
+            self.config.account_id, market_id, int(time.time_ns() / 1000000)
+        )
+
+        inputs = self.signature_generator.encode_inputs_limit_order(is_buy=is_buy, limit_price=price, order_base=size)
+
+        if order_type.limit.time_in_force != TimeInForce.IOC:
+            deadline = CONDITIONAL_ORDER_DEADLINE
+        elif expires_after is None:
+            deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+        else:
+            deadline = expires_after
+
+        signature = self.signature_generator.sign_raw_order(
+            account_id=self.config.account_id,
+            market_id=market_id,
+            exchange_id=self.config.dex_id,
+            counterparty_account_ids=[self.config.pool_account_id],
+            order_type=self.get_limit_order_gateway_type(order_type, reduce_only),
+            inputs=inputs,
+            deadline=deadline,
+            nonce=nonce,
         )
 
         # Build the order request
-        order_request = self._build_limit_order_request(
-            market_id, is_buy, price, size, order_type, reduce_only, expires_after, nonce, signature
+        if self.config.account_id is None:
+            raise ValueError("Account ID is required for order creation")
+        if self.config.wallet_address is None:
+            raise ValueError("Wallet address is required for order creation")
+
+        order_request = LimitOrderRequest(
+            account_id=self.config.account_id,
+            market_id=market_id,
+            exchange_id=self.config.dex_id,
+            is_buy=is_buy,
+            price=price,
+            size=size,
+            order_type=order_type,
+            expires_after=deadline,
+            reduce_only=reduce_only,
+            signature=signature,
+            nonce=nonce,
+            signer_wallet=self.config.wallet_address,
         )
 
         # Make the API request

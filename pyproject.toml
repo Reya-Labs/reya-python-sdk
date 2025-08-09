@@ -95,6 +95,7 @@ max-line-length = 120
 max-module-lines=2000
 disable = """
     consider-using-in,
+    duplicate-code,
     fixme,
     import-error,
     inconsistent-return-statements,
@@ -115,7 +116,8 @@ disable = """
     too-many-branches,
     too-many-positional-arguments,
     too-many-public-methods,
-    too-many-return-statements
+    too-many-return-statements,
+    too-many-instance-attributes
 """
 
 [tool.pytest.ini_options]
