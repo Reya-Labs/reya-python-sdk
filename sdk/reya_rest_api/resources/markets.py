@@ -4,7 +4,7 @@ Markets resource for Reya Trading API.
 This module provides market-related functionality.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sdk.reya_rest_api.resources.base import BaseResource
 

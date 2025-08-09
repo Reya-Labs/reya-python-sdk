@@ -1,6 +1,6 @@
 """WebSocket client implementation for the Reya API."""
 
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Optional
 
 import asyncio
 import json

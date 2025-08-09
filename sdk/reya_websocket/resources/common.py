@@ -1,14 +1,17 @@
 """Base classes for WebSocket resources."""
 
-from typing import Any, Dict, Generic, Optional, TypeVar, Union
+from typing import TYPE_CHECKING
 
 from abc import ABC, abstractmethod
+
+if TYPE_CHECKING:
+    from sdk.reya_websocket.socket import ReyaSocket
 
 
 class WebSocketResource(ABC):
     """Base class for all WebSocket resources."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the resource with a socket connection.
 
         Args:
@@ -34,7 +37,7 @@ class SubscribableResource(WebSocketResource, ABC):
 class ParameterizedResource(WebSocketResource):
     """Resource that requires path parameters."""
 
-    def __init__(self, socket: "ReyaSocket", path_template: str):
+    def __init__(self, socket: ReyaSocket, path_template: str):
         """Initialize a parameterized resource.
 
         Args:

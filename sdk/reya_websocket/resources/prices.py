@@ -1,19 +1,19 @@
 """Price-related WebSocket resources."""
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING
 
 from sdk.reya_websocket.resources.common import (
-    ParameterizedResource,
     SubscribableParameterizedResource,
-    SubscribableResource,
-    WebSocketResource,
 )
+
+if TYPE_CHECKING:
+    from sdk.reya_websocket.socket import ReyaSocket
 
 
 class PricesResource:
     """Container for all price-related WebSocket resources."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the prices resource container.
 
         Args:
@@ -37,7 +37,7 @@ class PricesResource:
 class AssetPairPriceResource(SubscribableParameterizedResource):
     """Resource for accessing asset pair price data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the asset pair price resource.
 
         Args:
@@ -60,7 +60,7 @@ class AssetPairPriceResource(SubscribableParameterizedResource):
 class AssetPairPriceSubscription:
     """Manages a subscription to price data for a specific asset pair."""
 
-    def __init__(self, socket: "ReyaSocket", asset_pair_id: str):
+    def __init__(self, socket: ReyaSocket, asset_pair_id: str):
         """Initialize an asset pair price subscription.
 
         Args:

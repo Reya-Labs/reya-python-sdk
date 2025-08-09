@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -95,7 +95,7 @@ class CreateOrderResponse:
     raw_response: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_api_response(cls, response_data: dict[str, Any]) -> "OrderResponse":
+    def from_api_response(cls, response_data: dict[str, Any]) -> "CreateOrderResponse":
         return cls(
             success=response_data.get("success"),
             order_id=response_data.get("orderId"),

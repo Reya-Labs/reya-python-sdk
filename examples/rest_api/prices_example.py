@@ -38,7 +38,7 @@ async def main():
         # Choose an existing key from the response
         if "ETHUSDMARK" in prices:
             eth_price = prices["ETHUSDMARK"]
-            print(f"\n--- ETH/USD Mark Price ---")
+            print("\n--- ETH/USD Mark Price ---")
             print(f"Price data for ETHUSDMARK: {eth_price}")
             if "oraclePrice" in eth_price:
                 # Convert from string to float and adjust decimal places if needed

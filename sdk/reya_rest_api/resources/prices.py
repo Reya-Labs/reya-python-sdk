@@ -4,7 +4,7 @@ Prices resource for Reya Trading API.
 This module provides price-related functionality.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from sdk.reya_rest_api.resources.base import BaseResource
 

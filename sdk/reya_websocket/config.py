@@ -1,7 +1,5 @@
 """Configuration settings for the Reya WebSocket client."""
 
-from typing import Any, Dict, Optional
-
 import os
 from dataclasses import dataclass
 

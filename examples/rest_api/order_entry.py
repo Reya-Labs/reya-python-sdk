@@ -18,7 +18,6 @@ Before running this example, ensure you have a .env file with the following vari
 import asyncio
 import logging
 import os
-import time
 
 from dotenv import load_dotenv
 
@@ -271,7 +270,7 @@ async def main():
     try:
         # Create a client instance
         client = ReyaTradingClient()
-        logger.info(f"✅ Client initialized successfully")
+        logger.info("✅ Client initialized successfully")
         logger.info(f"   Account ID: {client.config.account_id}")
         logger.info(f"   Chain ID: {client.config.chain_id}")
         logger.info(f"   API URL: {client.config.api_url}")

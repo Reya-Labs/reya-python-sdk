@@ -4,9 +4,8 @@ Reya Trading Client - Main entry point for the Reya Trading API.
 This module provides a client for interacting with the Reya Trading REST API.
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
-import asyncio
 import logging
 from decimal import Decimal
 

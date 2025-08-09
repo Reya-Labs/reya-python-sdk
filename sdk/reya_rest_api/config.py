@@ -2,7 +2,7 @@
 Configuration settings for the Reya Trading API.
 """
 
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import os
 from dataclasses import dataclass

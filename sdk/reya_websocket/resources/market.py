@@ -1,19 +1,20 @@
 """Market-related WebSocket resources."""
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING
 
 from sdk.reya_websocket.resources.common import (
-    ParameterizedResource,
     SubscribableParameterizedResource,
     SubscribableResource,
-    WebSocketResource,
 )
+
+if TYPE_CHECKING:
+    from sdk.reya_websocket.socket import ReyaSocket
 
 
 class MarketResource:
     """Container for all market-related WebSocket resources."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the market resource container.
 
         Args:
@@ -55,7 +56,7 @@ class MarketResource:
 class AllMarketsResource(SubscribableResource):
     """Resource for accessing all markets data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the all markets data resource.
 
         Args:
@@ -80,7 +81,7 @@ class AllMarketsResource(SubscribableResource):
 class MarketDataResource(SubscribableParameterizedResource):
     """Resource for accessing market data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the market data resource.
 
         Args:
@@ -103,7 +104,7 @@ class MarketDataResource(SubscribableParameterizedResource):
 class MarketTradesResource(SubscribableParameterizedResource):
     """Resource for accessing market trades."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: ReyaSocket):
         """Initialize the market trades resource.
 
         Args:
@@ -126,7 +127,7 @@ class MarketTradesResource(SubscribableParameterizedResource):
 class MarketDataSubscription:
     """Manages a subscription to market data for a specific market."""
 
-    def __init__(self, socket: "ReyaSocket", market_id: str):
+    def __init__(self, socket: ReyaSocket, market_id: str):
         """Initialize a market data subscription.
 
         Args:
@@ -153,7 +154,7 @@ class MarketDataSubscription:
 class MarketTradesSubscription:
     """Manages a subscription to market trades for a specific market."""
 
-    def __init__(self, socket: "ReyaSocket", market_id: str):
+    def __init__(self, socket: ReyaSocket, market_id: str):
         """Initialize a market trades subscription.
 
         Args:

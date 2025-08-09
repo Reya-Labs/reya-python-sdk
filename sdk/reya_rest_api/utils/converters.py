@@ -5,7 +5,7 @@ This module provides functions for converting between different formats and unit
 used in the Reya API.
 """
 
-from typing import Optional, Union
+from typing import Union
 
 from decimal import Decimal
 

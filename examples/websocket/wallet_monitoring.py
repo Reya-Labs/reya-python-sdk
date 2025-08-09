@@ -37,7 +37,7 @@ async def start_ping_sender(ws, interval=30):
                 # Sleep first to let connection establish
                 await asyncio.sleep(interval)
                 if not stop_event.is_set():
-                    logger.info(f"Sending ping message")
+                    logger.info("Sending ping message")
                     ws.send(json.dumps({"type": "ping"}))
             except Exception as e:
                 logger.error(f"Error sending ping: {e}")

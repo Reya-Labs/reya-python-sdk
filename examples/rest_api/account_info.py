@@ -57,7 +57,7 @@ async def main():
                 side = "BUY" if is_long else "SELL"
 
                 # Print order details
-                print(f"Order {i+1}:")
+                print(f"Order {i + 1}:")
                 print(f"  Account ID: {account_id}")
                 print(f"  ID: {order_id}")
                 print(f"  Market ID: {market_id}")

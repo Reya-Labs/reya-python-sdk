@@ -16,7 +16,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus, OrdersGatewayOrderType
+from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus
 
 DEFAULT_DEADLINE_MS = 5000
 

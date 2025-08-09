@@ -11,7 +11,6 @@ import time
 from decimal import Decimal
 
 from sdk.reya_rest_api.constants.enums import (
-    Limit,
     LimitOrderType,
     OrdersGatewayOrderType,
     TimeInForce,
@@ -71,7 +70,7 @@ class OrdersResource(BaseResource):
         if expires_after is not None and order_type.limit.time_in_force != TimeInForce.IOC:
             raise ValueError("Parameter expires_after is only allowed for IOC orders")
 
-        if order_type.limit.time_in_force == TimeInForce.GTC and reduce_only == True:
+        if order_type.limit.time_in_force == TimeInForce.GTC and reduce_only is True:
             raise ValueError("Unexpected True value for parameter reduce_only for GTC orders")
 
         # Generate nonce and deadline
