@@ -37,81 +37,6 @@ class OrdersResource(BaseResource):
 
     logger = logging.getLogger(__name__)
 
-    def _get_default_expires_after(self, expires_after: Optional[int] = None) -> int:
-        """
-        Returns expires_after if given, otherwise now (ms) + 5s.
-        """
-        return expires_after if expires_after is not None else int(time.time() * 1000) + DEFAULT_DEADLINE_MS
-
-    def _prepare_trigger_order_signature_data(
-        self, market_id: int, is_buy: bool, trigger_price: Union[Decimal, str], trigger_type: TpslType
-    ):
-        """Prepare signature data for trigger order."""
-        if self.signature_generator is None:
-            raise ValueError("Signature generator is required for order signing")
-        if self.config.account_id is None:
-            raise ValueError("Account ID is required for order signing")
-
-        limit_price = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if is_buy else Decimal(0)
-
-        order_type = (
-            OrdersGatewayOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
-        )
-
-        nonce = self.signature_generator.create_orders_gateway_nonce(
-            self.config.account_id, market_id, int(time.time_ns() / 1000000)
-        )
-
-        inputs = self.signature_generator.encode_inputs_trigger_order(
-            is_buy=is_buy, trigger_price=Decimal(str(trigger_price)), limit_price=limit_price
-        )
-
-        signature = self.signature_generator.sign_raw_order(
-            account_id=self.config.account_id,
-            market_id=market_id,
-            exchange_id=self.config.dex_id,
-            counterparty_account_ids=[self.config.pool_account_id],
-            order_type=order_type,
-            inputs=inputs,
-            deadline=CONDITIONAL_ORDER_DEADLINE,
-            nonce=nonce,
-        )
-
-        return nonce, signature, limit_price
-
-    def _build_trigger_order_request(
-        self,
-        market_id: int,
-        is_buy: bool,
-        trigger_price: Union[Decimal, str],
-        trigger_type: TpslType,
-        limit_price: Decimal,
-        nonce: int,
-        signature: str,
-    ):
-        """Build the trigger order request object."""
-        if self.config.account_id is None:
-            raise ValueError("Account ID is required for order creation")
-        if self.config.wallet_address is None:
-            raise ValueError("Wallet address is required for order creation")
-
-        trigger = Trigger(trigger_px=str(trigger_price), tpsl=trigger_type)
-        order_type = TriggerOrderType(trigger=trigger)
-
-        return TriggerOrderRequest(
-            account_id=self.config.account_id,
-            market_id=market_id,
-            exchange_id=self.config.dex_id,
-            is_buy=is_buy,
-            price=limit_price,
-            size=Decimal("0"),
-            order_type=order_type,
-            expires_after=CONDITIONAL_ORDER_DEADLINE,
-            reduce_only=False,
-            signature=signature,
-            nonce=nonce,
-            signer_wallet=self.config.wallet_address,
-        )
 
     async def create_limit_order(
         self,
@@ -229,15 +154,57 @@ class OrdersResource(BaseResource):
 
         if self.signature_generator is None:
             raise ValueError("Private key is required for creating orders")
+        if self.signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
+        if self.config.account_id is None:
+            raise ValueError("Account ID is required for order signing")
 
-        # Prepare signature data
-        nonce, signature, limit_price = self._prepare_trigger_order_signature_data(
-            market_id, is_buy, trigger_price, trigger_type
+        limit_price = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if is_buy else Decimal(0)
+
+        order_type = (
+            OrdersGatewayOrderType.TAKE_PROFIT if trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
         )
 
-        # Build the order request
-        order_request = self._build_trigger_order_request(
-            market_id, is_buy, trigger_price, trigger_type, limit_price, nonce, signature
+        nonce = self.signature_generator.create_orders_gateway_nonce(
+            self.config.account_id, market_id, int(time.time_ns() / 1000000)
+        )
+
+        inputs = self.signature_generator.encode_inputs_trigger_order(
+            is_buy=is_buy, trigger_price=Decimal(str(trigger_price)), limit_price=limit_price
+        )
+
+        signature = self.signature_generator.sign_raw_order(
+            account_id=self.config.account_id,
+            market_id=market_id,
+            exchange_id=self.config.dex_id,
+            counterparty_account_ids=[self.config.pool_account_id],
+            order_type=order_type,
+            inputs=inputs,
+            deadline=CONDITIONAL_ORDER_DEADLINE,
+            nonce=nonce,
+        )
+
+        if self.config.account_id is None:
+            raise ValueError("Account ID is required for order creation")
+        if self.config.wallet_address is None:
+            raise ValueError("Wallet address is required for order creation")
+
+        trigger = Trigger(trigger_px=str(trigger_price), tpsl=trigger_type)
+        order_type = TriggerOrderType(trigger=trigger)
+
+        order_request = TriggerOrderRequest(
+            account_id=self.config.account_id,
+            market_id=market_id,
+            exchange_id=self.config.dex_id,
+            is_buy=is_buy,
+            price=limit_price,
+            size=Decimal("0"),
+            order_type=order_type,
+            expires_after=CONDITIONAL_ORDER_DEADLINE,
+            reduce_only=False,
+            signature=signature,
+            nonce=nonce,
+            signer_wallet=self.config.wallet_address,
         )
 
         # Make the API request
