@@ -2,7 +2,6 @@
 
 from typing import Any, Callable, Optional
 
-import asyncio
 import json
 import logging
 import ssl
@@ -138,7 +137,7 @@ class ReyaSocket(websocket.WebSocketApp):
         logger.info(f"Unsubscribing from {channel}")
         self.send(json.dumps(message))
 
-    def connect(self, sslopt=None, blocking=True) -> None:
+    def connect(self, sslopt=None, blocking=False) -> None:
         """Connect to the WebSocket server.
 
         Args:
@@ -177,32 +176,6 @@ class ReyaSocket(websocket.WebSocketApp):
             )
             self._thread.daemon = True
             self._thread.start()
-
-    async def async_connect(self, sslopt=None) -> None:
-        """Connect to the WebSocket server asynchronously.
-
-        Args:
-            sslopt: SSL options for the connection. If None, uses default options.
-
-        Note:
-            This method starts the WebSocket connection in a background thread and
-            returns immediately. It's an async method that can be awaited to ensure
-            the connection has been initiated, but it doesn't wait for the connection
-            to close.
-        """
-        if sslopt is None:
-            if self.config.ssl_verify:
-                sslopt = {}  # Use default SSL verification
-            else:
-                sslopt = {"cert_reqs": ssl.CERT_NONE}
-
-        logger.info(f"Connecting asynchronously to {self.url}")
-
-        # Start the connection in a thread
-        self.connect(sslopt=sslopt, blocking=False)
-
-        # Give a short pause to allow connection to initialize
-        await asyncio.sleep(0.1)
 
     def _default_on_open(self, _ws):
         """Default handler for connection open events."""

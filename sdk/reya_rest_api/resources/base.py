@@ -60,7 +60,7 @@ class BaseResource:
 
         return f"{base_url}/{path}"
 
-    async def _handle_response(self, response: httpx.Response, error_msg: str = "API request failed") -> dict[str, Any]:
+    def _handle_response(self, response: httpx.Response, error_msg: str = "API request failed") -> dict[str, Any]:
         """
         Handle API response, raising exceptions for errors.
 
@@ -96,7 +96,7 @@ class BaseResource:
 
         async with httpx.AsyncClient(headers=self.headers) as client:
             response = await client.get(url, params=params)
-            return await self._handle_response(response, f"GET {endpoint} failed")
+            return self._handle_response(response, f"GET {endpoint} failed")
 
     async def _post(
         self, endpoint: str, data: dict[str, Any], headers: Optional[dict[str, str]] = None
@@ -117,4 +117,4 @@ class BaseResource:
 
         async with httpx.AsyncClient(headers=self.headers) as client:
             response = await client.post(url, json=data, headers=headers)
-            return await self._handle_response(response, f"POST {endpoint} failed")
+            return self._handle_response(response, f"POST {endpoint} failed")

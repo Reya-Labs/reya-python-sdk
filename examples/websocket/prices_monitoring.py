@@ -116,8 +116,8 @@ async def main():
     logger.info("Press Ctrl+C to exit")
 
     try:
-        # Connect asynchronously - this will return immediately
-        await ws.async_connect()
+        # Connect - this will return immediately
+        ws.connect()
 
         # Start our concurrent task
         task = asyncio.create_task(periodic_task())

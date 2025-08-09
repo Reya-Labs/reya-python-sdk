@@ -135,14 +135,14 @@ async def main():
     ping_interval = int(os.environ.get("REYA_WS_PING_INTERVAL", "30"))
 
     # Connect to the WebSocket server (non-blocking)
-    logger.info("Connecting to WebSocket server asynchronously")
+    logger.info("Connecting to WebSocket server")
 
     ping_task = None
     ping_stop_event = None
 
     try:
-        # Connect asynchronously
-        await ws.async_connect()
+        # Connect
+        ws.connect()
 
         # Start the ping sender task
         ping_task, ping_stop_event = await start_ping_sender(ws, interval=ping_interval)
