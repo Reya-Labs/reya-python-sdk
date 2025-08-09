@@ -7,21 +7,42 @@ from sdk.reya_rest_api.constants.enums import UnifiedOrderType
 
 
 @dataclass(frozen=True)
-class OrderRequest:
-    """Base class for order requests."""
+class OrderIdentifiers:
+    """Order identification fields."""
 
     account_id: int
     market_id: int
     exchange_id: int
+
+
+@dataclass(frozen=True)
+class OrderDetails:
+    """Order trading details."""
+
     is_buy: bool
     price: Optional[Decimal]
     size: Optional[Decimal]
     order_type: UnifiedOrderType
+    expires_after: Optional[int] = None
+    reduce_only: Optional[bool] = None
+
+
+@dataclass(frozen=True)
+class OrderSignature:
+    """Order signature and authentication fields."""
+
     signature: str
     nonce: int
     signer_wallet: str
-    expires_after: Optional[int] = None
-    reduce_only: Optional[bool] = None
+
+
+@dataclass(frozen=True)
+class OrderRequest:
+    """Base class for order requests."""
+
+    identifiers: OrderIdentifiers
+    details: OrderDetails
+    signature_info: OrderSignature
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to API request dictionary"""
@@ -34,21 +55,21 @@ class LimitOrderRequest(OrderRequest):
 
     def to_dict(self) -> dict[str, Any]:
         result = {
-            "accountId": self.account_id,
-            "marketId": self.market_id,
-            "exchangeId": self.exchange_id,
-            "isBuy": self.is_buy,
-            "price": str(self.price),
-            "size": str(self.size),
-            "reduceOnly": self.reduce_only,
-            "type": self.order_type.to_dict(),
-            "signature": self.signature,
-            "nonce": str(self.nonce),
-            "signerWallet": self.signer_wallet,
+            "accountId": self.identifiers.account_id,
+            "marketId": self.identifiers.market_id,
+            "exchangeId": self.identifiers.exchange_id,
+            "isBuy": self.details.is_buy,
+            "price": str(self.details.price),
+            "size": str(self.details.size),
+            "reduceOnly": self.details.reduce_only,
+            "type": self.details.order_type.to_dict(),
+            "signature": self.signature_info.signature,
+            "nonce": str(self.signature_info.nonce),
+            "signerWallet": self.signature_info.signer_wallet,
         }
 
-        if self.expires_after is not None:
-            result["expiresAfter"] = self.expires_after
+        if self.details.expires_after is not None:
+            result["expiresAfter"] = self.details.expires_after
 
         return result
 
@@ -59,17 +80,17 @@ class TriggerOrderRequest(OrderRequest):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "accountId": self.account_id,
-            "marketId": self.market_id,
-            "exchangeId": self.exchange_id,
-            "isBuy": self.is_buy,
-            "price": str(self.price),
-            "size": str(self.size),
-            "reduceOnly": self.reduce_only,
-            "type": self.order_type.to_dict(),
-            "signature": self.signature,
-            "nonce": str(self.nonce),
-            "signerWallet": self.signer_wallet,
+            "accountId": self.identifiers.account_id,
+            "marketId": self.identifiers.market_id,
+            "exchangeId": self.identifiers.exchange_id,
+            "isBuy": self.details.is_buy,
+            "price": str(self.details.price),
+            "size": str(self.details.size),
+            "reduceOnly": self.details.reduce_only,
+            "type": self.details.order_type.to_dict(),
+            "signature": self.signature_info.signature,
+            "nonce": str(self.signature_info.nonce),
+            "signerWallet": self.signature_info.signer_wallet,
         }
 
 

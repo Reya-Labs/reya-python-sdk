@@ -1,6 +1,8 @@
 from hexbytes import HexBytes
 from web3 import Web3
 
+from sdk.reya_rpc.exceptions import TransactionReceiptError
+
 
 def create_account(config: dict):
     """
@@ -34,7 +36,7 @@ def create_account(config: dict):
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
-        raise Exception("Failed to decode transaction receipt for account creations")
+        raise TransactionReceiptError("Failed to decode transaction receipt for account creations")
 
     # Decode event log to extract the new margin account ID
     event = core.events.AccountCreated().process_log(filtered_logs[0])

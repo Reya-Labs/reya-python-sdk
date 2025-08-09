@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from hexbytes import HexBytes
 from web3 import Web3
 
+from sdk.reya_rpc.exceptions import TransactionReceiptError
+
 
 @dataclass
 class UnstakingParams:
@@ -49,7 +51,7 @@ def unstake(config: dict, params: UnstakingParams):
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
-        raise Exception("Failed to decode transaction receipt for staking to passive pool")
+        raise TransactionReceiptError("Failed to decode transaction receipt for unstaking from passive pool")
 
     # Decode event log to extract the received rUSD amount
     event = passive_pool.events.ShareBalanceUpdated().process_log(filtered_logs[0])

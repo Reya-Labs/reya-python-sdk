@@ -1,6 +1,8 @@
 import json
 from dataclasses import dataclass
 
+from sdk.reya_rpc.exceptions import BridgeFeeExceededError, NetworkConfigurationError
+
 
 @dataclass
 class BridgeOutParams:
@@ -11,11 +13,11 @@ class BridgeOutParams:
 
 
 # Load contract ABI files
-f = open("sdk/reya_rpc/abis/SocketControllerWithPayload.json")
-controller_abi = json.load(f)
+with open("sdk/reya_rpc/abis/SocketControllerWithPayload.json", encoding="utf-8") as f:
+    controller_abi = json.load(f)
 
-f = open("sdk/reya_rpc/abis/Erc20.json")
-erc20_abi = json.load(f)
+with open("sdk/reya_rpc/abis/Erc20.json", encoding="utf-8") as f:
+    erc20_abi = json.load(f)
 
 
 def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
@@ -39,7 +41,7 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
 
     # Ensure Reya Network is correctly configured
     if not chain_id == 1729:
-        raise Exception("Bridging function requires setup for Reya Network")
+        raise NetworkConfigurationError("Bridging function requires setup for Reya Network")
 
     # Call the general bridge function with Arbitrum parameters
     return bridge_out(
@@ -73,7 +75,7 @@ def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
 
     # Ensure Reya Network is correctly configured
     if not chain_id == 89346162:
-        raise Exception("Bridging function requires setup for Reya Cronos")
+        raise NetworkConfigurationError("Bridging function requires setup for Reya Cronos")
 
     # Call the general bridge function with Arbitrum parameters
     return bridge_out(
@@ -128,7 +130,7 @@ def bridge_out(
 
     # Ensure estimated fees do not exceed the user-defined limit
     if socket_fees > params.fee_limit:
-        raise Exception("Socket fee is higher than maximum allowed amount")
+        raise BridgeFeeExceededError("Socket fee is higher than maximum allowed amount")
 
     # Execute the transaction to approve rUSD to be spent by the periphery
     tx_hash = rusd.functions.approve(periphery.address, params.amount).transact({"from": account.address})

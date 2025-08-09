@@ -20,6 +20,17 @@ from sdk.reya_rest_api.resources.prices import PricesResource
 from sdk.reya_rest_api.resources.wallet import WalletResource
 
 
+class ResourceManager:
+    """Manages all API resources."""
+
+    def __init__(self, config: TradingConfig, signature_generator: SignatureGenerator):
+        self.orders = OrdersResource(config, signature_generator)
+        self.wallet = WalletResource(config, signature_generator)
+        self.markets = MarketsResource(config, signature_generator)
+        self.assets = AssetsResource(config, signature_generator)
+        self.prices = PricesResource(config, signature_generator)
+
+
 class ReyaTradingClient:
     """
     Client for interacting with the Reya Trading API.
@@ -73,37 +84,33 @@ class ReyaTradingClient:
         # Create signature generator
         self._signature_generator = SignatureGenerator(self._config)
 
-        # Initialize resources
-        self._orders = OrdersResource(self._config, self._signature_generator)
-        self._wallet = WalletResource(self._config, self._signature_generator)
-        self._markets = MarketsResource(self._config, self._signature_generator)
-        self._assets = AssetsResource(self._config, self._signature_generator)
-        self._prices = PricesResource(self._config, self._signature_generator)
+        # Initialize resource manager
+        self._resources = ResourceManager(self._config, self._signature_generator)
 
     @property
     def orders(self) -> OrdersResource:
         """Get the orders resource."""
-        return self._orders
+        return self._resources.orders
 
     @property
     def wallet(self) -> WalletResource:
         """Get the wallet resource."""
-        return self._wallet
+        return self._resources.wallet
 
     @property
     def markets(self) -> MarketsResource:
         """Get the markets resource."""
-        return self._markets
+        return self._resources.markets
 
     @property
     def assets(self) -> AssetsResource:
         """Get the assets resource."""
-        return self._assets
+        return self._resources.assets
 
     @property
     def prices(self) -> PricesResource:
         """Get the prices resource."""
-        return self._prices
+        return self._resources.prices
 
     @property
     def config(self) -> TradingConfig:
@@ -118,7 +125,7 @@ class ReyaTradingClient:
             return self._config.wallet_address
 
         # Otherwise derive it from private key if available
-        return self._signature_generator._public_address if self._signature_generator else None
+        return self._signature_generator.public_address if self._signature_generator else None
 
     def validate_inputs(self, **kwargs) -> None:
         """

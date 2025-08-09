@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from web3 import Web3
 from web3.middleware import signing
 
+from sdk.reya_rpc.exceptions import BridgeFeeExceededError, NetworkConfigurationError
+
 
 @dataclass
 class BridgeInParams:
@@ -14,11 +16,11 @@ class BridgeInParams:
 
 
 # Load contract ABI files
-f = open("sdk/reya_rpc/abis/SocketVaultWithPayload.json")
-vault_abi = json.load(f)
+with open("sdk/reya_rpc/abis/SocketVaultWithPayload.json", encoding="utf-8") as f:
+    vault_abi = json.load(f)
 
-f = open("sdk/reya_rpc/abis/Erc20.json")
-erc20_abi = json.load(f)
+with open("sdk/reya_rpc/abis/Erc20.json", encoding="utf-8") as f:
+    erc20_abi = json.load(f)
 
 
 def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
@@ -41,7 +43,7 @@ def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
 
     # Ensure Reya Network is correctly configured
     if not chain_id == 1729:
-        raise Exception("Bridging function requires setup for Reya Network")
+        raise NetworkConfigurationError("Bridging function requires setup for Reya Network")
 
     # Call the general bridge function with Arbitrum parameters
     return bridge_in(
@@ -73,7 +75,7 @@ def bridge_in_from_arbitrum_sepolia(config: dict, params: BridgeInParams):
 
     # Ensure Reya Network is correctly configured
     if not chain_id == 89346162:
-        raise Exception("Bridging function requires setup for Reya Cronos")
+        raise NetworkConfigurationError("Bridging function requires setup for Reya Cronos")
 
     # Call the general bridge function with Arbitrum parameters
     return bridge_in(
@@ -131,7 +133,7 @@ def bridge_in(
 
     # Ensure estimated fees do not exceed the user-defined limit
     if socket_fees > params.fee_limit:
-        raise Exception("Socket fee is higher than maximum allowed amount")
+        raise BridgeFeeExceededError("Socket fee is higher than maximum allowed amount")
 
     # Retrieve the USDC token contract on the source chain
     chain_usdc_address = vault.functions.token().call()

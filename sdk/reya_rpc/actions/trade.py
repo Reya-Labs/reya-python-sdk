@@ -4,6 +4,7 @@ from eth_abi import encode
 from hexbytes import HexBytes
 from web3 import Web3
 
+from sdk.reya_rpc.exceptions import TransactionReceiptError
 from sdk.reya_rpc.types import CommandType
 from sdk.reya_rpc.utils.execute_core_commands import execute_core_commands
 
@@ -68,7 +69,7 @@ def trade(config: dict, params: TradeParams):
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
-        raise Exception("Failed to decode transaction receipt for trade")
+        raise TransactionReceiptError("Failed to decode transaction receipt for trade")
 
     # Decode event log to extract execution details
     event = passive_perp.events.PassivePerpMatchOrder().process_log(filtered_logs[0])

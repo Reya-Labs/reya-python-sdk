@@ -23,6 +23,9 @@ from sdk.reya_rest_api.models.orders import (
     CancelOrderResponse,
     CreateOrderResponse,
     LimitOrderRequest,
+    OrderDetails,
+    OrderIdentifiers,
+    OrderSignature,
     TriggerOrderRequest,
 )
 from sdk.reya_rest_api.resources.base import BaseResource
@@ -105,19 +108,31 @@ class OrdersResource(BaseResource):
         )
 
         # Create the order request
-        order_request = LimitOrderRequest(
+        identifiers = OrderIdentifiers(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
+        )
+
+        details = OrderDetails(
             is_buy=is_buy,
             price=price,
             size=size,
-            reduce_only=reduce_only,
             order_type=order_type,
+            expires_after=expires_after,
+            reduce_only=reduce_only,
+        )
+
+        signature_info = OrderSignature(
             signature=signature,
             nonce=nonce,
             signer_wallet=self.config.wallet_address,
-            expires_after=expires_after,
+        )
+
+        order_request = LimitOrderRequest(
+            identifiers=identifiers,
+            details=details,
+            signature_info=signature_info,
         )
 
         # Make the API request
@@ -187,18 +202,31 @@ class OrdersResource(BaseResource):
         order_type = TriggerOrderType(trigger=trigger)
 
         # Create the order request
-        order_request = TriggerOrderRequest(
+        identifiers = OrderIdentifiers(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-            price=Decimal(limit_price),
+        )
+
+        details = OrderDetails(
             is_buy=is_buy,
-            size="",  # Size must be empty for SL/TP orders
-            reduce_only=False,
+            price=Decimal(limit_price),
+            size=Decimal("0"),  # Size must be empty for SL/TP orders
             order_type=order_type,
-            nonce=nonce,
+            expires_after=None,
+            reduce_only=False,
+        )
+
+        signature_info = OrderSignature(
             signature=signature,
+            nonce=nonce,
             signer_wallet=self.config.wallet_address,
+        )
+
+        order_request = TriggerOrderRequest(
+            identifiers=identifiers,
+            details=details,
+            signature_info=signature_info,
         )
 
         # Make the API request

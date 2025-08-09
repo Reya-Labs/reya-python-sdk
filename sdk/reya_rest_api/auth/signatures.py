@@ -41,6 +41,11 @@ class SignatureGenerator:
         # Calculate public address from private key
         self._public_address = Account.from_key(self._private_key).address
 
+    @property
+    def public_address(self) -> str:
+        """Get the public address derived from the private key."""
+        return self._public_address
+
     def get_default_expires_after(self, expires_after: Optional[int] = None) -> int:
         """
         Returns expires_after if given, otherwise now (ms) + 5s.

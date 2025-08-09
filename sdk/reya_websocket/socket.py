@@ -64,7 +64,7 @@ class ReyaSocket(websocket.WebSocketApp):
         """
         # Set up configuration
         self.config = config or get_config()
-        url = url or self.config.url
+        url = url or self.config.connection.url
 
         # Initialize resources
         self._market = MarketResource(self)
@@ -150,7 +150,7 @@ class ReyaSocket(websocket.WebSocketApp):
             run in a background thread.
         """
         if sslopt is None:
-            if self.config.ssl_verify:
+            if self.config.connection.ssl_verify:
                 sslopt = {}  # Use default SSL verification
             else:
                 sslopt = {"cert_reqs": ssl.CERT_NONE}
@@ -160,7 +160,7 @@ class ReyaSocket(websocket.WebSocketApp):
         if blocking:
             # Run the WebSocket directly (blocking)
             self.run_forever(
-                sslopt=sslopt, ping_interval=self.config.ping_interval, ping_timeout=self.config.ping_timeout
+                sslopt=sslopt, ping_interval=self.config.ping.ping_interval, ping_timeout=self.config.ping.ping_timeout
             )
         else:
             # Run the WebSocket in a thread (non-blocking)
@@ -170,8 +170,8 @@ class ReyaSocket(websocket.WebSocketApp):
                 target=self.run_forever,
                 kwargs={
                     "sslopt": sslopt,
-                    "ping_interval": self.config.ping_interval,
-                    "ping_timeout": self.config.ping_timeout,
+                    "ping_interval": self.config.ping.ping_interval,
+                    "ping_timeout": self.config.ping.ping_timeout,
                 },
             )
             self._thread.daemon = True
@@ -190,7 +190,7 @@ class ReyaSocket(websocket.WebSocketApp):
             to close.
         """
         if sslopt is None:
-            if self.config.ssl_verify:
+            if self.config.connection.ssl_verify:
                 sslopt = {}  # Use default SSL verification
             else:
                 sslopt = {"cert_reqs": ssl.CERT_NONE}

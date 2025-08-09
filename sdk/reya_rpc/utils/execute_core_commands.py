@@ -1,4 +1,4 @@
-def execute_core_commands(config, account_id: int, commands: list):
+def execute_core_commands(config: dict, account_id: int, commands: list[dict]) -> dict:
     w3 = config["w3"]
     account = config["w3account"]
     core = config["w3contracts"]["core"]
