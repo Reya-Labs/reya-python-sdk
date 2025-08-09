@@ -174,7 +174,7 @@ class ReyaTradingClient:
             price=Decimal(price),
             size=Decimal(size),
             order_type=order_type,
-            reduce_only=reduce_only,
+            reduce_only=reduce_only or False,
             expires_after=expires_after,
         )
 

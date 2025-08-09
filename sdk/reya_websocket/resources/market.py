@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class MarketResource:
     """Container for all market-related WebSocket resources."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the market resource container.
 
         Args:
@@ -56,7 +56,7 @@ class MarketResource:
 class AllMarketsResource(SubscribableResource):
     """Resource for accessing all markets data."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the all markets data resource.
 
         Args:
@@ -65,23 +65,28 @@ class AllMarketsResource(SubscribableResource):
         super().__init__(socket)
         self.path = "/api/trading/markets/data"
 
-    def subscribe(self, batched: bool = False) -> None:
+    def subscribe(self, batched: bool = False, **kwargs) -> None:
         """Subscribe to all markets data.
 
         Args:
             batched: Whether to receive updates in batches.
+            **kwargs: Additional keyword arguments (unused).
         """
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
-    def unsubscribe(self) -> None:
-        """Unsubscribe from all markets data."""
+    def unsubscribe(self, **kwargs) -> None:
+        """Unsubscribe from all markets data.
+
+        Args:
+            **kwargs: Additional keyword arguments (unused).
+        """
         self.socket.send_unsubscribe(channel=self.path)
 
 
 class MarketDataResource(SubscribableParameterizedResource):
     """Resource for accessing market data."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the market data resource.
 
         Args:
@@ -104,7 +109,7 @@ class MarketDataResource(SubscribableParameterizedResource):
 class MarketTradesResource(SubscribableParameterizedResource):
     """Resource for accessing market trades."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the market trades resource.
 
         Args:
@@ -127,7 +132,7 @@ class MarketTradesResource(SubscribableParameterizedResource):
 class MarketDataSubscription:
     """Manages a subscription to market data for a specific market."""
 
-    def __init__(self, socket: ReyaSocket, market_id: str):
+    def __init__(self, socket: "ReyaSocket", market_id: str):
         """Initialize a market data subscription.
 
         Args:
@@ -154,7 +159,7 @@ class MarketDataSubscription:
 class MarketTradesSubscription:
     """Manages a subscription to market trades for a specific market."""
 
-    def __init__(self, socket: ReyaSocket, market_id: str):
+    def __init__(self, socket: "ReyaSocket", market_id: str):
         """Initialize a market trades subscription.
 
         Args:

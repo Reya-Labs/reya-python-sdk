@@ -15,7 +15,7 @@ class WithdrawParams:
     amount: int  # Withdrawal amount in rUSD (scaled by 10^6)
 
 
-def withdraw(config: dict, params: WithdrawParams):
+def withdraw(config: dict, params: WithdrawParams) -> dict[str, TxReceipt]:
     """
     Withdraws rUSD from a margin account on Reya DEX.
 
@@ -39,7 +39,7 @@ def withdraw(config: dict, params: WithdrawParams):
 
     # Execute the withdrawal transaction
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f"Withdrawn from margin account: {tx_receipt.transactionHash.hex()}")
+    print(f"Withdrawn from margin account: {tx_receipt['transactionHash'].hex()}")
 
     # Return transaction receipt
     return {

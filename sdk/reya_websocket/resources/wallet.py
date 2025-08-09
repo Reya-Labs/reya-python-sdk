@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class WalletResource:
     """Container for all wallet-related WebSocket resources."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the wallet resource container.
 
         Args:
@@ -73,7 +73,7 @@ class WalletResource:
 class WalletPositionsResource(SubscribableParameterizedResource):
     """Resource for accessing wallet positions."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the wallet positions resource.
 
         Args:
@@ -96,7 +96,7 @@ class WalletPositionsResource(SubscribableParameterizedResource):
 class WalletTradesResource(SubscribableParameterizedResource):
     """Resource for accessing wallet trades."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the wallet trades resource.
 
         Args:
@@ -119,7 +119,7 @@ class WalletTradesResource(SubscribableParameterizedResource):
 class WalletBalancesResource(SubscribableParameterizedResource):
     """Resource for accessing wallet account balances."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the wallet balances resource.
 
         Args:
@@ -142,7 +142,7 @@ class WalletBalancesResource(SubscribableParameterizedResource):
 class WalletPositionsSubscription:
     """Manages a subscription to positions for a specific wallet."""
 
-    def __init__(self, socket: ReyaSocket, address: str):
+    def __init__(self, socket: "ReyaSocket", address: str):
         """Initialize a wallet positions subscription.
 
         Args:
@@ -169,7 +169,7 @@ class WalletPositionsSubscription:
 class WalletTradesSubscription:
     """Manages a subscription to trades for a specific wallet."""
 
-    def __init__(self, socket: ReyaSocket, address: str):
+    def __init__(self, socket: "ReyaSocket", address: str):
         """Initialize a wallet trades subscription.
 
         Args:
@@ -196,7 +196,7 @@ class WalletTradesSubscription:
 class WalletBalancesSubscription:
     """Manages a subscription to account balances for a specific wallet."""
 
-    def __init__(self, socket: ReyaSocket, address: str):
+    def __init__(self, socket: "ReyaSocket", address: str):
         """Initialize a wallet balances subscription.
 
         Args:
@@ -223,7 +223,7 @@ class WalletBalancesSubscription:
 class WalletOpenOrdersResource(SubscribableParameterizedResource):
     """Resource for accessing wallet open orders."""
 
-    def __init__(self, socket: ReyaSocket):
+    def __init__(self, socket: "ReyaSocket"):
         """Initialize the wallet open orders resource.
 
         Args:
@@ -246,7 +246,7 @@ class WalletOpenOrdersResource(SubscribableParameterizedResource):
 class WalletOpenOrdersSubscription:
     """Manages a subscription to open orders for a specific wallet."""
 
-    def __init__(self, socket: ReyaSocket, address: str):
+    def __init__(self, socket: "ReyaSocket", address: str):
         """Initialize a wallet open orders subscription.
 
         Args:

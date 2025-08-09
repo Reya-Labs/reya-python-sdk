@@ -35,7 +35,7 @@ def deposit(config: dict, params: DepositParams):
     # Execute the transaction to approve rUSD to be spent by the core contract
     tx_hash = rusd.functions.approve(core.address, params.amount).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Approved rUSD to core: {tx_receipt.transactionHash.hex()}")
+    print(f"Approved rUSD to core: {tx_receipt['transactionHash'].hex()}")
 
     # Encode deposit parameters for the contract call
     inputs_encoded = encode(["(address,uint256)"], [[rusd.address, params.amount]])
@@ -46,7 +46,7 @@ def deposit(config: dict, params: DepositParams):
 
     # Execute the deposit transaction
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f"Deposited to margin account: {tx_receipt.transactionHash.hex()}")
+    print(f"Deposited to margin account: {tx_receipt['transactionHash'].hex()}")
 
     # Return transaction receipt
     return {

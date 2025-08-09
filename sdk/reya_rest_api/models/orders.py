@@ -118,7 +118,7 @@ class CreateOrderResponse:
     @classmethod
     def from_api_response(cls, response_data: dict[str, Any]) -> "CreateOrderResponse":
         return cls(
-            success=response_data.get("success"),
+            success=bool(response_data.get("success", False)),
             order_id=response_data.get("orderId"),
             transaction_hash=response_data.get("transactionHash"),
             error=response_data.get("error"),
@@ -138,7 +138,7 @@ class CancelOrderResponse:
     @classmethod
     def from_api_response(cls, response_data: dict[str, Any]) -> "CancelOrderResponse":
         return cls(
-            success=response_data.get("success"),
+            success=bool(response_data.get("success", False)),
             order_id=response_data.get("orderId"),
             error=response_data.get("error"),
             raw_response=response_data,

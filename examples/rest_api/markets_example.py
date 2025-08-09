@@ -25,10 +25,7 @@ async def main():
 
     try:
         markets = await client.markets.get_markets()
-        print(f"Found {len(markets) if isinstance(markets, list) else 'some'} markets")
-        # Print the first market if available to avoid too much output
-        if isinstance(markets, list) and markets:
-            print(f"First market: {markets[0]}")
+        print(f"Markets response: {markets}")
 
         # Get markets configuration
         print("\n--- Getting markets configuration ---")
@@ -40,9 +37,10 @@ async def main():
         data = await client.markets.get_markets_data()
         print(f"Markets data: {data}")
 
-        # If we have at least one market, get specific market information
-        if isinstance(markets, list) and markets:
-            market_id = markets[0].get("id")
+        # If markets data contains a list of markets, get specific market information
+        markets_list = markets.get("data", []) if isinstance(markets.get("data"), list) else []
+        if markets_list:
+            market_id = markets_list[0].get("id")
             if market_id:
                 print(f"\n--- Getting information for market {market_id} ---")
                 market = await client.markets.get_market(market_id)

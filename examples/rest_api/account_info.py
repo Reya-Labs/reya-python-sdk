@@ -36,22 +36,25 @@ async def main():
 
     try:
         # Get all open orders for the wallet
-        open_orders = await client.get_open_orders()
+        open_orders_response = await client.get_open_orders()
+
+        # Extract the orders list from the response
+        open_orders = open_orders_response.get("data", []) if isinstance(open_orders_response.get("data"), list) else []
 
         if open_orders:
             print(f"Found {len(open_orders)} open orders:\n")
 
             for i, order in enumerate(open_orders):
-                # Extract order details
-                account_id = order.get("account_id", "unknown")
-                order_id = order.get("id", "unknown")
-                market_id = order.get("market_id", "unknown")
-                order_type = order.get("order_type", "unknown")
-                is_long = order.get("is_long", True)
-                trigger_price = order.get("trigger_price", 0)
-                order_base = order.get("order_base", "0")
-                status = order.get("status", "unknown")
-                created_at = order.get("creation_timestamp_ms", "unknown")
+                # Extract order details safely
+                account_id = order.get("account_id", "unknown") if isinstance(order, dict) else "unknown"
+                order_id = order.get("id", "unknown") if isinstance(order, dict) else "unknown"
+                market_id = order.get("market_id", "unknown") if isinstance(order, dict) else "unknown"
+                order_type = order.get("order_type", "unknown") if isinstance(order, dict) else "unknown"
+                is_long = order.get("is_long", True) if isinstance(order, dict) else True
+                trigger_price = order.get("trigger_price", 0) if isinstance(order, dict) else 0
+                order_base = order.get("order_base", "0") if isinstance(order, dict) else "0"
+                status = order.get("status", "unknown") if isinstance(order, dict) else "unknown"
+                created_at = order.get("creation_timestamp_ms", "unknown") if isinstance(order, dict) else "unknown"
 
                 # Determine side based on is_long flag
                 side = "BUY" if is_long else "SELL"

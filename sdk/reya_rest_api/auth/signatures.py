@@ -39,7 +39,7 @@ class SignatureGenerator:
             raise ValueError("Private key is required for signing")
 
         # Calculate public address from private key
-        self._public_address = Account.from_key(self._private_key).address
+        self._public_address: str = str(Account.from_key(self._private_key).address)
 
     @property
     def public_address(self) -> str:

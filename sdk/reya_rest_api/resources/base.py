@@ -8,7 +8,7 @@ import logging
 
 import httpx
 
-from sdk import SDK_VERSION
+from sdk._version import SDK_VERSION
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig
 
@@ -33,7 +33,7 @@ class BaseResource:
 
         # Create signature generator if not provided
         if signature_generator is None and config.private_key:
-            self.signature_generator = SignatureGenerator(config)
+            self.signature_generator: Optional[SignatureGenerator] = SignatureGenerator(config)
         else:
             self.signature_generator = signature_generator
 
@@ -73,7 +73,7 @@ class BaseResource:
 
         """
         try:
-            data = response.json()
+            data: dict[str, Any] = response.json()
         except ValueError:
             self.logger.error(f"Failed to parse JSON response: {response.text}")
             raise ValueError(f"{error_msg}: Invalid JSON response")

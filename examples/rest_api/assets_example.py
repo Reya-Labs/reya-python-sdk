@@ -27,12 +27,12 @@ async def main():
         assets = await client.assets.get_assets()
         print(f"Assets data: {assets}")
 
-        # If the response contains a list of assets, print the count and sample
-        if isinstance(assets, list):
-            print(f"Found {len(assets)} assets")
+        # If the response contains a list of assets in data field, print the count and sample
+        assets_list = assets.get("data", []) if isinstance(assets.get("data"), list) else []
+        if assets_list:
+            print(f"Found {len(assets_list)} assets")
             # Print a few sample assets if available
-            if assets:
-                print(f"Sample assets (first 3): {assets[:3]}")
+            print(f"Sample assets (first 3): {assets_list[:3]}")
 
     except Exception as e:
         print(f"Error retrieving assets information: {e}")
