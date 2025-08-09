@@ -1,6 +1,5 @@
 from sdk.reya_rpc.types import MarketPriceStreams
 
-
 COLLATERAL_PRICE_STREAMS = [
     "USDCUSD",
     "DEUSDUSD",

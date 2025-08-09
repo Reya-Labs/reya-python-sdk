@@ -1,6 +1,7 @@
 import math
-from web3 import Web3
+
 from eth_abi import encode
+from web3 import Web3
 
 
 def update_oracle_prices(config, signed_payloads):
@@ -28,9 +29,7 @@ def update_oracle_prices(config, signed_payloads):
     )
 
     # Execute the batched oracle price update transaction
-    tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact(
-        {"from": account.address}
-    )
+    tx_hash = multicall.functions.tryAggregatePreservingError(False, calls).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Updated oracle prices: {tx_receipt.transactionHash.hex()}")
 
@@ -75,9 +74,7 @@ def get_oracle_update_calls(oracle_adapter, signed_payloads):
         encoded_calls.append(
             (
                 oracle_adapter.address,
-                oracle_adapter.encode_abi(
-                    fn_name="fulfillOracleQuery", args=[encoded_payload]
-                ),
+                oracle_adapter.encode_abi(fn_name="fulfillOracleQuery", args=[encoded_payload]),
             )
         )
 

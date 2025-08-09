@@ -1,8 +1,9 @@
-from web3 import Web3
-from sdk.reya_rpc import MarketIds, TradeParams
-from sdk.reya_rpc import get_config, trade
 import os
+
 from dotenv import load_dotenv
+from web3 import Web3
+
+from sdk.reya_rpc import MarketIds, TradeParams, get_config, trade
 
 
 def main():
@@ -52,9 +53,7 @@ def main():
 
         execution_price = result["execution_price"] / 1e18
         fees = result["fees"] / 1e6
-        print(
-            f"Trade information: execution price = {execution_price} and paid fees = {fees} rUSD"
-        )
+        print(f"Trade information: execution price = {execution_price} and paid fees = {fees} rUSD")
 
     # Execute a long trade (buying SOL)
     trade_on_sol(order_base=0.1)

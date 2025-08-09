@@ -1,6 +1,13 @@
-from sdk.reya_rpc import create_account, deposit, withdraw, transfer
-from sdk.reya_rpc import DepositParams, WithdrawParams, TransferParams
-from sdk.reya_rpc import get_config
+from sdk.reya_rpc import (
+    DepositParams,
+    TransferParams,
+    WithdrawParams,
+    create_account,
+    deposit,
+    get_config,
+    transfer,
+    withdraw,
+)
 
 
 def main():

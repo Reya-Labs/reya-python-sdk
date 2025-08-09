@@ -1,8 +1,8 @@
-from sdk.reya_rpc import DepositParams, BridgeInParams
-from sdk.reya_rpc import bridge_in_from_arbitrum, deposit
-from sdk.reya_rpc import get_config
 import os
+
 from dotenv import load_dotenv
+
+from sdk.reya_rpc import BridgeInParams, DepositParams, bridge_in_from_arbitrum, deposit, get_config
 
 
 def main():
@@ -26,13 +26,9 @@ def main():
     # Execute bridging of USDC from Arbitrum to Reya Network
     bridge_only = True
     if bridge_only:
-        result = bridge_in_from_arbitrum(
-            config, BridgeInParams(amount=amount_e6, fee_limit=int(0.01e18))
-        )
+        result = bridge_in_from_arbitrum(config, BridgeInParams(amount=amount_e6, fee_limit=int(0.01e18)))
         tx_hash = result["transaction_receipt"].transactionHash.hex()
-        print(
-            f"Check status of bridging transfer here: https://www.socketscan.io/tx/{tx_hash}"
-        )
+        print(f"Check status of bridging transfer here: https://www.socketscan.io/tx/{tx_hash}")
 
     # Deposit rUSD into the margin account after bridging is completed
     transfer_arrived = False

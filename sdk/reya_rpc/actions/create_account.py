@@ -1,5 +1,7 @@
-from web3 import Web3
 from hexbytes import HexBytes
+from web3 import Web3
+
+from sdk.reya_rpc.exceptions import TransactionReceiptError
 
 
 def create_account(config: dict):
@@ -19,9 +21,7 @@ def create_account(config: dict):
     account = config["w3account"]
 
     # Execute the transaction to create a new margin account
-    tx_hash = core.functions.createAccount(account.address).transact(
-        {"from": account.address}
-    )
+    tx_hash = core.functions.createAccount(account.address).transact({"from": account.address})
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Created account: {tx_receipt.transactionHash.hex()}")
 
@@ -29,18 +29,14 @@ def create_account(config: dict):
     logs = tx_receipt["logs"]
 
     # Compute event signature for filtering relevant log
-    event_sig = Web3.keccak(
-        text="AccountCreated(uint128,address,address,uint256)"
-    ).hex()
+    event_sig = Web3.keccak(text="AccountCreated(uint128,address,address,uint256)").hex()
 
     # Filter logs for the expected event
-    filtered_logs = [
-        log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)
-    ]
+    filtered_logs = [log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)]
 
     # Ensure exactly one matching event log is found
     if not len(filtered_logs) == 1:
-        raise Exception("Failed to decode transaction receipt for account creations")
+        raise TransactionReceiptError("Failed to decode transaction receipt for account creations")
 
     # Decode event log to extract the new margin account ID
     event = core.events.AccountCreated().process_log(filtered_logs[0])
