@@ -22,35 +22,28 @@ async def main():
     # Get all prices
     print("\n--- Getting all prices ---")
 
-    try:
-        prices = await client.prices.get_prices()
-        print(f"Retrieved {len(prices)} price entries")
+    prices = await client.prices.get_prices()
+    print(f"Retrieved {len(prices)} price entries")
 
-        # Print some sample price entries
-        if prices:
-            # Get a few keys as samples
-            sample_keys = list(prices.keys())[:3]
-            print("\nSample price entries:")
-            for key in sample_keys:
-                print(f"{key}: {prices[key]}")
+    # Print some sample price entries
+    if prices:
+        # Get a few keys as samples
+        sample_keys = list(prices.keys())[:3]
+        print("\nSample price entries:")
+        for key in sample_keys:
+            print(f"{key}: {prices[key]}")
 
-        # Extract a specific price from the prices response instead of making a separate API call
-        # Choose an existing key from the response
-        if "ETHUSDMARK" in prices:
-            eth_price = prices["ETHUSDMARK"]
-            print(f"\n--- ETH/USD Mark Price ---")
-            print(f"Price data for ETHUSDMARK: {eth_price}")
-            if "oraclePrice" in eth_price:
-                # Convert from string to float and adjust decimal places if needed
-                oracle_price_wei = eth_price["oraclePrice"]
-                try:
-                    oracle_price = float(oracle_price_wei) / 10**18  # Assuming 18 decimals
-                    print(f"Oracle price in USD: ${oracle_price:.2f}")
-                except ValueError:
-                    print(f"Could not convert price value: {oracle_price_wei}")
-
-    except Exception as e:
-        print(f"Error retrieving prices information: {e}")
+    # Extract a specific price from the prices response instead of making a separate API call
+    # Choose an existing key from the response
+    if "ETHUSDMARK" in prices:
+        eth_price = prices["ETHUSDMARK"]
+        print("\n--- ETH/USD Mark Price ---")
+        print(f"Price data for ETHUSDMARK: {eth_price}")
+        if "oraclePrice" in eth_price:
+            # Convert from string to float and adjust decimal places if needed
+            oracle_price_wei = eth_price["oraclePrice"]
+            oracle_price = float(oracle_price_wei) / 10**18  # Assuming 18 decimals
+            print(f"Oracle price in USD: ${oracle_price:.2f}")
 
 
 if __name__ == "__main__":

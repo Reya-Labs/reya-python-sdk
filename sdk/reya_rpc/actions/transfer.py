@@ -42,7 +42,7 @@ def transfer(config: dict, params: TransferParams):
 
     # Execute the transfer transaction
     tx_receipt = execute_core_commands(config, params.account_id, commands)
-    print(f"Transferred rUSD between margin accounts: {tx_receipt.transactionHash.hex()}")
+    print(f"Transferred rUSD between margin accounts: {tx_receipt['transactionHash'].hex()}")
 
     # Return transaction receipt
     return {

@@ -4,7 +4,7 @@ Wallet resource for Reya Trading API.
 This module provides wallet-related functionality.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from sdk.reya_rest_api.resources.base import BaseResource
 
@@ -12,7 +12,7 @@ from sdk.reya_rest_api.resources.base import BaseResource
 class WalletResource(BaseResource):
     """Resource for wallet-related API endpoints."""
 
-    async def get_positions(self, wallet_address: str) -> dict[str, Any]:
+    async def get_positions(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get positions for a wallet address asynchronously.
 
@@ -26,10 +26,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/positions"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
-    async def get_open_orders(self, wallet_address: str) -> dict[str, Any]:
+    async def get_open_orders(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get open orders (limit, stop loss, take profit) for a wallet address asynchronously.
 
@@ -43,10 +43,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/openOrders"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
-    async def get_balances(self, wallet_address: str) -> dict[str, Any]:
+    async def get_balances(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get account balance asynchronously.
 
@@ -60,9 +60,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/accounts/balances"
-        return await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
+        return response_data
 
-    async def get_configuration(self, wallet_address: str) -> dict[str, Any]:
+    async def get_configuration(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get account configuration asynchronously.
 
@@ -76,9 +77,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/configuration"
-        return await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
+        return response_data
 
-    async def get_trades(self, wallet_address: str) -> dict[str, Any]:
+    async def get_trades(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get trades for a wallet address asynchronously.
 
@@ -92,10 +94,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/trades"
-        response_data = await self._get(endpoint)
-        return response_data
+        response_data: dict[str, list[dict[str, Any]]] = await self._get(endpoint)
+        return response_data.get("data", [])
 
-    async def get_accounts(self, wallet_address: str) -> dict[str, Any]:
+    async def get_accounts(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get accounts for a wallet address asynchronously.
 
@@ -109,10 +111,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/accounts"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
-    async def get_leverages(self, wallet_address: str) -> dict[str, Any]:
+    async def get_leverages(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get leverages for a wallet address asynchronously.
 
@@ -126,10 +128,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/leverages"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
-    async def get_auto_exchange(self, wallet_address: str) -> dict[str, Any]:
+    async def get_auto_exchange(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get auto exchange settings for a wallet address asynchronously.
 
@@ -143,10 +145,10 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/autoExchange"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data
 
-    async def get_stats(self, wallet_address: str) -> dict[str, Any]:
+    async def get_stats(self, wallet_address: str) -> list[dict[str, Any]]:
         """
         Get stats for a wallet address asynchronously.
 
@@ -160,5 +162,5 @@ class WalletResource(BaseResource):
             ValueError: If the API returns an error
         """
         endpoint = f"api/trading/wallet/{wallet_address}/stats"
-        response_data = await self._get(endpoint)
+        response_data: list[dict[str, Any]] = await self._get(endpoint)
         return response_data

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -8,20 +8,20 @@ from sdk.reya_rest_api.constants.enums import UnifiedOrderType
 
 @dataclass(frozen=True)
 class OrderRequest:
-    """Base class for order requests."""
+    """Base class for order requests with all necessary fields."""
 
     account_id: int
     market_id: int
     exchange_id: int
     is_buy: bool
-    price: Optional[Decimal]
+    price: Decimal
     size: Optional[Decimal]
     order_type: UnifiedOrderType
+    expires_after: Optional[int]
+    reduce_only: Optional[bool]
     signature: str
     nonce: int
     signer_wallet: str
-    expires_after: Optional[int] = None
-    reduce_only: Optional[bool] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to API request dictionary"""
@@ -64,7 +64,6 @@ class TriggerOrderRequest(OrderRequest):
             "exchangeId": self.exchange_id,
             "isBuy": self.is_buy,
             "price": str(self.price),
-            "size": str(self.size),
             "reduceOnly": self.reduce_only,
             "type": self.order_type.to_dict(),
             "signature": self.signature,
@@ -73,7 +72,7 @@ class TriggerOrderRequest(OrderRequest):
         }
 
 
-@dataclass(frozen=True)
+@dataclass
 class CancelOrderRequest:
     """Order cancellation request."""
 
@@ -95,9 +94,9 @@ class CreateOrderResponse:
     raw_response: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_api_response(cls, response_data: dict[str, Any]) -> "OrderResponse":
+    def from_api_response(cls, response_data: dict[str, Any]) -> "CreateOrderResponse":
         return cls(
-            success=response_data.get("success"),
+            success=bool(response_data.get("success", False)),
             order_id=response_data.get("orderId"),
             transaction_hash=response_data.get("transactionHash"),
             error=response_data.get("error"),
@@ -117,7 +116,7 @@ class CancelOrderResponse:
     @classmethod
     def from_api_response(cls, response_data: dict[str, Any]) -> "CancelOrderResponse":
         return cls(
-            success=response_data.get("success"),
+            success=bool(response_data.get("success", False)),
             order_id=response_data.get("orderId"),
             error=response_data.get("error"),
             raw_response=response_data,

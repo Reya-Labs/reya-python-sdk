@@ -111,37 +111,16 @@ async def main():
     logger.info("Connecting to WebSocket asynchronously")
     logger.info("Press Ctrl+C to exit")
 
-    try:
-        # Connect asynchronously - this will return immediately
-        await ws.async_connect()
+    # Connect
+    ws.connect()
 
-        # Start our concurrent task
-        task = asyncio.create_task(periodic_task())
+    # Start our concurrent task
+    asyncio.create_task(periodic_task())
 
-        # Main application loop
-        while True:
-            await asyncio.sleep(1)
-
-    except KeyboardInterrupt:
-        logger.info("Exiting gracefully")
-    except Exception as e:
-        logger.error(f"Error: {e}")
-    finally:
-        # Cancel our concurrent task if it's still running
-        if "task" in locals() and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                logger.info("Concurrent task was cancelled")
-
-        logger.info("WebSocket connection closed")
+    # Main application loop
+    while True:
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nKeyboard interrupt received. Exiting...")
-    finally:
-        print("WebSocket example complete.")
+    asyncio.run(main())

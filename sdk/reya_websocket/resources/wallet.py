@@ -1,13 +1,13 @@
 """Wallet-related WebSocket resources."""
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING
 
 from sdk.reya_websocket.resources.common import (
-    ParameterizedResource,
     SubscribableParameterizedResource,
-    SubscribableResource,
-    WebSocketResource,
 )
+
+if TYPE_CHECKING:
+    from sdk.reya_websocket.socket import ReyaSocket
 
 
 class WalletResource:

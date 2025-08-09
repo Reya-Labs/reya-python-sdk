@@ -1,4 +1,9 @@
-def execute_core_commands(config, account_id: int, commands: list):
+from typing import Any
+
+from web3.types import TxReceipt
+
+
+def execute_core_commands(config: dict[str, Any], account_id: int, commands: list[Any]) -> TxReceipt:
     w3 = config["w3"]
     account = config["w3account"]
     core = config["w3contracts"]["core"]
@@ -21,4 +26,4 @@ def execute_core_commands(config, account_id: int, commands: list):
     # Wait for the transaction receipt
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
-    return tx_receipt
+    return tx_receipt  # type: ignore[no-any-return]

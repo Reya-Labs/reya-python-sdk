@@ -5,10 +5,7 @@ This module provides tools for creating EIP-712 signatures for order creation
 and message signatures for order cancellation.
 """
 
-from typing import Optional
-
 import json
-import time
 from decimal import Decimal
 
 from eth_abi import encode
@@ -16,9 +13,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus, OrdersGatewayOrderType
-
-DEFAULT_DEADLINE_MS = 5000
+from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus
 
 
 class SignatureGenerator:
@@ -39,13 +34,12 @@ class SignatureGenerator:
             raise ValueError("Private key is required for signing")
 
         # Calculate public address from private key
-        self._public_address = Account.from_key(self._private_key).address
+        self._public_address: str = str(Account.from_key(self._private_key).address)
 
-    def get_default_expires_after(self, expires_after: Optional[int] = None) -> int:
-        """
-        Returns expires_after if given, otherwise now (ms) + 5s.
-        """
-        return expires_after if expires_after is not None else int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+    @property
+    def public_address(self) -> str:
+        """Get the public address derived from the private key."""
+        return self._public_address
 
     def scale(self, decimals: int):
         """Returns a function that scales a number (str, int, float, or Decimal) to an integer."""

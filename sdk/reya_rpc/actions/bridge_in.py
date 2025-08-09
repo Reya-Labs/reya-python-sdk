@@ -2,7 +2,10 @@ import json
 from dataclasses import dataclass
 
 from web3 import Web3
-from web3.middleware import signing
+from web3.types import HexStr
+
+from sdk.reya_rpc.exceptions import NetworkConfigurationError
+from sdk.reya_rpc.utils.bridge_utils import calculate_socket_fees
 
 
 @dataclass
@@ -14,11 +17,11 @@ class BridgeInParams:
 
 
 # Load contract ABI files
-f = open("sdk/reya_rpc/abis/SocketVaultWithPayload.json")
-vault_abi = json.load(f)
+with open("sdk/reya_rpc/abis/SocketVaultWithPayload.json", encoding="utf-8") as f:
+    vault_abi = json.load(f)
 
-f = open("sdk/reya_rpc/abis/Erc20.json")
-erc20_abi = json.load(f)
+with open("sdk/reya_rpc/abis/Erc20.json", encoding="utf-8") as f:
+    erc20_abi = json.load(f)
 
 
 def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
@@ -41,7 +44,7 @@ def bridge_in_from_arbitrum(config: dict, params: BridgeInParams):
 
     # Ensure Reya Network is correctly configured
     if not chain_id == 1729:
-        raise Exception("Bridging function requires setup for Reya Network")
+        raise NetworkConfigurationError("Bridging function requires setup for Reya Network")
 
     # Call the general bridge function with Arbitrum parameters
     return bridge_in(
@@ -73,7 +76,7 @@ def bridge_in_from_arbitrum_sepolia(config: dict, params: BridgeInParams):
 
     # Ensure Reya Network is correctly configured
     if not chain_id == 89346162:
-        raise Exception("Bridging function requires setup for Reya Cronos")
+        raise NetworkConfigurationError("Bridging function requires setup for Reya Cronos")
 
     # Call the general bridge function with Arbitrum parameters
     return bridge_in(
@@ -83,6 +86,103 @@ def bridge_in_from_arbitrum_sepolia(config: dict, params: BridgeInParams):
         vault_address=vault_address,
         connector_address=connector_address,
     )
+
+
+def _setup_bridge_connection(chain_rpc_url: str, vault_address: str, private_key: str):
+    """Set up Web3 connection and contracts for bridging."""
+    w3 = Web3(Web3.HTTPProvider(chain_rpc_url))
+    account = w3.eth.account.from_key(private_key)
+    vault = w3.eth.contract(address=Web3.to_checksum_address(vault_address), abi=vault_abi)
+    return w3, account, vault
+
+
+def _validate_and_calculate_fees(vault, connector_address: str, params: BridgeInParams):
+    """Validate bridge fees and calculate the actual fee amount."""
+    socket_msg_gas_limit = 20_000_000
+    socket_empty_payload_size = 160
+
+    socket_fees = calculate_socket_fees(
+        vault, connector_address, socket_msg_gas_limit, socket_empty_payload_size, params.fee_limit
+    )
+
+    return socket_fees, socket_msg_gas_limit
+
+
+def _approve_usdc_spending(w3, vault, account, vault_address: str, params: BridgeInParams, private_key: str):
+    """Approve USDC spending by the vault contract."""
+    chain_usdc_address = vault.functions.token().call()
+    chain_usdc = w3.eth.contract(address=chain_usdc_address, abi=erc20_abi)
+
+    approval_tx = chain_usdc.functions.approve(vault_address, params.amount).build_transaction(
+        {
+            "from": account.address,
+            "nonce": w3.eth.get_transaction_count(account.address),
+        }
+    )
+
+    signed_tx = w3.eth.account.sign_transaction(approval_tx, private_key=private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    print(f"Approved USDC to vault: {tx_receipt['transactionHash'].hex()}")
+
+    return tx_receipt
+
+
+def _build_bridge_transaction(
+    vault,
+    account,
+    config: dict,
+    params: BridgeInParams,
+    connector_address: str,
+    socket_fees: int,
+    socket_msg_gas_limit: int,
+    w3,
+):
+    """Build the bridge transaction."""
+    periphery = config["w3contracts"]["periphery"]
+    reya_usdc = config["w3contracts"]["usdc"]
+
+    periphery_calldata = periphery.encodeABI(fn_name="deposit", args=[(account.address, reya_usdc.address)])
+    socket_bridge_options = Web3.to_bytes(hexstr=HexStr("0x"))
+
+    return vault.functions.bridge(
+        periphery.address,
+        params.amount,
+        socket_msg_gas_limit,
+        connector_address,
+        periphery_calldata,
+        socket_bridge_options,
+    ).build_transaction(
+        {
+            "from": account.address,
+            "value": socket_fees,
+            "nonce": w3.eth.get_transaction_count(account.address),
+        }
+    )
+
+
+def _execute_bridge_transaction(
+    w3,
+    vault,
+    account,
+    config: dict,
+    params: BridgeInParams,
+    connector_address: str,
+    socket_fees: int,
+    socket_msg_gas_limit: int,
+    private_key: str,
+):
+    """Execute the actual bridge transaction."""
+    bridge_tx = _build_bridge_transaction(
+        vault, account, config, params, connector_address, socket_fees, socket_msg_gas_limit, w3
+    )
+
+    signed_tx = w3.eth.account.sign_transaction(bridge_tx, private_key=private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    print(f"Initiated bridge in: {tx_receipt['transactionHash'].hex()}")
+
+    return tx_receipt
 
 
 def bridge_in(
@@ -105,63 +205,20 @@ def bridge_in(
     Returns:
         dict: Contains transaction receipt of the bridging transaction.
     """
-
-    # Retrieve the private key from config
     private_key = config["private_key"]
 
-    # Create Web3 instance for the specified chain and configure the account
-    w3 = Web3(Web3.HTTPProvider(chain_rpc_url))
-    w3account = w3.eth.account.from_key(private_key)
-    account_address = w3account.address
-    w3.eth.default_account = account_address
-    w3.middleware_onion.add(signing.construct_sign_and_send_raw_middleware_factory(w3account))
+    # Setup connection and contracts
+    w3, account, vault = _setup_bridge_connection(chain_rpc_url, vault_address, private_key)
 
-    # Set parameters for the bridge transaction
-    socket_msg_gas_limit = 20_000_000
-    socket_empty_payload_size = 160
+    # Validate fees and calculate socket fees
+    socket_fees, socket_msg_gas_limit = _validate_and_calculate_fees(vault, connector_address, params)
 
-    # Retrieve the vault contract
-    vault = w3.eth.contract(address=vault_address, abi=vault_abi)
+    # Approve USDC spending
+    _approve_usdc_spending(w3, vault, account, vault_address, params, private_key)
 
-    # Estimate Socket bridge fees and apply a 10% buffer
-    estimated_socket_fees = vault.functions.getMinFees(
-        connector_address, socket_msg_gas_limit, socket_empty_payload_size
-    ).call()
-    socket_fees = estimated_socket_fees * 110 // 100
+    # Execute the bridge transaction
+    tx_receipt = _execute_bridge_transaction(
+        w3, vault, account, config, params, connector_address, socket_fees, socket_msg_gas_limit, private_key
+    )
 
-    # Ensure estimated fees do not exceed the user-defined limit
-    if socket_fees > params.fee_limit:
-        raise Exception("Socket fee is higher than maximum allowed amount")
-
-    # Retrieve the USDC token contract on the source chain
-    chain_usdc_address = vault.functions.token().call()
-    chain_usdc = w3.eth.contract(address=chain_usdc_address, abi=erc20_abi)
-
-    # Execute the transaction to approve USDC to be spent by the vault contract
-    tx_hash = chain_usdc.functions.approve(vault_address, params.amount).transact({"from": account_address})
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Approved USDC to vault: {tx_receipt.transactionHash.hex()}")
-
-    # Prepare periphery contract call data for deposit
-    periphery = config["w3contracts"]["periphery"]
-    reya_usdc = config["w3contracts"]["usdc"]
-    socket_bridge_options = Web3.to_bytes(hexstr="0x")
-    periphery_calldata = periphery.encodeABI(fn_name="deposit", args=[(account_address, reya_usdc.address)])
-
-    # Execute the bridging initiation transaction
-    tx_hash = vault.functions.bridge(
-        periphery.address,
-        params.amount,
-        socket_msg_gas_limit,
-        connector_address,
-        periphery_calldata,
-        socket_bridge_options,
-    ).transact({"from": account_address, "value": socket_fees})
-
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Initiated bridge in: {tx_receipt.transactionHash.hex()}")
-
-    # Return transaction receipt
-    return {
-        "transaction_receipt": tx_receipt,
-    }
+    return {"transaction_receipt": tx_receipt}

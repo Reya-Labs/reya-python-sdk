@@ -1,11 +1,11 @@
 """WebSocket client implementation for the Reya API."""
 
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Optional
 
-import asyncio
 import json
 import logging
 import ssl
+import threading
 
 import websocket
 
@@ -31,7 +31,9 @@ def as_json(on_message: Optional[Callable[[Any, Any], None]]) -> Callable[[Any, 
     def wrapper(ws, message: str):
         # Always log raw message for debugging
         logger.debug(f"RAW WEBSOCKET MESSAGE: {message!r}")
-        return on_message(ws, json.loads(message))
+        if on_message is not None:
+            return on_message(ws, json.loads(message))
+        return None
 
     return wrapper
 
@@ -41,13 +43,12 @@ class ReyaSocket(websocket.WebSocketApp):
 
     def __init__(
         self,
-        url: str = None,
+        url: Optional[str] = None,
         on_open: Optional[Callable[[websocket.WebSocket], None]] = None,
         on_message: Optional[Callable[[websocket.WebSocket, Any], None]] = None,
         on_error: Optional[Callable[[websocket.WebSocket, Any], None]] = None,
         on_close: Optional[Callable[[websocket.WebSocket, int, str], None]] = None,
         config: Optional[WebSocketConfig] = None,
-        *args,
         **kwargs,
     ):
         """Initialize the WebSocket client with resources.
@@ -59,7 +60,6 @@ class ReyaSocket(websocket.WebSocketApp):
             on_error: Callback for error events.
             on_close: Callback for connection close events.
             config: WebSocket configuration. If None, loads from sdk.reya_websocketenv file.
-            *args: Additional arguments for WebSocketApp.
             **kwargs: Additional keyword arguments for WebSocketApp.
         """
         # Set up configuration
@@ -70,6 +70,9 @@ class ReyaSocket(websocket.WebSocketApp):
         self._market = MarketResource(self)
         self._wallet = WalletResource(self)
         self._prices = PricesResource(self)
+
+        # Initialize thread attribute
+        self._thread: Optional[threading.Thread] = None
 
         # Default handlers if none provided
         if on_open is None:
@@ -82,7 +85,7 @@ class ReyaSocket(websocket.WebSocketApp):
             on_close = self._default_on_close
 
         # Track subscriptions
-        self.active_subscriptions = set()
+        self.active_subscriptions: set[str] = set()
 
         super().__init__(
             url=url,
@@ -90,7 +93,6 @@ class ReyaSocket(websocket.WebSocketApp):
             on_message=as_json(on_message),
             on_error=on_error,
             on_close=on_close,
-            *args,
             **kwargs,
         )
 
@@ -135,7 +137,7 @@ class ReyaSocket(websocket.WebSocketApp):
         logger.info(f"Unsubscribing from {channel}")
         self.send(json.dumps(message))
 
-    def connect(self, sslopt=None, blocking=True) -> None:
+    def connect(self, sslopt=None, blocking=False) -> None:
         """Connect to the WebSocket server.
 
         Args:
@@ -164,8 +166,6 @@ class ReyaSocket(websocket.WebSocketApp):
             )
         else:
             # Run the WebSocket in a thread (non-blocking)
-            import threading
-
             self._thread = threading.Thread(
                 target=self.run_forever,
                 kwargs={
@@ -177,39 +177,13 @@ class ReyaSocket(websocket.WebSocketApp):
             self._thread.daemon = True
             self._thread.start()
 
-    async def async_connect(self, sslopt=None) -> None:
-        """Connect to the WebSocket server asynchronously.
-
-        Args:
-            sslopt: SSL options for the connection. If None, uses default options.
-
-        Note:
-            This method starts the WebSocket connection in a background thread and
-            returns immediately. It's an async method that can be awaited to ensure
-            the connection has been initiated, but it doesn't wait for the connection
-            to close.
-        """
-        if sslopt is None:
-            if self.config.ssl_verify:
-                sslopt = {}  # Use default SSL verification
-            else:
-                sslopt = {"cert_reqs": ssl.CERT_NONE}
-
-        logger.info(f"Connecting asynchronously to {self.url}")
-
-        # Start the connection in a thread
-        self.connect(sslopt=sslopt, blocking=False)
-
-        # Give a short pause to allow connection to initialize
-        await asyncio.sleep(0.1)
-
-    def _default_on_open(self, ws):
+    def _default_on_open(self, _ws):
         """Default handler for connection open events."""
         logger.info("WebSocket connection established")
         # Send ping to confirm connection and trigger subscription workflow
         self.send(json.dumps({"type": "ping"}))
 
-    def _default_on_message(self, ws, message):
+    def _default_on_message(self, _ws, message):
         """Default handler for message events."""
         message_type = message.get("type")
 
@@ -237,10 +211,10 @@ class ReyaSocket(websocket.WebSocketApp):
         else:
             logger.debug(f"Received unknown message type: {message_type} - {message}")
 
-    def _default_on_error(self, ws, error):
+    def _default_on_error(self, _ws, error):
         """Default handler for error events."""
         logger.error(f"WebSocket error: {error}")
 
-    def _default_on_close(self, ws, close_status_code, close_reason):
+    def _default_on_close(self, _ws, close_status_code, close_reason):
         """Default handler for connection close events."""
         logger.info(f"WebSocket connection closed: " f"status={close_status_code}, reason={close_reason}")

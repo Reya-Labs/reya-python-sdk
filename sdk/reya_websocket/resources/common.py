@@ -1,8 +1,11 @@
 """Base classes for WebSocket resources."""
 
-from typing import Any, Dict, Generic, Optional, TypeVar, Union
+from typing import TYPE_CHECKING
 
 from abc import ABC, abstractmethod
+
+if TYPE_CHECKING:
+    from sdk.reya_websocket.socket import ReyaSocket
 
 
 class WebSocketResource(ABC):
@@ -23,12 +26,10 @@ class SubscribableResource(WebSocketResource, ABC):
     @abstractmethod
     def subscribe(self, **kwargs) -> None:
         """Subscribe to this resource."""
-        pass
 
     @abstractmethod
     def unsubscribe(self, **kwargs) -> None:
         """Unsubscribe from this resource."""
-        pass
 
 
 class ParameterizedResource(WebSocketResource):

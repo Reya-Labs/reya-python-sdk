@@ -34,45 +34,41 @@ async def main():
     # Get open orders for the wallet
     print("\n--- Getting open orders ---")
 
-    try:
-        # Get all open orders for the wallet
-        open_orders = await client.get_open_orders()
+    # Get all open orders for the wallet
+    open_orders = await client.get_open_orders()
 
-        if open_orders:
-            print(f"Found {len(open_orders)} open orders:\n")
+    if open_orders:
+        print(f"Found {len(open_orders)} open orders:\n")
 
-            for i, order in enumerate(open_orders):
-                # Extract order details
-                account_id = order.get("account_id", "unknown")
-                order_id = order.get("id", "unknown")
-                market_id = order.get("market_id", "unknown")
-                order_type = order.get("order_type", "unknown")
-                is_long = order.get("is_long", True)
-                trigger_price = order.get("trigger_price", 0)
-                order_base = order.get("order_base", "0")
-                status = order.get("status", "unknown")
-                created_at = order.get("creation_timestamp_ms", "unknown")
+        for i, order in enumerate(open_orders):
+            # Extract order details safely
+            account_id = order.get("account_id", "unknown")
+            order_id = order.get("id", "unknown")
+            market_id = order.get("market_id", "unknown")
+            order_type = order.get("order_type", "unknown")
+            is_long = order.get("is_long", True)
+            trigger_price = order.get("trigger_price", 0)
+            order_base = order.get("order_base", "0")
+            status = order.get("status", "unknown")
+            created_at = order.get("creation_timestamp_ms", "unknown")
 
-                # Determine side based on is_long flag
-                side = "BUY" if is_long else "SELL"
+            # Determine side based on is_long flag
+            side = "BUY" if is_long else "SELL"
 
-                # Print order details
-                print(f"Order {i+1}:")
-                print(f"  Account ID: {account_id}")
-                print(f"  ID: {order_id}")
-                print(f"  Market ID: {market_id}")
-                print(f"  Type: {order_type}")
-                print(f"  Side: {side}")
-                print(f"  Trigger Price: {trigger_price}")
-                print(f"  Size: {order_base}")
-                print(f"  Status: {status}")
-                print(f"  Created: {created_at}")
-                print()
-        else:
-            print("No open orders found for this wallet address.")
-
-    except Exception as e:
-        print(f"Error retrieving open orders: {e}")
+            # Print order details
+            print(f"Order {i + 1}:")
+            print(f"  Account ID: {account_id}")
+            print(f"  ID: {order_id}")
+            print(f"  Market ID: {market_id}")
+            print(f"  Type: {order_type}")
+            print(f"  Side: {side}")
+            print(f"  Trigger Price: {trigger_price}")
+            print(f"  Size: {order_base}")
+            print(f"  Status: {status}")
+            print(f"  Created: {created_at}")
+            print()
+    else:
+        print("No open orders found for this wallet address.")
 
 
 if __name__ == "__main__":

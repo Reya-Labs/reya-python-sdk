@@ -1,13 +1,14 @@
 """Market-related WebSocket resources."""
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING
 
 from sdk.reya_websocket.resources.common import (
-    ParameterizedResource,
     SubscribableParameterizedResource,
     SubscribableResource,
-    WebSocketResource,
 )
+
+if TYPE_CHECKING:
+    from sdk.reya_websocket.socket import ReyaSocket
 
 
 class MarketResource:
@@ -64,16 +65,21 @@ class AllMarketsResource(SubscribableResource):
         super().__init__(socket)
         self.path = "/api/trading/markets/data"
 
-    def subscribe(self, batched: bool = False) -> None:
+    def subscribe(self, batched: bool = False, **kwargs) -> None:
         """Subscribe to all markets data.
 
         Args:
             batched: Whether to receive updates in batches.
+            **kwargs: Additional keyword arguments (unused).
         """
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
-    def unsubscribe(self) -> None:
-        """Unsubscribe from all markets data."""
+    def unsubscribe(self, **kwargs) -> None:
+        """Unsubscribe from all markets data.
+
+        Args:
+            **kwargs: Additional keyword arguments (unused).
+        """
         self.socket.send_unsubscribe(channel=self.path)
 
 
