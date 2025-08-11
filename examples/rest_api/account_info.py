@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Example script showing how to get open orders for a wallet address using the Reya Trading SDK.
+Example script showing how to get accounts for a wallet address using the Reya Trading SDK.
 
 Before running this example, ensure you have a .env file with the following variables:
 - PRIVATE_KEY: Your Ethereum private key
-- ACCOUNT_ID: Your Reya account ID
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 """
 import asyncio
@@ -15,7 +14,7 @@ from sdk.reya_rest_api import ReyaTradingClient
 
 
 async def main():
-    """Run the example to get open orders asynchronously."""
+    """Run the example to get accounts asynchronously."""
     load_dotenv()
 
     client = ReyaTradingClient()
