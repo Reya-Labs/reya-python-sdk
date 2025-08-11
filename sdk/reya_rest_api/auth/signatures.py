@@ -64,13 +64,23 @@ class SignatureGenerator:
         encoded = encode(["int256", "uint256"], [scaler(signed_order_base), scaler(limit_price)])
         return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
-    def encode_inputs_trigger_order(self, is_buy: bool, trigger_price: Decimal, limit_price: Decimal) -> str:
+    def encode_inputs_trigger_order(
+        self,
+        is_buy: bool,
+        trigger_price: Decimal,
+        limit_price: Decimal,
+    ) -> str:
         scaler = self.scale(18)
 
         encoded = encode(["bool", "uint256", "uint256"], [bool(is_buy), scaler(trigger_price), scaler(limit_price)])
         return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
-    def create_orders_gateway_nonce(self, account_id: int, market_id: int, timestamp_ms: int) -> int:
+    def create_orders_gateway_nonce(
+        self,
+        account_id: int,
+        market_id: int,
+        timestamp_ms: int,
+    ) -> int:
         """Create a nonce for Orders Gateway orders."""
         # Validate the input ranges
         if market_id < 0 or market_id >= 2**32:

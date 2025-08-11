@@ -88,7 +88,11 @@ def bridge_in_from_arbitrum_sepolia(config: dict, params: BridgeInParams):
     )
 
 
-def _setup_bridge_connection(chain_rpc_url: str, vault_address: str, private_key: str):
+def _setup_bridge_connection(
+    chain_rpc_url: str,
+    vault_address: str,
+    private_key: str,
+):
     """Set up Web3 connection and contracts for bridging."""
     w3 = Web3(Web3.HTTPProvider(chain_rpc_url))
     account = w3.eth.account.from_key(private_key)
@@ -96,7 +100,11 @@ def _setup_bridge_connection(chain_rpc_url: str, vault_address: str, private_key
     return w3, account, vault
 
 
-def _validate_and_calculate_fees(vault, connector_address: str, params: BridgeInParams):
+def _validate_and_calculate_fees(
+    vault,
+    connector_address: str,
+    params: BridgeInParams,
+):
     """Validate bridge fees and calculate the actual fee amount."""
     socket_msg_gas_limit = 20_000_000
     socket_empty_payload_size = 160
@@ -108,7 +116,14 @@ def _validate_and_calculate_fees(vault, connector_address: str, params: BridgeIn
     return socket_fees, socket_msg_gas_limit
 
 
-def _approve_usdc_spending(w3, vault, account, vault_address: str, params: BridgeInParams, private_key: str):
+def _approve_usdc_spending(
+    w3,
+    vault,
+    account,
+    vault_address: str,
+    params: BridgeInParams,
+    private_key: str,
+):
     """Approve USDC spending by the vault contract."""
     chain_usdc_address = vault.functions.token().call()
     chain_usdc = w3.eth.contract(address=chain_usdc_address, abi=erc20_abi)

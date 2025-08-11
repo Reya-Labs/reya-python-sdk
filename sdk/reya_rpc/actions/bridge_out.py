@@ -90,7 +90,11 @@ def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
 
 
 def _calculate_bridge_out_fees(
-    controller_address: str, connector_address: str, socket_msg_gas_limit: int, config: dict, params: BridgeOutParams
+    controller_address: str,
+    connector_address: str,
+    socket_msg_gas_limit: int,
+    config: dict,
+    params: BridgeOutParams,
 ):
     """Calculate and validate bridge out fees."""
     w3 = config["w3"]
