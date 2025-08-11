@@ -16,25 +16,19 @@ from sdk.reya_rest_api import ReyaTradingClient
 
 async def main():
     """Run the example to get open orders asynchronously."""
-    # Load environment variables
     load_dotenv()
 
-    # Create a client instance with configuration from environment variables
     client = ReyaTradingClient()
 
-    # Check if we have a wallet address (either directly or derived from private key)
     if not client.wallet_address:
         print("Error: No wallet address found in environment variables.")
         print("Please set either WALLET_ADDRESS or PRIVATE_KEY in your .env file.")
         return
 
-    # Show the wallet address we're using
     print(f"Using wallet address: {client.wallet_address}")
 
-    # Get open orders for the wallet
-    print("\n--- Getting open orders ---")
+    print("\n--- Getting accounts orders ---")
 
-    # Get all open orders for the wallet
     accounts = await client.get_accounts()
 
     if accounts:
