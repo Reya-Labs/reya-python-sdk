@@ -1,6 +1,6 @@
-from web3 import Web3
-from hexbytes import HexBytes
 from dataclasses import dataclass
+
+from sdk.reya_rpc.utils.transaction_utils import extract_share_balance_updated_event
 
 
 @dataclass
@@ -35,28 +35,9 @@ def unstake(config: dict, params: UnstakingParams):
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Unstaked from passive pool: {tx_receipt.transactionHash.hex()}")
 
-    # Extract logs from the transaction receipt
-    logs = tx_receipt["logs"]
-
-    # Compute event signature for filtering relevant log
-    event_sig = Web3.keccak(
-        text="ShareBalanceUpdated(uint128,address,int256,uint256,int256,uint256,address,int256)"
-    ).hex()
-
-    # Filter logs for the expected event
-    filtered_logs = [
-        log for log in logs if HexBytes(log["topics"][0]) == HexBytes(event_sig)
-    ]
-
-    # Ensure exactly one matching event log is found
-    if not len(filtered_logs) == 1:
-        raise Exception(
-            "Failed to decode transaction receipt for staking to passive pool"
-        )
-
-    # Decode event log to extract the received rUSD amount
-    event = passive_pool.events.ShareBalanceUpdated().process_log(filtered_logs[0])
-    token_amount = -int(event["args"]["tokenDelta"])
+    # Extract event data using shared utility
+    _, balance_delta = extract_share_balance_updated_event(tx_receipt, passive_pool)
+    token_amount = -balance_delta
 
     # Return transaction receipt and received rUSD amount (scaled by 10^6)
     return {

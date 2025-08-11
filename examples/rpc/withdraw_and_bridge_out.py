@@ -1,8 +1,9 @@
-from sdk.reya_rpc import withdraw, bridge_out_to_arbitrum
-from sdk.reya_rpc import get_config
-from sdk.reya_rpc.actions import WithdrawParams, BridgeOutParams
 import os
+
 from dotenv import load_dotenv
+
+from sdk.reya_rpc import bridge_out_to_arbitrum, get_config, withdraw
+from sdk.reya_rpc.actions import BridgeOutParams, WithdrawParams
 
 
 def main():
@@ -27,13 +28,9 @@ def main():
     withdraw(config, WithdrawParams(account_id=account_id, amount=amount_e6))
 
     # Bridge out rUSD from Reya Network to Arbitrum
-    result = bridge_out_to_arbitrum(
-        config, BridgeOutParams(amount=amount_e6, fee_limit=int(0.01e18))
-    )
+    result = bridge_out_to_arbitrum(config, BridgeOutParams(amount=amount_e6, fee_limit=int(0.01e18)))
     tx_hash = result["transaction_receipt"].transactionHash.hex()
-    print(
-        f"Check status of bridging transfer here: https://www.socketscan.io/tx/{tx_hash}"
-    )
+    print(f"Check status of bridging transfer here: https://www.socketscan.io/tx/{tx_hash}")
 
 
 if __name__ == "__main__":
