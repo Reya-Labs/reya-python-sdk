@@ -54,14 +54,14 @@ class SignatureGenerator:
         self,
         is_buy: bool,
         limit_price: Decimal,
-        order_base: Decimal,
+        qty: Decimal,
     ) -> str:
         scaler = self.scale(18)
 
         # Negate order_base if it's a sell order
-        signed_order_base = order_base if is_buy else -order_base
+        signed_qty = qty if is_buy else -qty
 
-        encoded = encode(["int256", "uint256"], [scaler(signed_order_base), scaler(limit_price)])
+        encoded = encode(["int256", "uint256"], [scaler(signed_qty), scaler(limit_price)])
         return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
 
     def encode_inputs_trigger_order(

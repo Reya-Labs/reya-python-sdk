@@ -22,7 +22,7 @@ async def main():
     # Get all prices
     print("\n--- Getting all prices ---")
 
-    prices = await client.prices.get_prices()
+    prices = await client.markets.get_markets()
     print(f"Retrieved {len(prices)} price entries")
 
     # Print some sample price entries

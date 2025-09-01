@@ -23,7 +23,7 @@ async def main():
     # Get all assets
     print("\n--- Getting all assets ---")
 
-    assets = await client.assets.get_assets()
+    assets = await client.reference.get_assets()
     print(f"Assets data: {assets}")
 
     if assets:
