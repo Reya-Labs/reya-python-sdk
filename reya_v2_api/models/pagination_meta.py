@@ -28,8 +28,8 @@ class PaginationMeta(BaseModel):
     """ # noqa: E501
     limit: Union[StrictFloat, StrictInt] = Field(description="Number of items requested")
     count: Union[StrictFloat, StrictInt] = Field(description="Number of items returned")
-    end_time: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Cursor for previous page", alias="endTime")
-    start_time: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Cursor for next page", alias="startTime")
+    end_time: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Timestamp of last result, in milliseconds", alias="endTime")
+    start_time: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Timestamp of first result, in milliseconds", alias="startTime")
     __properties: ClassVar[List[str]] = ["limit", "count", "endTime", "startTime"]
 
     model_config = ConfigDict(

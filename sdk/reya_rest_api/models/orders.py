@@ -16,7 +16,7 @@ class LimitOrderParameters:
     price: str
     qty: str
     time_in_force: time_in_force.TimeInForce
-    reduce_only: Optional[bool] = False
+    reduce_only: Optional[bool] = None
     expires_after: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:

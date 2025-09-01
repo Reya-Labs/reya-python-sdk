@@ -30,8 +30,7 @@ class WalletConfiguration(BaseModel):
     og_status: StrictBool = Field(description="OG status", alias="ogStatus")
     affiliate_status: StrictBool = Field(description="Affiliate status", alias="affiliateStatus")
     referee_status: StrictBool = Field(description="Referee status", alias="refereeStatus")
-    main_account_id: Union[StrictFloat, StrictInt] = Field(description="Main account identifier", alias="mainAccountId")
-    __properties: ClassVar[List[str]] = ["feeTierId", "ogStatus", "affiliateStatus", "refereeStatus", "mainAccountId"]
+    __properties: ClassVar[List[str]] = ["feeTierId", "ogStatus", "affiliateStatus", "refereeStatus"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -87,8 +86,7 @@ class WalletConfiguration(BaseModel):
             "feeTierId": obj.get("feeTierId"),
             "ogStatus": obj.get("ogStatus"),
             "affiliateStatus": obj.get("affiliateStatus"),
-            "refereeStatus": obj.get("refereeStatus"),
-            "mainAccountId": obj.get("mainAccountId")
+            "refereeStatus": obj.get("refereeStatus")
         })
         return _obj
 

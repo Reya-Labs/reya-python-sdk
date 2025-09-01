@@ -4,36 +4,36 @@ Reya Trading Client - Main entry point for the Reya Trading API.
 This module provides a client for interacting with the Reya Trading REST API.
 """
 
-import time
 from typing import List, Optional
 
 import logging
+import time
 from decimal import Decimal
 
 from reya_v2_api.api.market_data_api import MarketDataApi
+from reya_v2_api.api.order_entry_api import OrderEntryApi
 from reya_v2_api.api.reference_data_api import ReferenceDataApi
 from reya_v2_api.api.wallet_data_api import WalletDataApi
+from reya_v2_api.api_client import ApiClient
 from reya_v2_api.configuration import Configuration
 from reya_v2_api.models.account import Account
+from reya_v2_api.models.account_balance import AccountBalance
 from reya_v2_api.models.cancel_order_request import CancelOrderRequest
 from reya_v2_api.models.cancel_order_response import CancelOrderResponse
-from reya_v2_api.models.create_order_response import CreateOrderResponse
 from reya_v2_api.models.create_order_request import CreateOrderRequest
+from reya_v2_api.models.create_order_response import CreateOrderResponse
+from reya_v2_api.models.order import Order
 from reya_v2_api.models.order_type import OrderType
 from reya_v2_api.models.perp_execution_list import PerpExecutionList
+from reya_v2_api.models.position import Position
 from reya_v2_api.models.spot_execution_list import SpotExecutionList
 from reya_v2_api.models.time_in_force import TimeInForce
 from reya_v2_api.models.wallet_configuration import WalletConfiguration
-from reya_v2_api.models.account_balance import AccountBalance
-from reya_v2_api.models.order import Order
-from reya_v2_api.models.position import Position
-from reya_v2_api.api_client import ApiClient
-from reya_v2_api.api.order_entry_api import OrderEntryApi
-
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig, get_config
-from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
+from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType, TpslType
 from sdk.reya_websocket.socket import logger
+
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
 CONDITIONAL_ORDER_DEADLINE = 10**18
@@ -186,7 +186,7 @@ class ReyaTradingClient:
             self.config.account_id, params.market_id, int(time.time_ns() / 1000000)
         )
 
-        inputs = self._signature_generator.encode_inputs_limit_order(is_buy=params.is_buy, limit_price=params.price, qty=params.qty)
+        inputs = self._signature_generator.encode_inputs_limit_order(is_buy=params.is_buy, limit_price=Decimal(params.price), qty=Decimal(params.qty))
 
         if params.time_in_force != TimeInForce.IOC:
             deadline = CONDITIONAL_ORDER_DEADLINE
@@ -196,7 +196,8 @@ class ReyaTradingClient:
             deadline = params.expires_after
 
         order_type_int = (
-            OrdersGatewayOrderType.LIMIT_ORDER if params.time_in_force == TimeInForce.GTC else OrdersGatewayOrderType.MARKET_ORDER
+            OrdersGatewayOrderType.LIMIT_ORDER if params.time_in_force == TimeInForce.GTC else
+                (OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if params.reduce_only == True else OrdersGatewayOrderType.MARKET_ORDER)
         )
 
         signature = self._signature_generator.sign_raw_order(
@@ -292,15 +293,15 @@ class ReyaTradingClient:
         order_request = CreateOrderRequest(
             account_id=self.config.account_id,
             market_id=params.market_id,
+            symbol=params.symbol,
             exchange_id=self.config.dex_id,
             is_buy=params.is_buy,
-            limit_px=limit_price,
-            qty=Decimal("0"),
-            order_type=OrderType.TP,
+            trigger_px=str(params.trigger_price),
+            limit_px=str(limit_price),
+            order_type=params.trigger_type,
             expires_after=None,
-            reduce_only=False,
             signature=signature,
-            nonce=nonce,
+            nonce=str(nonce),
             signer_wallet=self.config.wallet_address,
         )
 
