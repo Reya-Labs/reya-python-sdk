@@ -134,9 +134,9 @@ class ReyaTester:
             logger.info(f"❌ Current market price for {symbol} not found")
             return None
 
-    def get_positions(self) -> Dict[str, Position]:
+    def get_positions(self) -> dict[str, Position]:
         """Get current positions"""
-        positions_list: List[Position] = self.client.get_positions()
+        positions_list: list[Position] = self.client.get_positions()
 
         position_summary = {}
         for position in positions_list:
@@ -156,11 +156,9 @@ class ReyaTester:
 
         return position
 
-    def get_wallet_perp_executions(self) -> Dict[int, PerpExecution]:
+    def get_wallet_perp_executions(self) -> dict[int, PerpExecution]:
         """Get past trades"""
-        trades_list: PerpExecutionList = self.client.wallet.get_wallet_perp_executions(
-            address=self.wallet_address  
-        )
+        trades_list: PerpExecutionList = self.client.wallet.get_wallet_perp_executions(address=self.wallet_address)
 
         trade_sequence_number_dict = {}
         for trade in trades_list.data:
@@ -178,7 +176,7 @@ class ReyaTester:
 
     def get_market_definition(self, symbol: str) -> Optional[MarketDefinition]:
         """Get market configuration"""
-        markets_config: List[MarketDefinition] = self.client.reference.get_market_definitions()
+        markets_config: list[MarketDefinition] = self.client.reference.get_market_definitions()
         for config in markets_config:
             if config.symbol == symbol:
                 return config
@@ -194,7 +192,7 @@ class ReyaTester:
 
     async def close_exposure(self, symbol: str, fail_if_none: bool = True) -> Optional[str]:
         """Close exposure for a specific market"""
-        position : Position = self.get_position(symbol)
+        position: Position = self.get_position(symbol)
 
         if position is None or position.qty == 0:
             logger.warning("No position to close")
@@ -221,13 +219,11 @@ class ReyaTester:
             price=order_details.price,
             qty=order_details.qty,
             time_in_force=TimeInForce.IOC,
-            reduce_only=True
+            reduce_only=True,
         )
 
         # Note: this confirms trade has been registered, not neccesarely position
-        await self.wait_for_trade_confirmation_via_rest(
-            order_details=order_details, sequence_number=sequence_number
-        )
+        await self.wait_for_trade_confirmation_via_rest(order_details=order_details, sequence_number=sequence_number)
 
         position_after = self.get_position(symbol)
         if position_after is not None:
@@ -236,7 +232,7 @@ class ReyaTester:
 
     async def close_active_orders(self, fail_if_none: bool = True) -> Optional[str]:
         """Close exposure for a specific market"""
-        active_orders : List[Order] = self.client.get_open_orders()
+        active_orders: list[Order] = self.client.get_open_orders()
 
         if active_orders is None or len(active_orders) == 0:
             logger.warning("No active orders to close")
@@ -259,15 +255,13 @@ class ReyaTester:
         qty: str,
         time_in_force: TimeInForce = TimeInForce.IOC,
         reduce_only: Optional[bool] = None,
-        expect_error: bool = False
+        expect_error: bool = False,
     ) -> Optional[str]:
         """Create an order with the specified parameters"""
         side_text = "BUY" if is_buy else "SELL"
         time_in_force_text = "IOC" if time_in_force == TimeInForce.IOC else "GTC"
 
-        logger.info(
-            f"📤 Creating {time_in_force_text} {side_text} order: symbol={symbol}, price=${price}, qty={qty}"
-        )
+        logger.info(f"📤 Creating {time_in_force_text} {side_text} order: symbol={symbol}, price=${price}, qty={qty}")
 
         # the market_id is only used for signatures
         market_id = (self.get_market_definition(symbol=symbol)).market_id
@@ -279,7 +273,7 @@ class ReyaTester:
             price=price,
             qty=qty,
             reduce_only=reduce_only,
-            time_in_force=time_in_force
+            time_in_force=time_in_force,
         )
 
         response = self.client.create_limit_order(params)
@@ -293,7 +287,9 @@ class ReyaTester:
             logger.error(f"❌ Order creation failed: {response}")
         raise Exception(response)
 
-    def create_tp_order(self, symbol: str, is_buy: bool, trigger_price: str, expect_error: bool = False) -> Optional[CreateOrderResponse]:
+    def create_tp_order(
+        self, symbol: str, is_buy: bool, trigger_price: str, expect_error: bool = False
+    ) -> Optional[CreateOrderResponse]:
         """Create an order with the specified parameters"""
 
         market_id = (self.get_market_definition(symbol=symbol)).market_id
@@ -319,7 +315,9 @@ class ReyaTester:
             logger.error(f"❌ TP {side_text} order creation failed: {response}")
         raise Exception(response)
 
-    def create_sl_order(self, symbol: str, is_buy: bool, trigger_price: str, expect_error: bool = False) -> Optional[CreateOrderResponse]:
+    def create_sl_order(
+        self, symbol: str, is_buy: bool, trigger_price: str, expect_error: bool = False
+    ) -> Optional[CreateOrderResponse]:
         """Create an order with the specified parameters"""
         side_text = "BUY" if is_buy else "SELL"
 
@@ -355,7 +353,7 @@ class ReyaTester:
 
         while time.time() - start_time < timeout:
             # Check if we have a new confirmed trade
-            trades : Dict[int, PerpExecution] = self.get_wallet_perp_executions()
+            trades: dict[int, PerpExecution] = self.get_wallet_perp_executions()
             if sequence_number in trades.keys():
                 latest_trade = trades[sequence_number]
                 if match_order(order_details, latest_trade):
@@ -374,7 +372,7 @@ class ReyaTester:
 
         while time.time() - start_time < timeout:
             # Check if we have a new confirmed trade
-            orders : List[Order] = self.client.get_open_orders()
+            orders: list[Order] = self.client.get_open_orders()
             orders_ids = [order.order_id for order in orders]
             if order_id not in orders_ids:
                 logger.info(f" ✅ Order cancelled: {order_id}")
@@ -406,10 +404,7 @@ class ReyaTester:
 
     # Note: the openOrders WS does not update on filled/cancelled/rejected
     async def wait_for_order_status_update_via_WS(
-        self,
-        order_id: str,
-        expected_status: str = 'pending',
-        timeout: int = 5
+        self, order_id: str, expected_status: str = "pending", timeout: int = 5
     ) -> Optional[dict]:
         """Wait for order status update until timeout"""
         if not self.websocket:
@@ -425,7 +420,7 @@ class ReyaTester:
             logger.info(f"Order status: {self.orders}")
             if order:
                 logger.info(f"Order status: {order}")
-                if order['status'] == expected_status:
+                if order["status"] == expected_status:
                     logger.info(f" ✅ Order status updated to {expected_status}: {order}")
                     return parse_order(order)
 

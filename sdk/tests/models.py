@@ -16,8 +16,7 @@ class OrderDetails:
     price: str
     order_type: OrderType
     status: OrderStatus = OrderStatus.PENDING
-    qty: str = '0' # default for SLTP orders
-    
+    qty: str = "0"  # default for SLTP orders
 
     def to_dict(self) -> dict[str, Any]:
         return {

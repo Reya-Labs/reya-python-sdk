@@ -31,6 +31,7 @@ class LimitOrderParameters:
             "time_in_force": self.time_in_force,
         }
 
+
 @dataclass(frozen=True)
 class TriggerOrderParameters:
     """Trigger order parameters."""

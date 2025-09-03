@@ -56,7 +56,9 @@ def check_error_message(error_message: str, expected_keywords: list[str]):
         error_message_to_check = decode_error(str(error_message)).lower()
         found_keyword = any(keyword.lower() in error_message_to_check for keyword in expected_keywords)
 
-    assert found_keyword, f"Error should mention position reduction: '{error_message_to_check}', but was instead '{expected_keywords}'"
+    assert (
+        found_keyword
+    ), f"Error should mention position reduction: '{error_message_to_check}', but was instead '{expected_keywords}'"
 
 
 def match_order(order_details: OrderDetails, order_output: PerpExecution):
@@ -67,16 +69,17 @@ def match_order(order_details: OrderDetails, order_output: PerpExecution):
         and order_output.qty == order_details.qty
     )
 
+
 def match_order_WS(order_details: OrderDetails, order_output: dict):
     return (
-        int(order_output['account_id']) == order_details.account_id
+        int(order_output["account_id"]) == order_details.account_id
         # and order_output['symbol'] == order_details.symbol TODO uncomment
-        and (float(order_output.get("executed_base")) > 0)  == order_details.is_buy
-        and str(abs(float(order_output.get("executed_base")) / 10**18))  == order_details.qty
+        and (float(order_output.get("executed_base")) > 0) == order_details.is_buy
+        and str(abs(float(order_output.get("executed_base")) / 10**18)) == order_details.qty
     )
 
 
-def decode_error(error_string: str) -> Dict[str, Any]:
+def decode_error(error_string: str) -> dict[str, Any]:
     """
     Decode an on-chain error using web3.py and the Errors.json ABI
 
@@ -101,7 +104,7 @@ def decode_error(error_string: str) -> Dict[str, Any]:
 
         error_abi_path = os.path.join(os.path.dirname(__file__), "abis", "Errors.json")
 
-        with open(error_abi_path, "r") as f:
+        with open(error_abi_path) as f:
             errors_abi = json.load(f)
 
         # Extract the error selector (first 4 bytes)

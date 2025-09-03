@@ -109,13 +109,13 @@ class ReyaTradingClient:
         self.logger.info(f"API URL: {api_config.host}")
         self.logger.info(f"API base path: {api_config._base_path}")
         api_client = ApiClient(api_config)
-        
+
         # Verify ApiClient host configuration
-        if hasattr(api_client, 'configuration'):
+        if hasattr(api_client, "configuration"):
             self.logger.info(f"ApiClient configuration host: {api_client.configuration.host}")
         else:
             self.logger.warning("ApiClient does not have configuration attribute")
-            
+
         self._resources = ResourceManager(api_client)
 
     @property
@@ -153,10 +153,7 @@ class ReyaTradingClient:
         # Otherwise derive it from private key if available
         return self._signature_generator.public_address if self._signature_generator else None
 
-    def create_limit_order(
-        self,
-        params: LimitOrderParameters
-    ) -> CreateOrderResponse:
+    def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
         Create a limit (GTC) order synchronously.
 
@@ -186,7 +183,9 @@ class ReyaTradingClient:
             self.config.account_id, params.market_id, int(time.time_ns() / 1000000)
         )
 
-        inputs = self._signature_generator.encode_inputs_limit_order(is_buy=params.is_buy, limit_price=Decimal(params.price), qty=Decimal(params.qty))
+        inputs = self._signature_generator.encode_inputs_limit_order(
+            is_buy=params.is_buy, limit_price=Decimal(params.price), qty=Decimal(params.qty)
+        )
 
         if params.time_in_force != TimeInForce.IOC:
             deadline = CONDITIONAL_ORDER_DEADLINE
@@ -196,8 +195,13 @@ class ReyaTradingClient:
             deadline = params.expires_after
 
         order_type_int = (
-            OrdersGatewayOrderType.LIMIT_ORDER if params.time_in_force == TimeInForce.GTC else
-                (OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER if params.reduce_only == True else OrdersGatewayOrderType.MARKET_ORDER)
+            OrdersGatewayOrderType.LIMIT_ORDER
+            if params.time_in_force == TimeInForce.GTC
+            else (
+                OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER
+                if params.reduce_only == True
+                else OrdersGatewayOrderType.MARKET_ORDER
+            )
         )
 
         signature = self._signature_generator.sign_raw_order(
@@ -216,8 +220,6 @@ class ReyaTradingClient:
             raise ValueError("Account ID is required for order creation")
         if self.config.wallet_address is None:
             raise ValueError("Wallet address is required for order creation")
-        
-        
 
         order_request = CreateOrderRequest(
             account_id=self.config.account_id,
@@ -239,11 +241,7 @@ class ReyaTradingClient:
 
         return response
 
-
-    def create_trigger_order(
-        self,
-        params: TriggerOrderParameters
-    ) -> CreateOrderResponse:
+    def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
         """
         Create a stop loss order synchronously.
 
@@ -263,7 +261,9 @@ class ReyaTradingClient:
         limit_price = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if params.is_buy else Decimal(0)
 
         order_type_int = (
-            OrdersGatewayOrderType.TAKE_PROFIT if params.trigger_type == TpslType.TP else OrdersGatewayOrderType.STOP_LOSS
+            OrdersGatewayOrderType.TAKE_PROFIT
+            if params.trigger_type == TpslType.TP
+            else OrdersGatewayOrderType.STOP_LOSS
         )
 
         nonce = self._signature_generator.create_orders_gateway_nonce(
@@ -328,12 +328,12 @@ class ReyaTradingClient:
         # Sign the cancellation request
         signature = self._signature_generator.sign_cancel_order(order_id)
 
-        cancel_order_request = CancelOrderRequest(order_id=order_id,signature=signature)
+        cancel_order_request = CancelOrderRequest(order_id=order_id, signature=signature)
 
         response = self.orders.cancel_order(cancel_order_request)
         return response
 
-    def get_positions(self, wallet_address: Optional[str] = None) -> List[Position]:
+    def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         """
         Get positions for a wallet address synchronously.
 
@@ -352,7 +352,7 @@ class ReyaTradingClient:
 
         return self.wallet.get_wallet_positions(address=wallet)
 
-    def get_open_orders(self) -> List[Order]:
+    def get_open_orders(self) -> list[Order]:
         """
         Get open orders for the authenticated wallet synchronously.
 
@@ -368,7 +368,7 @@ class ReyaTradingClient:
 
         return self.wallet.get_wallet_open_orders(address=wallet)
 
-    def get_balances(self) -> List[AccountBalance]:
+    def get_balances(self) -> list[AccountBalance]:
         """
         Get account balance synchronously.
 
@@ -416,7 +416,7 @@ class ReyaTradingClient:
 
         return self.wallet.get_wallet_perp_executions(address=wallet)
 
-    def get_accounts(self) -> List[Account]:
+    def get_accounts(self) -> list[Account]:
         """
         Get accounts for the authenticated wallet synchronously.
 

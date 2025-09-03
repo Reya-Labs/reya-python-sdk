@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 from sdk.tests.reya_tester import ReyaTester, logger
 
+
 @pytest.fixture
 def reya_tester():
     """Create and return a configured ReyaTester instance"""

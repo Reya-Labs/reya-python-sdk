@@ -37,7 +37,7 @@ async def create_ioc_order(reya_tester: ReyaTester, symbol: str, price_with_offs
         is_buy=is_buy,
         price=str(price_with_offset),
         qty=qty,
-        order_type=OrderType.LIMIT
+        order_type=OrderType.LIMIT,
     )
 
     # TODO: Claudiu - listen to WS for trade confirmation
@@ -64,14 +64,18 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
             account_id=reya_tester.account_id,
             order_type=OrderType.TP,
             symbol=symbol,
-            is_buy=False, # on long
+            is_buy=False,  # on long
             price=str(market_price * 2),  # lower than IOC limit price
             qty="0.01",
         )
         await create_ioc_order(
-            reya_tester, tp_order_details.symbol, market_price * 1.01, not tp_order_details.is_buy, qty=tp_order_details.qty
+            reya_tester,
+            tp_order_details.symbol,
+            market_price * 1.01,
+            not tp_order_details.is_buy,
+            qty=tp_order_details.qty,
         )
-        position_before =reya_tester.get_position(tp_order_details.symbol)
+        position_before = reya_tester.get_position(tp_order_details.symbol)
 
         # SUBMIT TP
         tp_order: CreateOrderResponse | None = reya_tester.create_tp_order(
@@ -90,9 +94,7 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
 
         # CANCEL order
         reya_tester.client.cancel_order(order_id=active_tp_order.order_id)
-        cancelled_order_id = await reya_tester.wait_for_order_cancellation_via_rest(
-            order_id=active_tp_order.order_id
-        )
+        cancelled_order_id = await reya_tester.wait_for_order_cancellation_via_rest(order_id=active_tp_order.order_id)
         assert cancelled_order_id == active_tp_order.order_id, "TP order was not cancelled"
 
         logger.info("✅ ✅ ✅ TP order cancel test completed successfully")
@@ -119,16 +121,16 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
         market_price = reya_tester.get_current_price(symbol)
         sl_order_details = OrderDetails(
             symbol=symbol,
-            is_buy=False, # on long
+            is_buy=False,  # on long
             price=str(market_price * 0.9),  # higher than IOC limit price
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
-            qty='0.01'
+            qty="0.01",
         )
         await create_ioc_order(
             reya_tester, sl_order_details.symbol, market_price * 1.1, not sl_order_details.is_buy, qty="0.01"
         )
-        position_before =reya_tester.get_position(sl_order_details.symbol)
+        position_before = reya_tester.get_position(sl_order_details.symbol)
 
         # SUBMIT SL
         order_response = reya_tester.create_sl_order(
@@ -140,15 +142,15 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
 
         # VALIDATE order was created correctly
         # TODO: Claudiu - listen to WS order status update and validate
-        
-        active_sl_order: Order = await reya_tester.wait_for_order_creation_via_rest(order_id=order_response.order_id, timeout=10)
+
+        active_sl_order: Order = await reya_tester.wait_for_order_creation_via_rest(
+            order_id=order_response.order_id, timeout=10
+        )
         assert_tp_sl_order_submission(active_sl_order, sl_order_details, position_before)
 
         # CANCEL
         reya_tester.client.cancel_order(order_id=active_sl_order.order_id)
-        cancelled_order_id = await reya_tester.wait_for_order_cancellation_via_rest(
-            order_id=active_sl_order.order_id
-        )
+        cancelled_order_id = await reya_tester.wait_for_order_cancellation_via_rest(order_id=active_sl_order.order_id)
         assert cancelled_order_id == active_sl_order.order_id, "SL order was not cancelled"
         logger.info("SL order cancel test completed successfully")
 
@@ -169,20 +171,20 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
 async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
     """SLTP order triggered"""
     await reya_tester.setup_websocket()
-    symbol="ETHRUSDPERP"
+    symbol = "ETHRUSDPERP"
 
     try:
         # SETUP
         market_price = reya_tester.get_current_price()
         qty = "0.01"
-        
+
         tp_order_details = OrderDetails(
             symbol=symbol,
             is_buy=True,  # on short position
             trigger_price=str(market_price * 1.1),
             qty=qty,
             account_id=reya_tester.account_id,
-            order_type=OrderType.TP
+            order_type=OrderType.TP,
         )
         sl_order_details = OrderDetails(
             symbol=symbol,
@@ -190,10 +192,10 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
             trigger_price=str(market_price * 0.9),
             qty=qty,
             account_id=reya_tester.account_id,
-            order_type=OrderType.SL
+            order_type=OrderType.SL,
         )
         # create short IOC
-        
+
         await create_ioc_order(
             reya_tester,
             tp_order_details.symbol,
@@ -201,7 +203,7 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
             not tp_order_details.is_buy,
             qty=tp_order_details.qty,
         )
-        position_before: Position =reya_tester.get_position(symbol)
+        position_before: Position = reya_tester.get_position(symbol)
         assert float(position_before.qty) == float(tp_order_details.qty), "Position was not created"
 
         # SUBMIT TP
@@ -222,19 +224,17 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
 
         # VALIDATE order was executed correctly
         # TODO: Claudiu - listen to WS for trade confirmation
-        confirmed_sequence_number = None # from WS
+        confirmed_sequence_number = None  # from WS
 
         if confirmed_sequence_number is not None:
             #  EITHER order was executed
             logger.info("👌 SLTP order executed")
             order_execution_details: PerpExecution = reya_tester.get_wallet_perp_execution(confirmed_sequence_number)
-            assert float(order_execution_details.price) < float(
-                tp_order_details.price
-            ) or float(order_execution_details.price) > float(
-                sl_order_details.price
-            ), "SLTP execution price out of bounds"
+            assert float(order_execution_details.price) < float(tp_order_details.price) or float(
+                order_execution_details.price
+            ) > float(sl_order_details.price), "SLTP execution price out of bounds"
 
-            position_after: Position =reya_tester.get_position(symbol)
+            position_after: Position = reya_tester.get_position(symbol)
             assert position_after.qty == 0, "Position was not closed"
         else:
             # OR neither order was executed
@@ -257,19 +257,19 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
 async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
     """SL order triggered"""
     await reya_tester.setup_websocket()
-    symbol="ETHRUSDPERP"
+    symbol = "ETHRUSDPERP"
 
     try:
         # SETUP
         market_price = reya_tester.get_current_price()
-        qty="0.01"
+        qty = "0.01"
         tp_order_details = OrderDetails(
             symbol=symbol,
             is_buy=True,  # on short position
             price=str(market_price * 1.1),  # out of the money
             qty=qty,
             account_id=reya_tester.account_id,
-            order_type=OrderType.TP
+            order_type=OrderType.TP,
         )
         await create_ioc_order(
             reya_tester,
@@ -278,7 +278,7 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
             not tp_order_details.is_buy,
             qty=qty,
         )
-        position_before : Position =reya_tester.get_position(tp_order_details.symbol)
+        position_before: Position = reya_tester.get_position(tp_order_details.symbol)
         assert float(position_before.qty) == float(qty), "Position was not created"
 
         # SUBMIT TP
@@ -292,7 +292,7 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
         # VALIDATE order was executed correctly
         # TODO: Claudiu - listen to WS for trade confirmation and validate
 
-        position_after: Position =reya_tester.get_position(tp_order_details.symbol)
+        position_after: Position = reya_tester.get_position(tp_order_details.symbol)
         assert position_after is None, "Position was not closed"
 
     except Exception as e:
@@ -310,7 +310,7 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
 async def test_success_sl_when_executed(reya_tester: ReyaTester):
     """SL order triggered"""
     await reya_tester.setup_websocket()
-    symbol="ETHRUSDPERP"
+    symbol = "ETHRUSDPERP"
 
     try:
         # SETUP
@@ -322,7 +322,7 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
             price=str(market_price * 0.9),  # in the money
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
-            qty=qty
+            qty=qty,
         )
         await create_ioc_order(
             reya_tester,
@@ -331,7 +331,7 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
             not sl_order_details.is_buy,
             qty=qty,
         )
-        position_before : Position = reya_tester.get_position(sl_order_details.symbol)
+        position_before: Position = reya_tester.get_position(sl_order_details.symbol)
         assert float(position_before.qty) == float(qty), "Position was not created"
 
         # SUBMIT SL
@@ -345,7 +345,7 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
         # VALIDATE order was executed correctly
         # TODO: Claudiu - listen to WS for trade confirmation and validate
 
-        position_after: Position =reya_tester.get_position(sl_order_details.symbol)
+        position_after: Position = reya_tester.get_position(sl_order_details.symbol)
         assert position_after is None, "Position was not closed"
 
     except Exception as e:
@@ -363,10 +363,10 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
 async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     """SL order triggered"""
     await reya_tester.setup_websocket()
-    symbol="ETHRUSDPERP"
+    symbol = "ETHRUSDPERP"
 
     try:
-        # SETUP 
+        # SETUP
         market_price = reya_tester.get_current_price()
         qty = "0.01"
         sl_order_details = OrderDetails(
@@ -375,7 +375,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
             price=str(market_price * 0.9),  # in the money
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
-            qty=qty
+            qty=qty,
         )
         # await create_ioc_order(reya_tester, sl_order_details["market_id"], str(market_price * 0.99), sl_order_details["is_buy"], qty="0.01")
         position_before = reya_tester.get_position(sl_order_details.symbol)
@@ -389,7 +389,9 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
         )
         # ENSURE IT WAS NOT FILLED NOR STILL OPENED
         # TODO: Claudiu - listen to WS for trade confirmation and validate
-        cancelled_or_rejected_order_id = await reya_tester.wait_for_order_cancellation_via_rest(order_id=order_response.order_id)
+        cancelled_or_rejected_order_id = await reya_tester.wait_for_order_cancellation_via_rest(
+            order_id=order_response.order_id
+        )
         assert cancelled_or_rejected_order_id == order_response.order_id, "SL order should not be opened"
 
         # SUBMIT TP
@@ -400,7 +402,9 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
         )
         # ENSURE IT WAS NOT FILLED NOR STILL OPENED
         # TODO: Claudiu - listen to WS for trade confirmation and validate
-        cancelled_or_rejected_order_id = await reya_tester.wait_for_order_cancellation_via_rest(order_id=order_response.order_id)
+        cancelled_or_rejected_order_id = await reya_tester.wait_for_order_cancellation_via_rest(
+            order_id=order_response.order_id
+        )
         assert cancelled_or_rejected_order_id == order_response.order_id, "TP order should not be opened"
 
     except Exception as e:
@@ -418,7 +422,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
 async def test_failure_sltp_input_validation(reya_tester: ReyaTester):
     """Input validation for TP/SL orders"""
     await reya_tester.setup_websocket()
-    symbol="ETHRUSDPERP"
+    symbol = "ETHRUSDPERP"
 
     try:
         # SETUP
@@ -428,7 +432,7 @@ async def test_failure_sltp_input_validation(reya_tester: ReyaTester):
             is_buy=True,
             price=str(market_price * 1.1),  # higher than IOC limit price
             account_id=reya_tester.account_id,
-            order_type=OrderType.TP
+            order_type=OrderType.TP,
         )
         await create_ioc_order(
             reya_tester, tp_order_details.symbol, market_price * 1.01, tp_order_details.is_buy, qty="0.01"
@@ -499,7 +503,7 @@ async def test_failure_sltp_input_validation(reya_tester: ReyaTester):
                     symbol=test_case["params"]["symbol"],
                     is_buy=test_case["params"]["is_buy"],
                     trigger_price=test_case["params"]["trigger_price"],
-                    expect_error=True
+                    expect_error=True,
                 )
                 # this will raise the error too
                 assert False, f"{test_case["name"]} should have failed"
@@ -517,12 +521,12 @@ async def test_failure_sltp_input_validation(reya_tester: ReyaTester):
                     symbol=test_case["params"]["symbol"],
                     is_buy=test_case["params"]["is_buy"],
                     trigger_price=test_case["params"]["trigger_price"],
-                    expect_error=True
+                    expect_error=True,
                 )
                 # this will raise the error too
                 assert False, f"{test_case["name"]} should have failed"
             except Exception as e:
-                if "should have failed" not in str(e): 
+                if "should have failed" not in str(e):
                     logger.info(f"Pass: Expected error for {test_case["name"]}: {e}")
                     pass  # Expected error
                 else:
