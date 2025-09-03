@@ -2,6 +2,7 @@ from typing import Any, Literal
 
 from dataclasses import dataclass
 
+from reya_v2_api.models.order_status import OrderStatus
 from reya_v2_api.models.order_type import OrderType
 
 
@@ -14,7 +15,7 @@ class OrderDetails:
     is_buy: bool
     price: str
     order_type: OrderType
-    status: Literal["pending", "cancelled", "filled", "rejected"] = "pending"
+    status: OrderStatus = OrderStatus.PENDING
     qty: str = '0' # default for SLTP orders
     
 

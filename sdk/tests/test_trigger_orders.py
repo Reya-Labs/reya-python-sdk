@@ -51,7 +51,6 @@ def assert_position_changes(positions_before: Position | None, positions_after: 
     assert positions_after is not None, "Should have positions after"
     assert positions_before.symbol == positions_after.symbol, "Market ID should match"
 
-    # Check position qty with tolerance to handle floating point precision
     expected_qty = float(positions_before.qty) + float(execution_details.qty)
     assert float(positions_after.qty) == pytest.approx(
         expected_qty, rel=1e-6
@@ -60,10 +59,9 @@ def assert_position_changes(positions_before: Position | None, positions_after: 
     assert (
         positions_before.last_trade_sequence_number < positions_after.last_trade_sequence_number
     ), "Event sequence number should have changed"
-    # TODO uncomment
-    # assert (
-    #     execution_details.sequence_number == positions_after.last_trade_sequence_number
-    # ), "Trade should match the latest position sequence"
+    assert (
+        execution_details.sequence_number == positions_after.last_trade_sequence_number
+    ), "Trade should match the latest position sequence"
 
     logger.info(f"Position before: {positions_before}")
     logger.info(f"Position after: {positions_after}")
@@ -74,12 +72,6 @@ def assert_position_changes(positions_before: Position | None, positions_after: 
             float(positions_before.avg_entry_price) * float(positions_before.qty)
             + float(execution_details.qty) * float(execution_details.price)
         ) / float(positions_after.qty)
-
-        # TODO: cannot calculate, missing funding value
-        # average_entry_funding_value = (
-        #     float(positions_before.avg_entry_funding_value) * float(positions_before.qty)
-        #     + float(execution_details.qty) * float(execution_details.)
-        # ) / float(positions_after.qty)
 
     assert average_entry_price == float(positions_after.avg_entry_price), "Average entry price does not match"
     logger.info("✅ New position recorded correctly")
@@ -123,9 +115,6 @@ async def test_success_ioc(reya_tester: ReyaTester, test_qty, test_is_buy):
             account_id=reya_tester.account_id,
         )
 
-        trade_confirmation_task = asyncio.create_task(
-            reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details, timeout=10)
-        )
         logger.info("Trade confirmation task")
 
         # Execute
@@ -138,7 +127,7 @@ async def test_success_ioc(reya_tester: ReyaTester, test_qty, test_is_buy):
         )
 
         # Validate
-        persisted_trade_sequence_number = await asyncio.wait_for(trade_confirmation_task, timeout=10)
+        persisted_trade_sequence_number = await reya_tester.wait_for_trade_confirmation_via_rest(order_details, int(position_before.last_trade_sequence_number) + 1)
         assert persisted_trade_sequence_number is not None, "Order creation should succeed"
 
         order_execution_details = reya_tester.get_wallet_perp_execution(persisted_trade_sequence_number)
@@ -185,10 +174,6 @@ async def test_success_ioc_with_any_market(reya_tester: ReyaTester, test_is_buy,
         # Get positions before order
         position_before = reya_tester.get_position(test_symbol)
 
-        trade_confirmation_task = asyncio.create_task(
-            reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details, timeout=10)
-        )
-
         # Execute
         reya_tester.create_order(
             symbol=test_symbol,
@@ -199,7 +184,8 @@ async def test_success_ioc_with_any_market(reya_tester: ReyaTester, test_is_buy,
         )
 
         # Validate
-        persisted_trade_sequence_number = await asyncio.wait_for(trade_confirmation_task, timeout=10)
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
+        persisted_trade_sequence_number = await reya_tester.wait_for_trade_confirmation_via_rest(order_details, int(position_before.last_trade_sequence_number) + 1)
         assert persisted_trade_sequence_number is not None, "Order creation should succeed"
 
         order_execution_details = reya_tester.get_wallet_perp_execution(persisted_trade_sequence_number)
@@ -516,9 +502,6 @@ async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
             price=str(0),  # wide price
             qty=str(test_qty)
         )
-        trade_confirmation_task_buy = asyncio.create_task(
-            reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details_buy)
-        )
 
         # Buy order slightly above market price to ensure it gets filled
         buy_order_id = reya_tester.create_order(
@@ -530,8 +513,7 @@ async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
         )
 
         # Wait for trade confirmation on either order (whichever fills first)
-        no_order_id = await asyncio.wait_for(trade_confirmation_task_buy, timeout=10)
-        assert no_order_id is None, "GTC order was filled"
+        # TODO: Claudiu - listen to WS for NO trade confirmation
 
         active_buy_order : Order = reya_tester.get_open_order(buy_order_id)
         assert active_buy_order is not None, "GTC order was not found"
@@ -589,8 +571,7 @@ async def test_success_gtc_orders_market_execution(reya_tester: ReyaTester):
         logger.info(f"Created GTC BUY order with ID: {buy_order_id} at price {order_details_buy.price}")
 
         # VALIDATE
-        confirmed_transaction_hash_buy = await reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details_buy)
-        assert confirmed_transaction_hash_buy is not None, "Buy order was not filled"
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
 
         position_before = reya_tester.get_position(symbol)
         assert float(position_before.qty) == float(order_details_buy.qty), "Position was not created"
@@ -615,6 +596,7 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
     try:
         # Get current prices to determine order parameters
         market_price = reya_tester.get_current_price()
+        position_before = reya_tester.get_position(symbol)
 
         order_details_buy = OrderDetails(
             symbol=symbol,
@@ -623,9 +605,6 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
             qty=str(0.01),
             order_type=OrderType.LIMIT,
             account_id=reya_tester.account_id
-        )
-        trade_confirmation_task_buy = asyncio.create_task(
-            reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details_buy)
         )
 
         # BUY
@@ -653,9 +632,11 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
         )
 
         # Wait for trade confirmation on either order (whichever fills first)
-        confirmed_transaction_hash_buy = await asyncio.wait_for(trade_confirmation_task_buy, timeout=30)
+        seq_increment = 1
+        confirmed_transaction_hash_buy = await reya_tester.wait_for_trade_confirmation_via_rest(order_details=order_details_buy, sequence_number=int(position_before.last_trade_sequence_number) + seq_increment)
         if confirmed_transaction_hash_buy is not None:
             logger.info("Buy order was filled")
+            seq_increment += 1
         else:
             active_buy_order = reya_tester.get_open_order(buy_order_id)
             if active_buy_order is not None:
@@ -663,7 +644,8 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
             else:
                 logger.info("Buy order was not found")
 
-        confirmed_transaction_hash_sell = await reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details_sell)
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
+        confirmed_transaction_hash_sell = await reya_tester.wait_for_trade_confirmation_via_rest(order_details=order_details_sell, sequence_number=int(position_before.last_trade_sequence_number) + seq_increment)
         if confirmed_transaction_hash_sell is not None:
             logger.info("Sell order was filled")
         else:

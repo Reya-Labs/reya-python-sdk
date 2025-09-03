@@ -143,7 +143,7 @@ class ReyaTester:
             symbol = position.symbol
             qty = position.qty
             if symbol and qty:
-                position_summary[symbol] = {"qty": float(qty), "raw": position}
+                position_summary[symbol] = position
 
         return position_summary
 
@@ -154,7 +154,7 @@ class ReyaTester:
         if position is None:
             return None
 
-        return position['raw']
+        return position
 
     def get_wallet_perp_executions(self) -> Dict[int, PerpExecution]:
         """Get past trades"""
@@ -270,9 +270,7 @@ class ReyaTester:
         )
 
         # the market_id is only used for signatures
-        # TODO uncomment
-        market_id = 1
-        # ( self.get_market_definition(symbol=symbol)).market_id
+        market_id = (self.get_market_definition(symbol=symbol)).market_id
 
         params = LimitOrderParameters(
             symbol=symbol,
@@ -298,9 +296,7 @@ class ReyaTester:
     def create_tp_order(self, symbol: str, is_buy: bool, trigger_price: str, expect_error: bool = False) -> Optional[CreateOrderResponse]:
         """Create an order with the specified parameters"""
 
-        # TODO: uncomment
-        market_id = 1
-        # (self.get_market_definition(symbol=symbol)).market_id
+        market_id = (self.get_market_definition(symbol=symbol)).market_id
         params = TriggerOrderParameters(
             market_id=market_id,
             symbol=symbol,
@@ -327,11 +323,7 @@ class ReyaTester:
         """Create an order with the specified parameters"""
         side_text = "BUY" if is_buy else "SELL"
 
-        # TODO uncomment when fixes, get_market_definition endpoint not found
-        market_id = 1
-        # (self.get_market_definition(symbol=symbol)).market_id
-
-
+        market_id = (self.get_market_definition(symbol=symbol)).market_id
         logger.info(f"📤 Creating SL {side_text} order: market_id={market_id}, trigger_price=${trigger_price}")
 
         params = TriggerOrderParameters(
@@ -352,30 +344,6 @@ class ReyaTester:
         if expect_error:
             logger.error(f"❌ SL {side_text} order creation failed: {response}")
         raise Exception(response)
-
-    async def wait_for_trade_confirmation_via_WS(self, order_details: OrderDetails, timeout: int = 5) -> Optional[int]:
-        """Wait for trade confirmation via WebSocket"""
-        if not self.websocket:
-            logger.warning("WebSocket not connected, can't confirm trade")
-            return None
-
-        logger.debug("⏳ Waiting for trade confirmation order...")
-
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            # Check if we have a new confirmed trade
-            if len(self.confirmed_trades) > 0:
-                # Check if the new trade matches our order
-                latest_trade = self.confirmed_trades[-1]
-
-                if match_order_WS(order_details, latest_trade): # TODO replace by simple one
-                    logger.info(f" ✅ Trade confirmed: {latest_trade['event_sequence_number']}")
-                    return int(latest_trade['event_sequence_number'])
-
-            await asyncio.sleep(0.5)
-
-        return None
 
     async def wait_for_trade_confirmation_via_rest(
         self, order_details: OrderDetails, sequence_number: int, timeout: int = 5

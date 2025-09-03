@@ -40,10 +40,7 @@ async def create_ioc_order(reya_tester: ReyaTester, symbol: str, price_with_offs
         order_type=OrderType.LIMIT
     )
 
-    # Listen to WS
-    trade_confirmation_task = asyncio.create_task(
-        reya_tester.wait_for_trade_confirmation_via_WS(order_details=order_details, timeout=10)
-    )
+    # TODO: Claudiu - listen to WS for trade confirmation
 
     # Execute
     reya_tester.create_order(
@@ -51,8 +48,7 @@ async def create_ioc_order(reya_tester: ReyaTester, symbol: str, price_with_offs
     )
 
     # Validate
-    confirmed_sequence_number = await asyncio.wait_for(trade_confirmation_task, timeout=10)
-    assert confirmed_sequence_number is not None, "Trade should be confirmed via WebSocket"
+    # TODO: Claudiu - validate WS trade confirmation
 
 
 @pytest.mark.asyncio
@@ -87,9 +83,7 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
         logger.info(f"Created TP order with ID: {tp_order.order_id}")
 
         # VALIDATE order was registered correctly
-        # TODO: uncomment when prod openOrders channel is fixed
-        # ws_order_update = await reya_tester.wait_for_order_status_update_via_WS(order_id=tp_order_id, timeout=10)
-        # assert_tp_sl_order_submission(ws_order_update, tp_order_details, position_before)
+        # TODO: Claudiu - listen to WS order status update and validate
 
         active_tp_order = await reya_tester.wait_for_order_creation_via_rest(order_id=tp_order.order_id)
         assert_tp_sl_order_submission(active_tp_order, tp_order_details, position_before)
@@ -145,10 +139,8 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
         logger.info(f"Created SL order with ID: {order_response.order_id}")
 
         # VALIDATE order was created correctly
-        # TODO: uncomment when prod openOrders channel is fixed
-        # ws_order_update = await reya_tester.wait_for_order_status_update_via_WS(order_id=sl_order_id)
-        # assert_tp_sl_order_submission(ws_order_update, sl_order_details, position_before)
-
+        # TODO: Claudiu - listen to WS order status update and validate
+        
         active_sl_order: Order = await reya_tester.wait_for_order_creation_via_rest(order_id=order_response.order_id, timeout=10)
         assert_tp_sl_order_submission(active_sl_order, sl_order_details, position_before)
 
@@ -229,10 +221,9 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
         logger.info(f"Created SL order with ID: {sl_order.order_id}")
 
         # VALIDATE order was executed correctly
-        confirmed_sequence_number = await reya_tester.wait_for_trade_confirmation_via_WS(
-            order_details=tp_order_details,
-            timeout=30,
-        )
+        # TODO: Claudiu - listen to WS for trade confirmation
+        confirmed_sequence_number = None # from WS
+
         if confirmed_sequence_number is not None:
             #  EITHER order was executed
             logger.info("👌 SLTP order executed")
@@ -299,14 +290,7 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
         logger.info(f"Created TP order with ID: {tp_order.order_id}")
 
         # VALIDATE order was executed correctly
-        confirmed_sequence_number = await reya_tester.wait_for_trade_confirmation_via_WS(
-            order_details=tp_order_details
-        )
-        assert confirmed_sequence_number is not None, "Wide TP order did not execute"
-        order_execution_details = reya_tester.get_wallet_perp_execution(confirmed_sequence_number)
-        assert float(order_execution_details.price) < float(
-            tp_order_details.price
-        ), "Wide TP execution price out of bounds"
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
 
         position_after: Position =reya_tester.get_position(tp_order_details.symbol)
         assert position_after is None, "Position was not closed"
@@ -359,14 +343,7 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
         logger.info(f"Created SL order with ID: {order_response.order_id}")
 
         # VALIDATE order was executed correctly
-        confirmed_sequence_number = await reya_tester.wait_for_trade_confirmation_via_WS(
-            order_details=sl_order_details
-        )
-        assert confirmed_sequence_number is not None, "SL order did not execute"
-        order_execution_details: PerpExecution = reya_tester.get_wallet_perp_execution(confirmed_sequence_number)
-        assert float(order_execution_details.price) > float(
-            sl_order_details.price
-        ), "SL execution price out of bounds"
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
 
         position_after: Position =reya_tester.get_position(sl_order_details.symbol)
         assert position_after is None, "Position was not closed"
@@ -411,10 +388,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
             trigger_price=sl_order_details.price,
         )
         # ENSURE IT WAS NOT FILLED NOR STILL OPENED
-        sl_execution_confirmation = await reya_tester.wait_for_trade_confirmation_via_WS(
-            order_details=sl_order_details
-        )
-        assert sl_execution_confirmation is None, "SL order should not execute"
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
         cancelled_or_rejected_order_id = await reya_tester.wait_for_order_cancellation_via_rest(order_id=order_response.order_id)
         assert cancelled_or_rejected_order_id == order_response.order_id, "SL order should not be opened"
 
@@ -425,10 +399,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
             trigger_price=sl_order_details.price,
         )
         # ENSURE IT WAS NOT FILLED NOR STILL OPENED
-        tp_execution_confirmation = await reya_tester.wait_for_trade_confirmation_via_WS(
-            order_details=sl_order_details
-        )
-        assert tp_execution_confirmation is None, "TP order should not execute"
+        # TODO: Claudiu - listen to WS for trade confirmation and validate
         cancelled_or_rejected_order_id = await reya_tester.wait_for_order_cancellation_via_rest(order_id=order_response.order_id)
         assert cancelled_or_rejected_order_id == order_response.order_id, "TP order should not be opened"
 

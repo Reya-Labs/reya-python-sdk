@@ -58,7 +58,7 @@ class SignatureGenerator:
     ) -> str:
         scaler = self.scale(18)
 
-        # Negate order_base if it's a sell order
+        # Negate qty if it's a sell order
         signed_qty = qty if is_buy else -qty
 
         encoded = encode(["int256", "uint256"], [scaler(signed_qty), scaler(limit_price)])
