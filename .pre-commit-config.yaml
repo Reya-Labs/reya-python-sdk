@@ -41,7 +41,7 @@ repos:
     rev: v3.3.4
     hooks:
       - id: pylint
-        exclude: (examples/.*$|^sdk/open_api/)
+        exclude: (examples/.*$|^sdk/open_api/|^sdk/tests/)
   - repo: https://github.com/python-poetry/poetry
     rev: 2.0.1
     hooks:
