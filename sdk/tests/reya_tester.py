@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import asyncio
 import json
@@ -6,21 +6,21 @@ import logging
 import os
 import time
 
-from reya_v2_api.models.create_order_response import CreateOrderResponse
-from reya_v2_api.models.market_definition import MarketDefinition
-from reya_v2_api.models.order import Order
-from reya_v2_api.models.order_type import OrderType
-from reya_v2_api.models.perp_execution import PerpExecution
-from reya_v2_api.models.perp_execution_list import PerpExecutionList
-from reya_v2_api.models.position import Position
-from reya_v2_api.models.price import Price
-from reya_v2_api.models.side import Side
+from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.open_api.models.market_definition import MarketDefinition
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.perp_execution_list import PerpExecutionList
+from sdk.open_api.models.position import Position
+from sdk.open_api.models.price import Price
+from sdk.open_api.models.side import Side
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.constants.enums import TimeInForce, TpslType
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from sdk.reya_websocket import ReyaSocket
 from sdk.tests.models import OrderDetails
-from sdk.tests.utils import match_order, match_order_WS, parse_order
+from sdk.tests.utils import match_order, parse_order
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -280,7 +280,7 @@ class ReyaTester:
 
         # Check response format
         logger.info(f"Response: {response}")
-        if response.success == True:
+        if response.success is True:
             return "ioc" if response.order_id is None else response.order_id
 
         if not expect_error:
@@ -384,7 +384,7 @@ class ReyaTester:
 
     async def wait_for_order_creation_via_rest(self, order_id: str, timeout: int = 5) -> Optional[Order]:
         """Query REST for order creation until timeout"""
-        logger.debug(f"⏳ Waiting for order creation...")
+        logger.debug("⏳ Waiting for order creation...")
 
         start_time = time.time()
 
@@ -410,7 +410,7 @@ class ReyaTester:
         if not self.websocket:
             logger.warning("WebSocket not connected, can't listen to order updates")
             return None
-        logger.debug(f"⏳ Waiting for order status update...")
+        logger.debug("⏳ Waiting for order status update...")
 
         start_time = time.time()
 

@@ -22,26 +22,26 @@ async def main():
     # Get all prices
     print("\n--- Getting all prices ---")
 
-    prices = await client.markets.get_markets()
+    prices = client.markets.get_prices()
     print(f"Retrieved {len(prices)} price entries")
 
     # Print some sample price entries
+    prices_dict = {}
     if prices:
-        # Get a few keys as samples
-        sample_keys = list(prices.keys())[:3]
         print("\nSample price entries:")
-        for key in sample_keys:
-            print(f"{key}: {prices[key]}")
+        for price in prices:
+            prices_dict[price.symbol] = price
+            print(f"{price.symbol}: {price.oracle_price}")
 
     # Extract a specific price from the prices response instead of making a separate API call
     # Choose an existing key from the response
-    if "ETHUSDMARK" in prices:
-        eth_price = prices["ETHUSDMARK"]
+    if "ETHRUSDPERP" in prices_dict.keys():
+        eth_price = prices_dict["ETHRUSDPERP"]
         print("\n--- ETH/USD Mark Price ---")
-        print(f"Price data for ETHUSDMARK: {eth_price}")
-        if "oraclePrice" in eth_price:
+        print(f"Price data for ETHRUSDPERP: {eth_price}")
+        if eth_price.oracle_price:
             # Convert from string to float and adjust decimal places if needed
-            oracle_price_wei = eth_price["oraclePrice"]
+            oracle_price_wei = eth_price.oracle_price
             oracle_price = float(oracle_price_wei) / 10**18  # Assuming 18 decimals
             print(f"Oracle price in USD: ${oracle_price:.2f}")
 

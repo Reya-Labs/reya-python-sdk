@@ -4,35 +4,34 @@ Reya Trading Client - Main entry point for the Reya Trading API.
 This module provides a client for interacting with the Reya Trading REST API.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 import logging
 import time
 from decimal import Decimal
 
-from reya_v2_api.api.market_data_api import MarketDataApi
-from reya_v2_api.api.order_entry_api import OrderEntryApi
-from reya_v2_api.api.reference_data_api import ReferenceDataApi
-from reya_v2_api.api.wallet_data_api import WalletDataApi
-from reya_v2_api.api_client import ApiClient
-from reya_v2_api.configuration import Configuration
-from reya_v2_api.models.account import Account
-from reya_v2_api.models.account_balance import AccountBalance
-from reya_v2_api.models.cancel_order_request import CancelOrderRequest
-from reya_v2_api.models.cancel_order_response import CancelOrderResponse
-from reya_v2_api.models.create_order_request import CreateOrderRequest
-from reya_v2_api.models.create_order_response import CreateOrderResponse
-from reya_v2_api.models.order import Order
-from reya_v2_api.models.order_type import OrderType
-from reya_v2_api.models.perp_execution_list import PerpExecutionList
-from reya_v2_api.models.position import Position
-from reya_v2_api.models.spot_execution_list import SpotExecutionList
-from reya_v2_api.models.time_in_force import TimeInForce
-from reya_v2_api.models.wallet_configuration import WalletConfiguration
+from sdk.open_api.api.market_data_api import MarketDataApi
+from sdk.open_api.api.order_entry_api import OrderEntryApi
+from sdk.open_api.api.reference_data_api import ReferenceDataApi
+from sdk.open_api.api.wallet_data_api import WalletDataApi
+from sdk.open_api.api_client import ApiClient
+from sdk.open_api.configuration import Configuration
+from sdk.open_api.models.account import Account
+from sdk.open_api.models.account_balance import AccountBalance
+from sdk.open_api.models.cancel_order_request import CancelOrderRequest
+from sdk.open_api.models.cancel_order_response import CancelOrderResponse
+from sdk.open_api.models.create_order_request import CreateOrderRequest
+from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.perp_execution_list import PerpExecutionList
+from sdk.open_api.models.position import Position
+from sdk.open_api.models.spot_execution_list import SpotExecutionList
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig, get_config
-from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType, TpslType
-from sdk.reya_websocket.socket import logger
+from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
 
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
@@ -199,7 +198,7 @@ class ReyaTradingClient:
             if params.time_in_force == TimeInForce.GTC
             else (
                 OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER
-                if params.reduce_only == True
+                if params.reduce_only is True
                 else OrdersGatewayOrderType.MARKET_ORDER
             )
         )
@@ -222,19 +221,19 @@ class ReyaTradingClient:
             raise ValueError("Wallet address is required for order creation")
 
         order_request = CreateOrderRequest(
-            account_id=self.config.account_id,
+            accountId=self.config.account_id,
             symbol=params.symbol,
-            exchange_id=self.config.dex_id,
-            is_buy=params.is_buy,
-            limit_px=params.price,
+            exchangeId=self.config.dex_id,
+            isBuy=params.is_buy,
+            limitPx=params.price,
             qty=params.qty,
-            order_type=OrderType.LIMIT,
-            time_in_force=params.time_in_force,
-            expires_after=deadline if params.time_in_force == TimeInForce.IOC else None,
-            reduce_only=params.reduce_only,
+            orderType=OrderType.LIMIT,
+            timeInForce=params.time_in_force,
+            expiresAfter=deadline if params.time_in_force == TimeInForce.IOC else None,
+            reduceOnly=params.reduce_only,
             signature=signature,
             nonce=str(nonce),
-            signer_wallet=self.config.wallet_address,
+            signerWallet=self.config.wallet_address,
         )
 
         response = self.orders.create_order(create_order_request=order_request)
@@ -262,7 +261,7 @@ class ReyaTradingClient:
 
         order_type_int = (
             OrdersGatewayOrderType.TAKE_PROFIT
-            if params.trigger_type == TpslType.TP
+            if params.trigger_type == OrderType.TP
             else OrdersGatewayOrderType.STOP_LOSS
         )
 
@@ -291,18 +290,17 @@ class ReyaTradingClient:
             raise ValueError("Wallet address is required for order creation")
 
         order_request = CreateOrderRequest(
-            account_id=self.config.account_id,
-            market_id=params.market_id,
+            accountId=self.config.account_id,
             symbol=params.symbol,
-            exchange_id=self.config.dex_id,
-            is_buy=params.is_buy,
-            trigger_px=str(params.trigger_price),
-            limit_px=str(limit_price),
-            order_type=params.trigger_type,
-            expires_after=None,
+            exchangeId=self.config.dex_id,
+            isBuy=params.is_buy,
+            triggerPx=str(params.trigger_price),
+            limitPx=str(limit_price),
+            orderType=params.trigger_type,
+            expiresAfter=None,
             signature=signature,
             nonce=str(nonce),
-            signer_wallet=self.config.wallet_address,
+            signerWallet=self.config.wallet_address,
         )
 
         response = self.orders.create_order(create_order_request=order_request)
@@ -328,7 +326,7 @@ class ReyaTradingClient:
         # Sign the cancellation request
         signature = self._signature_generator.sign_cancel_order(order_id)
 
-        cancel_order_request = CancelOrderRequest(order_id=order_id, signature=signature)
+        cancel_order_request = CancelOrderRequest(orderId=order_id, signature=signature)
 
         response = self.orders.cancel_order(cancel_order_request)
         return response

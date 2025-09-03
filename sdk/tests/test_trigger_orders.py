@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-import asyncio
 
 import pytest
 
-from reya_v2_api.models.order import Order
-from reya_v2_api.models.order_type import OrderType
-from reya_v2_api.models.perp_execution import PerpExecution
-from reya_v2_api.models.position import Position
-from reya_v2_api.models.side import Side
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.position import Position
+from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.constants.enums import Limit, LimitOrderType, TimeInForce
 from sdk.tests.models import OrderDetails
 from sdk.tests.reya_tester import ReyaTester, logger

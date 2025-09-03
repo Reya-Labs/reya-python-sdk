@@ -2,8 +2,8 @@ from typing import Any, Optional
 
 from dataclasses import dataclass
 
-from reya_v2_api.models import time_in_force
-from reya_v2_api.models.order_type import OrderType
+from sdk.open_api.models import time_in_force
+from sdk.open_api.models.order_type import OrderType
 
 
 @dataclass(frozen=True)

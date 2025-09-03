@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import json
 import re
@@ -6,8 +6,8 @@ from venv import logger
 
 from web3 import Web3
 
-from reya_v2_api.models.perp_execution import PerpExecution
-from reya_v2_api.models.side import Side
+from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.constants.enums import Limit, LimitOrderType, TimeInForce, TpslType, Trigger, TriggerOrderType
 from sdk.tests.models import OrderDetails
 

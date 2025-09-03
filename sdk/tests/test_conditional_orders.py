@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-import asyncio
 
 import pytest
 
-from reya_v2_api.models.create_order_response import CreateOrderResponse
-from reya_v2_api.models.order import Order
-from reya_v2_api.models.order_status import OrderStatus
-from reya_v2_api.models.order_type import OrderType
-from reya_v2_api.models.perp_execution import PerpExecution
-from reya_v2_api.models.position import Position
-from reya_v2_api.models.side import Side
+from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.position import Position
+from sdk.open_api.models.side import Side
 from sdk.tests.models import OrderDetails
 from sdk.tests.reya_tester import ReyaTester, logger
 
@@ -27,7 +26,7 @@ def assert_tp_sl_order_submission(order_details: Order, expected_order_details: 
     assert float(position.qty) == float(expected_order_details.qty), "Order direction does not match"
     assert order_details.status == OrderStatus.PENDING, "Order status should be PENDING"
 
-    logger.info(f"✅ Order submission confirmed correctly")
+    logger.info("✅ Order submission confirmed correctly")
 
 
 async def create_ioc_order(reya_tester: ReyaTester, symbol: str, price_with_offset: float, is_buy: bool, qty: str):

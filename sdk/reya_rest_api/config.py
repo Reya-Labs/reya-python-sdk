@@ -55,7 +55,7 @@ class TradingConfig:
 
         # Get API URL based on environment (mainnet or testnet)
         if chain_id == MAINNET_CHAIN_ID:
-            default_api_url = "https://api.reya.xyz/v2"
+            default_api_url = "https://api-staging.reya.xyz/v2"
         else:
             default_api_url = "https://api-cronos.reya.xyz/v2"
 

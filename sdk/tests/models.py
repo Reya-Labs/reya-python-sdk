@@ -1,9 +1,9 @@
-from typing import Any, Literal
+from typing import Any
 
 from dataclasses import dataclass
 
-from reya_v2_api.models.order_status import OrderStatus
-from reya_v2_api.models.order_type import OrderType
+from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.order_type import OrderType
 
 
 @dataclass(frozen=True)

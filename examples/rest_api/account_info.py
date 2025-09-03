@@ -28,7 +28,7 @@ async def main():
 
     print("\n--- Getting accounts orders ---")
 
-    accounts = await client.get_accounts()
+    accounts = client.get_accounts()
 
     if accounts:
         print(f"Found {len(accounts)} accounts:\n")
