@@ -11,7 +11,7 @@ class Order(BaseModel):
   account_id: float = Field(alias='''accountId''')
   order_id: Optional[str] = Field(default=None, alias='''orderId''')
   qty: Optional[str] = Field(default=None)
-  exec_qty: Optional[str] = Field(description='''Executed quantity . Example: I request 1.0 BTCRUSDPERP and the order is filled with 0.2 BTCRUSDPERP, qty will stay at 1.0 and execQty will be 0.2.''', default=None, alias='''execQty''')
+  exec_qty: Optional[str] = Field(description='''Executed quantity. Example: I request 1.0 BTCRUSDPERP and the order is filled with 0.2 BTCRUSDPERP, qty will stay at 1.0 and execQty will be 0.2.''', default=None, alias='''execQty''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   limit_px: str = Field(alias='''limitPx''')
   order_type: OrderType = Field(description='''Order type, (LIMIT = Limit, TP = Take Profit, SL = Stop Loss)''', alias='''orderType''')

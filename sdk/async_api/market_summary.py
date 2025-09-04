@@ -8,7 +8,7 @@ class MarketSummary(BaseModel):
   long_oi_qty: str = Field(description='''Long open interest in lots''', alias='''longOiQty''')
   short_oi_qty: str = Field(description='''Short open interest in lots''', alias='''shortOiQty''')
   oi_qty: str = Field(description='''Total open interest quantity''', alias='''oiQty''')
-  funding_rate: float = Field(description='''Current hourlyfunding rate''', alias='''fundingRate''')
+  funding_rate: float = Field(description='''Current hourly funding rate''', alias='''fundingRate''')
   long_funding_value: float = Field(description='''Current long funding value''', alias='''longFundingValue''')
   short_funding_value: float = Field(description='''Current short funding value''', alias='''shortFundingValue''')
   funding_rate_velocity: float = Field(description='''Funding rate velocity''', alias='''fundingRateVelocity''')

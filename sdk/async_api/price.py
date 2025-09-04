@@ -4,7 +4,7 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class Price(BaseModel): 
   symbol: str = Field()
-  oracle_price: Optional[str] = Field(description='''Oracle price, also known as spotprice''', default=None, alias='''oraclePrice''')
+  oracle_price: Optional[str] = Field(description='''Oracle price, also known as spot price''', default=None, alias='''oraclePrice''')
   pool_price: Optional[str] = Field(description='''Pool price''', default=None, alias='''poolPrice''')
   updated_at: float = Field(description='''Last update timestamp (milliseconds)''', alias='''updatedAt''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)

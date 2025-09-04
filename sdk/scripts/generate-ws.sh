@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SPEC_SRC="$REPO_ROOT/specs/asyncapi-trading-v2.yaml"
 TRADING_JSON_SRC="$REPO_ROOT/specs/trading-schemas.json"
-OUT_DIR="$REPO_ROOT/sdk/async_api"
+OUT_DIR="$REPO_ROOT/async_api"
 
 ASYNCAPI_CLI="npx -y @asyncapi/cli"
 MODELINA_CLI="npx -y @asyncapi/modelina-cli"

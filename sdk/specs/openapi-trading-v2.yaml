@@ -128,8 +128,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MarketSummary'
-        '404':
-          $ref: '#/components/responses/NotFound'
 
   /prices:
     get:
@@ -162,8 +160,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Price'
-        '404':
-          $ref: '#/components/responses/NotFound'
 
   /market/{symbol}/perpExecutions:
     get:
@@ -183,8 +179,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PerpExecutionList'
-        '404':
-          $ref: '#/components/responses/NotFound'
 
   /candles/{symbol}/{resolution}:
     get:
@@ -204,10 +198,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CandleData'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
 
   /wallet/{address}/accounts:
     get:
@@ -226,8 +216,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Account'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /wallet/{address}/accountBalances:
     get:
@@ -246,8 +234,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AccountBalance'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /wallet/{address}/perpExecutions:
     get:
@@ -267,8 +253,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PerpExecutionList'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /wallet/{address}/spotExecutions:
     get:
@@ -288,8 +272,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SpotExecutionList'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /wallet/{address}/positions:
     get:
@@ -308,8 +290,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Position'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /wallet/{address}/openOrders:
     get:
@@ -329,8 +309,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Order'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /wallet/{address}/configuration:
     get:
@@ -348,8 +326,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WalletConfiguration'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /createOrder:
     post:
@@ -371,8 +347,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateOrderResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /cancelOrder:
     post:
@@ -394,8 +368,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CancelOrderResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
 components:
   parameters:
