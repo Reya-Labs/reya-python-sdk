@@ -1,10 +1,10 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-from reya_ws_models.side import Side
-from reya_ws_models.order_type import OrderType
-from reya_ws_models.time_in_force import TimeInForce
-from reya_ws_models.order_status import OrderStatus
+from sdk.async_api.side import Side
+from sdk.async_api.order_type import OrderType
+from sdk.async_api.time_in_force import TimeInForce
+from sdk.async_api.order_status import OrderStatus
 class Order(BaseModel): 
   exchange_id: float = Field(alias='''exchangeId''')
   symbol: str = Field()

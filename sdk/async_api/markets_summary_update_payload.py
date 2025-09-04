@@ -1,11 +1,11 @@
 from __future__ import annotations
 from typing import Any, List, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-from reya_ws_models.market_summary import MarketSummary
+from sdk.async_api.market_summary import MarketSummary
 class MarketsSummaryUpdatePayload(BaseModel): 
-  type: str = Field(description='''Message type''', default=''channel_data'', frozen=True)
+  type: str = Field(description='''Message type''', default='channel_data', frozen=True)
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
-  channel: str = Field(description='''Channel identifier''', default=''/v2/markets/summary'', frozen=True)
+  channel: str = Field(description='''Channel identifier''', default='/v2/markets/summary', frozen=True)
   data: List[MarketSummary] = Field()
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 

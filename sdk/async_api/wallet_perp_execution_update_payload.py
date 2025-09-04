@@ -1,9 +1,9 @@
 from __future__ import annotations
 from typing import Any, List, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-from reya_ws_models.perp_execution import PerpExecution
+from sdk.async_api.perp_execution import PerpExecution
 class WalletPerpExecutionUpdatePayload(BaseModel): 
-  type: str = Field(description='''Message type''', default=''channel_data'', frozen=True)
+  type: str = Field(description='''Message type''', default='channel_data', frozen=True)
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
   channel: str = Field()
   data: List[PerpExecution] = Field()

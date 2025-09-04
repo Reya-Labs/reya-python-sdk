@@ -3,5 +3,5 @@ from typing import Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 class PongMessage(BaseModel): 
-  type: str = Field(description='''Message type identifier''', default=''pong'', frozen=True)
+  type: str = Field(description='''Message type identifier''', default='pong', frozen=True)
   timestamp: Optional[float] = Field(description='''Client timestamp (milliseconds)''', default=None)

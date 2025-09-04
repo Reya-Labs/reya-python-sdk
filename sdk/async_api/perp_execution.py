@@ -1,8 +1,8 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-from reya_ws_models.side import Side
-from reya_ws_models.execution_type import ExecutionType
+from sdk.async_api.side import Side
+from sdk.async_api.execution_type import ExecutionType
 class PerpExecution(BaseModel): 
   exchange_id: float = Field(alias='''exchangeId''')
   symbol: str = Field()

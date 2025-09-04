@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-from reya_ws_models.side import Side
+from sdk.async_api.side import Side
 class Position(BaseModel): 
   exchange_id: float = Field(alias='''exchangeId''')
   symbol: str = Field()

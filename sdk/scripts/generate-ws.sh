@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # WS-only generator: fixes anonymous models without touching the shared schema files used by OpenAPI.
+# Plus: sanitizes Modelina's Python output where it sometimes emits default=''value'' (invalid Python).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -37,6 +38,16 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
   fi
 fi
+
+# --- Portable in-place sed wrapper (macOS vs GNU sed) ---
+sed_inplace() {
+  # Usage: sed_inplace 's/old/new/g' file1 file2 ...
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -E -i '' "$1" "${@:2}"
+  else
+    sed -r -i "$1" "${@:2}"
+  fi
+}
 
 # --- Work in a temp dir ---
 TMP_DIR="$(mktemp -d -t reya-ws-XXXXXX)"
@@ -75,12 +86,26 @@ echo "🐍 Generating Python (Pydantic v2) models -> $OUT_DIR"
 $MODELINA_CLI generate python "$BUNDLED" \
   --output "$OUT_DIR" \
   --pyDantic \
-  --packageName="reya_ws_models"
+  --packageName="sdk.async_api"
 
 touch "$OUT_DIR/__init__.py"
+
+# 5) Sanitize Modelina Python output (fix default=''value'')
+#    Only touch Field(... default=...) occurrences; keep triple-quoted descriptions intact.
+echo "🧼 Sanitizing generated Python: fixing default=''value'' → default='value'"
+mapfile -t PY_FILES < <(find "$OUT_DIR" -type f -name "*.py")
+if ((${#PY_FILES[@]})); then
+  # Regex (extended):
+  #   - Capture prefix up to and including "default =" with flexible spacing:
+  #       (Field[^)]*default[[:space:]]*=[[:space:]]*)
+  #   - Match doubled single quotes around the value:
+  #       ''([^']*)''
+  #   - Replace with single quotes: \1'\2'
+  sed_inplace "s/(Field[^)]*default[[:space:]]*=[[:space:]]*)''([^']*)''/\\1'\\2'/g" "${PY_FILES[@]}"
+fi
 
 echo "✅ Done. Models at: $OUT_DIR"
 find "$OUT_DIR" -type f -name "*.py" | sort
 
-# 5) Cleanup
+# 6) Cleanup
 rm -rf "$TMP_DIR"

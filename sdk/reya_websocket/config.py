@@ -1,17 +1,17 @@
-"""Configuration settings for the Reya WebSocket client."""
+"""Configuration settings for the Reya WebSocket client v2."""
 
 import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-# Default values
-DEFAULT_TRADING_API_PREFIX = "/api/trading/"
+# Default values for V2
+DEFAULT_API_VERSION = "v2"
 
 
 @dataclass
 class WebSocketConfig:
-    """Configuration for the WebSocket client."""
+    """Configuration for the WebSocket client v2."""
 
     url: str
     connection_timeout: int = 30
@@ -21,8 +21,9 @@ class WebSocketConfig:
     ping_timeout: int = 10
     reconnect_attempts: int = 3
     reconnect_delay: int = 5
-    trading_api_prefix: str = DEFAULT_TRADING_API_PREFIX
+    api_version: str = DEFAULT_API_VERSION
     subscription_batch_size: int = 10
+    enable_type_validation: bool = True
 
     @classmethod
     def from_env(cls) -> "WebSocketConfig":
@@ -38,7 +39,8 @@ class WebSocketConfig:
             ping_timeout=int(os.environ.get("REYA_WS_PING_TIMEOUT", "10")),
             reconnect_attempts=int(os.environ.get("REYA_WS_RECONNECT_ATTEMPTS", "3")),
             reconnect_delay=int(os.environ.get("REYA_WS_RECONNECT_DELAY", "5")),
-            trading_api_prefix=os.environ.get("REYA_TRADING_API_PREFIX", DEFAULT_TRADING_API_PREFIX),
+            api_version=os.environ.get("REYA_API_VERSION", DEFAULT_API_VERSION),
+            enable_type_validation=os.environ.get("REYA_WS_ENABLE_TYPE_VALIDATION", "True").lower() == "true",
         )
 
 

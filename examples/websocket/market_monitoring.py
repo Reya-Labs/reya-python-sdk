@@ -30,14 +30,14 @@ def on_open(ws):
     """Handle WebSocket connection open event."""
     logger.info("Connection established, subscribing to market data")
 
-    # Subscribe to all market data
-    # ws.market.all_markets.subscribe()
+    # Subscribe to all markets summary
+    # ws.market.all_markets_summary.subscribe()
 
-    # Subscribe to market data orders
-    # ws.market.market_orders(1).subscribe()
+    # Subscribe to market summary for BTCRUSDPERP
+    ws.market.summary("BTCRUSDPERP").subscribe()
 
-    # Subscribe to market data for market ID 1
-    ws.market.market_data(1).subscribe()
+    # Subscribe to market perpetual executions for BTCRUSDPERP
+    # ws.market.perp_executions("BTCRUSDPERP").subscribe()
 
 
 def on_message(ws, message):
@@ -54,15 +54,17 @@ def on_message(ws, message):
 
     elif message_type == "channel_data":
         channel = message.get("channel", "unknown")
-        contents = message.get("contents", {})
+        data = message.get("data", {})
+        timestamp = message.get("timestamp")
 
-        if "market" in channel:
-            # Handle nested structure with result object
-            if isinstance(contents, dict) and "result" in contents:
-                # Log the market data directly
-                logger.info(f"Market update: {contents['result']}")
-            else:
-                logger.warning(f"Received data in unexpected format: {contents}")
+        logger.info(f"Received data from {channel} at {timestamp}")
+        
+        if "/v2/markets/summary" in channel:
+            logger.info(f"All markets summary update: {len(data)} markets")
+        elif "/v2/market/" in channel and "/summary" in channel:
+            logger.info(f"Market summary update: {data}")
+        elif "/v2/market/" in channel and "/perpExecutions" in channel:
+            logger.info(f"Market executions update: {len(data)} executions")
 
     elif message_type == "ping":
         logger.info("Received ping, sending pong response")

@@ -61,14 +61,14 @@ def on_open(ws):
     # Subscribe to wallet positions
     ws.wallet.positions(wallet_address).subscribe()
 
-    # Subscribe to wallet orders
-    ws.wallet.orders(wallet_address).subscribe()
+    # Subscribe to wallet perpetual executions
+    ws.wallet.perp_executions(wallet_address).subscribe()
 
     # Subscribe to wallet open orders
     ws.wallet.open_orders(wallet_address).subscribe()
 
     # Subscribe to wallet account balances
-    ws.wallet.balances(wallet_address).subscribe()
+    ws.wallet.account_balances(wallet_address).subscribe()
 
 
 def on_message(ws, message):

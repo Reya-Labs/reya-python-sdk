@@ -1,6 +1,6 @@
-"""WebSocket client implementation for the Reya API."""
+"""WebSocket client implementation for the Reya API v2."""
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Dict, Type, Union
 
 import json
 import logging
@@ -8,11 +8,25 @@ import ssl
 import threading
 
 import websocket
+from pydantic import BaseModel, ValidationError
 
 from sdk.reya_websocket.config import WebSocketConfig, get_config
 from sdk.reya_websocket.resources.market import MarketResource
 from sdk.reya_websocket.resources.prices import PricesResource
 from sdk.reya_websocket.resources.wallet import WalletResource
+
+# Import V2 payload types
+from sdk.async_api.ping_message import PingMessage
+from sdk.async_api.pong_message import PongMessage
+from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
+from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
+from sdk.async_api.position_update_payload import PositionUpdatePayload
+from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
+from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
+from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
+from sdk.async_api.price_update_payload import PriceUpdatePayload
+from sdk.async_api.prices_update_payload import PricesUpdatePayload
 
 # Set up logging
 logger = logging.getLogger("reya.websocket")
@@ -38,8 +52,33 @@ def as_json(on_message: Optional[Callable[[Any, Any], None]]) -> Callable[[Any, 
     return wrapper
 
 
+class WebSocketDataError(Exception):
+    """Exception raised when WebSocket data cannot be parsed."""
+    pass
+
+
 class ReyaSocket(websocket.WebSocketApp):
-    """WebSocket client for Reya API with resource-based access."""
+    """WebSocket client for Reya API v2 with resource-based access and type safety."""
+
+    # Channel to payload type mapping for V2
+    CHANNEL_PAYLOAD_MAP: Dict[str, Type[BaseModel]] = {
+        # Ping/Pong
+        "ping": PingMessage,
+        "pong": PongMessage,
+        # Markets
+        "/v2/markets/summary": MarketsSummaryUpdatePayload,
+        # Market-specific (regex patterns handled in _get_payload_type)
+        "/v2/market/": MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+        "/v2/market/perpExecutions": MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
+        # Wallet-specific (regex patterns handled in _get_payload_type)
+        "/v2/wallet/positions": PositionUpdatePayload,  # /v2/wallet/{address}/positions
+        "/v2/wallet/openOrders": OpenOrderUpdatePayload,  # /v2/wallet/{address}/openOrders
+        "/v2/wallet/accountBalances": AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
+        "/v2/wallet/perpExecutions": WalletPerpExecutionUpdatePayload,  # /v2/wallet/{address}/perpExecutions
+        # Prices
+        "/v2/prices": PricesUpdatePayload,
+        "/v2/prices/": PriceUpdatePayload,  # /v2/prices/{symbol}
+    }
 
     def __init__(
         self,
@@ -95,6 +134,72 @@ class ReyaSocket(websocket.WebSocketApp):
             on_close=on_close,
             **kwargs,
         )
+
+    def _get_payload_type(self, channel: str) -> Optional[Type[BaseModel]]:
+        """Get the appropriate payload type for a channel.
+        
+        Args:
+            channel: The channel path or message type.
+            
+        Returns:
+            The corresponding Pydantic model class or None if not found.
+        """
+        # Direct match first
+        if channel in self.CHANNEL_PAYLOAD_MAP:
+            return self.CHANNEL_PAYLOAD_MAP[channel]
+        
+        # Pattern matching for parameterized channels
+        if "/v2/market/" in channel:
+            if channel.endswith("/summary"):
+                return MarketSummaryUpdatePayload
+            elif channel.endswith("/perpExecutions"):
+                return MarketPerpExecutionUpdatePayload
+        elif "/v2/wallet/" in channel:
+            if channel.endswith("/positions"):
+                return PositionUpdatePayload
+            elif channel.endswith("/openOrders"):
+                return OpenOrderUpdatePayload
+            elif channel.endswith("/accountBalances"):
+                return AccountBalanceUpdatePayload
+            elif channel.endswith("/perpExecutions"):
+                return WalletPerpExecutionUpdatePayload
+        elif "/v2/prices/" in channel and not channel == "/v2/prices":
+            return PriceUpdatePayload
+            
+        return None
+
+    def _parse_message(self, message: dict) -> Optional[BaseModel]:
+        """Parse a WebSocket message into the appropriate Pydantic model.
+        
+        Args:
+            message: The raw message dictionary.
+            
+        Returns:
+            Parsed Pydantic model or None if parsing fails.
+        """
+        message_type = message.get("type")
+        
+        if message_type in ["ping", "pong"]:
+            payload_type = self.CHANNEL_PAYLOAD_MAP.get(message_type)
+            if payload_type:
+                try:
+                    return payload_type.model_validate(message)
+                except ValidationError as e:
+                    logger.error(f"Failed to parse {message_type} message: {e}")
+                    raise WebSocketDataError(f"Invalid {message_type} message format")
+        
+        elif message_type == "channel_data":
+            channel = message.get("channel")
+            if channel:
+                payload_type = self._get_payload_type(channel)
+                if payload_type:
+                    try:
+                        return payload_type.model_validate(message)
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse channel_data for {channel}: {e}")
+                        raise WebSocketDataError(f"Invalid data format for channel {channel}")
+        
+        return None
 
     @property
     def market(self) -> MarketResource:
@@ -184,8 +289,17 @@ class ReyaSocket(websocket.WebSocketApp):
         self.send(json.dumps({"type": "ping"}))
 
     def _default_on_message(self, _ws, message):
-        """Default handler for message events."""
+        """Default handler for message events with V2 support."""
         message_type = message.get("type")
+
+        # Try to parse message with Pydantic models for type safety
+        try:
+            parsed_message = self._parse_message(message)
+            if parsed_message:
+                logger.debug(f"Parsed message as {type(parsed_message).__name__}")
+        except WebSocketDataError as e:
+            logger.warning(f"Message parsing failed: {e}")
+            parsed_message = None
 
         if message_type == "connected":
             logger.info("Connection established with server")
@@ -203,10 +317,24 @@ class ReyaSocket(websocket.WebSocketApp):
 
         elif message_type == "channel_data":
             channel = message.get("channel", "unknown")
-            logger.debug(f"Received data from {channel}")
+            data = message.get("data")
+            timestamp = message.get("timestamp")
+            
+            logger.debug(f"Received data from {channel} at {timestamp}")
+            
+            # Log structured data if parsing succeeded
+            if parsed_message and hasattr(parsed_message, 'data'):
+                data_type = type(parsed_message.data)
+                if hasattr(data_type, '__origin__') and data_type.__origin__ is list:
+                    logger.debug(f"Received {len(parsed_message.data)} items")
+                else:
+                    logger.debug(f"Received {type(parsed_message.data).__name__} data")
 
         elif message_type == "error":
             logger.error(f"Received error: {message.get('message', 'unknown')}")
+
+        elif message_type == "ping":
+            logger.debug("Received ping from server")
 
         else:
             logger.debug(f"Received unknown message type: {message_type} - {message}")

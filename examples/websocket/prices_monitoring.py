@@ -25,16 +25,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 # Create a logger for this module
 logger = logging.getLogger("reya.example")
 
-# Asset pair to monitor
-ASSET_PAIR = "ETHUSDMARK"
+# Symbol to monitor
+SYMBOL = "ETHRUSD"
 
 
 def on_open(ws):
     """Handle WebSocket connection open event."""
-    logger.info(f"Connection established, subscribing to price data for {ASSET_PAIR}")
+    logger.info(f"Connection established, subscribing to price data for {SYMBOL}")
 
-    # Subscribe to price data for the specified asset pair
-    ws.prices.asset_pair_price(ASSET_PAIR).subscribe()
+    # Subscribe to all prices
+    ws.prices.all_prices.subscribe()
+
+    # Subscribe to price data for the specified symbol
+    ws.prices.price(SYMBOL).subscribe()
 
 
 def on_message(ws, message):
@@ -51,22 +54,23 @@ def on_message(ws, message):
 
     elif message_type == "channel_data":
         channel = message.get("channel", "unknown")
-        contents = message.get("contents", {})
+        data = message.get("data", {})
+        timestamp = message.get("timestamp")
 
-        if "prices" in channel:
-            # Handle price data
-            if isinstance(contents, dict) and "result" in contents:
-                price_data = contents["result"]
-                logger.info(f"Price update for {ASSET_PAIR}: {price_data}")
-
-                # Extract specific price data if available
-                if isinstance(price_data, dict):
-                    price = price_data.get("price")
-                    timestamp = price_data.get("timestamp")
-                    if price:
-                        logger.info(f"Current price: {price} (timestamp: {timestamp})")
-            else:
-                logger.warning(f"Received data in unexpected format: {contents}")
+        logger.info(f"Received data from {channel} at {timestamp}")
+        
+        if "/v2/prices" == channel:
+            logger.info(f"All prices update: {len(data)} symbols")
+        elif "/v2/prices/" in channel:
+            logger.info(f"Price update for {SYMBOL}: {data}")
+            
+            # Extract specific price data if available
+            if isinstance(data, dict):
+                oracle_price = data.get("oraclePrice")
+                pool_price = data.get("poolPrice")
+                updated_at = data.get("updatedAt")
+                if oracle_price or pool_price:
+                    logger.info(f"Oracle price: {oracle_price}, Pool price: {pool_price} (updated: {updated_at})")
 
     elif message_type == "ping":
         logger.info("Received ping, sending pong response")
@@ -87,7 +91,7 @@ async def periodic_task():
     counter = 0
     while True:
         counter += 1
-        logger.info(f"Monitoring {ASSET_PAIR} prices (iteration {counter})")
+        logger.info(f"Monitoring {SYMBOL} prices (iteration {counter})")
 
         # Simulate some work (e.g., data processing, calculations, etc.)
         await asyncio.sleep(5)  # Run every 5 seconds
@@ -112,7 +116,7 @@ async def main():
         on_message=on_message,
     )
 
-    logger.info(f"Connecting to WebSocket to monitor {ASSET_PAIR} prices")
+    logger.info(f"Connecting to WebSocket to monitor {SYMBOL} prices")
     logger.info("Press Ctrl+C to exit")
 
     # Connect - this will return immediately
