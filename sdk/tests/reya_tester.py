@@ -18,8 +18,8 @@ from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.price import Price
 from sdk.open_api.models.side import Side
+from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.constants.enums import TimeInForce, TpslType
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from sdk.reya_websocket import ReyaSocket
 from sdk.tests.models import OrderDetails
@@ -308,7 +308,7 @@ class ReyaTester:
             symbol=symbol,
             is_buy=is_buy,
             trigger_price=trigger_price,
-            trigger_type=TpslType.TP,
+            trigger_type=OrderType.TP,
         )
 
         side_text = "BUY" if is_buy else "SELL"
@@ -335,7 +335,7 @@ class ReyaTester:
             market_id=market_id,
             is_buy=is_buy,
             trigger_price=trigger_price,
-            trigger_type=TpslType.SL,
+            trigger_type=OrderType.SL,
         )
 
         response = self.client.create_trigger_order(params)
@@ -527,7 +527,6 @@ class ReyaTester:
     def check_no_order_execution_since(self, since_timestamp_ms: int):
         order_execution = self.get_last_wallet_perp_execution()
         if order_execution is not None:
-            logger.info(f"Order execution: {order_execution.timestamp} {since_timestamp_ms}")
             assert (
                 order_execution.timestamp < since_timestamp_ms
             ), "check_no_order_execution_since: Order execution should be empty"
