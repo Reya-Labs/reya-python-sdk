@@ -20,7 +20,6 @@ import time
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
 
 # Import WebSocket message types for proper type conversion
@@ -58,8 +57,6 @@ def on_open(ws):
     # Subscribe to wallet open orders
     # ws.wallet.open_orders(wallet_address).subscribe()
 
-    # Subscribe to wallet account balances
-    # ws.wallet.account_balances(wallet_address).subscribe()
 
 
 def handle_wallet_positions_data(message: dict[str, Any]) -> None:
@@ -123,29 +120,6 @@ def handle_wallet_orders_data(message: dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling wallet orders: {e}")
 
 
-def handle_wallet_balances_data(message: dict[str, Any]) -> None:
-    """Handle /v2/wallet/:address/accountBalances channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = AccountBalanceUpdatePayload.model_validate(message)
-
-        logger.info("💰 Wallet Account Balances Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Balances Count: {len(payload.data)}")
-
-        # Showcase individual balance data structure
-        for i, balance in enumerate(payload.data[:3]):  # Show first 3 balances
-            logger.info(f"    Balance {i + 1}: {balance.symbol}")
-            logger.info(f"      └─ Balance: {balance.balance}")
-
-        if len(payload.data) > 3:
-            logger.info(f"    ... and {len(payload.data) - 3} more balances")
-
-    except ValidationError as e:
-        logger.error(f"Failed to parse wallet balances data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling wallet balances: {e}")
 
 
 def handle_wallet_executions_data(message: dict[str, Any]) -> None:
@@ -199,8 +173,6 @@ def on_message(ws, message):
                 handle_wallet_positions_data(message)
             elif channel.endswith("/openOrders"):
                 handle_wallet_orders_data(message)
-            elif channel.endswith("/accountBalances"):
-                handle_wallet_balances_data(message)
             elif channel.endswith("/perpExecutions"):
                 handle_wallet_executions_data(message)
             else:

@@ -91,17 +91,6 @@ channels:
       message:
         $ref: '#/components/messages/OpenOrderUpdate'
 
-  /v2/wallet/{address}/accountBalances:
-    description: Real-time account balance updates for a wallet
-    parameters:
-      address:
-        $ref: '#/components/parameters/Address'
-    subscribe:
-      summary: Receive account balance updates for wallet
-      operationId: receiveWalletAccountBalances
-      message:
-        $ref: '#/components/messages/AccountBalanceUpdate'
-
   /v2/wallet/{address}/perpExecutions:
     description: Real-time perpetual execution updates for a wallet
     parameters:
@@ -191,14 +180,6 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/OpenOrderUpdatePayload'
-
-    AccountBalanceUpdate:
-      name: accountBalanceUpdate
-      title: Account Balance Update
-      summary: Real-time account balance update for a wallet
-      contentType: application/json
-      payload:
-        $ref: '#/components/schemas/AccountBalanceUpdatePayload'
 
     MarketPerpExecutionUpdate:
       name: marketPerpExecutionUpdate
@@ -347,20 +328,6 @@ components:
           items:
             $ref: '#/components/schemas/Order'
 
-    AccountBalanceUpdateBody:
-      x-parser-schema-id: AccountBalanceUpdateBody
-      title: AccountBalanceUpdateBody
-      type: object
-      required: [channel, data]
-      properties:
-        channel:
-          type: string
-          pattern: '^/v2/wallet/0x[a-fA-F0-9]{40}/accountBalances$'
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/AccountBalance'
-
     MarketPerpExecutionUpdateBody:
       x-parser-schema-id: MarketPerpExecutionUpdateBody
       title: MarketPerpExecutionUpdateBody
@@ -439,12 +406,6 @@ components:
       allOf:
         - $ref: '#/components/schemas/BaseUpdateEnvelope'
         - $ref: '#/components/schemas/OpenOrderUpdateBody'
-
-    AccountBalanceUpdatePayload:
-      x-parser-schema-id: AccountBalanceUpdatePayload
-      allOf:
-        - $ref: '#/components/schemas/BaseUpdateEnvelope'
-        - $ref: '#/components/schemas/AccountBalanceUpdateBody'
 
     MarketPerpExecutionUpdatePayload:
       x-parser-schema-id: MarketPerpExecutionUpdatePayload

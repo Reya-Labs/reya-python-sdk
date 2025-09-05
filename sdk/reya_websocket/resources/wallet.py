@@ -22,7 +22,6 @@ class WalletResource:
         self.socket = socket
         self._positions = WalletPositionsResource(socket)
         self._perp_executions = WalletPerpExecutionsResource(socket)
-        self._account_balances = WalletAccountBalancesResource(socket)
         self._open_orders = WalletOpenOrdersResource(socket)
 
     def positions(self, address: str) -> "WalletPositionsSubscription":
@@ -47,16 +46,6 @@ class WalletResource:
         """
         return self._perp_executions.for_wallet(address)
 
-    def account_balances(self, address: str) -> "WalletAccountBalancesSubscription":
-        """Get account balances for a specific wallet address.
-
-        Args:
-            address: The wallet address.
-
-        Returns:
-            A subscription object for the wallet account balances.
-        """
-        return self._account_balances.for_wallet(address)
 
     def open_orders(self, address: str) -> "WalletOpenOrdersSubscription":
         """Get open orders for a specific wallet address.
@@ -116,27 +105,6 @@ class WalletPerpExecutionsResource(SubscribableParameterizedResource):
         return WalletPerpExecutionsSubscription(self.socket, address)
 
 
-class WalletAccountBalancesResource(SubscribableParameterizedResource):
-    """Resource for accessing wallet account balances."""
-
-    def __init__(self, socket: "ReyaSocket"):
-        """Initialize the wallet account balances resource.
-
-        Args:
-            socket: The WebSocket connection to use for this resource.
-        """
-        super().__init__(socket, "/v2/wallet/{address}/accountBalances")
-
-    def for_wallet(self, address: str) -> "WalletAccountBalancesSubscription":
-        """Create a subscription for a specific wallet's account balances.
-
-        Args:
-            address: The wallet address.
-
-        Returns:
-            A subscription object for the wallet account balances.
-        """
-        return WalletAccountBalancesSubscription(self.socket, address)
 
 
 class WalletPositionsSubscription:
@@ -193,31 +161,6 @@ class WalletPerpExecutionsSubscription:
         self.socket.send_unsubscribe(channel=self.path)
 
 
-class WalletAccountBalancesSubscription:
-    """Manages a subscription to account balances for a specific wallet."""
-
-    def __init__(self, socket: "ReyaSocket", address: str):
-        """Initialize a wallet account balances subscription.
-
-        Args:
-            socket: The WebSocket connection to use for this subscription.
-            address: The wallet address.
-        """
-        self.socket = socket
-        self.address = address
-        self.path = f"/v2/wallet/{address}/accountBalances"
-
-    def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to wallet account balances.
-
-        Args:
-            batched: Whether to receive updates in batches.
-        """
-        self.socket.send_subscribe(channel=self.path, batched=batched)
-
-    def unsubscribe(self) -> None:
-        """Unsubscribe from wallet account balances."""
-        self.socket.send_unsubscribe(channel=self.path)
 
 
 class WalletOpenOrdersResource(SubscribableParameterizedResource):

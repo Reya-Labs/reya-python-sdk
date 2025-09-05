@@ -10,7 +10,6 @@ import threading
 import websocket
 from pydantic import BaseModel, ValidationError
 
-from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
@@ -72,7 +71,6 @@ class ReyaSocket(websocket.WebSocketApp):
         # Wallet-specific (regex patterns handled in _get_payload_type)
         "/v2/wallet/positions": PositionUpdatePayload,  # /v2/wallet/{address}/positions
         "/v2/wallet/openOrders": OpenOrderUpdatePayload,  # /v2/wallet/{address}/openOrders
-        "/v2/wallet/accountBalances": AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
         "/v2/wallet/perpExecutions": WalletPerpExecutionUpdatePayload,  # /v2/wallet/{address}/perpExecutions
         # Prices
         "/v2/prices": PricesUpdatePayload,
@@ -158,8 +156,6 @@ class ReyaSocket(websocket.WebSocketApp):
                 return PositionUpdatePayload
             elif channel.endswith("/openOrders"):
                 return OpenOrderUpdatePayload
-            elif channel.endswith("/accountBalances"):
-                return AccountBalanceUpdatePayload
             elif channel.endswith("/perpExecutions"):
                 return WalletPerpExecutionUpdatePayload
         elif "/v2/prices/" in channel and not channel == "/v2/prices":
