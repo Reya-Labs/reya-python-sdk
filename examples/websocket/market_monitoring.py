@@ -63,7 +63,7 @@ def handle_markets_summary_data(message: dict[str, Any]) -> None:
         for i, market in enumerate(payload.data[:5]):  # Show first 5 markets
             logger.info(f"    Market {i + 1}: {market.symbol}")
             logger.info(f"      ├─ Volume 24h: {market.volume24h}")
-            logger.info(f"      ├─ Funding Rate: {market.funding_rate:.6f}")
+            logger.info(f"      ├─ Funding Rate: {market.funding_rate}")
             logger.info(f"      ├─ Total OI: {market.oi_qty}")
             logger.info(f"      └─ Price Change 24h: {market.px_change24h or 'N/A'}")
 
@@ -89,7 +89,7 @@ def handle_market_summary_data(message: dict[str, Any]) -> None:
         logger.info(f"  ├─ Updated At: {market.updated_at}")
         logger.info(f"  ├─ Volume 24h: {market.volume24h}")
         logger.info(f"  ├─ Price Change 24h: {market.px_change24h or 'N/A'}")
-        logger.info(f"  ├─ Funding Rate: {market.funding_rate:.6f}")
+        logger.info(f"  ├─ Funding Rate: {market.funding_rate}")
         logger.info(f"  ├─ Long OI: {market.long_oi_qty}")
         logger.info(f"  ├─ Short OI: {market.short_oi_qty}")
         logger.info(f"  ├─ Total OI: {market.oi_qty}")
