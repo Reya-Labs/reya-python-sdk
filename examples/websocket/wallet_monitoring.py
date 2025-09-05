@@ -1,6 +1,6 @@
 """Example of monitoring wallet positions, orders, and balances.
 
-This example connects to the Reya WebSocket API and subscribes to all wallet-related data streams for a specific wallet address.
+This example connects to the Reya WebSocket API and subscribes to wallet data streams for a specific address.
 
 Before running this example, ensure you have a .env file with the following variables:
 - PRIVATE_KEY: Your Ethereum private key
@@ -14,23 +14,20 @@ import json
 import logging
 import os
 import time
-from typing import Dict, Any, List
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-# Import the new resource-oriented WebSocket client
-from sdk.reya_websocket import ReyaSocket
+from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
 
 # Import WebSocket message types for proper type conversion
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
-from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
-from sdk.async_api.position import Position
-from sdk.async_api.order import Order
-from sdk.async_api.account_balance import AccountBalance
-from sdk.async_api.perp_execution import PerpExecution
+
+# Import the new resource-oriented WebSocket client
+from sdk.reya_websocket import ReyaSocket
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -69,12 +66,12 @@ def handle_wallet_positions_data(message: Dict[str, Any]) -> None:
     try:
         # Convert raw message to typed payload
         payload = PositionUpdatePayload.model_validate(message)
-        
-        logger.info(f"💼 Wallet Positions Update:")
+
+        logger.info("💼 Wallet Positions Update:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
         logger.info(f"  └─ Positions Count: {len(payload.data)}")
-        
+
         # Showcase individual position data structure
         for i, position in enumerate(payload.data[:5]):  # Show first 5 positions
             logger.info(f"    Position {i+1}: {position.symbol}")
@@ -85,10 +82,10 @@ def handle_wallet_positions_data(message: Dict[str, Any]) -> None:
             logger.info(f"      ├─ Avg Entry Price: {position.avg_entry_price}")
             logger.info(f"      ├─ Avg Entry Funding: {position.avg_entry_funding_value}")
             logger.info(f"      └─ Last Trade Seq: {position.last_trade_sequence_number}")
-        
+
         if len(payload.data) > 5:
             logger.info(f"    ... and {len(payload.data) - 5} more positions")
-            
+
     except ValidationError as e:
         logger.error(f"Failed to parse wallet positions data: {e}")
     except Exception as e:
@@ -100,12 +97,12 @@ def handle_wallet_orders_data(message: Dict[str, Any]) -> None:
     try:
         # Convert raw message to typed payload
         payload = OpenOrderUpdatePayload.model_validate(message)
-        
-        logger.info(f"📋 Wallet Open Orders Update:")
+
+        logger.info("📋 Wallet Open Orders Update:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
         logger.info(f"  └─ Orders Count: {len(payload.data)}")
-        
+
         # Showcase individual order data structure
         for i, order in enumerate(payload.data[:5]):  # Show first 5 orders
             logger.info(f"    Order {i+1}: {order.symbol}")
@@ -115,10 +112,10 @@ def handle_wallet_orders_data(message: Dict[str, Any]) -> None:
             logger.info(f"      ├─ Quantity: {order.qty}")
             logger.info(f"      ├─ Price: {order.price}")
             logger.info(f"      └─ Status: {order.status.value}")
-        
+
         if len(payload.data) > 5:
             logger.info(f"    ... and {len(payload.data) - 5} more orders")
-            
+
     except ValidationError as e:
         logger.error(f"Failed to parse wallet orders data: {e}")
     except Exception as e:
@@ -130,21 +127,21 @@ def handle_wallet_balances_data(message: Dict[str, Any]) -> None:
     try:
         # Convert raw message to typed payload
         payload = AccountBalanceUpdatePayload.model_validate(message)
-        
-        logger.info(f"💰 Wallet Account Balances Update:")
+
+        logger.info("💰 Wallet Account Balances Update:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
         logger.info(f"  └─ Balances Count: {len(payload.data)}")
-        
+
         # Showcase individual balance data structure
         for i, balance in enumerate(payload.data[:3]):  # Show first 3 balances
             logger.info(f"    Balance {i+1}: Account {balance.account_id}")
             logger.info(f"      ├─ Symbol: {balance.symbol}")
             logger.info(f"      └─ Balance: {balance.balance}")
-        
+
         if len(payload.data) > 3:
             logger.info(f"    ... and {len(payload.data) - 3} more balances")
-            
+
     except ValidationError as e:
         logger.error(f"Failed to parse wallet balances data: {e}")
     except Exception as e:
@@ -156,12 +153,12 @@ def handle_wallet_executions_data(message: Dict[str, Any]) -> None:
     try:
         # Convert raw message to typed payload
         payload = WalletPerpExecutionUpdatePayload.model_validate(message)
-        
-        logger.info(f"⚡ Wallet Perpetual Executions Update:")
+
+        logger.info("⚡ Wallet Perpetual Executions Update:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
         logger.info(f"  └─ Executions Count: {len(payload.data)}")
-        
+
         # Showcase individual execution data structure
         for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
             logger.info(f"    Execution {i+1}: {execution.symbol}")
@@ -171,10 +168,10 @@ def handle_wallet_executions_data(message: Dict[str, Any]) -> None:
             logger.info(f"      ├─ Price: {execution.price}")
             logger.info(f"      ├─ Fee: {execution.fee}")
             logger.info(f"      └─ Type: {execution.type.value}")
-        
+
         if len(payload.data) > 5:
             logger.info(f"    ... and {len(payload.data) - 5} more executions")
-            
+
     except ValidationError as e:
         logger.error(f"Failed to parse wallet executions data: {e}")
     except Exception as e:
@@ -195,7 +192,7 @@ def on_message(ws, message):
 
     elif message_type == "channel_data":
         channel = message.get("channel", "unknown")
-        
+
         # Route to appropriate handler based on channel pattern
         if "/v2/wallet/" in channel:
             if channel.endswith("/positions"):
@@ -233,17 +230,17 @@ async def periodic_task(ws, wallet_address):
     """Enhanced periodic task with connection monitoring."""
     counter = 0
     start_time = time.time()
-    
+
     while True:
         counter += 1
         uptime = time.time() - start_time
-        
+
         logger.info(f"🔄 Monitoring wallet {wallet_address[:8]}... (iteration {counter}) - Uptime: {uptime:.1f}s")
-        
+
         # Monitor connection health
         active_subs = len(ws.active_subscriptions)
         logger.info(f"📊 Connection Status: {active_subs} active subscriptions")
-        
+
         # Send periodic ping to test connection (every 10 iterations = ~20 seconds)
         if counter % 10 == 0:
             try:
@@ -251,7 +248,7 @@ async def periodic_task(ws, wallet_address):
                 ws.send(json.dumps({"type": "ping"}))
             except Exception as e:
                 logger.error(f"❌ Failed to send manual ping: {e}")
-        
+
         await asyncio.sleep(2)  # Run every 2 seconds
 
 
@@ -274,7 +271,7 @@ async def main():
     def on_error(ws, error):
         """Enhanced error handler with detailed logging."""
         logger.error(f"❌ WebSocket error: {error}")
-        
+
     def on_close(ws, close_status_code, close_reason):
         """Enhanced close handler with detailed logging."""
         logger.info(f"🔌 WebSocket closed: {close_status_code} - {close_reason}")
@@ -283,17 +280,17 @@ async def main():
 
     # Create the WebSocket with enhanced configuration
     from sdk.reya_websocket.config import WebSocketConfig
-    
+
     # Create custom config with more aggressive ping settings
     config = WebSocketConfig(
         url=ws_url,
         ping_interval=20,  # Ping every 20 seconds instead of 30
-        ping_timeout=15,   # Wait 15 seconds for pong instead of 10
+        ping_timeout=15,  # Wait 15 seconds for pong instead of 10
         connection_timeout=60,  # Longer initial connection timeout
-        reconnect_attempts=5,   # More reconnection attempts
-        reconnect_delay=3       # Shorter delay between reconnects
+        reconnect_attempts=5,  # More reconnection attempts
+        reconnect_delay=3,  # Shorter delay between reconnects
     )
-    
+
     ws = ReyaSocket(
         config=config,
         on_open=on_open,

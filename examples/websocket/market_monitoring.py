@@ -13,20 +13,18 @@ import json
 import logging
 import os
 import time
-from typing import Dict, Any, List
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+# Import WebSocket message types for proper type conversion
+from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
+from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
+from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
+
 # Import the new resource-oriented WebSocket client
 from sdk.reya_websocket import ReyaSocket
-
-# Import WebSocket message types for proper type conversion
-from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
-from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
-from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
-from sdk.async_api.market_summary import MarketSummary
-from sdk.async_api.perp_execution import PerpExecution
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -54,12 +52,12 @@ def handle_markets_summary_data(message: Dict[str, Any]) -> None:
     try:
         # Convert raw message to typed payload
         payload = MarketsSummaryUpdatePayload.model_validate(message)
-        
-        logger.info(f"📊 All Markets Summary Update:")
+
+        logger.info("📊 All Markets Summary Update:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
         logger.info(f"  └─ Markets Count: {len(payload.data)}")
-        
+
         # Showcase individual market data structure
         for i, market in enumerate(payload.data[:3]):  # Show first 3 markets
             logger.info(f"    Market {i+1}: {market.symbol}")
@@ -67,10 +65,10 @@ def handle_markets_summary_data(message: Dict[str, Any]) -> None:
             logger.info(f"      ├─ Funding Rate: {market.funding_rate:.6f}")
             logger.info(f"      ├─ Total OI: {market.oi_qty}")
             logger.info(f"      └─ Price Change 24h: {market.px_change24h or 'N/A'}")
-        
+
         if len(payload.data) > 3:
             logger.info(f"    ... and {len(payload.data) - 3} more markets")
-            
+
     except ValidationError as e:
         logger.error(f"Failed to parse markets summary data: {e}")
     except Exception as e:
@@ -83,7 +81,7 @@ def handle_market_summary_data(message: Dict[str, Any]) -> None:
         # Convert raw message to typed payload
         payload = MarketSummaryUpdatePayload.model_validate(message)
         market = payload.data
-        
+
         logger.info(f"📈 Market Summary Update for {market.symbol}:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
@@ -96,7 +94,7 @@ def handle_market_summary_data(message: Dict[str, Any]) -> None:
         logger.info(f"  ├─ Total OI: {market.oi_qty}")
         logger.info(f"  ├─ Oracle Price: {market.throttled_oracle_price or 'N/A'}")
         logger.info(f"  └─ Pool Price: {market.throttled_pool_price or 'N/A'}")
-        
+
     except ValidationError as e:
         logger.error(f"Failed to parse market summary data: {e}")
     except Exception as e:
@@ -108,12 +106,12 @@ def handle_market_perp_executions_data(message: Dict[str, Any]) -> None:
     try:
         # Convert raw message to typed payload
         payload = MarketPerpExecutionUpdatePayload.model_validate(message)
-        
-        logger.info(f"⚡ Market Perpetual Executions Update:")
+
+        logger.info("⚡ Market Perpetual Executions Update:")
         logger.info(f"  ├─ Timestamp: {payload.timestamp}")
         logger.info(f"  ├─ Channel: {payload.channel}")
         logger.info(f"  └─ Executions Count: {len(payload.data)}")
-        
+
         # Showcase individual execution data structure
         for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
             logger.info(f"    Execution {i+1}:")
@@ -126,10 +124,10 @@ def handle_market_perp_executions_data(message: Dict[str, Any]) -> None:
             logger.info(f"      ├─ Type: {execution.type.value}")
             logger.info(f"      ├─ Timestamp: {execution.timestamp}")
             logger.info(f"      └─ Sequence: {execution.sequence_number}")
-        
+
         if len(payload.data) > 5:
             logger.info(f"    ... and {len(payload.data) - 5} more executions")
-            
+
     except ValidationError as e:
         logger.error(f"Failed to parse market executions data: {e}")
     except Exception as e:
@@ -150,7 +148,7 @@ def on_message(ws, message):
 
     elif message_type == "channel_data":
         channel = message.get("channel", "unknown")
-        
+
         # Route to appropriate handler based on channel pattern
         if channel == "/v2/markets/summary":
             handle_markets_summary_data(message)
@@ -183,17 +181,17 @@ async def periodic_task(ws):
     """Enhanced periodic task with connection monitoring."""
     counter = 0
     start_time = time.time()
-    
+
     while True:
         counter += 1
         uptime = time.time() - start_time
-        
+
         logger.info(f"🔄 Periodic task running (iteration {counter}) - Uptime: {uptime:.1f}s")
-        
+
         # Monitor connection health
         active_subs = len(ws.active_subscriptions)
         logger.info(f"📊 Connection Status: {active_subs} active subscriptions")
-        
+
         # Send periodic ping to test connection (every 10 iterations = ~20 seconds)
         if counter % 10 == 0:
             try:
@@ -201,7 +199,7 @@ async def periodic_task(ws):
                 ws.send(json.dumps({"type": "ping"}))
             except Exception as e:
                 logger.error(f"❌ Failed to send manual ping: {e}")
-        
+
         await asyncio.sleep(2)  # Run every 2 seconds
 
 
@@ -217,7 +215,7 @@ async def main():
     def on_error(ws, error):
         """Enhanced error handler with detailed logging."""
         logger.error(f"❌ WebSocket error: {error}")
-        
+
     def on_close(ws, close_status_code, close_reason):
         """Enhanced close handler with detailed logging."""
         logger.info(f"🔌 WebSocket closed: {close_status_code} - {close_reason}")
@@ -226,17 +224,17 @@ async def main():
 
     # Create the WebSocket with enhanced configuration
     from sdk.reya_websocket.config import WebSocketConfig
-    
+
     # Create custom config with more aggressive ping settings
     config = WebSocketConfig(
         url=ws_url,
         ping_interval=20,  # Ping every 20 seconds instead of 30
-        ping_timeout=15,   # Wait 15 seconds for pong instead of 10
+        ping_timeout=15,  # Wait 15 seconds for pong instead of 10
         connection_timeout=60,  # Longer initial connection timeout
-        reconnect_attempts=5,   # More reconnection attempts
-        reconnect_delay=3       # Shorter delay between reconnects
+        reconnect_attempts=5,  # More reconnection attempts
+        reconnect_delay=3,  # Shorter delay between reconnects
     )
-    
+
     ws = ReyaSocket(
         config=config,
         on_open=on_open,
