@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import asyncio
 import pytest
 
 from sdk.open_api.models.create_order_response import CreateOrderResponse
@@ -289,7 +290,10 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
         logger.info(f"Created TP order with ID: {tp_order.order_id}")
 
         # VALIDATE order was executed correctly
-        # TODO: Claudiu - listen to WS for trade confirmation and validate
+        # TODO: Claudiu - listen to WS for trade confirmation and validate  
+
+        # wait 5 seconds for the order to propagate (skip when WS is implemented)
+        await asyncio.sleep(5)
 
         position_after: Position = reya_tester.get_position(tp_order_details.symbol)
         assert position_after is None, "Position was not closed"
@@ -343,6 +347,9 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
 
         # VALIDATE order was executed correctly
         # TODO: Claudiu - listen to WS for trade confirmation and validate
+
+        # wait 5 seconds for the order to propagate (skip when WS is implemented)
+        await asyncio.sleep(5)
 
         position_after: Position = reya_tester.get_position(sl_order_details.symbol)
         assert position_after is None, "Position was not closed"

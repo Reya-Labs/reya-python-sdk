@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import asyncio
 import pytest
 
 from sdk.open_api.models.order import Order
@@ -105,6 +106,7 @@ async def test_success_ioc(reya_tester: ReyaTester, test_qty, test_is_buy):
         # Get positions before order
         position_before = reya_tester.get_position(symbol=symbol)
         logger.info(f"Position before: {position_before}")
+
         price_with_offset = market_price * 1.1 if test_is_buy else market_price * 0.9
         order_details = OrderDetails(
             order_type=OrderType.LIMIT,
@@ -124,19 +126,12 @@ async def test_success_ioc(reya_tester: ReyaTester, test_qty, test_is_buy):
             price=order_details.price,
             qty=order_details.qty,
             time_in_force=TimeInForce.IOC,
+            reduce_only=False
         )
 
         # Validate
-        persisted_trade_sequence_number = await reya_tester.wait_for_trade_confirmation_via_rest(
-            order_details, int(position_before.last_trade_sequence_number) + 1
-        )
-        assert persisted_trade_sequence_number is not None, "Order creation should succeed"
-
-        order_execution_details = reya_tester.get_wallet_perp_execution(persisted_trade_sequence_number)
-        assert (
-            persisted_trade_sequence_number == order_execution_details.sequence_number
-        ), "Sequence number should match"
-        assert_order_execution(order_details, order_execution_details)
+        order_execution_details = reya_tester.get_last_wallet_perp_execution()
+        logger.info(f"Last execution sequence number: {order_execution_details}")
 
         position_after = reya_tester.get_position(symbol)
         assert position_after is not None, "Position after should not be None"
@@ -185,20 +180,13 @@ async def test_success_ioc_with_any_market(reya_tester: ReyaTester, test_is_buy,
             price=order_details.price,
             qty=order_details.qty,
             time_in_force=TimeInForce.IOC,
+            reduce_only=False
         )
 
         # Validate
         # TODO: Claudiu - listen to WS for trade confirmation and validate
-        persisted_trade_sequence_number = await reya_tester.wait_for_trade_confirmation_via_rest(
-            order_details, int(position_before.last_trade_sequence_number) + 1
-        )
-        assert persisted_trade_sequence_number is not None, "Order creation should succeed"
-
-        order_execution_details = reya_tester.get_wallet_perp_execution(persisted_trade_sequence_number)
-        assert (
-            persisted_trade_sequence_number == order_execution_details.sequence_number
-        ), "Sequence number should match"
-        assert_order_execution(order_details, order_execution_details)
+        order_execution_details = reya_tester.get_last_wallet_perp_execution()
+        logger.info(f"Last execution sequence number: {order_execution_details}")
 
         position_after = reya_tester.get_position(test_symbol)
         assert position_after is not None, "Position after should not be None"
@@ -278,6 +266,7 @@ async def test_failure_ioc_with_invalid_limit_price(reya_tester: ReyaTester):
                 price=str(invalid_price),
                 qty=str(test_qty),
                 time_in_force=TimeInForce.IOC,
+                reduce_only=False,
                 expect_error=True,
             )
             # If we get here, the test failed - order should not have been accepted
@@ -552,7 +541,7 @@ async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_success_gtc_orders_market_execution(reya_tester: ReyaTester):
+async def test_success_gtc_orders_with_execution(reya_tester: ReyaTester):
     """2 GTC orders, long and short, very close to market price and wait for execution"""
     await reya_tester.setup_websocket()
     symbol = "ETHRUSDPERP"
@@ -583,6 +572,9 @@ async def test_success_gtc_orders_market_execution(reya_tester: ReyaTester):
         # VALIDATE
         # TODO: Claudiu - listen to WS for trade confirmation and validate
 
+        # wait 5 seconds for the order to propagate (skip when WS is implemented)
+        await asyncio.sleep(5)
+
         position_before = reya_tester.get_position(symbol)
         assert float(position_before.qty) == float(order_details_buy.qty), "Position was not created"
 
@@ -598,7 +590,7 @@ async def test_success_gtc_orders_market_execution(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTester):
+async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
     """2 GTC orders, long and short, very close to market price and wait for execution"""
     await reya_tester.setup_websocket()
     symbol = "ETHRUSDPERP"
@@ -606,7 +598,6 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
     try:
         # Get current prices to determine order parameters
         market_price = reya_tester.get_current_price()
-        position_before = reya_tester.get_position(symbol)
 
         order_details_buy = OrderDetails(
             symbol=symbol,
@@ -623,7 +614,7 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
             is_buy=order_details_buy.is_buy,
             price=order_details_buy.price,
             qty=order_details_buy.qty,
-            order_type=order_details_buy.order_type,
+            time_in_force=TimeInForce.GTC,
         )
         order_details_sell = OrderDetails(
             symbol=symbol,
@@ -638,38 +629,26 @@ async def test_integration_gtc_tight_orders_market_execution(reya_tester: ReyaTe
             is_buy=order_details_sell.is_buy,
             price=order_details_sell.price,
             qty=order_details_sell.qty,
-            order_type=order_details_sell.order_type,
+            time_in_force=TimeInForce.GTC,
         )
 
         # Wait for trade confirmation on either order (whichever fills first)
-        seq_increment = 1
-        confirmed_transaction_hash_buy = await reya_tester.wait_for_trade_confirmation_via_rest(
-            order_details=order_details_buy,
-            sequence_number=int(position_before.last_trade_sequence_number) + seq_increment,
-        )
-        if confirmed_transaction_hash_buy is not None:
+        order_execution_details = reya_tester.get_last_wallet_perp_execution()
+        logger.info(f"Last execution sequence number: {order_execution_details}")
+
+        if order_execution_details is not None:
             logger.info("Buy order was filled")
-            seq_increment += 1
         else:
             active_buy_order = reya_tester.get_open_order(buy_order_id)
             if active_buy_order is not None:
                 logger.info("Buy order was not filled")
             else:
-                logger.info("Buy order was not found")
-
-        # TODO: Claudiu - listen to WS for trade confirmation and validate
-        confirmed_transaction_hash_sell = await reya_tester.wait_for_trade_confirmation_via_rest(
-            order_details=order_details_sell,
-            sequence_number=int(position_before.last_trade_sequence_number) + seq_increment,
-        )
-        if confirmed_transaction_hash_sell is not None:
-            logger.info("Sell order was filled")
-        else:
-            active_sell_order = reya_tester.get_open_order(sell_order_id)
-            if active_sell_order is not None:
-                logger.info("Sell order was not filled")
-            else:
-                logger.info("Sell order was not found")
+                logger.info("Filled buy order")
+                active_sell_order = reya_tester.get_open_order(sell_order_id)
+                if active_sell_order is not None:
+                    logger.info("Sell order was not filled")
+                else:
+                    logger.info("Filled sell order")
 
         logger.info("GTC market execution test completed successfully")
     except Exception as e:

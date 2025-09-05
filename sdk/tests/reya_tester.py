@@ -174,6 +174,13 @@ class ReyaTester:
 
         return trade
 
+    def get_last_wallet_perp_execution(self) -> PerpExecution:
+        """Get a past trade of a specific transaction hash"""
+        trades = self.get_wallet_perp_executions()
+        last_trade_sequence_number = max(trades.keys())
+
+        return trades[last_trade_sequence_number]
+
     def get_market_definition(self, symbol: str) -> Optional[MarketDefinition]:
         """Get market configuration"""
         markets_config: list[MarketDefinition] = self.client.reference.get_market_definitions()
@@ -354,6 +361,8 @@ class ReyaTester:
         while time.time() - start_time < timeout:
             # Check if we have a new confirmed trade
             trades: dict[int, PerpExecution] = self.get_wallet_perp_executions()
+            logger.info(f"Last trade: {trades}")
+            logger.info(f"Last trade: {trades[max(trades.keys())]}")
             if sequence_number in trades.keys():
                 latest_trade = trades[sequence_number]
                 if match_order(order_details, latest_trade):
