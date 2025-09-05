@@ -17,7 +17,6 @@ from sdk.open_api.api.wallet_data_api import WalletDataApi
 from sdk.open_api.api_client import ApiClient
 from sdk.open_api.configuration import Configuration
 from sdk.open_api.models.account import Account
-from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
@@ -154,7 +153,7 @@ class ReyaTradingClient:
 
     def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
-        Create a limit (GTC) order synchronously.
+        Create a limit (IOC/GTC) order synchronously.
 
         Args:
             params: Limit order parameters
@@ -365,22 +364,6 @@ class ReyaTradingClient:
             raise ValueError("No wallet address available. Private key must be provided.")
 
         return self.wallet.get_wallet_open_orders(address=wallet)
-
-    def get_balances(self) -> list[AccountBalance]:
-        """
-        Get account balance synchronously.
-
-        Returns:
-            Account balance information
-
-        Raises:
-            ValueError: If no wallet address is available or API returns an error
-        """
-        wallet = self.wallet_address
-        if not wallet:
-            raise ValueError("No wallet address available. Private key must be provided.")
-
-        return self.wallet.get_wallet_account_balances(address=wallet)
 
     def get_configuration(self) -> WalletConfiguration:
         """

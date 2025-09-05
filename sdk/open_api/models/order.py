@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,9 +26,9 @@ class Order(BaseModel):
     """
     Order
     """ # noqa: E501
-    exchange_id: Union[StrictFloat, StrictInt] = Field(alias="exchangeId")
+    exchange_id: StrictInt = Field(alias="exchangeId")
     symbol: StrictStr
-    account_id: Union[StrictFloat, StrictInt] = Field(alias="accountId")
+    account_id: StrictInt = Field(alias="accountId")
     order_id: Optional[StrictStr] = Field(default=None, alias="orderId")
     qty: Optional[StrictStr] = None
     exec_qty: Optional[StrictStr] = Field(default=None, description="Executed quantity. Example: I request 1.0 BTCRUSDPERP and the order is filled with 0.2 BTCRUSDPERP, qty will stay at 1.0 and execQty will be 0.2.", alias="execQty")
@@ -39,8 +39,8 @@ class Order(BaseModel):
     time_in_force: Optional[StrictStr] = Field(default=None, description="Order time in force, exclusively used for LIMIT orders", alias="timeInForce")
     reduce_only: Optional[StrictBool] = Field(default=None, description="Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.", alias="reduceOnly")
     status: StrictStr = Field(description="Order status")
-    created_at: Union[StrictFloat, StrictInt] = Field(description="Creation timestamp (milliseconds)", alias="createdAt")
-    last_update_at: Union[StrictFloat, StrictInt] = Field(description="Last update timestamp (milliseconds)", alias="lastUpdateAt")
+    created_at: StrictInt = Field(description="Creation timestamp (milliseconds)", alias="createdAt")
+    last_update_at: StrictInt = Field(description="Last update timestamp (milliseconds)", alias="lastUpdateAt")
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "orderId", "qty", "execQty", "side", "limitPx", "orderType", "triggerPx", "timeInForce", "reduceOnly", "status", "createdAt", "lastUpdateAt"]
 
     @field_validator('side')
@@ -70,8 +70,8 @@ class Order(BaseModel):
     @field_validator('status')
     def status_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(['PENDING', 'FILLED', 'CANCELLED', 'REJECTED']):
-            raise ValueError("must be one of enum values ('PENDING', 'FILLED', 'CANCELLED', 'REJECTED')")
+        if value not in set(['OPEN', 'FILLED', 'CANCELLED', 'REJECTED']):
+            raise ValueError("must be one of enum values ('OPEN', 'FILLED', 'CANCELLED', 'REJECTED')")
         return value
 
     model_config = ConfigDict(

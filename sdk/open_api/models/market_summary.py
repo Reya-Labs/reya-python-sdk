@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -27,19 +27,19 @@ class MarketSummary(BaseModel):
     MarketSummary
     """ # noqa: E501
     symbol: StrictStr
-    updated_at: Union[StrictFloat, StrictInt] = Field(description="Time when the market summary was last calculated (milliseconds)", alias="updatedAt")
+    updated_at: StrictInt = Field(description="Time when the market summary was last calculated (milliseconds)", alias="updatedAt")
     long_oi_qty: StrictStr = Field(description="Long open interest in lots", alias="longOiQty")
     short_oi_qty: StrictStr = Field(description="Short open interest in lots", alias="shortOiQty")
     oi_qty: StrictStr = Field(description="Total open interest quantity", alias="oiQty")
-    funding_rate: Union[StrictFloat, StrictInt] = Field(description="Current hourly funding rate", alias="fundingRate")
-    long_funding_value: Union[StrictFloat, StrictInt] = Field(description="Current long funding value", alias="longFundingValue")
-    short_funding_value: Union[StrictFloat, StrictInt] = Field(description="Current short funding value", alias="shortFundingValue")
-    funding_rate_velocity: Union[StrictFloat, StrictInt] = Field(description="Funding rate velocity", alias="fundingRateVelocity")
+    funding_rate: StrictStr = Field(description="Current hourly funding rate", alias="fundingRate")
+    long_funding_value: StrictStr = Field(description="Current long funding value", alias="longFundingValue")
+    short_funding_value: StrictStr = Field(description="Current short funding value", alias="shortFundingValue")
+    funding_rate_velocity: StrictStr = Field(description="Funding rate velocity", alias="fundingRateVelocity")
     volume24h: StrictStr
     px_change24h: Optional[StrictStr] = Field(default=None, alias="pxChange24h")
     throttled_oracle_price: Optional[StrictStr] = Field(default=None, description="Last oracle price, at the moment of the last market summary update", alias="throttledOraclePrice")
     throttled_pool_price: Optional[StrictStr] = Field(default=None, description="Last pool price, at the moment of the last market summary update", alias="throttledPoolPrice")
-    prices_updated_at: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Timestamp of the last price update (milliseconds)", alias="pricesUpdatedAt")
+    prices_updated_at: Optional[StrictInt] = Field(default=None, description="Timestamp of the last price update (milliseconds)", alias="pricesUpdatedAt")
     __properties: ClassVar[List[str]] = ["symbol", "updatedAt", "longOiQty", "shortOiQty", "oiQty", "fundingRate", "longFundingValue", "shortFundingValue", "fundingRateVelocity", "volume24h", "pxChange24h", "throttledOraclePrice", "throttledPoolPrice", "pricesUpdatedAt"]
 
     model_config = ConfigDict(

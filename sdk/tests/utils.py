@@ -8,43 +8,7 @@ from web3 import Web3
 
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.side import Side
-from sdk.reya_rest_api.constants.enums import Limit, LimitOrderType, TimeInForce, TpslType, Trigger, TriggerOrderType
 from sdk.tests.models import OrderDetails
-
-
-def parse_trade(trade):
-    if trade is None:
-        return None
-    parsed_trade = {
-        "market_id": int(trade.get("market_id", "0")),
-        "account_id": int(trade.get("account_id", "0")),
-        "executed_base": float(trade.get("executed_base", "0")) / 10**18,
-        "executed_quote": float(trade.get("executed_quote", "0")) / 10**18,
-        "execution_price": float(trade.get("price", "0")) / 10**18,
-        "position_funding_value": float(trade.get("position_funding_value", "0")) / 10**18,
-        "event_sequence_number": int(trade.get("event_sequence_number", "0")),
-    }
-    return parsed_trade
-
-
-def parse_order(order):
-    if order is None:
-        return None
-    parsed_order = {
-        "id": order.get("id"),
-        "market_id": int(order.get("market_id", "0")),
-        "account_id": int(order.get("account_id", "0")),
-        "order_type": (
-            LimitOrderType(limit=Limit(time_in_force=TimeInForce.GTC))
-            if order.get("order_type") == "Limit Order"
-            else TriggerOrderType(trigger=Trigger(tpsl=TpslType.TP, trigger_px=order.get("trigger_price", "0")))
-        ),
-        "is_long": order.get("is_long"),
-        "trigger_price": float(order.get("trigger_price", "0")),
-        "order_base": float(order.get("order_base", "0")),
-        "status": order.get("status"),
-    }
-    return parsed_order
 
 
 def check_error_message(error_message: str, expected_keywords: list[str]):
@@ -53,12 +17,27 @@ def check_error_message(error_message: str, expected_keywords: list[str]):
 
     if not found_keyword:
         logger.info(f"Error message: {decode_error(str(error_message))} {found_keyword} {error_message_to_check}")
-        error_message_to_check = decode_error(str(error_message)).lower()
+        error_message_to_check = decode_error(str(error_message))
         found_keyword = any(keyword.lower() in error_message_to_check for keyword in expected_keywords)
 
     assert (
         found_keyword
     ), f"Error should mention position reduction: '{error_message_to_check}', but was instead '{expected_keywords}'"
+
+
+def check_error_code(error_message: str, expected_code: str):
+    error_message_str = str(error_message)
+
+    # Extract HTTP status code from patterns like (500)
+    http_code_match = re.search(r"\((\d+)\)", error_message_str)
+    if http_code_match:
+        actual_code = http_code_match.group(1)
+        assert (
+            actual_code == expected_code
+        ), f"check_error_code: Expected HTTP status code '{expected_code}', but got '{actual_code}'"
+        return
+
+    assert False, f"check_error_code: No HTTP status code found in error message: '{error_message_str}'"
 
 
 def match_order(order_details: OrderDetails, order_output: PerpExecution):
@@ -132,7 +111,3 @@ def decode_error(error_string: str) -> dict[str, Any]:
         return error_name
     except Exception:
         return None
-
-
-# create a mapping function between symbol and market id
-# the symbols are 'ETHRUSDPERP' for matcket eth

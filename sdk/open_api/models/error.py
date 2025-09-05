@@ -33,8 +33,8 @@ class Error(BaseModel):
     @field_validator('error')
     def error_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(['SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'CANDLE_DATA_NOT_FOUND', 'INTERNAL_SERVER_ERROR']):
-            raise ValueError("must be one of enum values ('SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'CANDLE_DATA_NOT_FOUND', 'INTERNAL_SERVER_ERROR')")
+        if value not in set(['SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'INPUT_VALIDATION_ERROR', 'CREATE_ORDER_OTHER_ERROR', 'CANCEL_ORDER_OTHER_ERROR', 'INTERNAL_SERVER_ERROR']):
+            raise ValueError("must be one of enum values ('SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'INPUT_VALIDATION_ERROR', 'CREATE_ORDER_OTHER_ERROR', 'CANCEL_ORDER_OTHER_ERROR', 'INTERNAL_SERVER_ERROR')")
         return value
 
     model_config = ConfigDict(

@@ -19,7 +19,7 @@ from typing_extensions import Annotated
 from pydantic import Field, StrictInt, StrictStr, field_validator
 from typing import List, Optional
 from typing_extensions import Annotated
-from sdk.open_api.models.candle_data import CandleData
+from sdk.open_api.models.candle_history_data import CandleHistoryData
 from sdk.open_api.models.market_summary import MarketSummary
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.price import Price
@@ -47,7 +47,6 @@ class MarketDataApi:
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         resolution: Annotated[StrictStr, Field(description="Candle resolution")],
-        start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
         end_time: Annotated[Optional[StrictInt], Field(description="Return results before this sequence number (for pagination)")] = None,
         _request_timeout: Union[
             None,
@@ -61,16 +60,15 @@ class MarketDataApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> CandleData:
+    ) -> CandleHistoryData:
         """Get historical candles
 
+        Returns up to 200 candles for a given market, sorted by time in descending order, and ending at the specified end time.
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
         :param resolution: Candle resolution (required)
         :type resolution: str
-        :param start_time: Return results after this sequence number (for pagination)
-        :type start_time: int
         :param end_time: Return results before this sequence number (for pagination)
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
@@ -98,7 +96,6 @@ class MarketDataApi:
         _param = self._get_candles_serialize(
             symbol=symbol,
             resolution=resolution,
-            start_time=start_time,
             end_time=end_time,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -107,7 +104,7 @@ class MarketDataApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "CandleData",
+            '200': "CandleHistoryData",
         }
         response_data = self.api_client.call_api(
             *_param,
@@ -125,7 +122,6 @@ class MarketDataApi:
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         resolution: Annotated[StrictStr, Field(description="Candle resolution")],
-        start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
         end_time: Annotated[Optional[StrictInt], Field(description="Return results before this sequence number (for pagination)")] = None,
         _request_timeout: Union[
             None,
@@ -139,16 +135,15 @@ class MarketDataApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> ApiResponse[CandleData]:
+    ) -> ApiResponse[CandleHistoryData]:
         """Get historical candles
 
+        Returns up to 200 candles for a given market, sorted by time in descending order, and ending at the specified end time.
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
         :param resolution: Candle resolution (required)
         :type resolution: str
-        :param start_time: Return results after this sequence number (for pagination)
-        :type start_time: int
         :param end_time: Return results before this sequence number (for pagination)
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
@@ -176,7 +171,6 @@ class MarketDataApi:
         _param = self._get_candles_serialize(
             symbol=symbol,
             resolution=resolution,
-            start_time=start_time,
             end_time=end_time,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -185,7 +179,7 @@ class MarketDataApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "CandleData",
+            '200': "CandleHistoryData",
         }
         response_data = self.api_client.call_api(
             *_param,
@@ -203,7 +197,6 @@ class MarketDataApi:
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         resolution: Annotated[StrictStr, Field(description="Candle resolution")],
-        start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
         end_time: Annotated[Optional[StrictInt], Field(description="Return results before this sequence number (for pagination)")] = None,
         _request_timeout: Union[
             None,
@@ -220,13 +213,12 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get historical candles
 
+        Returns up to 200 candles for a given market, sorted by time in descending order, and ending at the specified end time.
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
         :param resolution: Candle resolution (required)
         :type resolution: str
-        :param start_time: Return results after this sequence number (for pagination)
-        :type start_time: int
         :param end_time: Return results before this sequence number (for pagination)
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
@@ -254,7 +246,6 @@ class MarketDataApi:
         _param = self._get_candles_serialize(
             symbol=symbol,
             resolution=resolution,
-            start_time=start_time,
             end_time=end_time,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -263,7 +254,7 @@ class MarketDataApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "CandleData",
+            '200': "CandleHistoryData",
         }
         response_data = self.api_client.call_api(
             *_param,
@@ -276,7 +267,6 @@ class MarketDataApi:
         self,
         symbol,
         resolution,
-        start_time,
         end_time,
         _request_auth,
         _content_type,
@@ -304,10 +294,6 @@ class MarketDataApi:
         if resolution is not None:
             _path_params['resolution'] = resolution
         # process the query parameters
-        if start_time is not None:
-            
-            _query_params.append(('startTime', start_time))
-            
         if end_time is not None:
             
             _query_params.append(('endTime', end_time))
@@ -332,7 +318,7 @@ class MarketDataApi:
 
         return self.api_client.param_serialize(
             method='GET',
-            resource_path='/candles/{symbol}/{resolution}',
+            resource_path='/candleHistory/{symbol}/{resolution}',
             path_params=_path_params,
             query_params=_query_params,
             header_params=_header_params,

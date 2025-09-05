@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,7 +26,7 @@ class WalletConfiguration(BaseModel):
     """
     WalletConfiguration
     """ # noqa: E501
-    fee_tier_id: Union[StrictFloat, StrictInt] = Field(description="Fee tier identifier", alias="feeTierId")
+    fee_tier_id: StrictInt = Field(description="Fee tier identifier", alias="feeTierId")
     og_status: StrictBool = Field(description="OG status", alias="ogStatus")
     affiliate_status: StrictBool = Field(description="Affiliate status", alias="affiliateStatus")
     referee_status: StrictBool = Field(description="Referee status", alias="refereeStatus")

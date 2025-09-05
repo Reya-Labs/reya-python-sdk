@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -29,7 +29,7 @@ class Price(BaseModel):
     symbol: StrictStr
     oracle_price: Optional[StrictStr] = Field(default=None, description="Oracle price, also known as spot price", alias="oraclePrice")
     pool_price: Optional[StrictStr] = Field(default=None, description="Pool price", alias="poolPrice")
-    updated_at: Union[StrictFloat, StrictInt] = Field(description="Last update timestamp (milliseconds)", alias="updatedAt")
+    updated_at: StrictInt = Field(description="Last update timestamp (milliseconds)", alias="updatedAt")
     __properties: ClassVar[List[str]] = ["symbol", "oraclePrice", "poolPrice", "updatedAt"]
 
     model_config = ConfigDict(

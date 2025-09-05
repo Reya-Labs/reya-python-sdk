@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
@@ -26,10 +26,16 @@ class CreateOrderResponse(BaseModel):
     """
     CreateOrderResponse
     """ # noqa: E501
-    success: StrictBool
+    status: StrictStr = Field(description="Order status")
     order_id: Optional[StrictStr] = Field(default=None, description="Created order ID (currently generated for all order types except IOC)", alias="orderId")
-    error: Optional[StrictStr] = Field(default=None, description="Error message if creation failed")
-    __properties: ClassVar[List[str]] = ["success", "orderId", "error"]
+    __properties: ClassVar[List[str]] = ["status", "orderId"]
+
+    @field_validator('status')
+    def status_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(['OPEN', 'FILLED', 'CANCELLED', 'REJECTED']):
+            raise ValueError("must be one of enum values ('OPEN', 'FILLED', 'CANCELLED', 'REJECTED')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -82,9 +88,8 @@ class CreateOrderResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "success": obj.get("success"),
-            "orderId": obj.get("orderId"),
-            "error": obj.get("error")
+            "status": obj.get("status"),
+            "orderId": obj.get("orderId")
         })
         return _obj
 

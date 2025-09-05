@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,15 +26,15 @@ class SpotExecutionListDataInner(BaseModel):
     """
     SpotExecutionListDataInner
     """ # noqa: E501
-    exchange_id: Union[StrictFloat, StrictInt] = Field(alias="exchangeId")
+    exchange_id: StrictInt = Field(alias="exchangeId")
     symbol: StrictStr
-    account_id: Union[StrictFloat, StrictInt] = Field(alias="accountId")
+    account_id: StrictInt = Field(alias="accountId")
     side: StrictStr = Field(description="Order side (B = Buy/Bid, A = Ask/Sell)")
     qty: StrictStr
     price: Optional[StrictStr] = None
     fee: StrictStr
     type: StrictStr = Field(description="Type of execution")
-    timestamp: Union[StrictFloat, StrictInt] = Field(description="Execution timestamp (milliseconds)")
+    timestamp: StrictInt = Field(description="Execution timestamp (milliseconds)")
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "side", "qty", "price", "fee", "type", "timestamp"]
 
     @field_validator('side')

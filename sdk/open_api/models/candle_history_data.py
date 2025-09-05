@@ -17,20 +17,20 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
-class CandleData(BaseModel):
+class CandleHistoryData(BaseModel):
     """
-    CandleData
+    CandleHistoryData
     """ # noqa: E501
-    t: List[Union[StrictFloat, StrictInt]] = Field(description="Array of timestamps (seconds)")
-    o: List[Union[StrictFloat, StrictInt]] = Field(description="Array of opening prices")
-    h: List[Union[StrictFloat, StrictInt]] = Field(description="Array of high prices")
-    l: List[Union[StrictFloat, StrictInt]] = Field(description="Array of low prices")
-    c: List[Union[StrictFloat, StrictInt]] = Field(description="Array of closing prices")
+    t: List[StrictInt] = Field(description="Array of timestamps (seconds)")
+    o: List[StrictStr] = Field(description="Array of opening prices")
+    h: List[StrictStr] = Field(description="Array of high prices")
+    l: List[StrictStr] = Field(description="Array of low prices")
+    c: List[StrictStr] = Field(description="Array of closing prices")
     __properties: ClassVar[List[str]] = ["t", "o", "h", "l", "c"]
 
     model_config = ConfigDict(
@@ -51,7 +51,7 @@ class CandleData(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of CandleData from a JSON string"""
+        """Create an instance of CandleHistoryData from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -76,7 +76,7 @@ class CandleData(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of CandleData from a dict"""
+        """Create an instance of CandleHistoryData from a dict"""
         if obj is None:
             return None
 

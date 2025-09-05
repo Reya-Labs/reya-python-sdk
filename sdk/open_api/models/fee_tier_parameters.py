@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,11 +26,19 @@ class FeeTierParameters(BaseModel):
     """
     FeeTierParameters
     """ # noqa: E501
-    tier_id: Union[StrictFloat, StrictInt] = Field(alias="tierId")
+    tier_id: StrictInt = Field(alias="tierId")
     taker_fee: StrictStr = Field(description="Taker fee rate (fee will be qty * takerFee)", alias="takerFee")
     maker_fee: StrictStr = Field(description="Maker fee rate (fee will be qty * makerFee)", alias="makerFee")
     volume14d: StrictStr = Field(description="14-day volume level required this fee tier to be applied to a wallet")
-    __properties: ClassVar[List[str]] = ["tierId", "takerFee", "makerFee", "volume14d"]
+    tier_type: StrictStr = Field(description="Fee tier type (REGULAR = Standard tier, VIP = VIP tier)", alias="tierType")
+    __properties: ClassVar[List[str]] = ["tierId", "takerFee", "makerFee", "volume14d", "tierType"]
+
+    @field_validator('tier_type')
+    def tier_type_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(['REGULAR', 'VIP']):
+            raise ValueError("must be one of enum values ('REGULAR', 'VIP')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -86,7 +94,8 @@ class FeeTierParameters(BaseModel):
             "tierId": obj.get("tierId"),
             "takerFee": obj.get("takerFee"),
             "makerFee": obj.get("makerFee"),
-            "volume14d": obj.get("volume14d")
+            "volume14d": obj.get("volume14d"),
+            "tierType": obj.get("tierType")
         })
         return _obj
 

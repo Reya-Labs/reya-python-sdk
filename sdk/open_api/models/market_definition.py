@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -27,24 +27,15 @@ class MarketDefinition(BaseModel):
     MarketDefinition
     """ # noqa: E501
     symbol: StrictStr
-    market_id: Union[StrictFloat, StrictInt] = Field(description="Numerical identifier for each market, only needed to generate signatures", alias="marketId")
-    maturity: StrictStr
-    settlement_asset: StrictStr = Field(alias="settlementAsset")
+    market_id: StrictInt = Field(description="Numerical identifier for each market, only needed to generate signatures", alias="marketId")
     min_order_qty: StrictStr = Field(alias="minOrderQty")
-    min_size_increment: Optional[StrictStr] = Field(default=None, description="Minimum size increment", alias="minSizeIncrement")
+    qty_step_size: StrictStr = Field(description="Minimum size increment", alias="qtyStepSize")
     tick_size: StrictStr = Field(description="Minimum price increment", alias="tickSize")
     liquidation_margin_parameter: StrictStr = Field(description="Liquidation margin requirement parameter", alias="liquidationMarginParameter")
     initial_margin_parameter: StrictStr = Field(description="Initial margin requirement parameter", alias="initialMarginParameter")
-    max_leverage: Union[StrictFloat, StrictInt] = Field(description="Maximum leverage allowed", alias="maxLeverage")
+    max_leverage: StrictInt = Field(description="Maximum leverage allowed", alias="maxLeverage")
     oi_cap: StrictStr = Field(description="Max absolute open interest", alias="oiCap")
-    __properties: ClassVar[List[str]] = ["symbol", "marketId", "maturity", "settlementAsset", "minOrderQty", "minSizeIncrement", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
-
-    @field_validator('maturity')
-    def maturity_validate_enum(cls, value):
-        """Validates the enum"""
-        if value not in set(['PERPETUAL']):
-            raise ValueError("must be one of enum values ('PERPETUAL')")
-        return value
+    __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -99,10 +90,8 @@ class MarketDefinition(BaseModel):
         _obj = cls.model_validate({
             "symbol": obj.get("symbol"),
             "marketId": obj.get("marketId"),
-            "maturity": obj.get("maturity"),
-            "settlementAsset": obj.get("settlementAsset"),
             "minOrderQty": obj.get("minOrderQty"),
-            "minSizeIncrement": obj.get("minSizeIncrement"),
+            "qtyStepSize": obj.get("qtyStepSize"),
             "tickSize": obj.get("tickSize"),
             "liquidationMarginParameter": obj.get("liquidationMarginParameter"),
             "initialMarginParameter": obj.get("initialMarginParameter"),

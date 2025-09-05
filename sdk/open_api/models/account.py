@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,9 +26,9 @@ class Account(BaseModel):
     """
     Account
     """ # noqa: E501
-    account_id: Union[StrictFloat, StrictInt] = Field(alias="accountId")
+    account_id: StrictInt = Field(alias="accountId")
     name: StrictStr
-    last_update_at: Union[StrictFloat, StrictInt] = Field(description="Last update timestamp (milliseconds)", alias="lastUpdateAt")
+    last_update_at: StrictInt = Field(description="Last update timestamp (milliseconds)", alias="lastUpdateAt")
     __properties: ClassVar[List[str]] = ["accountId", "name", "lastUpdateAt"]
 
     model_config = ConfigDict(

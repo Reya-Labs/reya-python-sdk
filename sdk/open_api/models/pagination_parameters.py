@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,10 +26,10 @@ class PaginationParameters(BaseModel):
     """
     PaginationParameters
     """ # noqa: E501
-    limit: Union[StrictFloat, StrictInt] = Field(description="Number of items requested")
-    count: Union[StrictFloat, StrictInt] = Field(description="Number of items returned")
-    end_time: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Timestamp of last result, in milliseconds", alias="endTime")
-    start_time: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Timestamp of first result, in milliseconds", alias="startTime")
+    limit: StrictInt = Field(description="Number of items requested")
+    count: StrictInt = Field(description="Number of items returned")
+    end_time: Optional[StrictInt] = Field(default=None, description="Timestamp of last result, in milliseconds", alias="endTime")
+    start_time: Optional[StrictInt] = Field(default=None, description="Timestamp of first result, in milliseconds", alias="startTime")
     __properties: ClassVar[List[str]] = ["limit", "count", "endTime", "startTime"]
 
     model_config = ConfigDict(

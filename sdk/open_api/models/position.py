@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,14 +26,14 @@ class Position(BaseModel):
     """
     Position
     """ # noqa: E501
-    exchange_id: Union[StrictFloat, StrictInt] = Field(alias="exchangeId")
+    exchange_id: StrictInt = Field(alias="exchangeId")
     symbol: StrictStr
-    account_id: Union[StrictFloat, StrictInt] = Field(alias="accountId")
+    account_id: StrictInt = Field(alias="accountId")
     qty: StrictStr
     side: StrictStr = Field(description="Order side (B = Buy/Bid, A = Ask/Sell)")
     avg_entry_price: StrictStr = Field(alias="avgEntryPrice")
     avg_entry_funding_value: StrictStr = Field(description="Average entry funding value.", alias="avgEntryFundingValue")
-    last_trade_sequence_number: Union[StrictFloat, StrictInt] = Field(description="Sequence number of last execution taken into account for the position.", alias="lastTradeSequenceNumber")
+    last_trade_sequence_number: StrictInt = Field(description="Sequence number of last execution taken into account for the position.", alias="lastTradeSequenceNumber")
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "qty", "side", "avgEntryPrice", "avgEntryFundingValue", "lastTradeSequenceNumber"]
 
     @field_validator('side')

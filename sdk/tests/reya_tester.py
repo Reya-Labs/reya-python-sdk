@@ -6,9 +6,12 @@ import logging
 import os
 import time
 
+import pytest
+
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
@@ -20,7 +23,7 @@ from sdk.reya_rest_api.constants.enums import TimeInForce, TpslType
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from sdk.reya_websocket import ReyaSocket
 from sdk.tests.models import OrderDetails
-from sdk.tests.utils import match_order, parse_order
+from sdk.tests.utils import match_order
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -182,7 +185,7 @@ class ReyaTester:
         return trades[last_trade_sequence_number]
 
     def get_market_definition(self, symbol: str) -> Optional[MarketDefinition]:
-        """Get market configuration"""
+        """Get market configuration for a specific symbol"""
         markets_config: list[MarketDefinition] = self.client.reference.get_market_definitions()
         for config in markets_config:
             if config.symbol == symbol:
@@ -287,7 +290,7 @@ class ReyaTester:
 
         # Check response format
         logger.info(f"Response: {response}")
-        if response.success is True:
+        if response is not None:
             return "ioc" if response.order_id is None else response.order_id
 
         if not expect_error:
@@ -314,13 +317,9 @@ class ReyaTester:
         response: CreateOrderResponse = self.client.create_trigger_order(params)
 
         # Check response format
-        if response.success:
+        if response is not None:
             logger.info(f"✅ TP {side_text} order created with ID: {response.order_id}")
             return response
-
-        if expect_error:
-            logger.error(f"❌ TP {side_text} order creation failed: {response}")
-        raise Exception(response)
 
     def create_sl_order(
         self, symbol: str, is_buy: bool, trigger_price: str, expect_error: bool = False
@@ -342,13 +341,9 @@ class ReyaTester:
         response = self.client.create_trigger_order(params)
 
         # Check response format
-        if response.success:
+        if response is not None:
             logger.info(f"✅ SL {side_text} order created with ID: {response.order_id}")
             return response
-
-        if expect_error:
-            logger.error(f"❌ SL {side_text} order creation failed: {response}")
-        raise Exception(response)
 
     async def wait_for_trade_confirmation_via_rest(
         self, order_details: OrderDetails, sequence_number: int, timeout: int = 5
@@ -361,8 +356,6 @@ class ReyaTester:
         while time.time() - start_time < timeout:
             # Check if we have a new confirmed trade
             trades: dict[int, PerpExecution] = self.get_wallet_perp_executions()
-            logger.info(f"Last trade: {trades}")
-            logger.info(f"Last trade: {trades[max(trades.keys())]}")
             if sequence_number in trades.keys():
                 latest_trade = trades[sequence_number]
                 if match_order(order_details, latest_trade):
@@ -431,8 +424,111 @@ class ReyaTester:
                 logger.info(f"Order status: {order}")
                 if order["status"] == expected_status:
                     logger.info(f" ✅ Order status updated to {expected_status}: {order}")
-                    return parse_order(order)
+                    return order
 
             await asyncio.sleep(0.5)
 
         return None
+
+    # VALIDATION
+
+    def check_open_order_created(self, order_id: str, order_details: OrderDetails):
+        open_order = self.get_open_order(order_id)
+        assert open_order is not None, "check_open_order_created: GTC order was not found"
+        assert open_order.order_id == order_id, "check_open_order_created: Wrong order id"
+        if order_details.order_type == OrderType.LIMIT:
+            assert float(open_order.limit_px) == float(
+                order_details.price
+            ), "check_open_order_created: Wrong limit price"
+            assert float(open_order.qty) == float(order_details.qty), "check_open_order_created: Wrong qty"
+        else:
+            assert float(open_order.trigger_px) == float(
+                order_details.price
+            ), "check_open_order_created: Wrong trigger price"
+            assert open_order.qty is None, "check_open_order_created: Has qty"
+
+        assert open_order.order_type == order_details.order_type, "check_open_order_created: Wrong order type"
+        assert (open_order.side == Side.B) == order_details.is_buy, "check_open_order_created: Wrong order direction"
+
+        assert open_order.status == OrderStatus.OPEN, "check_open_order_created: Wrong order status"
+        return
+
+    def check_no_open_orders(self):
+        open_orders = self.client.get_open_orders()
+        assert len(open_orders) == 0, "check_no_open_orders: Open orders should be empty"
+        return
+
+    def check_order_not_open(self, order_id: str):
+        open_order = self.get_open_order(order_id)
+        assert open_order is None, "check_order_not_open: Open order should be empty"
+        return
+
+    def check_position(
+        self,
+        symbol: str,
+        expected_exchange_id: str | None = None,
+        expected_account_id: str | None = None,
+        expected_qty: str | None = None,
+        expected_side: Side | None = None,
+        expected_avg_entry_price: str | None = None,
+        expected_last_trade_sequence_number: int | None = None,
+    ):
+        position = self.get_position(symbol)
+        if expected_exchange_id is not None:
+            assert position.exchange_id == expected_exchange_id, "check_position: Exchange ID does not match"
+        if expected_account_id is not None:
+            assert position.account_id == expected_account_id, "check_position: Account ID does not match"
+        if expected_qty is not None:
+            assert position.qty == expected_qty, "check_position: Qty does not match"
+        if expected_side is not None:
+            assert position.side == expected_side, "check_position: Side does not match"
+        if expected_avg_entry_price is not None:
+            assert float(position.avg_entry_price) == pytest.approx(
+                float(expected_avg_entry_price), rel=1e-6
+            ), "check_position: Average entry price does not match"
+        if expected_last_trade_sequence_number is not None:
+            assert (
+                position.last_trade_sequence_number == expected_last_trade_sequence_number
+            ), "check_position: Last trade sequence number does not match"
+        return
+
+    def check_position_not_open(self, symbol: str):
+        position = self.get_position(symbol)
+        assert position is None, "check_position_not_open: Position should be empty"
+        return
+
+    def check_order_execution(self, order_details: OrderDetails) -> PerpExecution:
+        order_execution = self.get_last_wallet_perp_execution()
+
+        assert order_execution is not None, "check_order_execution: No order execution found"
+        assert (
+            order_execution.symbol == order_details.symbol
+        ), "check_order_execution: Order execution symbol does not match"
+        assert (
+            order_execution.account_id == order_details.account_id
+        ), "check_order_execution: Order execution account ID does not match"
+        assert order_execution.qty == order_details.qty, "check_order_execution: Order execution qty does not match"
+        assert (
+            order_execution.side == Side.B if order_details.is_buy else Side.A
+        ), "check_order_execution: Order execution side does not match"
+
+        if order_details.order_type == OrderType.LIMIT:
+            if order_details.is_buy:
+                assert float(order_execution.price) <= float(
+                    order_details.price
+                ), "check_order_execution: Order execution price does not match"
+            else:
+                assert float(order_execution.price) >= float(
+                    order_details.price
+                ), "check_order_execution: Order execution price does not match"
+
+        return order_execution
+
+    def check_no_order_execution_since(self, since_timestamp_ms: int):
+        order_execution = self.get_last_wallet_perp_execution()
+        if order_execution is not None:
+            logger.info(f"Order execution: {order_execution.timestamp} {since_timestamp_ms}")
+            assert (
+                order_execution.timestamp < since_timestamp_ms
+            ), "check_no_order_execution_since: Order execution should be empty"
+        return

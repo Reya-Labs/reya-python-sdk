@@ -32,11 +32,10 @@ __all__ = [
     "ApiAttributeError",
     "ApiException",
     "Account",
-    "AccountBalance",
     "AssetDefinition",
     "CancelOrderRequest",
     "CancelOrderResponse",
-    "CandleData",
+    "CandleHistoryData",
     "CreateOrderRequest",
     "CreateOrderResponse",
     "Error",
@@ -84,11 +83,10 @@ from sdk.open_api.exceptions import ApiException as ApiException
 
 # import models into sdk package
 from sdk.open_api.models.account import Account as Account
-from sdk.open_api.models.account_balance import AccountBalance as AccountBalance
 from sdk.open_api.models.asset_definition import AssetDefinition as AssetDefinition
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest as CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse as CancelOrderResponse
-from sdk.open_api.models.candle_data import CandleData as CandleData
+from sdk.open_api.models.candle_history_data import CandleHistoryData as CandleHistoryData
 from sdk.open_api.models.create_order_request import CreateOrderRequest as CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse as CreateOrderResponse
 from sdk.open_api.models.error import Error as Error

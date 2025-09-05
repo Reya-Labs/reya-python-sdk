@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -30,7 +30,7 @@ class AssetDefinition(BaseModel):
     spot_market_symbol: StrictStr = Field(alias="spotMarketSymbol")
     price_haircut: StrictStr = Field(description="Price haircut percentage", alias="priceHaircut")
     liquidation_discount: StrictStr = Field(description="Liquidation discount percentage", alias="liquidationDiscount")
-    timestamp: Union[StrictFloat, StrictInt] = Field(description="Configuration timestamp (milliseconds)")
+    timestamp: StrictInt = Field(description="Configuration timestamp (milliseconds)")
     __properties: ClassVar[List[str]] = ["asset", "spotMarketSymbol", "priceHaircut", "liquidationDiscount", "timestamp"]
 
     model_config = ConfigDict(

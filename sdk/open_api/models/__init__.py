@@ -15,11 +15,10 @@
 
 # import models into model package
 from sdk.open_api.models.account import Account
-from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.asset_definition import AssetDefinition
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
-from sdk.open_api.models.candle_data import CandleData
+from sdk.open_api.models.candle_history_data import CandleHistoryData
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.error import Error

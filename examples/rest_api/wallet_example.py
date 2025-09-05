@@ -52,18 +52,13 @@ async def main():
     positions = client.get_positions()
     print(f"Positions: {positions}")
 
-    # Get account balances
-    print("\n--- Getting account balances ---")
-    balances = client.get_balances()
-    print(f"Account balances: {balances}")
-
     # Get account configuration
     print("\n--- Getting account configuration ---")
     config = client.get_configuration()
     print(f"Account configuration: {config}")
 
     # Get trades
-    print("\n--- Getting trades ---")
+    print("\n--- Getting perpetual executions ---")
     trades = client.get_perp_executions()
     print(f"Trades: {trades}")
 

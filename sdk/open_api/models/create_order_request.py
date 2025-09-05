@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -26,9 +26,9 @@ class CreateOrderRequest(BaseModel):
     """
     CreateOrderRequest
     """ # noqa: E501
-    exchange_id: Union[StrictFloat, StrictInt] = Field(alias="exchangeId")
+    exchange_id: StrictInt = Field(alias="exchangeId")
     symbol: Optional[StrictStr] = None
-    account_id: Union[StrictFloat, StrictInt] = Field(alias="accountId")
+    account_id: StrictInt = Field(alias="accountId")
     is_buy: StrictBool = Field(description="Whether this is a buy order", alias="isBuy")
     limit_px: StrictStr = Field(alias="limitPx")
     qty: Optional[StrictStr] = None
@@ -39,7 +39,7 @@ class CreateOrderRequest(BaseModel):
     signature: StrictStr = Field(description="See signatures and nonces section for more details on how to generate.")
     nonce: StrictStr = Field(description="Order nonce, see signatures and nonces section for more details.")
     signer_wallet: StrictStr = Field(description="Signer wallet address", alias="signerWallet")
-    expires_after: Optional[Union[StrictFloat, StrictInt]] = Field(default=None, description="Expiration timestamp (exclusively for IOC orders). The order will only be filled before this timestamp.", alias="expiresAfter")
+    expires_after: Optional[StrictInt] = Field(default=None, description="Expiration timestamp (exclusively for IOC orders). The order will only be filled before this timestamp.", alias="expiresAfter")
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "isBuy", "limitPx", "qty", "orderType", "timeInForce", "triggerPx", "reduceOnly", "signature", "nonce", "signerWallet", "expiresAfter"]
 
     @field_validator('order_type')
