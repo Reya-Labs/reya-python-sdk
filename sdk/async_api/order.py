@@ -6,9 +6,9 @@ from sdk.async_api.order_type import OrderType
 from sdk.async_api.time_in_force import TimeInForce
 from sdk.async_api.order_status import OrderStatus
 class Order(BaseModel): 
-  exchange_id: float = Field(alias='''exchangeId''')
+  exchange_id: int = Field(alias='''exchangeId''')
   symbol: str = Field()
-  account_id: float = Field(alias='''accountId''')
+  account_id: int = Field(alias='''accountId''')
   order_id: Optional[str] = Field(default=None, alias='''orderId''')
   qty: Optional[str] = Field(default=None)
   exec_qty: Optional[str] = Field(description='''Executed quantity. Example: I request 1.0 BTCRUSDPERP and the order is filled with 0.2 BTCRUSDPERP, qty will stay at 1.0 and execQty will be 0.2.''', default=None, alias='''execQty''')
@@ -19,8 +19,8 @@ class Order(BaseModel):
   time_in_force: Optional[TimeInForce] = Field(description='''Order time in force, exclusively used for LIMIT orders''', default=None, alias='''timeInForce''')
   reduce_only: Optional[bool] = Field(description='''Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.''', default=None, alias='''reduceOnly''')
   status: OrderStatus = Field(description='''Order status''')
-  created_at: float = Field(description='''Creation timestamp (milliseconds)''', alias='''createdAt''')
-  last_update_at: float = Field(description='''Last update timestamp (milliseconds)''', alias='''lastUpdateAt''')
+  created_at: int = Field(description='''Creation timestamp (milliseconds)''', alias='''createdAt''')
+  last_update_at: int = Field(description='''Last update timestamp (milliseconds)''', alias='''lastUpdateAt''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')

@@ -22,7 +22,7 @@
           "example": "BTCRUSDPERP"
         },
         "updatedAt": {
-          "type": "number",
+          "type": "integer",
           "description": "Time when the market summary was last calculated (milliseconds)",
           "example": 1747927089946
         },
@@ -42,24 +42,24 @@
           "example": "154.741"
         },
         "fundingRate": {
-          "type": "number",
+          "type": "string",
           "description": "Current hourly funding rate",
-          "example": -0.000509373441021089
+          "example": "-0.000509373441021089"
         },
         "longFundingValue": {
-          "type": "number",
+          "type": "string",
           "description": "Current long funding value",
-          "example": 412142.26
+          "example": "412142.26"
         },
         "shortFundingValue": {
-          "type": "number",
+          "type": "string",
           "description": "Current short funding value",
-          "example": 412142.26
+          "example": "412142.26"
         },
         "fundingRateVelocity": {
-          "type": "number",
+          "type": "string",
           "description": "Funding rate velocity",
-          "example": -0.00000006243
+          "example": "-0.00000006243"
         },
         "volume24h": {
           "type": "string",
@@ -80,7 +80,7 @@
           "example": "2666.48166680625"
         },
         "pricesUpdatedAt": {
-          "type": "number",
+          "type": "integer",
           "description": "Timestamp of the last price update (milliseconds)",
           "example": 1747927089597
         }
@@ -100,7 +100,7 @@
       ],
       "properties": {
         "exchangeId": {
-          "type": "number",
+          "type": "integer",
           "example": 1
         },
         "symbol": {
@@ -108,7 +108,7 @@
           "example": "BTCRUSDPERP"
         },
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "qty": {
@@ -128,7 +128,7 @@
           "example": "100.25"
         },
         "lastTradeSequenceNumber": {
-          "type": "number",
+          "type": "integer",
           "description": "Sequence number of last execution taken into account for the position.",
           "example": 152954
         }
@@ -149,7 +149,7 @@
       ],
       "properties": {
         "exchangeId": {
-          "type": "number",
+          "type": "integer",
           "example": 1
         },
         "symbol": {
@@ -157,7 +157,7 @@
           "example": "BTCRUSDPERP"
         },
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "orderId": {
@@ -202,12 +202,12 @@
           "$ref": "#/definitions/OrderStatus"
         },
         "createdAt": {
-          "type": "number",
+          "type": "integer",
           "description": "Creation timestamp (milliseconds)",
           "example": 1747927089946
         },
         "lastUpdateAt": {
-          "type": "number",
+          "type": "integer",
           "description": "Last update timestamp (milliseconds)",
           "example": 1747927089946
         }
@@ -225,7 +225,7 @@
       ],
       "properties": {
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "symbol": {
@@ -255,7 +255,7 @@
       ],
       "properties": {
         "exchangeId": {
-          "type": "number",
+          "type": "integer",
           "example": 1
         },
         "symbol": {
@@ -263,7 +263,7 @@
           "example": "BTCRUSDPERP"
         },
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "qty": {
@@ -285,12 +285,12 @@
           "$ref": "#/definitions/ExecutionType"
         },
         "timestamp": {
-          "type": "number",
+          "type": "integer",
           "description": "Execution timestamp (milliseconds)",
           "example": 1747927089946
         },
         "sequenceNumber": {
-          "type": "number",
+          "type": "integer",
           "description": "Execution sequence number, increases by 1 for every perp execution in reya chain",
           "example": 152954
         }
@@ -310,7 +310,7 @@
       ],
       "properties": {
         "exchangeId": {
-          "type": "number",
+          "type": "integer",
           "example": 1
         },
         "symbol": {
@@ -318,7 +318,7 @@
           "example": "BTCRUSD"
         },
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "side": {
@@ -340,7 +340,7 @@
           "$ref": "#/definitions/ExecutionType"
         },
         "timestamp": {
-          "type": "number",
+          "type": "integer",
           "description": "Execution timestamp (milliseconds)",
           "example": 1747927089946
         }
@@ -368,7 +368,7 @@
           "example": "42999.50"
         },
         "updatedAt": {
-          "type": "number",
+          "type": "integer",
           "description": "Last update timestamp (milliseconds)",
           "example": 1747927089946
         }
@@ -398,15 +398,18 @@
       "enum": ["OPEN", "FILLED", "CANCELLED", "REJECTED"],
       "description": "Order status"
     },
+    "TierType": {
+      "type": "string",
+      "enum": ["REGULAR", "VIP"],
+      "description": "Fee tier type (REGULAR = Standard tier, VIP = VIP tier)"
+    },
     "MarketDefinition": {
       "type": "object",
       "required": [
         "symbol",
         "marketId",
-        "maturity",
-        "settlementAsset",
         "minOrderQty",
-        "lotSize",
+        "qtyStepSize",
         "tickSize",
         "liquidationMarginParameter",
         "initialMarginParameter",
@@ -419,24 +422,15 @@
           "example": "BTCRUSDPERP"
         },
         "marketId": {
-          "type": "number",
+          "type": "integer",
           "description": "Numerical identifier for each market, only needed to generate signatures",
           "example": 1
-        },
-        "maturity": {
-          "type": "string",
-          "enum": ["PERPETUAL"],
-          "example": "PERPETUAL"
-        },
-        "settlementAsset": {
-          "type": "string",
-          "example": "RUSD"
         },
         "minOrderQty": {
           "type": "string",
           "example": "0.001"
         },
-        "minSizeIncrement": {
+        "qtyStepSize": {
           "type": "string",
           "description": "Minimum size increment",
           "example": "0.001"
@@ -457,7 +451,7 @@
           "example": "0.04"
         },
         "maxLeverage": {
-          "type": "number",
+          "type": "integer",
           "description": "Maximum leverage allowed",
           "example": 40
         },
@@ -477,7 +471,7 @@
       ],
       "properties": {
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "name": {
@@ -485,7 +479,7 @@
           "example": "Margin Account 1"
         },
         "lastUpdateAt": {
-          "type": "number",
+          "type": "integer",
           "description": "Last update timestamp (milliseconds)",
           "example": 1747927089946
         }
@@ -520,13 +514,13 @@
           "example": "0.03"
         },
         "timestamp": {
-          "type": "number",
+          "type": "integer",
           "description": "Configuration timestamp (milliseconds)",
           "example": 1747927089946
         }
       }
     },
-    "CandleData": {
+    "CandleHistoryData": {
       "type": "object",
       "required": [
         "t",
@@ -539,7 +533,7 @@
         "t": {
           "type": "array",
           "items": {
-            "type": "number"
+            "type": "integer"
           },
           "description": "Array of timestamps (seconds)",
           "example": [1747804140, 1747804200, 1747804260]
@@ -547,34 +541,34 @@
         "o": {
           "type": "array",
           "items": {
-            "type": "number"
+            "type": "string"
           },
           "description": "Array of opening prices",
-          "example": [2557.997, 2555.386, 2560.118]
+          "example": ["2557.997", "2555.386", "2560.118"]
         },
         "h": {
           "type": "array",
           "items": {
-            "type": "number"
+            "type": "string"
           },
           "description": "Array of high prices",
-          "example": [2558.000, 2560.699, 2560.729]
+          "example": ["2558.000", "2560.699", "2560.729"]
         },
         "l": {
           "type": "array",
           "items": {
-            "type": "number"
+            "type": "string"
           },
           "description": "Array of low prices",
-          "example": [2554.637, 2553.436, 2559.368]
+          "example": ["2554.637", "2553.436", "2559.368"]
         },
         "c": {
           "type": "array",
           "items": {
-            "type": "number"
+            "type": "string"
           },
           "description": "Array of closing prices",
-          "example": [2555.387, 2560.118, 2560.439]
+          "example": ["2555.387", "2560.118", "2560.439"]
         }
       }
     },
@@ -584,11 +578,12 @@
         "tierId",
         "takerFee",
         "makerFee",
-        "volume14d"
+        "volume14d",
+        "tierType"
       ],
       "properties": {
         "tierId": {
-          "type": "number",
+          "type": "integer",
           "example": 1
         },
         "takerFee": {
@@ -605,6 +600,9 @@
           "type": "string",
           "description": "14-day volume level required this fee tier to be applied to a wallet",
           "example": "10000.0"
+        },
+        "tierType": {
+          "$ref": "#/definitions/TierType"
         }
       }
     },
@@ -673,7 +671,7 @@
       ],
       "properties": {
         "feeTierId": {
-          "type": "number",
+          "type": "integer",
           "description": "Fee tier identifier",
           "example": 1
         },
@@ -738,22 +736,22 @@
       ],
       "properties": {
         "limit": {
-          "type": "number",
+          "type": "integer",
           "description": "Number of items requested",
           "example": 100
         },
         "count": {
-          "type": "number",
+          "type": "integer",
           "description": "Number of items returned",
           "example": 50
         },
         "endTime": {
-          "type": "number",
+          "type": "integer",
           "description": "Timestamp of last result, in milliseconds",
           "example": 1756733679000
         },
         "startTime": {
-          "type": "number",
+          "type": "integer",
           "description": "Timestamp of first result, in milliseconds",
           "example": 1756733579000
         }
@@ -782,8 +780,7 @@
         "SYMBOL_NOT_FOUND",
         "NO_ACCOUNTS_FOUND",
         "NO_PRICES_FOUND_FOR_SYMBOL",
-        "CREATE_ORDER_VALIDATION_ERROR",
-        "CANCEL_ORDER_VALIDATION_ERROR",
+        "INPUT_VALIDATION_ERROR",
         "CREATE_ORDER_OTHER_ERROR",
         "CANCEL_ORDER_OTHER_ERROR",
         "INTERNAL_SERVER_ERROR"
@@ -802,7 +799,7 @@
           "example": "BTCRUSDPERP"
         },
         "marketId": {
-          "type": "number",
+          "type": "integer",
           "description": "Market identifier",
           "example": 2
         }
@@ -840,7 +837,7 @@
       ],
       "properties": {
         "exchangeId": {
-          "type": "number",
+          "type": "integer",
           "example": 1
         },
         "symbol": {
@@ -848,7 +845,7 @@
           "example": "ETHRUSDPERP"
         },
         "accountId": {
-          "type": "number",
+          "type": "integer",
           "example": 12345
         },
         "isBuy": {
@@ -899,7 +896,7 @@
           "example": "0x1234567890123456789012345678901234567890"
         },
         "expiresAfter": {
-          "type": "number",
+          "type": "integer",
           "description": "Expiration timestamp (exclusively for IOC orders). The order will only be filled before this timestamp.",
           "example": 1676923200
         }

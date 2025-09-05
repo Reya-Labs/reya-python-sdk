@@ -180,16 +180,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/PerpExecutionList'
 
-  /candles/{symbol}/{resolution}:
+  /candleHistory/{symbol}/{resolution}:
     get:
       summary: Get historical candles
+      description: Returns up to 200 candles for a given market, sorted by time in descending order, and ending at the specified end time.
       operationId: getCandles
       tags:
         - Market Data
       parameters:
         - $ref: '#/components/parameters/SymbolParam'
         - $ref: '#/components/parameters/ResolutionParam'
-        - $ref: '#/components/parameters/StartTimeParam'
         - $ref: '#/components/parameters/EndTimeParam'
       responses:
         '200':
@@ -197,7 +197,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CandleData'
+                $ref: '#/components/schemas/CandleHistoryData'
 
   /wallet/{address}/accounts:
     get:
@@ -216,24 +216,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Account'
-
-  /wallet/{address}/accountBalances:
-    get:
-      summary: Get wallet account balances
-      operationId: getWalletAccountBalances
-      tags:
-        - Wallet Data
-      parameters:
-        - $ref: '#/components/parameters/AddressParam'
-      responses:
-        '200':
-          description: List of account balances
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AccountBalance'
 
   /wallet/{address}/perpExecutions:
     get:
@@ -436,9 +418,6 @@ components:
     Account:
       $ref: './trading-schemas.json#/definitions/Account'
 
-    AccountBalance:
-      $ref: './trading-schemas.json#/definitions/AccountBalance'
-
     PerpExecution:
       $ref: './trading-schemas.json#/definitions/PerpExecution'
 
@@ -451,8 +430,8 @@ components:
     AssetDefinition:
       $ref: './trading-schemas.json#/definitions/AssetDefinition'
 
-    CandleData:
-      $ref: './trading-schemas.json#/definitions/CandleData'
+    CandleHistoryData:
+      $ref: './trading-schemas.json#/definitions/CandleHistoryData'
 
     FeeTierParameters:
       $ref: './trading-schemas.json#/definitions/FeeTierParameters'

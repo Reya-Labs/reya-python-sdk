@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class AccountBalance(BaseModel): 
-  account_id: float = Field(alias='''accountId''')
+  account_id: int = Field(alias='''accountId''')
   symbol: str = Field()
   balance: str = Field(description='''Account balance''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)

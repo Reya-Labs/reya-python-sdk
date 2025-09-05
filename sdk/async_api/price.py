@@ -6,7 +6,7 @@ class Price(BaseModel):
   symbol: str = Field()
   oracle_price: Optional[str] = Field(description='''Oracle price, also known as spot price''', default=None, alias='''oraclePrice''')
   pool_price: Optional[str] = Field(description='''Pool price''', default=None, alias='''poolPrice''')
-  updated_at: float = Field(description='''Last update timestamp (milliseconds)''', alias='''updatedAt''')
+  updated_at: int = Field(description='''Last update timestamp (milliseconds)''', alias='''updatedAt''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')

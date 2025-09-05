@@ -3,14 +3,14 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
 class Position(BaseModel): 
-  exchange_id: float = Field(alias='''exchangeId''')
+  exchange_id: int = Field(alias='''exchangeId''')
   symbol: str = Field()
-  account_id: float = Field(alias='''accountId''')
+  account_id: int = Field(alias='''accountId''')
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   avg_entry_price: str = Field(alias='''avgEntryPrice''')
   avg_entry_funding_value: str = Field(description='''Average entry funding value.''', alias='''avgEntryFundingValue''')
-  last_trade_sequence_number: float = Field(description='''Sequence number of last execution taken into account for the position.''', alias='''lastTradeSequenceNumber''')
+  last_trade_sequence_number: int = Field(description='''Sequence number of last execution taken into account for the position.''', alias='''lastTradeSequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
