@@ -97,7 +97,7 @@ The new v2 API implements all the requirements specified in the [new-endpoints-p
 - `A` - Ask (Sell)
 
 ### Order Status
-- `PENDING` - Order pending execution
+- `OPEN` - Order pending execution
 - `FILLED` - Order completely filled
 - `CANCELLED` - Order cancelled
 - `REJECTED` - Order rejected
