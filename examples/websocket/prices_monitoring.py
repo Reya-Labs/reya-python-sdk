@@ -1,6 +1,6 @@
 """Example of monitoring asset pair prices using the WebSocket API.
 
-This example connects to the Reya WebSocket API and subscribes to price data for ETHUSDMARK.
+This example connects to the Reya WebSocket API and subscribes to price data streams.
 
 Before running this example, ensure you have a .env file with the following variables:
 - PRIVATE_KEY: Your Ethereum private key
