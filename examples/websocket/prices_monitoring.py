@@ -8,12 +8,13 @@ Before running this example, ensure you have a .env file with the following vari
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 """
 
+from typing import Any
+
 import asyncio
 import json
 import logging
 import os
 import time
-from typing import Any, Dict
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -47,7 +48,7 @@ def on_open(ws):
     ws.prices.price(SYMBOL).subscribe()
 
 
-def handle_all_prices_data(message: Dict[str, Any]) -> None:
+def handle_all_prices_data(message: dict[str, Any]) -> None:
     """Handle /v2/prices channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -59,14 +60,14 @@ def handle_all_prices_data(message: Dict[str, Any]) -> None:
         logger.info(f"  └─ Prices Count: {len(payload.data)}")
 
         # Showcase individual price data structure
-        for i, price in enumerate(payload.data[:3]):  # Show first 3 prices
-            logger.info(f"    Price {i+1}: {price.symbol}")
+        for i, price in enumerate(payload.data[:5]):  # Show first 5 prices
+            logger.info(f"    Price {i + 1}: {price.symbol}")
             logger.info(f"      ├─ Oracle Price: {price.oracle_price or 'N/A'}")
             logger.info(f"      ├─ Pool Price: {price.pool_price or 'N/A'}")
             logger.info(f"      └─ Updated At: {price.updated_at}")
 
-        if len(payload.data) > 3:
-            logger.info(f"    ... and {len(payload.data) - 3} more prices")
+        if len(payload.data) > 5:
+            logger.info(f"    ... and {len(payload.data) - 5} more prices")
 
     except ValidationError as e:
         logger.error(f"Failed to parse all prices data: {e}")
@@ -74,7 +75,7 @@ def handle_all_prices_data(message: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling all prices: {e}")
 
 
-def handle_single_price_data(message: Dict[str, Any]) -> None:
+def handle_single_price_data(message: dict[str, Any]) -> None:
     """Handle /v2/prices/:symbol channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload

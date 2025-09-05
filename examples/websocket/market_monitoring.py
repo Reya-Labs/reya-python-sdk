@@ -8,12 +8,13 @@ Before running this example, ensure you have a .env file with the following vari
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 """
 
+from typing import Any
+
 import asyncio
 import json
 import logging
 import os
 import time
-from typing import Any, Dict
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -44,10 +45,10 @@ def on_open(ws):
     ws.market.summary("ETHRUSDPERP").subscribe()
 
     # Subscribe to market perpetual executions for BTCRUSDPERP
-    # ws.market.perp_executions("ETHRUSDPERP").subscribe()
+    ws.market.perp_executions("ETHRUSDPERP").subscribe()
 
 
-def handle_markets_summary_data(message: Dict[str, Any]) -> None:
+def handle_markets_summary_data(message: dict[str, Any]) -> None:
     """Handle /v2/markets/summary channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -59,8 +60,8 @@ def handle_markets_summary_data(message: Dict[str, Any]) -> None:
         logger.info(f"  └─ Markets Count: {len(payload.data)}")
 
         # Showcase individual market data structure
-        for i, market in enumerate(payload.data[:3]):  # Show first 3 markets
-            logger.info(f"    Market {i+1}: {market.symbol}")
+        for i, market in enumerate(payload.data[:5]):  # Show first 5 markets
+            logger.info(f"    Market {i + 1}: {market.symbol}")
             logger.info(f"      ├─ Volume 24h: {market.volume24h}")
             logger.info(f"      ├─ Funding Rate: {market.funding_rate:.6f}")
             logger.info(f"      ├─ Total OI: {market.oi_qty}")
@@ -75,7 +76,7 @@ def handle_markets_summary_data(message: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling markets summary: {e}")
 
 
-def handle_market_summary_data(message: Dict[str, Any]) -> None:
+def handle_market_summary_data(message: dict[str, Any]) -> None:
     """Handle /v2/market/:symbol/summary channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -101,7 +102,7 @@ def handle_market_summary_data(message: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling market summary: {e}")
 
 
-def handle_market_perp_executions_data(message: Dict[str, Any]) -> None:
+def handle_market_perp_executions_data(message: dict[str, Any]) -> None:
     """Handle /v2/market/:symbol/perpExecutions channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -114,8 +115,7 @@ def handle_market_perp_executions_data(message: Dict[str, Any]) -> None:
 
         # Showcase individual execution data structure
         for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
-            logger.info(f"    Execution {i+1}:")
-            logger.info(f"      ├─ Symbol: {execution.symbol}")
+            logger.info(f"    Execution {i + 1}: {execution.symbol}")
             logger.info(f"      ├─ Account ID: {execution.account_id}")
             logger.info(f"      ├─ Side: {execution.side.value}")
             logger.info(f"      ├─ Quantity: {execution.qty}")

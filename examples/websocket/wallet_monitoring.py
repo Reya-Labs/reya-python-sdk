@@ -9,12 +9,13 @@ Before running this example, ensure you have a .env file with the following vari
 - WALLET_ADDRESS: The wallet address to monitor
 """
 
+from typing import Any
+
 import asyncio
 import json
 import logging
 import os
 import time
-from typing import Any, Dict
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -61,7 +62,7 @@ def on_open(ws):
     # ws.wallet.account_balances(wallet_address).subscribe()
 
 
-def handle_wallet_positions_data(message: Dict[str, Any]) -> None:
+def handle_wallet_positions_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/positions channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -74,7 +75,7 @@ def handle_wallet_positions_data(message: Dict[str, Any]) -> None:
 
         # Showcase individual position data structure
         for i, position in enumerate(payload.data[:5]):  # Show first 5 positions
-            logger.info(f"    Position {i+1}: {position.symbol}")
+            logger.info(f"    Position {i + 1}: {position.symbol}")
             logger.info(f"      ├─ Exchange ID: {position.exchange_id}")
             logger.info(f"      ├─ Account ID: {position.account_id}")
             logger.info(f"      ├─ Quantity: {position.qty}")
@@ -92,7 +93,7 @@ def handle_wallet_positions_data(message: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling wallet positions: {e}")
 
 
-def handle_wallet_orders_data(message: Dict[str, Any]) -> None:
+def handle_wallet_orders_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/openOrders channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -105,12 +106,12 @@ def handle_wallet_orders_data(message: Dict[str, Any]) -> None:
 
         # Showcase individual order data structure
         for i, order in enumerate(payload.data[:5]):  # Show first 5 orders
-            logger.info(f"    Order {i+1}: {order.symbol}")
+            logger.info(f"    Order {i + 1}: {order.symbol}")
             logger.info(f"      ├─ Account ID: {order.account_id}")
             logger.info(f"      ├─ Side: {order.side.value}")
-            logger.info(f"      ├─ Type: {order.type.value}")
+            logger.info(f"      ├─ Type: {order.order_type.value}")
             logger.info(f"      ├─ Quantity: {order.qty}")
-            logger.info(f"      ├─ Price: {order.price}")
+            logger.info(f"      ├─ Limit Price: {order.limit_px}")
             logger.info(f"      └─ Status: {order.status.value}")
 
         if len(payload.data) > 5:
@@ -122,7 +123,7 @@ def handle_wallet_orders_data(message: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling wallet orders: {e}")
 
 
-def handle_wallet_balances_data(message: Dict[str, Any]) -> None:
+def handle_wallet_balances_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/accountBalances channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -135,8 +136,7 @@ def handle_wallet_balances_data(message: Dict[str, Any]) -> None:
 
         # Showcase individual balance data structure
         for i, balance in enumerate(payload.data[:3]):  # Show first 3 balances
-            logger.info(f"    Balance {i+1}: Account {balance.account_id}")
-            logger.info(f"      ├─ Symbol: {balance.symbol}")
+            logger.info(f"    Balance {i + 1}: {balance.symbol}")
             logger.info(f"      └─ Balance: {balance.balance}")
 
         if len(payload.data) > 3:
@@ -148,7 +148,7 @@ def handle_wallet_balances_data(message: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error handling wallet balances: {e}")
 
 
-def handle_wallet_executions_data(message: Dict[str, Any]) -> None:
+def handle_wallet_executions_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/perpExecutions channel data with proper type conversion."""
     try:
         # Convert raw message to typed payload
@@ -161,7 +161,7 @@ def handle_wallet_executions_data(message: Dict[str, Any]) -> None:
 
         # Showcase individual execution data structure
         for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
-            logger.info(f"    Execution {i+1}: {execution.symbol}")
+            logger.info(f"    Execution {i + 1}: {execution.symbol}")
             logger.info(f"      ├─ Account ID: {execution.account_id}")
             logger.info(f"      ├─ Side: {execution.side.value}")
             logger.info(f"      ├─ Quantity: {execution.qty}")

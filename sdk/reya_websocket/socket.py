@@ -1,6 +1,6 @@
 """WebSocket client implementation for the Reya API v2."""
 
-from typing import Any, Callable, Optional, Dict, Type, Union
+from typing import Any, Callable, Optional
 
 import json
 import logging
@@ -10,23 +10,23 @@ import threading
 import websocket
 from pydantic import BaseModel, ValidationError
 
-from sdk.reya_websocket.config import WebSocketConfig, get_config
-from sdk.reya_websocket.resources.market import MarketResource
-from sdk.reya_websocket.resources.prices import PricesResource
-from sdk.reya_websocket.resources.wallet import WalletResource
+from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
+from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
+from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
+from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
 
 # Import V2 payload types
 from sdk.async_api.ping_message import PingMessage
 from sdk.async_api.pong_message import PongMessage
-from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
-from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
-from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
-from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
-from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
+from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
+from sdk.reya_websocket.config import WebSocketConfig, get_config
+from sdk.reya_websocket.resources.market import MarketResource
+from sdk.reya_websocket.resources.prices import PricesResource
+from sdk.reya_websocket.resources.wallet import WalletResource
 
 # Set up logging
 logger = logging.getLogger("reya.websocket")
@@ -54,14 +54,13 @@ def as_json(on_message: Optional[Callable[[Any, Any], None]]) -> Callable[[Any, 
 
 class WebSocketDataError(Exception):
     """Exception raised when WebSocket data cannot be parsed."""
-    pass
 
 
 class ReyaSocket(websocket.WebSocketApp):
     """WebSocket client for Reya API v2 with resource-based access and type safety."""
 
     # Channel to payload type mapping for V2
-    CHANNEL_PAYLOAD_MAP: Dict[str, Type[BaseModel]] = {
+    CHANNEL_PAYLOAD_MAP: dict[str, type[BaseModel]] = {
         # Ping/Pong
         "ping": PingMessage,
         "pong": PongMessage,
@@ -135,19 +134,19 @@ class ReyaSocket(websocket.WebSocketApp):
             **kwargs,
         )
 
-    def _get_payload_type(self, channel: str) -> Optional[Type[BaseModel]]:
+    def _get_payload_type(self, channel: str) -> Optional[type[BaseModel]]:
         """Get the appropriate payload type for a channel.
-        
+
         Args:
             channel: The channel path or message type.
-            
+
         Returns:
             The corresponding Pydantic model class or None if not found.
         """
         # Direct match first
         if channel in self.CHANNEL_PAYLOAD_MAP:
             return self.CHANNEL_PAYLOAD_MAP[channel]
-        
+
         # Pattern matching for parameterized channels
         if "/v2/market/" in channel:
             if channel.endswith("/summary"):
@@ -165,20 +164,20 @@ class ReyaSocket(websocket.WebSocketApp):
                 return WalletPerpExecutionUpdatePayload
         elif "/v2/prices/" in channel and not channel == "/v2/prices":
             return PriceUpdatePayload
-            
+
         return None
 
     def _parse_message(self, message: dict) -> Optional[BaseModel]:
         """Parse a WebSocket message into the appropriate Pydantic model.
-        
+
         Args:
             message: The raw message dictionary.
-            
+
         Returns:
             Parsed Pydantic model or None if parsing fails.
         """
         message_type = message.get("type")
-        
+
         if message_type in ["ping", "pong"]:
             payload_type = self.CHANNEL_PAYLOAD_MAP.get(message_type)
             if payload_type:
@@ -187,7 +186,7 @@ class ReyaSocket(websocket.WebSocketApp):
                 except ValidationError as e:
                     logger.error(f"Failed to parse {message_type} message: {e}")
                     raise WebSocketDataError(f"Invalid {message_type} message format")
-        
+
         elif message_type == "channel_data":
             channel = message.get("channel")
             if channel:
@@ -198,7 +197,7 @@ class ReyaSocket(websocket.WebSocketApp):
                     except ValidationError as e:
                         logger.error(f"Failed to parse channel_data for {channel}: {e}")
                         raise WebSocketDataError(f"Invalid data format for channel {channel}")
-        
+
         return None
 
     @property
@@ -317,15 +316,14 @@ class ReyaSocket(websocket.WebSocketApp):
 
         elif message_type == "channel_data":
             channel = message.get("channel", "unknown")
-            data = message.get("data")
             timestamp = message.get("timestamp")
-            
+
             logger.debug(f"Received data from {channel} at {timestamp}")
-            
+
             # Log structured data if parsing succeeded
-            if parsed_message and hasattr(parsed_message, 'data'):
+            if parsed_message and hasattr(parsed_message, "data"):
                 data_type = type(parsed_message.data)
-                if hasattr(data_type, '__origin__') and data_type.__origin__ is list:
+                if hasattr(data_type, "__origin__") and data_type.__origin__ is list:
                     logger.debug(f"Received {len(parsed_message.data)} items")
                 else:
                     logger.debug(f"Received {type(parsed_message.data).__name__} data")
