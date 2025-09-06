@@ -94,7 +94,7 @@ async def test_market_summary(reya_tester: ReyaTester):
         # assert market_summary.funding_rate_velocity "Funding rate velocity should be a valid number"
 
         assert float(market_summary.volume24h) >= 0, "Volume 24h should be a valid number"
-        assert float(market_summary.px_change24h) >= 0, "Price change 24h should be a valid number"
+        assert market_summary.px_change24h.replace(".", "", 1).lstrip("-").isdigit(), "Price change 24h should be a valid number"
 
         assert market_summary.updated_at / 1000 > time.time() - 86400 * 2, "Updated timestamp should be valid"
         assert float(market_summary.throttled_pool_price) > 0, "Pool price should be positive"
@@ -120,21 +120,30 @@ async def test_markets_summary(reya_tester: ReyaTester):
         raise
 
 
-# TODO: fix
 @pytest.mark.asyncio
 async def test_candles(reya_tester: ReyaTester):
     """Test getting candle data for a specific symbol."""
     symbol = "ETHRUSDPERP"
-    resolution = "1m"  # 1-minute candles
 
-    try:
-        current_time = int(time.time() * 1000)
-        candles = reya_tester.client.markets.get_candles(symbol=symbol, resolution=resolution, end_time=current_time)
-        assert candles is not None
-        assert len(candles.data) > 0
-    except Exception as e:
-        logger.error(f"Error in test_candles: {e}")
-        raise
+    for resolution in ["1m", "5m", "15m", "1h", "4h", "1d"]:
+        logger.info(f"Testing resolution: {resolution}")
+        candles_count = 200
+        resolution_in_seconds = 60 if resolution == "1m" else 60*5 if resolution == "5m" else 60*15 if resolution == "15m" \
+            else 60*60 if resolution == "1h" else 60*60*4 if resolution == "4h" else 60*60*24
+        try:
+            current_time = int(time.time() * 1000)
+            candles = reya_tester.client.markets.get_candles(symbol=symbol, resolution=resolution, end_time=current_time)
+            assert candles is not None
+            assert len(candles.t) == candles_count
+            assert len(candles.c) == candles_count
+            assert len(candles.o) == candles_count
+            assert len(candles.h) == candles_count
+            assert len(candles.l) == candles_count
+            for t in range(candles_count):
+                assert candles.t[t]//(resolution_in_seconds) == (current_time/1000 - resolution_in_seconds*candles_count + resolution_in_seconds*t)//(resolution_in_seconds)
+        except Exception as e:
+            logger.error(f"Error in test_candles: {e}")
+            raise
 
 
 # TODO: enhance
