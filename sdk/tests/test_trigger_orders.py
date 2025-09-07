@@ -24,10 +24,9 @@ def assert_tp_sl_order_submission(
 
     assert order_details is not None, "Should have order execution details"
     assert order_details.symbol == expected_order_details.symbol, "Market ID should match"
-    # TODO: uncomment after fix, trigger_px has 18 decimals
-    # assert float(order_details.trigger_px) == pytest.approx(
-    #     float(expected_order_details.price), rel=1e-6
-    # ), "Trigger price should match"
+    assert float(order_details.trigger_px) == pytest.approx(
+        float(expected_order_details.price), rel=1e-6
+    ), "Trigger price should match"
     assert (order_details.side == Side.B) == expected_order_details.is_buy, "Executed base should match"
     assert float(position.qty) == float(expected_order_details.qty), "Order direction does not match"
     assert order_details.status == OrderStatus.OPEN, "Order status should be PENDING"
