@@ -2,7 +2,7 @@
 Enumeration classes for Reya Trading API.
 """
 
-from enum import Enum, IntEnum
+from enum import IntEnum
 
 
 class OrdersGatewayOrderType(IntEnum):
