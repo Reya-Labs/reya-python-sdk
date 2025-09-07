@@ -9,7 +9,6 @@ from sdk.tests.reya_tester import ReyaTester, logger
 
 @pytest.mark.asyncio
 async def test_market_definition(reya_tester: ReyaTester):
-    """Test getting market definition for a specific symbol."""
     symbol = "ETHRUSDPERP"
 
     try:
@@ -44,8 +43,6 @@ async def test_market_definition(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_market_definitions(reya_tester: ReyaTester):
-    """Test getting all market definitions."""
-
     try:
         market_definitions = reya_tester.client.reference.get_market_definitions()
         assert market_definitions is not None
@@ -57,7 +54,6 @@ async def test_market_definitions(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_market_price(reya_tester: ReyaTester):
-    """Test getting price for a specific symbol."""
     symbol = "ETHRUSDPERP"
 
     try:
@@ -102,7 +98,6 @@ async def test_all_prices(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_market_summary(reya_tester: ReyaTester):
-    """Test getting market summary for a specific symbol."""
     symbol = "ETHRUSDPERP"
 
     try:
@@ -116,9 +111,15 @@ async def test_market_summary(reya_tester: ReyaTester):
             10**3
         ), "Funding rate should be a valid number"
 
-        # assert market_summary.long_funding_value, "Long funding value should be a valid number"
-        # assert market_summary.short_funding_value, "Short funding value should be a valid number"
-        # assert market_summary.funding_rate_velocity "Funding rate velocity should be a valid number"
+        assert (
+            market_summary.long_funding_value.replace(".", "", 1).lstrip("-").isdigit()
+        ), "Long funding value should be a valid number"
+        assert (
+            market_summary.short_funding_value.replace(".", "", 1).lstrip("-").isdigit()
+        ), "Short funding value should be a valid number"
+        assert (
+            market_summary.funding_rate_velocity.replace(".", "", 1).lstrip("-").isdigit()
+        ), "Funding rate velocity should be a valid number"
 
         assert float(market_summary.volume24h) >= 0, "Volume 24h should be a valid number"
         assert (
@@ -138,8 +139,6 @@ async def test_market_summary(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_markets_summary(reya_tester: ReyaTester):
-    """Test getting summary for all markets."""
-
     try:
         markets_summary = reya_tester.client.markets.get_markets_summary()
         assert markets_summary is not None
@@ -151,7 +150,6 @@ async def test_markets_summary(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_candles(reya_tester: ReyaTester):
-    """Test getting candle data for a specific symbol."""
     symbol = "ETHRUSDPERP"
 
     for resolution in ["1m", "5m", "15m", "1h", "4h", "1d"]:
@@ -192,7 +190,6 @@ async def test_candles(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_market_perp_executions(reya_tester: ReyaTester):
-    """Test getting perp executions for a specific market."""
     symbol = "ETHRUSDPERP"
 
     try:
@@ -224,8 +221,6 @@ async def test_market_perp_executions(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_asset_definitions(reya_tester: ReyaTester):
-    """Test getting asset definitions."""
-
     try:
         assets = reya_tester.client.reference.get_asset_definitions()
         assert assets is not None
@@ -269,8 +264,6 @@ async def test_asset_definitions(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_fee_tier_parameters(reya_tester: ReyaTester):
-    """Test getting fee tier parameters."""
-
     try:
         fee_tiers = reya_tester.client.reference.get_fee_tier_parameters()
         assert fee_tiers is not None
@@ -291,8 +284,6 @@ async def test_fee_tier_parameters(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_global_fee_parameters(reya_tester: ReyaTester):
-    """Test getting global fee parameters."""
-
     try:
         global_fees = reya_tester.client.reference.get_global_fee_parameters()
         assert global_fees is not None
