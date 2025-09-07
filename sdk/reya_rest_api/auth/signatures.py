@@ -13,7 +13,6 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.constants.enums import ConditionalOrderStatus
 
 
 class SignatureGenerator:
@@ -181,7 +180,7 @@ class SignatureGenerator:
         # Create cancellation message
         cancel_message = {
             "orderId": order_id,
-            "status": ConditionalOrderStatus.CANCELLED,
+            "status": 'cancelled',
             "actionType": "changeStatus",
         }
 
