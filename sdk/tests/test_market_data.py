@@ -74,6 +74,33 @@ async def test_market_price(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
+async def test_all_prices(reya_tester: ReyaTester):
+    try:
+        prices = reya_tester.client.markets.get_prices()
+        assert prices is not None
+        assert len(prices) > 0, "Should have at least one price"
+
+        sample_price = prices[0]
+        assert sample_price.symbol is not None and len(sample_price.symbol) > 0, "Symbol should not be empty"
+        assert "PERP" in sample_price.symbol, f"Symbol should be a perpetual contract, got: {sample_price.symbol}"
+        assert (
+            float(sample_price.oracle_price) > 0 and float(sample_price.oracle_price) < 10**18
+        ), "Oracle price should be a valid positive number"
+        assert (
+            float(sample_price.pool_price) > 0 and float(sample_price.pool_price) < 10**18
+        ), "Pool price should be a valid positive number"
+        current_time = int(time.time() * 1000)
+        assert sample_price.updated_at > current_time - (60 * 60 * 1000), "Updated timestamp should be within last hour"
+        assert sample_price.updated_at <= current_time + (60 * 1000), "Updated timestamp should not be in future"
+        symbols = {price.symbol for price in prices}
+        assert "ETHRUSDPERP" in symbols, "Should include ETHRUSDPERP in all prices"
+
+    except Exception as e:
+        logger.error(f"Error in test_all_prices: {e}")
+        raise
+
+
+@pytest.mark.asyncio
 async def test_market_summary(reya_tester: ReyaTester):
     """Test getting market summary for a specific symbol."""
     symbol = "ETHRUSDPERP"
