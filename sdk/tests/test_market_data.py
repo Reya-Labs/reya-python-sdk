@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import re
 import time
 
 import pytest
@@ -47,6 +47,29 @@ async def test_market_definitions(reya_tester: ReyaTester):
         market_definitions = reya_tester.client.reference.get_market_definitions()
         assert market_definitions is not None
         assert len(market_definitions) > 0
+        for market_definition in market_definitions:
+            assert re.match(
+                "^[a-zA-Z0-9]*$", market_definition.symbol
+            ), "Symbol should only have alphanumeric characters"
+            assert (
+                float(market_definition.min_order_qty) > 0 and float(market_definition.min_order_qty) < 10**18
+            ), "Wrong min order qty"
+            assert (
+                float(market_definition.qty_step_size) > 0 and float(market_definition.qty_step_size) < 10**18
+            ), "Wrong qty step size"
+            assert (
+                float(market_definition.tick_size) > 0 and float(market_definition.tick_size) < 10**18
+            ), "Wrong tick size"
+            assert (
+                float(market_definition.liquidation_margin_parameter) > 0
+                and float(market_definition.liquidation_margin_parameter) < 10**18
+            ), "Wrong liquidation margin parameter"
+            assert (
+                float(market_definition.initial_margin_parameter) > 0
+                and float(market_definition.initial_margin_parameter) < 10**18
+            ), "Wrong initial margin parameter"
+            assert market_definition.max_leverage > 0 and market_definition.max_leverage < 10**18, "Wrong max leverage"
+            assert float(market_definition.oi_cap) > 0 and market_definition.max_leverage < 10**18, "Wrong oi cap"
     except Exception as e:
         logger.error(f"Error in test_market_definitions: {e}")
         raise
@@ -235,6 +258,11 @@ async def test_asset_definitions(reya_tester: ReyaTester):
                 asset.spot_market_symbol is not None and len(asset.spot_market_symbol) > 0
             ), "Spot market symbol should not be empty"
 
+            assert re.match(
+                "^[a-zA-Z0-9]*$", asset.spot_market_symbol
+            ), "Spot market symbol should only have alphanumeric characters"
+            assert re.match("^[a-zA-Z0-9]*$", asset.asset), "Asset symbol should only have alphanumeric characters"
+
             assert (
                 float(asset.price_haircut) >= 0 and float(asset.price_haircut) <= 1
             ), f"Price haircut should be between 0 and 1, got: {asset.price_haircut}"
@@ -274,6 +302,7 @@ async def test_fee_tier_parameters(reya_tester: ReyaTester):
             tiers[tier.tier_id] = tier
             assert float(tier.maker_fee) >= 0 and float(tier.maker_fee) <= 1
             assert float(tier.taker_fee) >= 0 and float(tier.taker_fee) <= 1
+            assert tier.tier_type in ["REGULAR", "VIP"]
 
         assert len(tiers.keys()) > 0
 
