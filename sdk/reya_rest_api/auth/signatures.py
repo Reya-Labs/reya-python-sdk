@@ -180,7 +180,7 @@ class SignatureGenerator:
         # Create cancellation message
         cancel_message = {
             "orderId": order_id,
-            "status": 'cancelled',
+            "status": "cancelled",
             "actionType": "changeStatus",
         }
 

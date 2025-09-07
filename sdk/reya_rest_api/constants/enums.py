@@ -4,6 +4,7 @@ Enumeration classes for Reya Trading API.
 
 from enum import Enum, IntEnum
 
+
 class OrdersGatewayOrderType(IntEnum):
     """Enum representing orders gateway order types"""
 
