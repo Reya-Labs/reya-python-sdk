@@ -9,6 +9,7 @@ import time
 import pytest
 
 from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.open_api.models.execution_type import ExecutionType
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
@@ -502,6 +503,9 @@ class ReyaTester:
 
         assert order_execution is not None, "check_order_execution: No order execution found"
         assert (
+            order_execution.exchange_id == self.client.config.dex_id
+        ), "check_order_execution: Exchange ID does not match"
+        assert (
             order_execution.symbol == order_details.symbol
         ), "check_order_execution: Order execution symbol does not match"
         assert (
@@ -511,7 +515,9 @@ class ReyaTester:
         assert (
             order_execution.side == Side.B if order_details.is_buy else Side.A
         ), "check_order_execution: Order execution side does not match"
-
+        assert (
+            order_execution.type == ExecutionType.ORDER_MATCH
+        ), "check_order_execution: Order execution type does not match"
         if order_details.order_type == OrderType.LIMIT:
             if order_details.is_buy:
                 assert float(order_execution.price) <= float(
@@ -521,7 +527,6 @@ class ReyaTester:
                 assert float(order_execution.price) >= float(
                     order_details.price
                 ), "check_order_execution: Order execution price does not match"
-
         return order_execution
 
     def check_no_order_execution_since(self, since_timestamp_ms: int):

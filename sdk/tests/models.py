@@ -15,6 +15,7 @@ class OrderDetails:
     is_buy: bool
     price: str
     order_type: OrderType
+    trigger_price: str | None = None
     status: OrderStatus = OrderStatus.OPEN
     qty: str = "0"  # default for SLTP orders
 
@@ -25,6 +26,7 @@ class OrderDetails:
             "is_buy": self.is_buy,
             "price": self.price,
             "qty": self.qty,
+            "trigger_price": self.trigger_price,
             "status": self.status,
             "order_type": self.order_type,
         }
