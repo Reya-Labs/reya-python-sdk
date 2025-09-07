@@ -94,7 +94,9 @@ async def test_market_summary(reya_tester: ReyaTester):
         # assert market_summary.funding_rate_velocity "Funding rate velocity should be a valid number"
 
         assert float(market_summary.volume24h) >= 0, "Volume 24h should be a valid number"
-        assert market_summary.px_change24h.replace(".", "", 1).lstrip("-").isdigit(), "Price change 24h should be a valid number"
+        assert (
+            market_summary.px_change24h.replace(".", "", 1).lstrip("-").isdigit()
+        ), "Price change 24h should be a valid number"
 
         assert market_summary.updated_at / 1000 > time.time() - 86400 * 2, "Updated timestamp should be valid"
         assert float(market_summary.throttled_pool_price) > 0, "Pool price should be positive"
@@ -128,11 +130,24 @@ async def test_candles(reya_tester: ReyaTester):
     for resolution in ["1m", "5m", "15m", "1h", "4h", "1d"]:
         logger.info(f"Testing resolution: {resolution}")
         candles_count = 200
-        resolution_in_seconds = 60 if resolution == "1m" else 60*5 if resolution == "5m" else 60*15 if resolution == "15m" \
-            else 60*60 if resolution == "1h" else 60*60*4 if resolution == "4h" else 60*60*24
+        resolution_in_seconds = (
+            60
+            if resolution == "1m"
+            else (
+                60 * 5
+                if resolution == "5m"
+                else (
+                    60 * 15
+                    if resolution == "15m"
+                    else 60 * 60 if resolution == "1h" else 60 * 60 * 4 if resolution == "4h" else 60 * 60 * 24
+                )
+            )
+        )
         try:
             current_time = int(time.time() * 1000)
-            candles = reya_tester.client.markets.get_candles(symbol=symbol, resolution=resolution, end_time=current_time)
+            candles = reya_tester.client.markets.get_candles(
+                symbol=symbol, resolution=resolution, end_time=current_time
+            )
             assert candles is not None
             assert len(candles.t) == candles_count
             assert len(candles.c) == candles_count
@@ -140,13 +155,14 @@ async def test_candles(reya_tester: ReyaTester):
             assert len(candles.h) == candles_count
             assert len(candles.l) == candles_count
             for t in range(candles_count):
-                assert candles.t[t]//(resolution_in_seconds) == (current_time/1000 - resolution_in_seconds*candles_count + resolution_in_seconds*t)//(resolution_in_seconds)
+                assert candles.t[t] // (resolution_in_seconds) == (
+                    current_time / 1000 - resolution_in_seconds * candles_count + resolution_in_seconds * t
+                ) // (resolution_in_seconds)
         except Exception as e:
             logger.error(f"Error in test_candles: {e}")
             raise
 
 
-# TODO: enhance
 @pytest.mark.asyncio
 async def test_market_perp_executions(reya_tester: ReyaTester):
     """Test getting perp executions for a specific market."""
@@ -156,13 +172,29 @@ async def test_market_perp_executions(reya_tester: ReyaTester):
         executions = reya_tester.client.markets.get_market_perp_executions(symbol)
         assert executions is not None
         assert len(executions.data) > 0
-        assert executions.data[0].symbol == symbol
+
+        execution = executions.data[0]
+        assert execution.symbol == symbol
+        assert float(execution.price) > 0 and float(execution.price) < 10**7, "Price should be a valid positive number"
+        assert float(execution.qty) > 0 and float(execution.qty) < 10**10, "Quantity should be a valid positive number"
+        assert float(execution.fee) >= 0 and float(execution.fee) < 10**6, "Fee should be a valid non-negative number"
+        assert execution.side in ["B", "A"], f"Side should be B or A, got: {execution.side}"
+        assert execution.sequence_number > 0, "Sequence number should be positive"
+        assert execution.account_id > 0, "Account ID should be positive"
+        assert execution.exchange_id > 0, "Exchange ID should be positive"
+        current_time = int(time.time() * 1000)
+        assert execution.timestamp > current_time - (30 * 24 * 60 * 60 * 1000), "Timestamp should be recent"
+        assert execution.timestamp <= current_time + (60 * 1000), "Timestamp should not be in future"
+        assert execution.type in [
+            "ORDER_MATCH",
+            "LIQUIDATION",
+        ], f"Unexpected execution type: {execution.type}"
+
     except Exception as e:
         logger.error(f"Error in test_market_perp_executions: {e}")
         raise
 
 
-# TODO: enhance
 @pytest.mark.asyncio
 async def test_asset_definitions(reya_tester: ReyaTester):
     """Test getting asset definitions."""
@@ -171,13 +203,38 @@ async def test_asset_definitions(reya_tester: ReyaTester):
         assets = reya_tester.client.reference.get_asset_definitions()
         assert assets is not None
         assert len(assets) > 0
-        # Check for common assets in the symbols/tokens
+
         tokens = {}
         for asset in assets:
             tokens[asset.spot_market_symbol] = asset
 
-        assert "ETHRUSD" in tokens.keys()
-        assert "SRUSDRUSD" in tokens.keys()
+            assert asset.asset is not None and len(asset.asset) > 0, "Asset symbol should not be empty"
+            assert (
+                asset.spot_market_symbol is not None and len(asset.spot_market_symbol) > 0
+            ), "Spot market symbol should not be empty"
+
+            assert (
+                float(asset.price_haircut) >= 0 and float(asset.price_haircut) <= 1
+            ), f"Price haircut should be between 0 and 1, got: {asset.price_haircut}"
+            assert (
+                float(asset.liquidation_discount) >= 0 and float(asset.liquidation_discount) <= 1
+            ), f"Liquidation discount should be between 0 and 1, got: {asset.liquidation_discount}"
+
+            assert asset.timestamp >= 0, f"Timestamp should be non-negative, got: {asset.timestamp}"
+            current_time = int(time.time() * 1000)
+            if asset.timestamp > 0:
+                assert asset.timestamp <= current_time + (60 * 1000), "Timestamp should not be in future"
+
+            assert (
+                "USD" in asset.spot_market_symbol
+            ), f"Spot market symbol should contain USD, got: {asset.spot_market_symbol}"
+
+        assert "ETHRUSD" in tokens.keys(), "ETHRUSD should be in asset definitions"
+        assert "SRUSDRUSD" in tokens.keys(), "SRUSDRUSD should be in asset definitions"
+
+        eth_asset = tokens.get("ETHRUSD")
+        assert eth_asset.asset == "ETH", f"Expected ETH asset, got: {eth_asset.asset}"
+
     except Exception as e:
         logger.error(f"Error in test_asset_definitions: {e}")
         raise
@@ -221,7 +278,6 @@ async def test_global_fee_parameters(reya_tester: ReyaTester):
         raise
 
 
-# TODO: enhance
 @pytest.mark.asyncio
 async def test_liquidity_parameters(reya_tester: ReyaTester):
     """Test getting liquidity parameters."""
@@ -234,8 +290,28 @@ async def test_liquidity_parameters(reya_tester: ReyaTester):
         for param in liquidity_params:
             params[param.symbol] = param
 
-        assert len(params.keys()) > 0
-        assert "ETHRUSDPERP" in params.keys()
+            assert param.symbol is not None and len(param.symbol) > 0, "Symbol should not be empty"
+            assert "PERP" in param.symbol, f"Symbol should be a perpetual contract (contain PERP), got: {param.symbol}"
+
+            assert (
+                float(param.depth) > 0 and float(param.depth) <= 10000
+            ), f"Depth should be positive and reasonable, got: {param.depth}"
+
+            assert (
+                float(param.velocity_multiplier) >= 0 and float(param.velocity_multiplier) <= 50000
+            ), f"Velocity multiplier should be non-negative and reasonable, got: {param.velocity_multiplier}"
+
+        assert len(params.keys()) > 0, "Should have at least one liquidity parameter"
+        assert "ETHRUSDPERP" in params.keys(), "ETHRUSDPERP should be in liquidity parameters"
+
+        eth_param = params.get("ETHRUSDPERP")
+        assert eth_param
+        assert eth_param.symbol == "ETHRUSDPERP", f"Expected ETHRUSDPERP symbol, got: {eth_param.symbol}"
+        assert float(eth_param.depth) > 0, f"ETH depth should be positive, got: {eth_param.depth}"
+        assert (
+            float(eth_param.velocity_multiplier) > 0
+        ), f"ETH velocity multiplier should be positive, got: {eth_param.velocity_multiplier}"
+
     except Exception as e:
         logger.error(f"Error in test_liquidity_parameters: {e}")
         raise
