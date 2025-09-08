@@ -1,9 +1,10 @@
-"""Price-related WebSocket resources."""
+"""Price-related WebSocket resources for v2 API."""
 
 from typing import TYPE_CHECKING
 
 from sdk.reya_websocket.resources.common import (
     SubscribableParameterizedResource,
+    SubscribableResource,
 )
 
 if TYPE_CHECKING:
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class PricesResource:
-    """Container for all price-related WebSocket resources."""
+    """Container for all price-related WebSocket resources for v2 API."""
 
     def __init__(self, socket: "ReyaSocket"):
         """Initialize the prices resource container.
@@ -20,59 +21,95 @@ class PricesResource:
             socket: The WebSocket connection to use for this resource.
         """
         self.socket = socket
-        self._asset_pair_price = AssetPairPriceResource(socket)
+        self._all_prices = AllPricesResource(socket)
+        self._price = PriceResource(socket)
 
-    def asset_pair_price(self, asset_pair_id: str) -> "AssetPairPriceSubscription":
-        """Get price data for a specific asset pair.
+    @property
+    def all_prices(self) -> "AllPricesResource":
+        """Access the all prices resource."""
+        return self._all_prices
+
+    def price(self, symbol: str) -> "PriceSubscription":
+        """Get price data for a specific symbol.
 
         Args:
-            asset_pair_id: The ID of the asset pair (e.g., "BTCUSDMARK", "ETHUSDMARK").
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
 
         Returns:
-            A subscription object for the specified asset pair's price data.
+            A subscription object for the specified symbol's price data.
         """
-        return self._asset_pair_price.for_asset_pair(asset_pair_id)
+        return self._price.for_symbol(symbol)
 
 
-class AssetPairPriceResource(SubscribableParameterizedResource):
-    """Resource for accessing asset pair price data."""
+class AllPricesResource(SubscribableResource):
+    """Resource for accessing all prices data."""
 
     def __init__(self, socket: "ReyaSocket"):
-        """Initialize the asset pair price resource.
+        """Initialize the all prices resource.
 
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/api/trading/prices/{asset_pair_id}")
+        super().__init__(socket)
+        self.path = "/v2/prices"
 
-    def for_asset_pair(self, asset_pair_id: str) -> "AssetPairPriceSubscription":
-        """Create a subscription for a specific asset pair's price data.
+    def subscribe(self, batched: bool = False, **kwargs) -> None:
+        """Subscribe to all prices data.
 
         Args:
-            asset_pair_id: The ID of the asset pair (e.g., "BTCUSDMARK", "ETHUSDMARK").
+            batched: Whether to receive updates in batches.
+            **kwargs: Additional keyword arguments (unused).
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self, **kwargs) -> None:
+        """Unsubscribe from all prices data.
+
+        Args:
+            **kwargs: Additional keyword arguments (unused).
+        """
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class PriceResource(SubscribableParameterizedResource):
+    """Resource for accessing price data for specific symbols."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        """Initialize the price resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket, "/v2/prices/{symbol}")
+
+    def for_symbol(self, symbol: str) -> "PriceSubscription":
+        """Create a subscription for a specific symbol's price data.
+
+        Args:
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
 
         Returns:
-            A subscription object for the specified asset pair's price data.
+            A subscription object for the specified symbol's price data.
         """
-        return AssetPairPriceSubscription(self.socket, asset_pair_id)
+        return PriceSubscription(self.socket, symbol)
 
 
-class AssetPairPriceSubscription:
-    """Manages a subscription to price data for a specific asset pair."""
+class PriceSubscription:
+    """Manages a subscription to price data for a specific symbol."""
 
-    def __init__(self, socket: "ReyaSocket", asset_pair_id: str):
-        """Initialize an asset pair price subscription.
+    def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a price subscription.
 
         Args:
             socket: The WebSocket connection to use for this subscription.
-            asset_pair_id: The ID of the asset pair (e.g., "BTCUSDMARK", "ETHUSDMARK").
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
         """
         self.socket = socket
-        self.asset_pair_id = asset_pair_id
-        self.path = f"/api/trading/prices/{asset_pair_id}"
+        self.symbol = symbol
+        self.path = f"/v2/prices/{symbol}"
 
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to asset pair price data.
+        """Subscribe to price data.
 
         Args:
             batched: Whether to receive updates in batches.
@@ -80,5 +117,5 @@ class AssetPairPriceSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self) -> None:
-        """Unsubscribe from asset pair price data."""
+        """Unsubscribe from price data."""
         self.socket.send_unsubscribe(channel=self.path)
