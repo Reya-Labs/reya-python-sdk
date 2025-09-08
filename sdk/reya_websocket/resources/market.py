@@ -1,4 +1,4 @@
-"""Market-related WebSocket resources."""
+"""Market-related WebSocket resources for v2 API."""
 
 from typing import TYPE_CHECKING
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class MarketResource:
-    """Container for all market-related WebSocket resources."""
+    """Container for all market-related WebSocket resources for v2 API."""
 
     def __init__(self, socket: "ReyaSocket"):
         """Initialize the market resource container.
@@ -21,52 +21,52 @@ class MarketResource:
             socket: The WebSocket connection to use for this resource.
         """
         self.socket = socket
-        self._all_markets = AllMarketsResource(socket)
-        self._market_data = MarketDataResource(socket)
-        self._market_trades = MarketTradesResource(socket)
+        self._all_markets_summary = AllMarketsSummaryResource(socket)
+        self._market_summary = MarketSummaryResource(socket)
+        self._market_perp_executions = MarketPerpExecutionsResource(socket)
 
     @property
-    def all_markets(self) -> "AllMarketsResource":
-        """Access the all markets data resource."""
-        return self._all_markets
+    def all_markets_summary(self) -> "AllMarketsSummaryResource":
+        """Access the all markets summary resource."""
+        return self._all_markets_summary
 
-    def market_data(self, market_id: str) -> "MarketDataSubscription":
-        """Get market data for a specific market.
-
-        Args:
-            market_id: The ID of the market.
-
-        Returns:
-            A subscription object for the specified market data.
-        """
-        return self._market_data.for_market(market_id)
-
-    def market_trades(self, market_id: str) -> "MarketTradesSubscription":
-        """Get orders for a specific market.
+    def summary(self, symbol: str) -> "MarketSummarySubscription":
+        """Get market summary for a specific symbol.
 
         Args:
-            market_id: The ID of the market.
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
 
         Returns:
-            A subscription object for the specified market trades.
+            A subscription object for the specified market summary.
         """
-        return self._market_trades.for_market(market_id)
+        return self._market_summary.for_symbol(symbol)
+
+    def perp_executions(self, symbol: str) -> "MarketPerpExecutionsSubscription":
+        """Get perpetual executions for a specific symbol.
+
+        Args:
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
+
+        Returns:
+            A subscription object for the specified market perpetual executions.
+        """
+        return self._market_perp_executions.for_symbol(symbol)
 
 
-class AllMarketsResource(SubscribableResource):
-    """Resource for accessing all markets data."""
+class AllMarketsSummaryResource(SubscribableResource):
+    """Resource for accessing all markets summary data."""
 
     def __init__(self, socket: "ReyaSocket"):
-        """Initialize the all markets data resource.
+        """Initialize the all markets summary resource.
 
         Args:
             socket: The WebSocket connection to use for this resource.
         """
         super().__init__(socket)
-        self.path = "/api/trading/markets/data"
+        self.path = "/v2/markets/summary"
 
     def subscribe(self, batched: bool = False, **kwargs) -> None:
-        """Subscribe to all markets data.
+        """Subscribe to all markets summary data.
 
         Args:
             batched: Whether to receive updates in batches.
@@ -75,7 +75,7 @@ class AllMarketsResource(SubscribableResource):
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self, **kwargs) -> None:
-        """Unsubscribe from all markets data.
+        """Unsubscribe from all markets summary data.
 
         Args:
             **kwargs: Additional keyword arguments (unused).
@@ -83,68 +83,68 @@ class AllMarketsResource(SubscribableResource):
         self.socket.send_unsubscribe(channel=self.path)
 
 
-class MarketDataResource(SubscribableParameterizedResource):
-    """Resource for accessing market data."""
+class MarketSummaryResource(SubscribableParameterizedResource):
+    """Resource for accessing market summary data."""
 
     def __init__(self, socket: "ReyaSocket"):
-        """Initialize the market data resource.
+        """Initialize the market summary resource.
 
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/api/trading/market/{market_id}/data")
+        super().__init__(socket, "/v2/market/{symbol}/summary")
 
-    def for_market(self, market_id: str) -> "MarketDataSubscription":
-        """Create a subscription for a specific market's data.
+    def for_symbol(self, symbol: str) -> "MarketSummarySubscription":
+        """Create a subscription for a specific market's summary.
 
         Args:
-            market_id: The ID of the market.
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
 
         Returns:
-            A subscription object for the specified market data.
+            A subscription object for the specified market summary.
         """
-        return MarketDataSubscription(self.socket, market_id)
+        return MarketSummarySubscription(self.socket, symbol)
 
 
-class MarketTradesResource(SubscribableParameterizedResource):
-    """Resource for accessing market trades."""
+class MarketPerpExecutionsResource(SubscribableParameterizedResource):
+    """Resource for accessing market perpetual executions."""
 
     def __init__(self, socket: "ReyaSocket"):
-        """Initialize the market trades resource.
+        """Initialize the market perpetual executions resource.
 
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/api/trading/market/{market_id}/trades")
+        super().__init__(socket, "/v2/market/{symbol}/perpExecutions")
 
-    def for_market(self, market_id: str) -> "MarketTradesSubscription":
-        """Create a subscription for a specific market's orders.
+    def for_symbol(self, symbol: str) -> "MarketPerpExecutionsSubscription":
+        """Create a subscription for a specific market's perpetual executions.
 
         Args:
-            market_id: The ID of the market.
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
 
         Returns:
-            A subscription object for the specified market trades.
+            A subscription object for the specified market perpetual executions.
         """
-        return MarketTradesSubscription(self.socket, market_id)
+        return MarketPerpExecutionsSubscription(self.socket, symbol)
 
 
-class MarketDataSubscription:
-    """Manages a subscription to market data for a specific market."""
+class MarketSummarySubscription:
+    """Manages a subscription to market summary for a specific symbol."""
 
-    def __init__(self, socket: "ReyaSocket", market_id: str):
-        """Initialize a market data subscription.
+    def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a market summary subscription.
 
         Args:
             socket: The WebSocket connection to use for this subscription.
-            market_id: The ID of the market.
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
         """
         self.socket = socket
-        self.market_id = market_id
-        self.path = f"/api/trading/market/{market_id}/data"
+        self.symbol = symbol
+        self.path = f"/v2/market/{symbol}/summary"
 
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to market data.
+        """Subscribe to market summary.
 
         Args:
             batched: Whether to receive updates in batches.
@@ -152,26 +152,26 @@ class MarketDataSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self) -> None:
-        """Unsubscribe from market data."""
+        """Unsubscribe from market summary."""
         self.socket.send_unsubscribe(channel=self.path)
 
 
-class MarketTradesSubscription:
-    """Manages a subscription to market trades for a specific market."""
+class MarketPerpExecutionsSubscription:
+    """Manages a subscription to market perpetual executions for a specific symbol."""
 
-    def __init__(self, socket: "ReyaSocket", market_id: str):
-        """Initialize a market trades subscription.
+    def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a market perpetual executions subscription.
 
         Args:
             socket: The WebSocket connection to use for this subscription.
-            market_id: The ID of the market.
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
         """
         self.socket = socket
-        self.market_id = market_id
-        self.path = f"/api/trading/market/{market_id}/trades"
+        self.symbol = symbol
+        self.path = f"/v2/market/{symbol}/perpExecutions"
 
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to market trades.
+        """Subscribe to market perpetual executions.
 
         Args:
             batched: Whether to receive updates in batches.
@@ -179,5 +179,5 @@ class MarketTradesSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self) -> None:
-        """Unsubscribe from market trades."""
+        """Unsubscribe from market perpetual executions."""
         self.socket.send_unsubscribe(channel=self.path)
