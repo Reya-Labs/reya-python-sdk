@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SPEC_SRC="$REPO_ROOT/specs/asyncapi-trading-v2.yaml"
 TRADING_JSON_SRC="$REPO_ROOT/specs/trading-schemas.json"
-OUT_DIR="$REPO_ROOT/async_api"
+OUT_DIR="$REPO_ROOT/sdk/async_api"
 
 ASYNCAPI_CLI="npx -y @asyncapi/cli"
 MODELINA_CLI="npx -y @asyncapi/modelina-cli"
@@ -93,7 +93,12 @@ touch "$OUT_DIR/__init__.py"
 # 5) Sanitize Modelina Python output (fix default=''value'')
 #    Only touch Field(... default=...) occurrences; keep triple-quoted descriptions intact.
 echo "🧼 Sanitizing generated Python: fixing default=''value'' → default='value'"
-mapfile -t PY_FILES < <(find "$OUT_DIR" -type f -name "*.py")
+# Portable way to collect Python files into array (works on both macOS and Linux)
+PY_FILES=()
+while IFS= read -r -d '' file; do
+  PY_FILES+=("$file")
+done < <(find "$OUT_DIR" -type f -name "*.py" -print0)
+
 if ((${#PY_FILES[@]})); then
   # Regex (extended):
   #   - Capture prefix up to and including "default =" with flexible spacing:
