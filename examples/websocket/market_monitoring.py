@@ -17,7 +17,6 @@ import os
 import time
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
 # Import WebSocket message types for proper type conversion
 from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
@@ -50,88 +49,71 @@ def on_open(ws):
 
 def handle_markets_summary_data(message: dict[str, Any]) -> None:
     """Handle /v2/markets/summary channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = MarketsSummaryUpdatePayload.model_validate(message)
 
-        logger.info("📊 All Markets Summary Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Markets Count: {len(payload.data)}")
+    payload = MarketsSummaryUpdatePayload.model_validate(message)
 
-        # Showcase individual market data structure
-        for i, market in enumerate(payload.data[:5]):  # Show first 5 markets
-            logger.info(f"    Market {i + 1}: {market.symbol}")
-            logger.info(f"      ├─ Volume 24h: {market.volume24h}")
-            logger.info(f"      ├─ Funding Rate: {market.funding_rate}")
-            logger.info(f"      ├─ Total OI: {market.oi_qty}")
-            logger.info(f"      └─ Price Change 24h: {market.px_change24h or 'N/A'}")
+    logger.info("📊 All Markets Summary Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Markets Count: {len(payload.data)}")
 
-        if len(payload.data) > 3:
-            logger.info(f"    ... and {len(payload.data) - 3} more markets")
+    # Showcase individual market data structure
+    for i, market in enumerate(payload.data[:5]):  # Show first 5 markets
+        logger.info(f"    Market {i + 1}: {market.symbol}")
+        logger.info(f"      ├─ Volume 24h: {market.volume24h}")
+        logger.info(f"      ├─ Funding Rate: {market.funding_rate}")
+        logger.info(f"      ├─ Total OI: {market.oi_qty}")
+        logger.info(f"      └─ Price Change 24h: {market.px_change24h or 'N/A'}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse markets summary data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling markets summary: {e}")
+    if len(payload.data) > 3:
+        logger.info(f"    ... and {len(payload.data) - 3} more markets")
 
 
 def handle_market_summary_data(message: dict[str, Any]) -> None:
     """Handle /v2/market/:symbol/summary channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = MarketSummaryUpdatePayload.model_validate(message)
-        market = payload.data
 
-        logger.info(f"📈 Market Summary Update for {market.symbol}:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  ├─ Updated At: {market.updated_at}")
-        logger.info(f"  ├─ Volume 24h: {market.volume24h}")
-        logger.info(f"  ├─ Price Change 24h: {market.px_change24h or 'N/A'}")
-        logger.info(f"  ├─ Funding Rate: {market.funding_rate}")
-        logger.info(f"  ├─ Long OI: {market.long_oi_qty}")
-        logger.info(f"  ├─ Short OI: {market.short_oi_qty}")
-        logger.info(f"  ├─ Total OI: {market.oi_qty}")
-        logger.info(f"  ├─ Oracle Price: {market.throttled_oracle_price or 'N/A'}")
-        logger.info(f"  └─ Pool Price: {market.throttled_pool_price or 'N/A'}")
+    # Convert raw message to typed payload
+    payload = MarketSummaryUpdatePayload.model_validate(message)
+    market = payload.data
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse market summary data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling market summary: {e}")
+    logger.info(f"📈 Market Summary Update for {market.symbol}:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  ├─ Updated At: {market.updated_at}")
+    logger.info(f"  ├─ Volume 24h: {market.volume24h}")
+    logger.info(f"  ├─ Price Change 24h: {market.px_change24h or 'N/A'}")
+    logger.info(f"  ├─ Funding Rate: {market.funding_rate}")
+    logger.info(f"  ├─ Long OI: {market.long_oi_qty}")
+    logger.info(f"  ├─ Short OI: {market.short_oi_qty}")
+    logger.info(f"  ├─ Total OI: {market.oi_qty}")
+    logger.info(f"  ├─ Oracle Price: {market.throttled_oracle_price or 'N/A'}")
+    logger.info(f"  └─ Pool Price: {market.throttled_pool_price or 'N/A'}")
 
 
 def handle_market_perp_executions_data(message: dict[str, Any]) -> None:
     """Handle /v2/market/:symbol/perpExecutions channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = MarketPerpExecutionUpdatePayload.model_validate(message)
 
-        logger.info("⚡ Market Perpetual Executions Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Executions Count: {len(payload.data)}")
+    payload = MarketPerpExecutionUpdatePayload.model_validate(message)
 
-        # Showcase individual execution data structure
-        for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
-            logger.info(f"    Execution {i + 1}: {execution.symbol}")
-            logger.info(f"      ├─ Account ID: {execution.account_id}")
-            logger.info(f"      ├─ Side: {execution.side.value}")
-            logger.info(f"      ├─ Quantity: {execution.qty}")
-            logger.info(f"      ├─ Price: {execution.price}")
-            logger.info(f"      ├─ Fee: {execution.fee}")
-            logger.info(f"      ├─ Type: {execution.type.value}")
-            logger.info(f"      ├─ Timestamp: {execution.timestamp}")
-            logger.info(f"      └─ Sequence: {execution.sequence_number}")
+    logger.info("⚡ Market Perpetual Executions Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Executions Count: {len(payload.data)}")
 
-        if len(payload.data) > 5:
-            logger.info(f"    ... and {len(payload.data) - 5} more executions")
+    # Showcase individual execution data structure
+    for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
+        logger.info(f"    Execution {i + 1}: {execution.symbol}")
+        logger.info(f"      ├─ Account ID: {execution.account_id}")
+        logger.info(f"      ├─ Side: {execution.side.value}")
+        logger.info(f"      ├─ Quantity: {execution.qty}")
+        logger.info(f"      ├─ Price: {execution.price}")
+        logger.info(f"      ├─ Fee: {execution.fee}")
+        logger.info(f"      ├─ Type: {execution.type.value}")
+        logger.info(f"      ├─ Timestamp: {execution.timestamp}")
+        logger.info(f"      └─ Sequence: {execution.sequence_number}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse market executions data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling market executions: {e}")
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more executions")
 
 
 def on_message(ws, message):

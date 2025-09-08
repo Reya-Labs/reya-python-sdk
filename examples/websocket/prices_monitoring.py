@@ -50,49 +50,38 @@ def on_open(ws):
 
 def handle_all_prices_data(message: dict[str, Any]) -> None:
     """Handle /v2/prices channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = PricesUpdatePayload.model_validate(message)
 
-        logger.info("💰 All Prices Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Prices Count: {len(payload.data)}")
+    payload = PricesUpdatePayload.model_validate(message)
 
-        # Showcase individual price data structure
-        for i, price in enumerate(payload.data[:5]):  # Show first 5 prices
-            logger.info(f"    Price {i + 1}: {price.symbol}")
-            logger.info(f"      ├─ Oracle Price: {price.oracle_price or 'N/A'}")
-            logger.info(f"      ├─ Pool Price: {price.pool_price or 'N/A'}")
-            logger.info(f"      └─ Updated At: {price.updated_at}")
+    logger.info("💰 All Prices Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Prices Count: {len(payload.data)}")
 
-        if len(payload.data) > 5:
-            logger.info(f"    ... and {len(payload.data) - 5} more prices")
+    # Showcase individual price data structure
+    for i, price in enumerate(payload.data[:5]):  # Show first 5 prices
+        logger.info(f"    Price {i + 1}: {price.symbol}")
+        logger.info(f"      ├─ Oracle Price: {price.oracle_price or 'N/A'}")
+        logger.info(f"      ├─ Pool Price: {price.pool_price or 'N/A'}")
+        logger.info(f"      └─ Updated At: {price.updated_at}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse all prices data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling all prices: {e}")
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more prices")
 
 
 def handle_single_price_data(message: dict[str, Any]) -> None:
     """Handle /v2/prices/:symbol channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = PriceUpdatePayload.model_validate(message)
-        price = payload.data
 
-        logger.info(f"💵 Price Update for {price.symbol}:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  ├─ Oracle Price: {price.oracle_price or 'N/A'}")
-        logger.info(f"  ├─ Pool Price: {price.pool_price or 'N/A'}")
-        logger.info(f"  └─ Updated At: {price.updated_at}")
+    # Convert raw message to typed payload
+    payload = PriceUpdatePayload.model_validate(message)
+    price = payload.data
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse single price data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling single price: {e}")
+    logger.info(f"💵 Price Update for {price.symbol}:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  ├─ Oracle Price: {price.oracle_price or 'N/A'}")
+    logger.info(f"  ├─ Pool Price: {price.pool_price or 'N/A'}")
+    logger.info(f"  └─ Updated At: {price.updated_at}")
 
 
 def on_message(ws, message):
