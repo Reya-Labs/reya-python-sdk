@@ -46,7 +46,6 @@ class WalletResource:
         """
         return self._perp_executions.for_wallet(address)
 
-
     def open_orders(self, address: str) -> "WalletOpenOrdersSubscription":
         """Get open orders for a specific wallet address.
 
@@ -105,8 +104,6 @@ class WalletPerpExecutionsResource(SubscribableParameterizedResource):
         return WalletPerpExecutionsSubscription(self.socket, address)
 
 
-
-
 class WalletPositionsSubscription:
     """Manages a subscription to positions for a specific wallet."""
 
@@ -159,8 +156,6 @@ class WalletPerpExecutionsSubscription:
     def unsubscribe(self) -> None:
         """Unsubscribe from wallet perpetual executions."""
         self.socket.send_unsubscribe(channel=self.path)
-
-
 
 
 class WalletOpenOrdersResource(SubscribableParameterizedResource):

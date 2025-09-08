@@ -58,7 +58,6 @@ def on_open(ws):
     # ws.wallet.open_orders(wallet_address).subscribe()
 
 
-
 def handle_wallet_positions_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/positions channel data with proper type conversion."""
     try:
@@ -118,8 +117,6 @@ def handle_wallet_orders_data(message: dict[str, Any]) -> None:
         logger.error(f"Failed to parse wallet orders data: {e}")
     except Exception as e:
         logger.error(f"Unexpected error handling wallet orders: {e}")
-
-
 
 
 def handle_wallet_executions_data(message: dict[str, Any]) -> None:
