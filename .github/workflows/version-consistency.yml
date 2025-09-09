@@ -108,12 +108,13 @@ jobs:
       
       - name: Store initial git state
         run: |
+          echo "Storing initial git state..."
           # Store the current state of tracked files
           git ls-files | sort > /tmp/files_before.txt
           git status --porcelain > /tmp/status_before.txt
           
-          # Create checksums for all tracked files
-          git ls-files -z | xargs -0 sha256sum | sort > /tmp/checksums_before.txt
+          # Create checksums for all tracked files (filter out directories)
+          git ls-files -z | xargs -0 -I {} sh -c 'test -f "{}" && sha256sum "{}"' | sort > /tmp/checksums_before.txt
       
       - name: Run API generation script
         run: |
@@ -129,10 +130,11 @@ jobs:
       
       - name: Check for changes after script execution
         run: |
+          echo "Storing state after running scripts..."
           # Store the state after running scripts
           git ls-files | sort > /tmp/files_after.txt
           git status --porcelain > /tmp/status_after.txt
-          git ls-files -z | xargs -0 sha256sum | sort > /tmp/checksums_after.txt
+          git ls-files -z | xargs -0 -I {} sh -c 'test -f "{}" && sha256sum "{}"' | sort > /tmp/checksums_after.txt
           
           echo "Checking for file changes..."
           
