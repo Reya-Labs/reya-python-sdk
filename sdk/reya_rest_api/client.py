@@ -437,11 +437,11 @@ class ReyaTradingClient:
     async def close(self) -> None:
         """
         Close the underlying HTTP client session.
-        
+
         This should be called when the client is no longer needed to properly
         cleanup HTTP connections and avoid resource leaks.
         """
-        if hasattr(self._api_client, 'rest_client') and self._api_client.rest_client:
+        if hasattr(self._api_client, "rest_client") and self._api_client.rest_client:
             await self._api_client.rest_client.close()
 
     async def __aenter__(self):

@@ -292,7 +292,9 @@ async def main():
         print_separator("TESTING COMPLETE")
         logger.info("🎉 All order type tests completed!")
         logger.info("💡 Review the logs above to see results for each order type.")
-        logger.info("📝 Note: Some orders may fail due to market conditions, insufficient balance, or other constraints.")
+        logger.info(
+            "📝 Note: Some orders may fail due to market conditions, insufficient balance, or other constraints."
+        )
 
 
 if __name__ == "__main__":
