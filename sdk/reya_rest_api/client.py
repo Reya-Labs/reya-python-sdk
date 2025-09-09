@@ -10,6 +10,7 @@ import logging
 import time
 from decimal import Decimal
 
+from sdk._version import SDK_VERSION
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.order_entry_api import OrderEntryApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
@@ -31,7 +32,6 @@ from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig, get_config
 from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
-from sdk._version import SDK_VERSION
 
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
