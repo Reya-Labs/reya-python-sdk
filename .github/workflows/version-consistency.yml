@@ -1,0 +1,189 @@
+name: Version Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  version-consistency:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          npm install -g @openapitools/openapi-generator-cli @asyncapi/cli @asyncapi/modelina-cli
+          pip install tomli
+
+      - name: Check specs submodule points to a tag
+        run: |
+          cd specs
+          # Get the current commit hash
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          echo "Current specs commit: $CURRENT_COMMIT"
+
+          # Check if this commit is tagged
+          TAGS=$(git tag --points-at $CURRENT_COMMIT)
+          if [ -z "$TAGS" ]; then
+            echo "❌ ERROR: specs submodule is not pointing to a tagged commit"
+            echo "Current commit $CURRENT_COMMIT has no tags"
+            exit 1
+          fi
+
+          # Get the first tag (in case there are multiple)
+          SPECS_TAG=$(echo "$TAGS" | head -n1)
+          echo "Specs is pointing to tag: $SPECS_TAG"
+          echo "SPECS_TAG=$SPECS_TAG" >> $GITHUB_ENV
+
+      - name: Extract version components
+        run: |
+          # Extract SDK_VERSION from _version.py
+          SDK_VERSION=$(python -c "
+          import sys
+          sys.path.insert(0, 'sdk')
+          from _version import SDK_VERSION
+          print(SDK_VERSION)
+          ")
+          echo "SDK_VERSION: $SDK_VERSION"
+          echo "SDK_VERSION=$SDK_VERSION" >> $GITHUB_ENV
+
+          # Extract version from pyproject.toml
+          PYPROJECT_VERSION=$(python -c "
+          import tomli
+          with open('pyproject.toml', 'rb') as f:
+              data = tomli.load(f)
+          print(data['project']['version'])
+          ")
+          echo "PYPROJECT_VERSION: $PYPROJECT_VERSION"
+          echo "PYPROJECT_VERSION=$PYPROJECT_VERSION" >> $GITHUB_ENV
+
+          # Extract first 3 components from specs tag (remove 'v' prefix if present)
+          SPECS_TAG_CLEAN=$(echo "$SPECS_TAG" | sed 's/^v//')
+          SPECS_VERSION_PREFIX=$(echo "$SPECS_TAG_CLEAN" | cut -d. -f1-3)
+          echo "SPECS_VERSION_PREFIX: $SPECS_VERSION_PREFIX"
+          echo "SPECS_VERSION_PREFIX=$SPECS_VERSION_PREFIX" >> $GITHUB_ENV
+
+          # Extract first 3 components from SDK_VERSION
+          SDK_VERSION_PREFIX=$(echo "$SDK_VERSION" | cut -d. -f1-3)
+          echo "SDK_VERSION_PREFIX: $SDK_VERSION_PREFIX"
+          echo "SDK_VERSION_PREFIX=$SDK_VERSION_PREFIX" >> $GITHUB_ENV
+
+      - name: Check version consistency
+        run: |
+          echo "Checking version consistency..."
+          echo "Specs tag: $SPECS_TAG"
+          echo "Specs version prefix: $SPECS_VERSION_PREFIX"
+          echo "SDK version: $SDK_VERSION"
+          echo "SDK version prefix: $SDK_VERSION_PREFIX"
+          echo "Pyproject version: $PYPROJECT_VERSION"
+
+          # Check 1: SDK_VERSION and pyproject.toml versions must match exactly
+          if [ "$SDK_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "❌ ERROR: SDK_VERSION ($SDK_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+            exit 1
+          fi
+          echo "✅ SDK_VERSION and pyproject.toml versions match"
+
+          # Check 2: First 3 digits of SDK version must match specs tag
+          if [ "$SDK_VERSION_PREFIX" != "$SPECS_VERSION_PREFIX" ]; then
+            echo "❌ ERROR: First 3 digits of SDK_VERSION ($SDK_VERSION_PREFIX) do not match specs tag ($SPECS_VERSION_PREFIX)"
+            echo "SDK version $SDK_VERSION should start with $SPECS_VERSION_PREFIX"
+            exit 1
+          fi
+          echo "✅ SDK version prefix matches specs tag"
+
+      - name: Store initial git state
+        run: |
+          echo "Storing initial git state..."
+          # Store the current state of tracked files
+          git ls-files | sort > /tmp/files_before.txt
+          git status --porcelain > /tmp/status_before.txt
+
+          # Create checksums for all tracked files (filter out directories)
+          git ls-files -z | xargs -0 -I {} sh -c 'test -f "{}" && sha256sum "{}"' | sort > /tmp/checksums_before.txt
+
+      - name: Run API generation script
+        run: |
+          echo "Running API generation script..."
+          chmod +x scripts/generate-api.sh
+          scripts/generate-api.sh
+
+      - name: Run WS generation script
+        run: |
+          echo "Running WebSocket generation script..."
+          chmod +x scripts/generate-ws.sh
+          scripts/generate-ws.sh
+
+      - name: Check for changes after script execution
+        run: |
+          echo "Storing state after running scripts..."
+          # Store the state after running scripts
+          git ls-files | sort > /tmp/files_after.txt
+          git status --porcelain > /tmp/status_after.txt
+          git ls-files -z | xargs -0 -I {} sh -c 'test -f "{}" && sha256sum "{}"' | sort > /tmp/checksums_after.txt
+
+          echo "Checking for file changes..."
+
+          # Check if any tracked files were modified
+          if ! cmp -s /tmp/status_before.txt /tmp/status_after.txt; then
+            echo "❌ ERROR: Git status changed after running generation scripts"
+            echo "Status before:"
+            cat /tmp/status_before.txt
+            echo "Status after:"
+            cat /tmp/status_after.txt
+            echo ""
+            echo "Detailed changes:"
+            git status
+            git diff --name-only
+            exit 1
+          fi
+
+          # Check if file list changed (new files created)
+          if ! cmp -s /tmp/files_before.txt /tmp/files_after.txt; then
+            echo "❌ ERROR: File list changed after running generation scripts"
+            echo "New or removed files detected:"
+            diff /tmp/files_before.txt /tmp/files_after.txt || true
+            exit 1
+          fi
+
+          # Check if any file contents changed
+          if ! cmp -s /tmp/checksums_before.txt /tmp/checksums_after.txt; then
+            echo "❌ ERROR: File contents changed after running generation scripts"
+            echo "Files with different checksums:"
+            diff /tmp/checksums_before.txt /tmp/checksums_after.txt || true
+            echo ""
+            echo "Git diff:"
+            git diff
+            exit 1
+          fi
+
+          # Check for any untracked files that might have been created
+          UNTRACKED_FILES=$(git ls-files --others --exclude-standard)
+          if [ -n "$UNTRACKED_FILES" ]; then
+            echo "❌ ERROR: Generation scripts created new untracked files:"
+            echo "$UNTRACKED_FILES"
+            exit 1
+          fi
+
+          echo "✅ No changes detected after running generation scripts"
+
+      - name: Summary
+        run: |
+          echo "🎉 All version consistency checks passed!"
+          echo "✅ Specs submodule points to tag: $SPECS_TAG"
+          echo "✅ SDK_VERSION and pyproject.toml versions match: $SDK_VERSION"
+          echo "✅ First 3 digits match specs version: $SPECS_VERSION_PREFIX"
+          echo "✅ Generation scripts produced no changes"
