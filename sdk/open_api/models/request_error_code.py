@@ -18,7 +18,7 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class ErrorCode(str, Enum):
+class RequestErrorCode(str, Enum):
     """
     Standardized error codes for API responses
     """
@@ -32,11 +32,10 @@ class ErrorCode(str, Enum):
     INPUT_VALIDATION_ERROR = 'INPUT_VALIDATION_ERROR'
     CREATE_ORDER_OTHER_ERROR = 'CREATE_ORDER_OTHER_ERROR'
     CANCEL_ORDER_OTHER_ERROR = 'CANCEL_ORDER_OTHER_ERROR'
-    INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of ErrorCode from a JSON string"""
+        """Create an instance of RequestErrorCode from a JSON string"""
         return cls(json.loads(json_str))
 
 

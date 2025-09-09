@@ -17,15 +17,11 @@ import os
 import time
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
 from sdk.async_api.price_update_payload import PriceUpdatePayload
-
-# Import WebSocket message types for proper type conversion
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
-
-# Import the resource-oriented WebSocket client
 from sdk.reya_websocket import ReyaSocket
+from sdk.reya_websocket.config import WebSocketConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -109,11 +105,8 @@ def on_message(ws, message):
 
     elif message_type == "ping":
         logger.info("🏓 Received ping from server, sending pong response")
-        try:
-            ws.send(json.dumps({"type": "pong"}))
-            logger.debug("✅ Pong sent successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to send pong: {e}")
+        ws.send(json.dumps({"type": "pong"}))
+        logger.debug("✅ Pong sent successfully")
 
     elif message_type == "pong":
         logger.info("🏓 Connection confirmed via pong response")
@@ -142,11 +135,8 @@ async def periodic_task(ws):
 
         # Send periodic ping to test connection (every 10 iterations = ~20 seconds)
         if counter % 10 == 0:
-            try:
-                logger.info("🏓 Sending manual ping to test connection")
-                ws.send(json.dumps({"type": "ping"}))
-            except Exception as e:
-                logger.error(f"❌ Failed to send manual ping: {e}")
+            logger.info("🏓 Sending manual ping to test connection")
+            ws.send(json.dumps({"type": "ping"}))
 
         await asyncio.sleep(2)  # Run every 2 seconds
 
@@ -159,28 +149,22 @@ async def main():
     # Get WebSocket URL from environment
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
 
-    # Create enhanced error and close handlers for better connection monitoring
-    def on_error(ws, error):
-        """Enhanced error handler with detailed logging."""
+    def on_error(_ws, error):
         logger.error(f"❌ WebSocket error: {error}")
 
-    def on_close(ws, close_status_code, close_reason):
-        """Enhanced close handler with detailed logging."""
+    def on_close(_ws, close_status_code, close_reason):
         logger.info(f"🔌 WebSocket closed: {close_status_code} - {close_reason}")
-        if close_status_code != 1000:  # 1000 is normal closure
+        if close_status_code != 1000:
             logger.warning(f"⚠️ Abnormal closure detected. Status: {close_status_code}")
-
-    # Create the WebSocket with enhanced configuration
-    from sdk.reya_websocket.config import WebSocketConfig
 
     # Create custom config with more aggressive ping settings
     config = WebSocketConfig(
         url=ws_url,
-        ping_interval=20,  # Ping every 20 seconds instead of 30
-        ping_timeout=15,  # Wait 15 seconds for pong instead of 10
-        connection_timeout=60,  # Longer initial connection timeout
-        reconnect_attempts=5,  # More reconnection attempts
-        reconnect_delay=3,  # Shorter delay between reconnects
+        ping_interval=20,
+        ping_timeout=15,
+        connection_timeout=60,
+        reconnect_attempts=5,
+        reconnect_delay=3,
     )
 
     ws = ReyaSocket(

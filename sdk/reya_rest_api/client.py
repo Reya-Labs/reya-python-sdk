@@ -115,6 +115,7 @@ class ReyaTradingClient:
             self.logger.warning("ApiClient does not have configuration attribute")
 
         self._resources = ResourceManager(api_client)
+        self._api_client = api_client
 
     @property
     def orders(self) -> OrderEntryApi:
@@ -151,9 +152,9 @@ class ReyaTradingClient:
         # Otherwise derive it from private key if available
         return self._signature_generator.public_address if self._signature_generator else None
 
-    def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
+    async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
-        Create a limit (IOC/GTC) order synchronously.
+        Create a limit (IOC/GTC) order asynchronously.
 
         Args:
             params: Limit order parameters
@@ -182,7 +183,9 @@ class ReyaTradingClient:
         )
 
         inputs = self._signature_generator.encode_inputs_limit_order(
-            is_buy=params.is_buy, limit_price=Decimal(params.price), qty=Decimal(params.qty)
+            is_buy=params.is_buy,
+            limit_px=Decimal(params.limit_px),
+            qty=Decimal(params.qty),
         )
 
         if params.time_in_force != TimeInForce.IOC:
@@ -224,7 +227,7 @@ class ReyaTradingClient:
             symbol=params.symbol,
             exchangeId=self.config.dex_id,
             isBuy=params.is_buy,
-            limitPx=params.price,
+            limitPx=params.limit_px,
             qty=params.qty,
             orderType=OrderType.LIMIT,
             timeInForce=params.time_in_force,
@@ -235,13 +238,13 @@ class ReyaTradingClient:
             signerWallet=self.config.wallet_address,
         )
 
-        response = self.orders.create_order(create_order_request=order_request)
+        response = await self.orders.create_order(create_order_request=order_request)
 
         return response
 
-    def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
+    async def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
         """
-        Create a stop loss order synchronously.
+        Create a stop loss order asynchronously.
 
         Args:
             params: Trigger order parameters
@@ -256,7 +259,7 @@ class ReyaTradingClient:
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
 
-        limit_price = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if params.is_buy else Decimal(0)
+        limit_px = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if params.is_buy else Decimal(0)
 
         order_type_int = (
             OrdersGatewayOrderType.TAKE_PROFIT
@@ -269,7 +272,9 @@ class ReyaTradingClient:
         )
 
         inputs = self._signature_generator.encode_inputs_trigger_order(
-            is_buy=params.is_buy, trigger_price=Decimal(str(params.trigger_price)), limit_price=limit_price
+            is_buy=params.is_buy,
+            trigger_px=Decimal(str(params.trigger_px)),
+            limit_px=limit_px,
         )
 
         signature = self._signature_generator.sign_raw_order(
@@ -293,8 +298,8 @@ class ReyaTradingClient:
             symbol=params.symbol,
             exchangeId=self.config.dex_id,
             isBuy=params.is_buy,
-            triggerPx=str(params.trigger_price),
-            limitPx=str(limit_price),
+            triggerPx=str(params.trigger_px),
+            limitPx=str(limit_px),
             orderType=params.trigger_type,
             expiresAfter=None,
             signature=signature,
@@ -302,13 +307,13 @@ class ReyaTradingClient:
             signerWallet=self.config.wallet_address,
         )
 
-        response = self.orders.create_order(create_order_request=order_request)
+        response = await self.orders.create_order(create_order_request=order_request)
 
         return response
 
-    def cancel_order(self, order_id: str) -> CancelOrderResponse:
+    async def cancel_order(self, order_id: str) -> CancelOrderResponse:
         """
-        Cancel an existing order synchronously.
+        Cancel an existing order asynchronously.
 
         Args:
             order_id: ID of the order to cancel
@@ -327,12 +332,12 @@ class ReyaTradingClient:
 
         cancel_order_request = CancelOrderRequest(orderId=order_id, signature=signature)
 
-        response = self.orders.cancel_order(cancel_order_request)
+        response = await self.orders.cancel_order(cancel_order_request)
         return response
 
-    def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
+    async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         """
-        Get positions for a wallet address synchronously.
+        Get positions for a wallet address asynchronously.
 
         Args:
             wallet_address: Optional wallet address (defaults to current wallet)
@@ -347,11 +352,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
-        return self.wallet.get_wallet_positions(address=wallet)
+        return await self.wallet.get_wallet_positions(address=wallet)
 
-    def get_open_orders(self) -> list[Order]:
+    async def get_open_orders(self) -> list[Order]:
         """
-        Get open orders for the authenticated wallet synchronously.
+        Get open orders for the authenticated wallet asynchronously.
 
         Returns:
             List of open orders
@@ -363,11 +368,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
-        return self.wallet.get_wallet_open_orders(address=wallet)
+        return await self.wallet.get_wallet_open_orders(address=wallet)
 
-    def get_configuration(self) -> WalletConfiguration:
+    async def get_configuration(self) -> WalletConfiguration:
         """
-        Get account configuration synchronously.
+        Get account configuration asynchronously.
 
         Returns:
             Account configuration information
@@ -379,11 +384,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
-        return self.wallet.get_wallet_configuration(address=wallet)
+        return await self.wallet.get_wallet_configuration(address=wallet)
 
-    def get_perp_executions(self) -> PerpExecutionList:
+    async def get_perp_executions(self) -> PerpExecutionList:
         """
-        Get perp executions for the authenticated wallet synchronously.
+        Get perp executions for the authenticated wallet asynchronously.
 
         Returns:
             Dictionary containing trades data and metadata
@@ -395,11 +400,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
-        return self.wallet.get_wallet_perp_executions(address=wallet)
+        return await self.wallet.get_wallet_perp_executions(address=wallet)
 
-    def get_accounts(self) -> list[Account]:
+    async def get_accounts(self) -> list[Account]:
         """
-        Get accounts for the authenticated wallet synchronously.
+        Get accounts for the authenticated wallet asynchronously.
 
         Returns:
             Account information
@@ -411,11 +416,11 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
-        return self.wallet.get_wallet_accounts(address=wallet)
+        return await self.wallet.get_wallet_accounts(address=wallet)
 
-    def get_spot_executions(self) -> SpotExecutionList:
+    async def get_spot_executions(self) -> SpotExecutionList:
         """
-        Get spot executions (i.e. auto exchanges) for the authenticated wallet synchronously.
+        Get spot executions (i.e. auto exchanges) for the authenticated wallet asynchronously.
 
         Returns:
             Spot executions
@@ -427,4 +432,22 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
-        return self.wallet.get_wallet_spot_executions(address=wallet)
+        return await self.wallet.get_wallet_spot_executions(address=wallet)
+
+    async def close(self) -> None:
+        """
+        Close the underlying HTTP client session.
+        
+        This should be called when the client is no longer needed to properly
+        cleanup HTTP connections and avoid resource leaks.
+        """
+        if hasattr(self._api_client, 'rest_client') and self._api_client.rest_client:
+            await self._api_client.rest_client.close()
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - automatically closes the client session."""
+        await self.close()

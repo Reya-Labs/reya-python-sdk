@@ -18,16 +18,14 @@ import os
 import time
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
 from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
-
-# Import WebSocket message types for proper type conversion
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
-
-# Import the new resource-oriented WebSocket client
+from sdk.async_api.wallet_perp_execution_update_payload import (
+    WalletPerpExecutionUpdatePayload,
+)
 from sdk.reya_websocket import ReyaSocket
+from sdk.reya_websocket.config import WebSocketConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -55,7 +53,7 @@ def on_open(ws):
     ws.wallet.perp_executions(wallet_address).subscribe()
 
     # Subscribe to wallet open orders
-    # ws.wallet.open_orders(wallet_address).subscribe()
+    ws.wallet.open_orders(wallet_address).subscribe()
 
 
 def handle_wallet_positions_data(message: dict[str, Any]) -> None:
@@ -162,11 +160,8 @@ def on_message(ws, message):
 
     elif message_type == "ping":
         logger.info("🏓 Received ping from server, sending pong response")
-        try:
-            ws.send(json.dumps({"type": "pong"}))
-            logger.debug("✅ Pong sent successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to send pong: {e}")
+        ws.send(json.dumps({"type": "pong"}))
+        logger.debug("✅ Pong sent successfully")
 
     elif message_type == "pong":
         logger.info("🏓 Connection confirmed via pong response")
@@ -195,11 +190,8 @@ async def periodic_task(ws, wallet_address):
 
         # Send periodic ping to test connection (every 10 iterations = ~20 seconds)
         if counter % 10 == 0:
-            try:
-                logger.info("🏓 Sending manual ping to test connection")
-                ws.send(json.dumps({"type": "ping"}))
-            except Exception as e:
-                logger.error(f"❌ Failed to send manual ping: {e}")
+            logger.info("🏓 Sending manual ping to test connection")
+            ws.send(json.dumps({"type": "ping"}))
 
         await asyncio.sleep(2)  # Run every 2 seconds
 
@@ -220,18 +212,15 @@ async def main():
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
 
     # Create enhanced error and close handlers for better connection monitoring
-    def on_error(ws, error):
+    def on_error(_ws, error):
         """Enhanced error handler with detailed logging."""
         logger.error(f"❌ WebSocket error: {error}")
 
-    def on_close(ws, close_status_code, close_reason):
+    def on_close(_ws, close_status_code, close_reason):
         """Enhanced close handler with detailed logging."""
         logger.info(f"🔌 WebSocket closed: {close_status_code} - {close_reason}")
         if close_status_code != 1000:  # 1000 is normal closure
             logger.warning(f"⚠️ Abnormal closure detected. Status: {close_status_code}")
-
-    # Create the WebSocket with enhanced configuration
-    from sdk.reya_websocket.config import WebSocketConfig
 
     # Create custom config with more aggressive ping settings
     config = WebSocketConfig(

@@ -17,20 +17,25 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
-class Price(BaseModel):
+class ServerError(BaseModel):
     """
-    Price
+    ServerError
     """ # noqa: E501
-    symbol: StrictStr
-    oracle_price: Optional[StrictStr] = Field(default=None, description="Price given by the Stork feeds, used both as the peg price for prices on Reya, as well as Mark Prices. The Stork price feed is usually the perp prices across three major CEXs", alias="oraclePrice")
-    pool_price: Optional[StrictStr] = Field(default=None, description="The price currently quoted by the AMM for zero volume, from which trades are priced (equivalent to mid price in an order book); a trade of any size will be move this price up or down depending on the direction.", alias="poolPrice")
-    updated_at: StrictInt = Field(description="Last update timestamp (milliseconds)", alias="updatedAt")
-    __properties: ClassVar[List[str]] = ["symbol", "oraclePrice", "poolPrice", "updatedAt"]
+    error: StrictStr = Field(description="Standardized error codes for API responses")
+    message: StrictStr = Field(description="Human-readable error message")
+    __properties: ClassVar[List[str]] = ["error", "message"]
+
+    @field_validator('error')
+    def error_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(['INTERNAL_SERVER_ERROR']):
+            raise ValueError("must be one of enum values ('INTERNAL_SERVER_ERROR')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -50,7 +55,7 @@ class Price(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of Price from a JSON string"""
+        """Create an instance of ServerError from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -75,7 +80,7 @@ class Price(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of Price from a dict"""
+        """Create an instance of ServerError from a dict"""
         if obj is None:
             return None
 
@@ -83,10 +88,8 @@ class Price(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "symbol": obj.get("symbol"),
-            "oraclePrice": obj.get("oraclePrice"),
-            "poolPrice": obj.get("poolPrice"),
-            "updatedAt": obj.get("updatedAt")
+            "error": obj.get("error"),
+            "message": obj.get("message")
         })
         return _obj
 

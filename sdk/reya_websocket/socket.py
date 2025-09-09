@@ -10,7 +10,9 @@ import threading
 import websocket
 from pydantic import BaseModel, ValidationError
 
-from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
+from sdk.async_api.market_perp_execution_update_payload import (
+    MarketPerpExecutionUpdatePayload,
+)
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
@@ -21,7 +23,9 @@ from sdk.async_api.pong_message import PongMessage
 from sdk.async_api.position_update_payload import PositionUpdatePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
-from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
+from sdk.async_api.wallet_perp_execution_update_payload import (
+    WalletPerpExecutionUpdatePayload,
+)
 from sdk.reya_websocket.config import WebSocketConfig, get_config
 from sdk.reya_websocket.resources.market import MarketResource
 from sdk.reya_websocket.resources.prices import PricesResource
@@ -31,7 +35,9 @@ from sdk.reya_websocket.resources.wallet import WalletResource
 logger = logging.getLogger("reya.websocket")
 
 
-def as_json(on_message: Optional[Callable[[Any, Any], None]]) -> Callable[[Any, str], None]:
+def as_json(
+    on_message: Optional[Callable[[Any, Any], None]],
+) -> Callable[[Any, str], None]:
     """Wrap a message handler to parse JSON messages.
 
     Args:
@@ -262,7 +268,9 @@ class ReyaSocket(websocket.WebSocketApp):
         if blocking:
             # Run the WebSocket directly (blocking)
             self.run_forever(
-                sslopt=sslopt, ping_interval=self.config.ping_interval, ping_timeout=self.config.ping_timeout
+                sslopt=sslopt,
+                ping_interval=self.config.ping_interval,
+                ping_timeout=self.config.ping_timeout,
             )
         else:
             # Run the WebSocket in a thread (non-blocking)

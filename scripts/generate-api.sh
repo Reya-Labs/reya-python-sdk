@@ -29,7 +29,7 @@ PYTHON_SDK_REPO="$PARENT_DIR/reya-python-sdk"
 if [ -d "$PYTHON_SDK_REPO" ]; then
     echo -e "${GREEN}🐍 Generating Python SDK to dedicated repo...${NC}"
     # Create the target directory structure first
-    mkdir -p "$PYTHON_SDK_REPO/sdk"
+    rm -rf "$PYTHON_SDK_REPO/sdk/open_api"
     
     # Generate the SDK directly into the target directory
     openapi-generator-cli generate \
@@ -37,9 +37,8 @@ if [ -d "$PYTHON_SDK_REPO" ]; then
         -g python \
         -o "$PYTHON_SDK_REPO" \
         --skip-operation-example \
-        --skip-validate-spec \
         --global-property=models,apis,modelDocs=false,modelTests=false,apiDocs=false,apiTests=false,supportingFiles=__init__.py:api_client.py:configuration.py:api_response.py:exceptions.py:rest.py \
-        --additional-properties=packageName=sdk.open_api,projectName=open-api,packageVersion=2.0.0,packageUrl=https://github.com/reya-network/reya-python-sdk
+        --additional-properties=library=asyncio,packageName=sdk.open_api,projectName=open-api,packageVersion=2.0.0,packageUrl=https://github.com/reya-network/reya-python-sdk
 
     
     if [ $? -ne 0 ]; then

@@ -2,9 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from sdk.reya_websocket.resources.common import (
-    SubscribableParameterizedResource,
-)
+from sdk.reya_websocket.resources.common import SubscribableParameterizedResource
 
 if TYPE_CHECKING:
     from sdk.reya_websocket.socket import ReyaSocket

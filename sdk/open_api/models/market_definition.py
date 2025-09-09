@@ -31,10 +31,10 @@ class MarketDefinition(BaseModel):
     min_order_qty: StrictStr = Field(alias="minOrderQty")
     qty_step_size: StrictStr = Field(description="Minimum size increment", alias="qtyStepSize")
     tick_size: StrictStr = Field(description="Minimum price increment", alias="tickSize")
-    liquidation_margin_parameter: StrictStr = Field(description="Liquidation margin requirement parameter", alias="liquidationMarginParameter")
-    initial_margin_parameter: StrictStr = Field(description="Initial margin requirement parameter", alias="initialMarginParameter")
+    liquidation_margin_parameter: StrictStr = Field(description="Minimum percentage of notional that needs to be covered to avoid liquidation procedures for a given market; below this value, your account is subject to liquidation procedures. When cross margining, all requirements across markets are covered by the same balance, and all positions are subject to liquidations.", alias="liquidationMarginParameter")
+    initial_margin_parameter: StrictStr = Field(description="Minimum percentage of notional that needs to be covered post trade; if the account does not satisfy this requirement, trades will not get executed.", alias="initialMarginParameter")
     max_leverage: StrictInt = Field(description="Maximum leverage allowed", alias="maxLeverage")
-    oi_cap: StrictStr = Field(description="Max absolute open interest", alias="oiCap")
+    oi_cap: StrictStr = Field(description="Maximum one-sided open interest in units for a given market.", alias="oiCap")
     __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
 
     model_config = ConfigDict(

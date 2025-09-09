@@ -45,7 +45,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_accounts(
+    async def get_wallet_accounts(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -98,12 +98,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Account]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -111,7 +113,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_accounts_with_http_info(
+    async def get_wallet_accounts_with_http_info(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -164,12 +166,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Account]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -177,7 +181,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_accounts_without_preload_content(
+    async def get_wallet_accounts_without_preload_content(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -230,8 +234,10 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Account]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -302,7 +308,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_configuration(
+    async def get_wallet_configuration(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -356,12 +362,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "WalletConfiguration",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -369,7 +377,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_configuration_with_http_info(
+    async def get_wallet_configuration_with_http_info(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -423,12 +431,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "WalletConfiguration",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -436,7 +446,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_configuration_without_preload_content(
+    async def get_wallet_configuration_without_preload_content(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -490,8 +500,10 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "WalletConfiguration",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -562,7 +574,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_open_orders(
+    async def get_wallet_open_orders(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -616,12 +628,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Order]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -629,7 +643,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_open_orders_with_http_info(
+    async def get_wallet_open_orders_with_http_info(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -683,12 +697,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Order]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -696,7 +712,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_open_orders_without_preload_content(
+    async def get_wallet_open_orders_without_preload_content(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -750,8 +766,10 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Order]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -822,7 +840,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_perp_executions(
+    async def get_wallet_perp_executions(
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -884,12 +902,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "PerpExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -897,7 +917,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_perp_executions_with_http_info(
+    async def get_wallet_perp_executions_with_http_info(
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -959,12 +979,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "PerpExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -972,7 +994,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_perp_executions_without_preload_content(
+    async def get_wallet_perp_executions_without_preload_content(
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -1034,8 +1056,10 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "PerpExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1116,7 +1140,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_positions(
+    async def get_wallet_positions(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -1169,12 +1193,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Position]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1182,7 +1208,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_positions_with_http_info(
+    async def get_wallet_positions_with_http_info(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -1235,12 +1261,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Position]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1248,7 +1276,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_positions_without_preload_content(
+    async def get_wallet_positions_without_preload_content(
         self,
         address: Annotated[str, Field(strict=True)],
         _request_timeout: Union[
@@ -1301,8 +1329,10 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Position]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1373,7 +1403,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_spot_executions(
+    async def get_wallet_spot_executions(
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -1435,12 +1465,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SpotExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1448,7 +1480,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_spot_executions_with_http_info(
+    async def get_wallet_spot_executions_with_http_info(
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -1510,12 +1542,14 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SpotExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1523,7 +1557,7 @@ class WalletDataApi:
 
 
     @validate_call
-    def get_wallet_spot_executions_without_preload_content(
+    async def get_wallet_spot_executions_without_preload_content(
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -1585,8 +1619,10 @@ class WalletDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SpotExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

@@ -63,7 +63,7 @@ class TradingConfig:
             api_url=os.environ.get("REYA_API_URL", default_api_url),
             chain_id=chain_id,
             private_key=os.environ.get("PRIVATE_KEY"),
-            account_id=int(os.environ["ACCOUNT_ID"]) if "ACCOUNT_ID" in os.environ else None,
+            account_id=(int(os.environ["ACCOUNT_ID"]) if "ACCOUNT_ID" in os.environ else None),
             wallet_address=os.environ.get("WALLET_ADDRESS"),
         )
 

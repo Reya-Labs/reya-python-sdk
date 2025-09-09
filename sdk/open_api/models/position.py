@@ -32,7 +32,7 @@ class Position(BaseModel):
     qty: StrictStr
     side: StrictStr = Field(description="Order side (B = Buy/Bid, A = Ask/Sell)")
     avg_entry_price: StrictStr = Field(alias="avgEntryPrice")
-    avg_entry_funding_value: StrictStr = Field(description="Average entry funding value.", alias="avgEntryFundingValue")
+    avg_entry_funding_value: StrictStr = Field(description="Average of funding values at the entry times of currently open exposure, which serves as a baseline from which to compute the accrued funding in the position: units x (fundingValue - avgEntryFundingValue)", alias="avgEntryFundingValue")
     last_trade_sequence_number: StrictInt = Field(description="Sequence number of last execution taken into account for the position.", alias="lastTradeSequenceNumber")
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "qty", "side", "avgEntryPrice", "avgEntryFundingValue", "lastTradeSequenceNumber"]
 

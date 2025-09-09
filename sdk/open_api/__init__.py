@@ -38,8 +38,6 @@ __all__ = [
     "CandleHistoryData",
     "CreateOrderRequest",
     "CreateOrderResponse",
-    "Error",
-    "ErrorCode",
     "ExecutionType",
     "FeeTierParameters",
     "GlobalFeeParameters",
@@ -56,6 +54,10 @@ __all__ = [
     "PerpExecutionListMeta",
     "Position",
     "Price",
+    "RequestError",
+    "RequestErrorCode",
+    "ServerError",
+    "ServerErrorCode",
     "Side",
     "SpotExecution",
     "SpotExecutionList",
@@ -89,8 +91,6 @@ from sdk.open_api.models.cancel_order_response import CancelOrderResponse as Can
 from sdk.open_api.models.candle_history_data import CandleHistoryData as CandleHistoryData
 from sdk.open_api.models.create_order_request import CreateOrderRequest as CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse as CreateOrderResponse
-from sdk.open_api.models.error import Error as Error
-from sdk.open_api.models.error_code import ErrorCode as ErrorCode
 from sdk.open_api.models.execution_type import ExecutionType as ExecutionType
 from sdk.open_api.models.fee_tier_parameters import FeeTierParameters as FeeTierParameters
 from sdk.open_api.models.global_fee_parameters import GlobalFeeParameters as GlobalFeeParameters
@@ -107,6 +107,10 @@ from sdk.open_api.models.perp_execution_list_data_inner import PerpExecutionList
 from sdk.open_api.models.perp_execution_list_meta import PerpExecutionListMeta as PerpExecutionListMeta
 from sdk.open_api.models.position import Position as Position
 from sdk.open_api.models.price import Price as Price
+from sdk.open_api.models.request_error import RequestError as RequestError
+from sdk.open_api.models.request_error_code import RequestErrorCode as RequestErrorCode
+from sdk.open_api.models.server_error import ServerError as ServerError
+from sdk.open_api.models.server_error_code import ServerErrorCode as ServerErrorCode
 from sdk.open_api.models.side import Side as Side
 from sdk.open_api.models.spot_execution import SpotExecution as SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList as SpotExecutionList

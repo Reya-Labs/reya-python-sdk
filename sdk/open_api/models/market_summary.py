@@ -32,8 +32,8 @@ class MarketSummary(BaseModel):
     short_oi_qty: StrictStr = Field(description="Short open interest in lots", alias="shortOiQty")
     oi_qty: StrictStr = Field(description="Total open interest quantity", alias="oiQty")
     funding_rate: StrictStr = Field(description="Current hourly funding rate", alias="fundingRate")
-    long_funding_value: StrictStr = Field(description="Current long funding value", alias="longFundingValue")
-    short_funding_value: StrictStr = Field(description="Current short funding value", alias="shortFundingValue")
+    long_funding_value: StrictStr = Field(description="Current reference value of funding accrued by one unit of exposure; there is one funding value per market and per direction, with short v long funding values differing possibly due to Auto-Deleveraging (ADL)", alias="longFundingValue")
+    short_funding_value: StrictStr = Field(description="Current reference value of funding accrued by one unit of exposure; there is one funding value per market and per direction, with short v long funding values differing possibly due to Auto-Deleveraging (ADL)", alias="shortFundingValue")
     funding_rate_velocity: StrictStr = Field(description="Funding rate velocity", alias="fundingRateVelocity")
     volume24h: StrictStr
     px_change24h: Optional[StrictStr] = Field(default=None, alias="pxChange24h")

@@ -43,7 +43,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_candles(
+    async def get_candles(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         resolution: Annotated[StrictStr, Field(description="Candle resolution")],
@@ -105,12 +105,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CandleHistoryData",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -118,7 +120,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_candles_with_http_info(
+    async def get_candles_with_http_info(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         resolution: Annotated[StrictStr, Field(description="Candle resolution")],
@@ -180,12 +182,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CandleHistoryData",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -193,7 +197,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_candles_without_preload_content(
+    async def get_candles_without_preload_content(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         resolution: Annotated[StrictStr, Field(description="Candle resolution")],
@@ -255,8 +259,10 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CandleHistoryData",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -335,7 +341,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_market_perp_executions(
+    async def get_market_perp_executions(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -397,12 +403,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "PerpExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -410,7 +418,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_market_perp_executions_with_http_info(
+    async def get_market_perp_executions_with_http_info(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -472,12 +480,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "PerpExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -485,7 +495,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_market_perp_executions_without_preload_content(
+    async def get_market_perp_executions_without_preload_content(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[StrictInt], Field(description="Return results after this sequence number (for pagination)")] = None,
@@ -547,8 +557,10 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "PerpExecutionList",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -629,7 +641,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_market_summary(
+    async def get_market_summary(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         _request_timeout: Union[
@@ -683,12 +695,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "MarketSummary",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -696,7 +710,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_market_summary_with_http_info(
+    async def get_market_summary_with_http_info(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         _request_timeout: Union[
@@ -750,12 +764,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "MarketSummary",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -763,7 +779,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_market_summary_without_preload_content(
+    async def get_market_summary_without_preload_content(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         _request_timeout: Union[
@@ -817,8 +833,10 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "MarketSummary",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -889,7 +907,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_markets_summary(
+    async def get_markets_summary(
         self,
         _request_timeout: Union[
             None,
@@ -939,12 +957,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[MarketSummary]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -952,7 +972,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_markets_summary_with_http_info(
+    async def get_markets_summary_with_http_info(
         self,
         _request_timeout: Union[
             None,
@@ -1002,12 +1022,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[MarketSummary]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1015,7 +1037,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_markets_summary_without_preload_content(
+    async def get_markets_summary_without_preload_content(
         self,
         _request_timeout: Union[
             None,
@@ -1065,8 +1087,10 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[MarketSummary]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1134,7 +1158,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_price(
+    async def get_price(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         _request_timeout: Union[
@@ -1187,12 +1211,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "Price",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1200,7 +1226,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_price_with_http_info(
+    async def get_price_with_http_info(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         _request_timeout: Union[
@@ -1253,12 +1279,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "Price",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1266,7 +1294,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_price_without_preload_content(
+    async def get_price_without_preload_content(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         _request_timeout: Union[
@@ -1319,8 +1347,10 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "Price",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1391,7 +1421,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_prices(
+    async def get_prices(
         self,
         _request_timeout: Union[
             None,
@@ -1440,12 +1470,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Price]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1453,7 +1485,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_prices_with_http_info(
+    async def get_prices_with_http_info(
         self,
         _request_timeout: Union[
             None,
@@ -1502,12 +1534,14 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Price]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1515,7 +1549,7 @@ class MarketDataApi:
 
 
     @validate_call
-    def get_prices_without_preload_content(
+    async def get_prices_without_preload_content(
         self,
         _request_timeout: Union[
             None,
@@ -1564,8 +1598,10 @@ class MarketDataApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "List[Price]",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

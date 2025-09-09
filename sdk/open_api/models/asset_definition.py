@@ -28,8 +28,8 @@ class AssetDefinition(BaseModel):
     """ # noqa: E501
     asset: StrictStr
     spot_market_symbol: StrictStr = Field(alias="spotMarketSymbol")
-    price_haircut: StrictStr = Field(description="Price haircut percentage", alias="priceHaircut")
-    liquidation_discount: StrictStr = Field(description="Liquidation discount percentage", alias="liquidationDiscount")
+    price_haircut: StrictStr = Field(description="Notional discount to the value of a collateral when used to satisfy the margin requirements; it does not imply any token conversion, but is rather an accounting adjustment.", alias="priceHaircut")
+    liquidation_discount: StrictStr = Field(description="Discount in the token price when liquidating collateral.", alias="liquidationDiscount")
     timestamp: StrictInt = Field(description="Configuration timestamp (milliseconds)")
     __properties: ClassVar[List[str]] = ["asset", "spotMarketSymbol", "priceHaircut", "liquidationDiscount", "timestamp"]
 

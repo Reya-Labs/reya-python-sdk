@@ -27,8 +27,8 @@ class LiquidityParameters(BaseModel):
     LiquidityParameters
     """ # noqa: E501
     symbol: StrictStr
-    depth: StrictStr = Field(description="Liquidity depth parameter")
-    velocity_multiplier: StrictStr = Field(description="Velocity multiplier parameter", alias="velocityMultiplier")
+    depth: StrictStr = Field(description="Parameter determining the liquidity distribution along the AMM pricing curve, in particular expanding or contracting the max exposure parameter that would otherwise be determined by the capital available.")
+    velocity_multiplier: StrictStr = Field(description="Parameter determining the sensitivity of the dynamic funding rate to the size of the imbalances; higher multiplier means that the funding rate will diverge faster, all else being equal.", alias="velocityMultiplier")
     __properties: ClassVar[List[str]] = ["symbol", "depth", "velocityMultiplier"]
 
     model_config = ConfigDict(

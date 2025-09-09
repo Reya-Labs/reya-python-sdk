@@ -22,9 +22,9 @@ from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
-class Error(BaseModel):
+class RequestError(BaseModel):
     """
-    Error
+    RequestError
     """ # noqa: E501
     error: StrictStr = Field(description="Standardized error codes for API responses")
     message: StrictStr = Field(description="Human-readable error message")
@@ -33,8 +33,8 @@ class Error(BaseModel):
     @field_validator('error')
     def error_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(['SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'INPUT_VALIDATION_ERROR', 'CREATE_ORDER_OTHER_ERROR', 'CANCEL_ORDER_OTHER_ERROR', 'INTERNAL_SERVER_ERROR']):
-            raise ValueError("must be one of enum values ('SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'INPUT_VALIDATION_ERROR', 'CREATE_ORDER_OTHER_ERROR', 'CANCEL_ORDER_OTHER_ERROR', 'INTERNAL_SERVER_ERROR')")
+        if value not in set(['SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'INPUT_VALIDATION_ERROR', 'CREATE_ORDER_OTHER_ERROR', 'CANCEL_ORDER_OTHER_ERROR']):
+            raise ValueError("must be one of enum values ('SYMBOL_NOT_FOUND', 'NO_ACCOUNTS_FOUND', 'NO_PRICES_FOUND_FOR_SYMBOL', 'INPUT_VALIDATION_ERROR', 'CREATE_ORDER_OTHER_ERROR', 'CANCEL_ORDER_OTHER_ERROR')")
         return value
 
     model_config = ConfigDict(
@@ -55,7 +55,7 @@ class Error(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of Error from a JSON string"""
+        """Create an instance of RequestError from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -80,7 +80,7 @@ class Error(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of Error from a dict"""
+        """Create an instance of RequestError from a dict"""
         if obj is None:
             return None
 

@@ -40,7 +40,7 @@ class OrderEntryApi:
 
 
     @validate_call
-    def cancel_order(
+    async def cancel_order(
         self,
         cancel_order_request: CancelOrderRequest,
         _request_timeout: Union[
@@ -94,12 +94,14 @@ class OrderEntryApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CancelOrderResponse",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -107,7 +109,7 @@ class OrderEntryApi:
 
 
     @validate_call
-    def cancel_order_with_http_info(
+    async def cancel_order_with_http_info(
         self,
         cancel_order_request: CancelOrderRequest,
         _request_timeout: Union[
@@ -161,12 +163,14 @@ class OrderEntryApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CancelOrderResponse",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -174,7 +178,7 @@ class OrderEntryApi:
 
 
     @validate_call
-    def cancel_order_without_preload_content(
+    async def cancel_order_without_preload_content(
         self,
         cancel_order_request: CancelOrderRequest,
         _request_timeout: Union[
@@ -228,8 +232,10 @@ class OrderEntryApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CancelOrderResponse",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -313,7 +319,7 @@ class OrderEntryApi:
 
 
     @validate_call
-    def create_order(
+    async def create_order(
         self,
         create_order_request: CreateOrderRequest,
         _request_timeout: Union[
@@ -367,12 +373,14 @@ class OrderEntryApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CreateOrderResponse",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -380,7 +388,7 @@ class OrderEntryApi:
 
 
     @validate_call
-    def create_order_with_http_info(
+    async def create_order_with_http_info(
         self,
         create_order_request: CreateOrderRequest,
         _request_timeout: Union[
@@ -434,12 +442,14 @@ class OrderEntryApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CreateOrderResponse",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        response_data.read()
+        await response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -447,7 +457,7 @@ class OrderEntryApi:
 
 
     @validate_call
-    def create_order_without_preload_content(
+    async def create_order_without_preload_content(
         self,
         create_order_request: CreateOrderRequest,
         _request_timeout: Union[
@@ -501,8 +511,10 @@ class OrderEntryApi:
 
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CreateOrderResponse",
+            '400': "RequestError",
+            '500': "ServerError",
         }
-        response_data = self.api_client.call_api(
+        response_data = await self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

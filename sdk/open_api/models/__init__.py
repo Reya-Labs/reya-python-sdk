@@ -21,8 +21,6 @@ from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.candle_history_data import CandleHistoryData
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
-from sdk.open_api.models.error import Error
-from sdk.open_api.models.error_code import ErrorCode
 from sdk.open_api.models.execution_type import ExecutionType
 from sdk.open_api.models.fee_tier_parameters import FeeTierParameters
 from sdk.open_api.models.global_fee_parameters import GlobalFeeParameters
@@ -39,6 +37,10 @@ from sdk.open_api.models.perp_execution_list_data_inner import PerpExecutionList
 from sdk.open_api.models.perp_execution_list_meta import PerpExecutionListMeta
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.price import Price
+from sdk.open_api.models.request_error import RequestError
+from sdk.open_api.models.request_error_code import RequestErrorCode
+from sdk.open_api.models.server_error import ServerError
+from sdk.open_api.models.server_error_code import ServerErrorCode
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList

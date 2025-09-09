@@ -4,8 +4,8 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class Price(BaseModel): 
   symbol: str = Field()
-  oracle_price: Optional[str] = Field(description='''Oracle price, also known as spot price''', default=None, alias='''oraclePrice''')
-  pool_price: Optional[str] = Field(description='''Pool price''', default=None, alias='''poolPrice''')
+  oracle_price: Optional[str] = Field(description='''Price given by the Stork feeds, used both as the peg price for prices on Reya, as well as Mark Prices. The Stork price feed is usually the perp prices across three major CEXs''', default=None, alias='''oraclePrice''')
+  pool_price: Optional[str] = Field(description='''The price currently quoted by the AMM for zero volume, from which trades are priced (equivalent to mid price in an order book); a trade of any size will be move this price up or down depending on the direction.''', default=None, alias='''poolPrice''')
   updated_at: int = Field(description='''Last update timestamp (milliseconds)''', alias='''updatedAt''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
