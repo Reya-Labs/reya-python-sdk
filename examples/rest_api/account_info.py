@@ -17,28 +17,27 @@ async def main():
     """Run the example to get accounts asynchronously."""
     load_dotenv()
 
-    client = ReyaTradingClient()
+    async with ReyaTradingClient() as client:
+        if not client.wallet_address:
+            print("Error: No wallet address found in environment variables.")
+            print("Please set either WALLET_ADDRESS or PRIVATE_KEY in your .env file.")
+            return
 
-    if not client.wallet_address:
-        print("Error: No wallet address found in environment variables.")
-        print("Please set either WALLET_ADDRESS or PRIVATE_KEY in your .env file.")
-        return
+        print(f"Using wallet address: {client.wallet_address}")
 
-    print(f"Using wallet address: {client.wallet_address}")
+        print("\n--- Getting accounts ---")
 
-    print("\n--- Getting accounts orders ---")
+        accounts = await client.get_accounts()
 
-    accounts = await client.get_accounts()
+        if accounts:
+            print(f"Found {len(accounts)} accounts:\n")
 
-    if accounts:
-        print(f"Found {len(accounts)} accounts:\n")
-
-        for i, account in enumerate(accounts):
-            print(f"Account {i + 1}:")
-            print(f" {account}")
-            print("  ---------------")
-    else:
-        print("No open orders found for this wallet address.")
+            for i, account in enumerate(accounts):
+                print(f"Account {i + 1}:")
+                print(f" {account}")
+                print("  ---------------")
+        else:
+            print("No accounts found for this wallet address.")
 
 
 if __name__ == "__main__":

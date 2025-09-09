@@ -18,16 +18,15 @@ async def main():
     load_dotenv()
 
     # Create a client instance with configuration from environment variables
-    client = ReyaTradingClient()
+    async with ReyaTradingClient() as client:
+        # Get all assets
+        print("\n--- Getting all assets ---")
 
-    # Get all assets
-    print("\n--- Getting all assets ---")
+        assets = await client.reference.get_asset_definitions()
+        print(f"Assets data: {assets}")
 
-    assets = await client.assets.get_assets()
-    print(f"Assets data: {assets}")
-
-    if assets:
-        print(f"Found {len(assets)} assets")
+        if assets:
+            print(f"Found {len(assets)} assets")
 
 
 if __name__ == "__main__":

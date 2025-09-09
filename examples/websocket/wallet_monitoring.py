@@ -18,16 +18,14 @@ import os
 import time
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
-from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
-
-# Import WebSocket message types for proper type conversion
+from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
-
-# Import the new resource-oriented WebSocket client
+from sdk.async_api.wallet_perp_execution_update_payload import (
+    WalletPerpExecutionUpdatePayload,
+)
 from sdk.reya_websocket import ReyaSocket
+from sdk.reya_websocket.config import WebSocketConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -55,98 +53,81 @@ def on_open(ws):
     ws.wallet.perp_executions(wallet_address).subscribe()
 
     # Subscribe to wallet open orders
-    # ws.wallet.open_orders(wallet_address).subscribe()
+    ws.wallet.order_changes(wallet_address).subscribe()
 
 
 def handle_wallet_positions_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/positions channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = PositionUpdatePayload.model_validate(message)
 
-        logger.info("💼 Wallet Positions Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Positions Count: {len(payload.data)}")
+    payload = PositionUpdatePayload.model_validate(message)
 
-        # Showcase individual position data structure
-        for i, position in enumerate(payload.data[:5]):  # Show first 5 positions
-            logger.info(f"    Position {i + 1}: {position.symbol}")
-            logger.info(f"      ├─ Exchange ID: {position.exchange_id}")
-            logger.info(f"      ├─ Account ID: {position.account_id}")
-            logger.info(f"      ├─ Quantity: {position.qty}")
-            logger.info(f"      ├─ Side: {position.side.value}")
-            logger.info(f"      ├─ Avg Entry Price: {position.avg_entry_price}")
-            logger.info(f"      ├─ Avg Entry Funding: {position.avg_entry_funding_value}")
-            logger.info(f"      └─ Last Trade Seq: {position.last_trade_sequence_number}")
+    logger.info("💼 Wallet Positions Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Positions Count: {len(payload.data)}")
 
-        if len(payload.data) > 5:
-            logger.info(f"    ... and {len(payload.data) - 5} more positions")
+    # Showcase individual position data structure
+    for i, position in enumerate(payload.data[:5]):  # Show first 5 positions
+        logger.info(f"    Position {i + 1}: {position.symbol}")
+        logger.info(f"      ├─ Exchange ID: {position.exchange_id}")
+        logger.info(f"      ├─ Account ID: {position.account_id}")
+        logger.info(f"      ├─ Quantity: {position.qty}")
+        logger.info(f"      ├─ Side: {position.side.value}")
+        logger.info(f"      ├─ Avg Entry Price: {position.avg_entry_price}")
+        logger.info(f"      ├─ Avg Entry Funding: {position.avg_entry_funding_value}")
+        logger.info(f"      └─ Last Trade Seq: {position.last_trade_sequence_number}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse wallet positions data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling wallet positions: {e}")
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more positions")
 
 
 def handle_wallet_orders_data(message: dict[str, Any]) -> None:
-    """Handle /v2/wallet/:address/openOrders channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = OpenOrderUpdatePayload.model_validate(message)
+    """Handle /v2/wallet/:address/orderChanges channel data with proper type conversion."""
 
-        logger.info("📋 Wallet Open Orders Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Orders Count: {len(payload.data)}")
+    # Convert raw message to typed payload
+    payload = OrderChangeUpdatePayload.model_validate(message)
 
-        # Showcase individual order data structure
-        for i, order in enumerate(payload.data[:5]):  # Show first 5 orders
-            logger.info(f"    Order {i + 1}: {order.symbol}")
-            logger.info(f"      ├─ Account ID: {order.account_id}")
-            logger.info(f"      ├─ Side: {order.side.value}")
-            logger.info(f"      ├─ Type: {order.order_type.value}")
-            logger.info(f"      ├─ Quantity: {order.qty}")
-            logger.info(f"      ├─ Limit Price: {order.limit_px}")
-            logger.info(f"      └─ Status: {order.status.value}")
+    logger.info("📋 Wallet Open Orders Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Orders Count: {len(payload.data)}")
 
-        if len(payload.data) > 5:
-            logger.info(f"    ... and {len(payload.data) - 5} more orders")
+    # Showcase individual order data structure
+    for i, order in enumerate(payload.data[:5]):  # Show first 5 orders
+        logger.info(f"    Order {i + 1}: {order.symbol}")
+        logger.info(f"      ├─ Account ID: {order.account_id}")
+        logger.info(f"      ├─ Side: {order.side.value}")
+        logger.info(f"      ├─ Type: {order.order_type.value}")
+        logger.info(f"      ├─ Quantity: {order.qty}")
+        logger.info(f"      ├─ Limit Price: {order.limit_px}")
+        logger.info(f"      └─ Status: {order.status.value}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse wallet orders data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling wallet orders: {e}")
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more orders")
 
 
 def handle_wallet_executions_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/perpExecutions channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = WalletPerpExecutionUpdatePayload.model_validate(message)
 
-        logger.info("⚡ Wallet Perpetual Executions Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Executions Count: {len(payload.data)}")
+    payload = WalletPerpExecutionUpdatePayload.model_validate(message)
 
-        # Showcase individual execution data structure
-        for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
-            logger.info(f"    Execution {i + 1}: {execution.symbol}")
-            logger.info(f"      ├─ Account ID: {execution.account_id}")
-            logger.info(f"      ├─ Side: {execution.side.value}")
-            logger.info(f"      ├─ Quantity: {execution.qty}")
-            logger.info(f"      ├─ Price: {execution.price}")
-            logger.info(f"      ├─ Fee: {execution.fee}")
-            logger.info(f"      └─ Type: {execution.type.value}")
+    logger.info("⚡ Wallet Perpetual Executions Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Executions Count: {len(payload.data)}")
 
-        if len(payload.data) > 5:
-            logger.info(f"    ... and {len(payload.data) - 5} more executions")
+    # Showcase individual execution data structure
+    for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
+        logger.info(f"    Execution {i + 1}: {execution.symbol}")
+        logger.info(f"      ├─ Account ID: {execution.account_id}")
+        logger.info(f"      ├─ Side: {execution.side.value}")
+        logger.info(f"      ├─ Quantity: {execution.qty}")
+        logger.info(f"      ├─ Price: {execution.price}")
+        logger.info(f"      ├─ Fee: {execution.fee}")
+        logger.info(f"      └─ Type: {execution.type.value}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse wallet executions data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling wallet executions: {e}")
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more executions")
 
 
 def on_message(ws, message):
@@ -168,7 +149,7 @@ def on_message(ws, message):
         if "/v2/wallet/" in channel:
             if channel.endswith("/positions"):
                 handle_wallet_positions_data(message)
-            elif channel.endswith("/openOrders"):
+            elif channel.endswith("/orderChanges"):
                 handle_wallet_orders_data(message)
             elif channel.endswith("/perpExecutions"):
                 handle_wallet_executions_data(message)
@@ -179,11 +160,8 @@ def on_message(ws, message):
 
     elif message_type == "ping":
         logger.info("🏓 Received ping from server, sending pong response")
-        try:
-            ws.send(json.dumps({"type": "pong"}))
-            logger.debug("✅ Pong sent successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to send pong: {e}")
+        ws.send(json.dumps({"type": "pong"}))
+        logger.debug("✅ Pong sent successfully")
 
     elif message_type == "pong":
         logger.info("🏓 Connection confirmed via pong response")
@@ -212,11 +190,8 @@ async def periodic_task(ws, wallet_address):
 
         # Send periodic ping to test connection (every 10 iterations = ~20 seconds)
         if counter % 10 == 0:
-            try:
-                logger.info("🏓 Sending manual ping to test connection")
-                ws.send(json.dumps({"type": "ping"}))
-            except Exception as e:
-                logger.error(f"❌ Failed to send manual ping: {e}")
+            logger.info("🏓 Sending manual ping to test connection")
+            ws.send(json.dumps({"type": "ping"}))
 
         await asyncio.sleep(2)  # Run every 2 seconds
 
@@ -237,18 +212,15 @@ async def main():
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
 
     # Create enhanced error and close handlers for better connection monitoring
-    def on_error(ws, error):
+    def on_error(_ws, error):
         """Enhanced error handler with detailed logging."""
         logger.error(f"❌ WebSocket error: {error}")
 
-    def on_close(ws, close_status_code, close_reason):
+    def on_close(_ws, close_status_code, close_reason):
         """Enhanced close handler with detailed logging."""
         logger.info(f"🔌 WebSocket closed: {close_status_code} - {close_reason}")
         if close_status_code != 1000:  # 1000 is normal closure
             logger.warning(f"⚠️ Abnormal closure detected. Status: {close_status_code}")
-
-    # Create the WebSocket with enhanced configuration
-    from sdk.reya_websocket.config import WebSocketConfig
 
     # Create custom config with more aggressive ping settings
     config = WebSocketConfig(

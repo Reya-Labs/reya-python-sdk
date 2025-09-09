@@ -6,58 +6,73 @@ This repository contains a Python SDK for interacting with the Reya ecosystem. I
 
 ### REST API Client
 
-The REST API client provides a comprehensive interface for interacting with Reya's Trading API:
-
 - **Wallet Resource**
-  - Get wallet positions via `/api/trading/wallet/:address/positions`
-  - Get open orders via `/api/trading/wallet/:address/openOrders`
-  - Get account balances via `/api/trading/wallet/:address/accounts/balances`
-  - Get configuration via `/api/trading/wallet/:address/configuration`
-  - Get trades via `/api/trading/wallet/:address/trades`
-  - Get accounts via `/api/trading/wallet/:address/accounts`
-  - Get leverages via `/api/trading/wallet/:address/leverages`
-  - Get auto exchange settings via `/api/trading/wallet/:address/autoExchange`
-  - Get stats via `/api/trading/wallet/:address/stats`
+    - Get wallet accounts via `/v2/wallet/{address}/accounts`
+    - Get wallet positions via `/v2/wallet/{address}/positions`
+    - Get open orders via `/v2/wallet/{address}/openOrders`
+    - Get perpetual executions via `/v2/wallet/{address}/perpExecutions`
+    - Get spot executions via `/v2/wallet/{address}/spotExecutions`
+    - Get configuration via `/v2/wallet/{address}/configuration`
 
-- **Orders Resource**
-  - Create and cancel various order types
+- **Order Entry Resource**
+    - Create orders via `/v2/createOrder` (IOC, GTC, SL, TP)
+    - Cancel orders via `/v2/cancelOrder`
 
-- **Markets Resource**
-  - Get all markets via `/api/trading/markets`
-  - Get market details via `/api/trading/market/:marketId`
-  - Get market trackers via `/api/trading/market/:marketId/trackers`
-  - Get market trades via `/api/trading/market/:marketId/trades`
-  - Get market configuration via `/api/trading/market/:marketId/configuration`
-  - Get market storage via `/api/trading/market/:marketId/storage`
-  - Get market data via `/api/trading/market/:marketId/data`
+- **Market Data Resource**
+    - Get all markets summary via `/v2/markets/summary`
+    - Get market summary via `/v2/market/{symbol}/summary`
+    - Get market perpetual executions via `/v2/market/{symbol}/perpExecutions`
+    - Get historical candles via `/v2/candleHistory/{symbol}/{resolution}`
 
-- **Assets Resource**
-  - Get all assets via `/api/trading/assets`
+- **Reference Data Resource**
+    - Get market definitions via `/v2/marketDefinitions`
+    - Get asset definitions via `/v2/assetDefinitions`
+    - Get liquidity parameters via `/v2/liquidityParameters`
+    - Get global fee parameters via `/v2/globalFeeParameters`
+    - Get fee tiers via `/v2/feeTiers`
 
 - **Prices Resource**
-  - Get all prices via `/api/trading/prices`
+    - Get all prices via `/v2/prices`
+    - Get price by symbol via `/v2/prices/{symbol}`
 
 ### WebSocket API Client (Resource-Oriented)
 
-The resource-oriented WebSocket API client offers an intuitive, object-oriented interface for consuming real-time data from Reya:
-
 - **Market Resources**
-  - Access all markets data via `/api/trading/markets/data`
-  - Subscribe to specific market data via `/api/trading/market/:marketId/data`
-  - Monitor market trades via `/api/trading/market/:marketId/trades`
+    - Subscribe to all markets summary via `/v2/markets/summary`
+    - Subscribe to specific market summary via `/v2/market/{symbol}/summary`
+    - Monitor market perpetual executions via `/v2/market/{symbol}/perpExecutions`
 
 - **Wallet Resources**
-  - Track wallet positions via `/api/trading/wallet/:address/positions`
-  - Monitor wallet trades via `/api/trading/wallet/:address/trades`
-  - Access account balances via `/api/trading/wallet/:address/accounts/balances`
+    - Track wallet positions via `/v2/wallet/{address}/positions`
+    - Monitor wallet open orders via `/v2/wallet/{address}/orderChanges`
+    - Monitor wallet perpetual executions via `/v2/wallet/{address}/perpExecutions`
 
 - **Price Resources**
-  - Real-time asset pair prices via `/api/trading/prices/:assetPairId`
+    - Track prices for all markets via `/v2/prices`
+    - Track prices for specific market via `/v2/prices/{symbol}`
 
-- **Clean, Maintainable API Design**
-  - Resource-based organization
-  - Fluent interface for building subscriptions
-  - Strong typing and extensive documentation
+## API Specifications
+
+This SDK is built from official API specifications that define the V2 endpoints:
+
+### OpenAPI Specification
+- **Location**: `specs/openapi-trading-v2.yaml`
+- **Version**: OpenAPI 3.1.1
+- **Purpose**: Defines all REST API endpoints, request/response models, and authentication
+- **Auto-generation**: The `sdk/open_api/` module is automatically generated from this specification
+
+### AsyncAPI Specification  
+- **Location**: `specs/asyncapi-trading-v2.yaml`
+- **Version**: AsyncAPI 2.6.0
+- **Purpose**: Defines WebSocket message schemas and real-time data structures
+- **Auto-generation**: The `sdk/async_api/` module is automatically generated from this specification
+
+### Code Generation
+The SDK uses automated code generation to ensure type safety and API compatibility:
+- **REST API Generation**: `scripts/generate-api.sh` - generates Python client from OpenAPI spec
+- **WebSocket Generation**: `scripts/generate-ws.sh` - generates Pydantic models from AsyncAPI spec
+
+These specifications ensure the SDK stays in sync with the latest Reya V2 API endpoints and provide the foundation for the high-level, user-friendly interfaces in `sdk/reya_rest_api/` and `sdk/reya_websocket/`.
 
 ## Installation
 
@@ -111,7 +126,7 @@ Before setting up your environment, you'll need to find your Reya account ID:
 
 1. Replace `<your_wallet_address>` with your Ethereum wallet address in this URL:
    ```
-   https://api.reya.xyz/api/trading/wallet/<your_wallet_address>/accounts
+   https://api.reya.xyz/v2/wallet/<your_wallet_address>/accounts
    ```
 
 2. Open the URL in your browser. You'll see a JSON response containing your account information.
@@ -140,82 +155,8 @@ ACCOUNT_ID=your_account_id
 PRIVATE_KEY=your_private_key
 CHAIN_ID=1729                   # Use 89346162 for testnet
 REYA_WS_URL=wss://ws.reya.xyz/  # Use wss://websocket-testnet.reya.xyz/ for testnet
+REYA_API_BASE_URL=https://api.reya.xyz/v2  # Use https://api-test.reya.xyz/v2 for testnet
 ```
-
-## WebSocket API Usage
-
-### Basic Usage
-
-Here's how to use the new resource-oriented WebSocket API:
-
-```python
-import os
-import json
-import logging
-from dotenv import load_dotenv
-from sdk.reya_websocket import ReyaSocket
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("reya.example")
-
-def on_open(ws):
-    """Handle WebSocket connection open event."""
-    logger.info("Connection established, subscribing to market data")
-    # Subscribe to market data for market ID 1
-    ws.market.market_data(1).subscribe()
-
-def on_message(ws, message):
-    """Handle WebSocket messages."""
-    message_type = message.get("type")
-    
-    if message_type == "subscribed":
-        channel = message.get("channel", "unknown")
-        logger.info(f"Successfully subscribed to {channel}")
-        
-    elif message_type == "channel_data":
-        channel = message.get("channel", "unknown")
-        logger.info(f"Received data from {channel}")
-        logger.info(f"Data: {message}")
-    
-    elif message_type == "error":
-        logger.error(f"Error: {message.get('message', 'unknown error')}")
-
-def main():
-    # Load environment variables
-    load_dotenv()
-    
-    # Get WebSocket URL from environment
-    ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
-    
-    # Create the WebSocket
-    ws = ReyaSocket(
-        url=ws_url,
-        on_open=on_open,
-        on_message=on_message,
-    )
-    
-    # Connect to the WebSocket server - this is a blocking call
-    logger.info("Connecting to WebSocket and starting event loop")
-    logger.info("Press Ctrl+C to exit")
-    
-    try:
-        # This will run forever until interrupted
-        ws.connect()
-    except KeyboardInterrupt:
-        logger.info("Exiting gracefully")
-    except Exception as e:
-        logger.error(f"Error: {e}")
-    finally:
-        logger.info("WebSocket connection closed")
-
-if __name__ == "__main__":
-    main()
-```
-
 ### Resource-Based API Structure
 
 #### REST API Structure
@@ -225,32 +166,29 @@ The REST API client is organized around the following resources:
 ```
 ReyaTradingClient
 ├── wallet                           # Wallet resource
-│   ├── get_positions()              # /api/trading/wallet/:address/positions
-│   ├── get_open_orders()            # /api/trading/wallet/:address/openOrders
-│   ├── get_balances()               # /api/trading/wallet/:address/accounts/balances
-│   ├── get_configuration()          # /api/trading/wallet/:address/configuration
-│   ├── get_trades()                 # /api/trading/wallet/:address/trades
-│   ├── get_accounts()               # /api/trading/wallet/:address/accounts
-│   ├── get_leverages()              # /api/trading/wallet/:address/leverages
-│   ├── get_auto_exchange()          # /api/trading/wallet/:address/autoExchange
-│   └── get_stats()                  # /api/trading/wallet/:address/stats
-├── orders                           # Orders resource
-│   ├── create_limit_order()         # /api/trading/createOrder
-│   ├── create_trigger_order()       # /api/trading/createOrder
-│   └── cancel_order()               # /api/trading/cancelOrder
-├── markets                          # Markets resource
-│   ├── get_markets()                # /api/trading/markets
-│   ├── get_market()                 # /api/trading/market/:marketId
-│   ├── get_market_trackers()        # /api/trading/market/:marketId/trackers
-│   ├── get_market_trades()          # /api/trading/market/:marketId/trades
-│   ├── get_market_configuration()   # /api/trading/market/:marketId/configuration
-│   ├── get_market_storage()         # /api/trading/market/:marketId/storage
-│   └── get_market_data()            # /api/trading/market/:marketId/data
-├── assets                           # Assets resource
-│   └── get_assets()                 # /api/trading/assets
+│   ├── get_accounts()               # /v2/wallet/{address}/accounts
+│   ├── get_positions()              # /v2/wallet/{address}/positions
+│   ├── get_open_orders()            # /v2/wallet/{address}/openOrders
+│   ├── get_perp_executions()        # /v2/wallet/{address}/perpExecutions
+│   ├── get_spot_executions()        # /v2/wallet/{address}/spotExecutions
+│   └── get_configuration()          # /v2/wallet/{address}/configuration
+├── orders                           # Order Entry resource
+│   ├── create_order()               # /v2/createOrder (IOC, GTC, SL, TP)
+│   └── cancel_order()               # /v2/cancelOrder
+├── markets                          # Market Data resource
+│   ├── get_markets_summary()        # /v2/markets/summary
+│   ├── get_market_summary()         # /v2/market/{symbol}/summary
+│   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
+│   └── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
+├── reference                        # Reference Data resource
+│   ├── get_market_definitions()     # /v2/marketDefinitions
+│   ├── get_asset_definitions()      # /v2/assetDefinitions
+│   ├── get_liquidity_parameters()   # /v2/liquidityParameters
+│   ├── get_global_fee_parameters()  # /v2/globalFeeParameters
+│   └── get_fee_tiers()              # /v2/feeTiers
 └── prices                           # Prices resource
-    ├── get_prices()                 # /api/trading/prices
-    └── get_price()                  # /api/trading/prices/:assetPairId
+    ├── get_prices()                 # /v2/prices
+    └── get_price()                  # /v2/prices/{symbol}
 ```
 
 #### WebSocket API Structure
@@ -260,32 +198,28 @@ The WebSocket API client is organized around resources:
 ```
 ReyaSocket
 ├── market
-│   ├── all_markets                      # /api/trading/markets/data
+│   ├── all_markets_summary             # /v2/markets/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── market_data(market_id)          # /api/trading/market/:marketId/data
+│   ├── market_summary(symbol)          # /v2/market/{symbol}/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   └── market_orders(market_id)        # /api/trading/market/:marketId/trades
+│   └── market_perp_executions(symbol)  # /v2/market/{symbol}/perpExecutions
 │       ├── subscribe()
 │       └── unsubscribe()
 ├── wallet
-│   ├── positions(address)              # /api/trading/wallet/:address/positions
+│   ├── positions(address)              # /v2/wallet/{address}/positions
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── orders(address)                 # /api/trading/wallet/:address/trades
+│   ├── order_changes(address)            # /v2/wallet/{address}/orderChanges
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── balances(address)               # /api/trading/wallet/:address/accounts/balances
-│   │   ├── subscribe()
-│   │   └── unsubscribe()
-│   └── open_orders(address)            # /api/trading/wallet/:address/openOrders
+│   └── perp_executions(address)        # /v2/wallet/{address}/perpExecutions
 │       ├── subscribe()
 │       └── unsubscribe()
-└── prices
-    └── asset_pair_price(asset_pair_id) # /api/trading/prices/:assetPairId
-        ├── subscribe()
-        └── unsubscribe()
+└── ping                                # /ping (heartbeat)
+    ├── send_pong()
+    └── receive_ping()
 ```
 
 ### Configuration via Environment Variables
@@ -305,31 +239,6 @@ REYA_WS_RECONNECT_DELAY=5     # Delay between reconnection attempts
 REYA_WS_ENABLE_COMPRESSION=true # Enable WebSocket compression
 REYA_WS_SSL_VERIFY=true       # Verify SSL certificate
 
-# API prefix
-REYA_TRADING_API_PREFIX="/api/trading/"
-```
-
-### Custom Configuration
-
-You can customize the WebSocket behavior by passing parameters directly or loading from environment:
-
-```python
-from sdk.reya_websocket import ReyaSocket
-from sdk.reya_websocket.config import WebSocketConfig
-
-# Load config from environment variables
-config = WebSocketConfig.from_env()
-
-# Or create custom config
-custom_config = WebSocketConfig(
-    url="wss://custom-websocket.example.com/",
-    ping_interval=15,
-    ping_timeout=5,
-    ssl_verify=True,
-    trading_api_prefix="/api/v2/trading/"
-)
-
-socket = ReyaSocket(config=custom_config)
 ```
 
 ## Examples
@@ -339,23 +248,23 @@ The repository includes example scripts demonstrating how to use the SDK:
 ### Available Examples
 
 - **REST API Examples**
-  - `examples/rest_api/wallet_example.py` - Comprehensive example of all wallet endpoints
-  - `examples/rest_api/markets_example.py` - Using markets-related endpoints
-  - `examples/rest_api/assets_example.py` - Retrieving assets information
-  - `examples/rest_api/prices_example.py` - Getting price information
-  - `examples/rest_api/order_entry.py` - Creating various order types
-  - `examples/rest_api/account_info.py` - Getting open orders for a wallet
+    - `examples/rest_api/wallet_example.py` - Comprehensive example of all wallet endpoints
+    - `examples/rest_api/markets_example.py` - Using markets-related endpoints
+    - `examples/rest_api/assets_example.py` - Retrieving assets information
+    - `examples/rest_api/prices_example.py` - Getting price information
+    - `examples/rest_api/order_entry.py` - Creating various order types
+    - `examples/rest_api/account_info.py` - Getting open orders for a wallet
 
 - **WebSocket Data Feed Examples**
-  - `examples/websocket/market_monitoring.py` - Basic subscription to market data
-  - `examples/websocket/prices_monitoring.py` - Monitoring real-time prices for an asset pair
-  - `examples/websocket/wallet_monitoring.py` - Monitoring wallet positions and orders
-  - `examples/consume_data_feed.py` - Working with the WebSocket data feed
+    - `examples/websocket/market_monitoring.py` - Basic subscription to market data
+    - `examples/websocket/prices_monitoring.py` - Monitoring real-time prices for an asset pair
+    - `examples/websocket/wallet_monitoring.py` - Monitoring wallet positions and orders
+    - `examples/consume_data_feed.py` - Working with the WebSocket data feed
 
 - **Action Examples**
-  - `examples/bridge_in_and_deposit.py` - Bridge in and deposit funds
-  - `examples/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
-  - `examples/update_oracle_prices.py` - Update oracle prices
+    - `examples/bridge_in_and_deposit.py` - Bridge in and deposit funds
+    - `examples/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
+    - `examples/update_oracle_prices.py` - Update oracle prices
 
 ### Running Examples
 
@@ -369,68 +278,6 @@ poetry shell
 python -m examples.basic_market_data
 python -m examples.trading.order_entry
 ```
-
-## API Reference
-
-### WebSocket Client
-
-#### `ReyaSocket`
-
-The main WebSocket client for connecting to the Reya API.
-
-```python
-ReyaSocket(
-    url=None,                # WebSocket URL (defaults to config)
-    on_open=None,            # Connection open callback
-    on_message=None,         # Message callback
-    on_error=None,           # Error callback
-    on_close=None,           # Connection close callback
-    config=None,             # Custom configuration
-)
-```
-
-**Methods:**
-
-- `connect(sslopt=None)` - Connect to the WebSocket server
-- `send_subscribe(channel, **kwargs)` - Send a subscription message
-- `send_unsubscribe(channel, **kwargs)` - Send an unsubscription message
-
-### Market Resources
-
-#### `MarketResource`
-
-Container for all market-related WebSocket resources.
-
-**Properties:**
-
-- `all_markets` - Access all markets data
-
-**Methods:**
-
-- `market_data(market_id)` - Get market data for a specific market
-- `market_orders(market_id)` - Get orders for a specific market
-
-### Wallet Resources
-
-#### `WalletResource`
-
-Container for all wallet-related WebSocket resources.
-
-**Methods:**
-
-- `positions(address)` - Get positions for a specific wallet address
-- `orders(address)` - Get orders for a specific wallet address
-- `balances(address)` - Get account balances for a specific wallet address
-
-### Price Resources
-
-#### `PricesResource`
-
-Container for all price-related WebSocket resources.
-
-**Methods:**
-
-- `asset_pair_price(asset_pair_id)` - Get real-time price data for a specific asset pair
 
 ## Contributing
 

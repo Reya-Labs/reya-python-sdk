@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, List, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.order import Order
-class OpenOrderUpdatePayload(BaseModel): 
+class OrderChangeUpdatePayload(BaseModel): 
   type: str = Field(description='''Message type''', default='channel_data', frozen=True)
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
   channel: str = Field()

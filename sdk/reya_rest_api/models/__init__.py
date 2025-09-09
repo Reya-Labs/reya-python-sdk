@@ -2,20 +2,6 @@
 Data models for Reya Trading API.
 """
 
-from sdk.reya_rest_api.models.orders import (
-    CancelOrderRequest,
-    CancelOrderResponse,
-    CreateOrderResponse,
-    LimitOrderRequest,
-    OrderRequest,
-    TriggerOrderRequest,
-)
+from .orders import LimitOrderParameters, TriggerOrderParameters
 
-__all__ = [
-    "OrderRequest",
-    "LimitOrderRequest",
-    "TriggerOrderRequest",
-    "CancelOrderRequest",
-    "CreateOrderResponse",
-    "CancelOrderResponse",
-]
+__all__ = ["LimitOrderParameters", "TriggerOrderParameters"]

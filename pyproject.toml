@@ -1,6 +1,6 @@
 [project]
 name = "reya-python-sdk"
-version = "1.0.2"
+version = "2.0.0"
 description = "SDK for interacting with Reya Labs APIs"
 authors = [
     {name = "Reya Labs"}
@@ -17,12 +17,14 @@ dependencies = [
     "httpx>=0.28.1,<1.0.0",
     "websocket-client>=1.8.0,<2.0.0",
     "tomli>=2.0.1,<3.0.0",
-    "types-requests>=2.31.0,<2.32.0"
+    "types-requests>=2.31.0,<2.32.0",
+    "python-dateutil>=2.8.0,<3.0.0"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0,<9.0.0",
+    "pytest-asyncio>=0.23.0,<=1.1.0",
     "black>=24.7.0,<25.0.0",
     "isort>=5.12.0,<6.0.0",
     "flake8>=7.0.0,<8.0.0",
@@ -92,6 +94,11 @@ warn_return_any = true
 warn_unreachable = true
 warn_unused_configs = true
 warn_unused_ignores = true
+
+# Ignore specific modules with type issues
+[[tool.mypy.overrides]]
+module = "sdk.open_api.*"
+ignore_errors = true
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120

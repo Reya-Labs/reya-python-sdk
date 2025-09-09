@@ -17,15 +17,11 @@ import os
 import time
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
 from sdk.async_api.price_update_payload import PriceUpdatePayload
-
-# Import WebSocket message types for proper type conversion
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
-
-# Import the resource-oriented WebSocket client
 from sdk.reya_websocket import ReyaSocket
+from sdk.reya_websocket.config import WebSocketConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -50,49 +46,38 @@ def on_open(ws):
 
 def handle_all_prices_data(message: dict[str, Any]) -> None:
     """Handle /v2/prices channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = PricesUpdatePayload.model_validate(message)
 
-        logger.info("💰 All Prices Update:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  └─ Prices Count: {len(payload.data)}")
+    payload = PricesUpdatePayload.model_validate(message)
 
-        # Showcase individual price data structure
-        for i, price in enumerate(payload.data[:5]):  # Show first 5 prices
-            logger.info(f"    Price {i + 1}: {price.symbol}")
-            logger.info(f"      ├─ Oracle Price: {price.oracle_price or 'N/A'}")
-            logger.info(f"      ├─ Pool Price: {price.pool_price or 'N/A'}")
-            logger.info(f"      └─ Updated At: {price.updated_at}")
+    logger.info("💰 All Prices Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Prices Count: {len(payload.data)}")
 
-        if len(payload.data) > 5:
-            logger.info(f"    ... and {len(payload.data) - 5} more prices")
+    # Showcase individual price data structure
+    for i, price in enumerate(payload.data[:5]):  # Show first 5 prices
+        logger.info(f"    Price {i + 1}: {price.symbol}")
+        logger.info(f"      ├─ Oracle Price: {price.oracle_price or 'N/A'}")
+        logger.info(f"      ├─ Pool Price: {price.pool_price or 'N/A'}")
+        logger.info(f"      └─ Updated At: {price.updated_at}")
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse all prices data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling all prices: {e}")
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more prices")
 
 
 def handle_single_price_data(message: dict[str, Any]) -> None:
     """Handle /v2/prices/:symbol channel data with proper type conversion."""
-    try:
-        # Convert raw message to typed payload
-        payload = PriceUpdatePayload.model_validate(message)
-        price = payload.data
 
-        logger.info(f"💵 Price Update for {price.symbol}:")
-        logger.info(f"  ├─ Timestamp: {payload.timestamp}")
-        logger.info(f"  ├─ Channel: {payload.channel}")
-        logger.info(f"  ├─ Oracle Price: {price.oracle_price or 'N/A'}")
-        logger.info(f"  ├─ Pool Price: {price.pool_price or 'N/A'}")
-        logger.info(f"  └─ Updated At: {price.updated_at}")
+    # Convert raw message to typed payload
+    payload = PriceUpdatePayload.model_validate(message)
+    price = payload.data
 
-    except ValidationError as e:
-        logger.error(f"Failed to parse single price data: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error handling single price: {e}")
+    logger.info(f"💵 Price Update for {price.symbol}:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  ├─ Oracle Price: {price.oracle_price or 'N/A'}")
+    logger.info(f"  ├─ Pool Price: {price.pool_price or 'N/A'}")
+    logger.info(f"  └─ Updated At: {price.updated_at}")
 
 
 def on_message(ws, message):
@@ -120,11 +105,8 @@ def on_message(ws, message):
 
     elif message_type == "ping":
         logger.info("🏓 Received ping from server, sending pong response")
-        try:
-            ws.send(json.dumps({"type": "pong"}))
-            logger.debug("✅ Pong sent successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to send pong: {e}")
+        ws.send(json.dumps({"type": "pong"}))
+        logger.debug("✅ Pong sent successfully")
 
     elif message_type == "pong":
         logger.info("🏓 Connection confirmed via pong response")
@@ -153,11 +135,8 @@ async def periodic_task(ws):
 
         # Send periodic ping to test connection (every 10 iterations = ~20 seconds)
         if counter % 10 == 0:
-            try:
-                logger.info("🏓 Sending manual ping to test connection")
-                ws.send(json.dumps({"type": "ping"}))
-            except Exception as e:
-                logger.error(f"❌ Failed to send manual ping: {e}")
+            logger.info("🏓 Sending manual ping to test connection")
+            ws.send(json.dumps({"type": "ping"}))
 
         await asyncio.sleep(2)  # Run every 2 seconds
 
@@ -170,28 +149,22 @@ async def main():
     # Get WebSocket URL from environment
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
 
-    # Create enhanced error and close handlers for better connection monitoring
-    def on_error(ws, error):
-        """Enhanced error handler with detailed logging."""
+    def on_error(_ws, error):
         logger.error(f"❌ WebSocket error: {error}")
 
-    def on_close(ws, close_status_code, close_reason):
-        """Enhanced close handler with detailed logging."""
+    def on_close(_ws, close_status_code, close_reason):
         logger.info(f"🔌 WebSocket closed: {close_status_code} - {close_reason}")
-        if close_status_code != 1000:  # 1000 is normal closure
+        if close_status_code != 1000:
             logger.warning(f"⚠️ Abnormal closure detected. Status: {close_status_code}")
-
-    # Create the WebSocket with enhanced configuration
-    from sdk.reya_websocket.config import WebSocketConfig
 
     # Create custom config with more aggressive ping settings
     config = WebSocketConfig(
         url=ws_url,
-        ping_interval=20,  # Ping every 20 seconds instead of 30
-        ping_timeout=15,  # Wait 15 seconds for pong instead of 10
-        connection_timeout=60,  # Longer initial connection timeout
-        reconnect_attempts=5,  # More reconnection attempts
-        reconnect_delay=3,  # Shorter delay between reconnects
+        ping_interval=20,
+        ping_timeout=15,
+        connection_timeout=60,
+        reconnect_attempts=5,
+        reconnect_delay=3,
     )
 
     ws = ReyaSocket(
