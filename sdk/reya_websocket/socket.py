@@ -15,7 +15,7 @@ from sdk.async_api.market_perp_execution_update_payload import (
 )
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
-from sdk.async_api.open_order_update_payload import OpenOrderUpdatePayload
+from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 
 # Import V2 payload types
 from sdk.async_api.ping_message import PingMessage
@@ -76,7 +76,7 @@ class ReyaSocket(websocket.WebSocketApp):
         "/v2/market/perpExecutions": MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
         # Wallet-specific (regex patterns handled in _get_payload_type)
         "/v2/wallet/positions": PositionUpdatePayload,  # /v2/wallet/{address}/positions
-        "/v2/wallet/openOrders": OpenOrderUpdatePayload,  # /v2/wallet/{address}/openOrders
+        "/v2/wallet/orderChanges": OrderChangeUpdatePayload,  # /v2/wallet/{address}/orderChanges
         "/v2/wallet/perpExecutions": WalletPerpExecutionUpdatePayload,  # /v2/wallet/{address}/perpExecutions
         # Prices
         "/v2/prices": PricesUpdatePayload,
@@ -160,8 +160,8 @@ class ReyaSocket(websocket.WebSocketApp):
         elif "/v2/wallet/" in channel:
             if channel.endswith("/positions"):
                 return PositionUpdatePayload
-            elif channel.endswith("/openOrders"):
-                return OpenOrderUpdatePayload
+            elif channel.endswith("/orderChanges"):
+                return OrderChangeUpdatePayload
             elif channel.endswith("/perpExecutions"):
                 return WalletPerpExecutionUpdatePayload
         elif "/v2/prices/" in channel and not channel == "/v2/prices":
