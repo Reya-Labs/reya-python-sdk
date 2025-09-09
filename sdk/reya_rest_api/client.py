@@ -31,6 +31,7 @@ from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig, get_config
 from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
+from sdk._version import SDK_VERSION
 
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
@@ -107,6 +108,10 @@ class ReyaTradingClient:
         self.logger.info(f"API URL: {api_config.host}")
         self.logger.info(f"API base path: {api_config._base_path}")
         api_client = ApiClient(api_config)
+
+        # Set custom SDK headers for all requests
+        api_client.set_default_header("X-SDK-Version", f"reya-python-sdk/{SDK_VERSION}")
+        api_client.set_default_header("User-Agent", f"reya-python-sdk/{SDK_VERSION}")
 
         # Verify ApiClient host configuration
         if hasattr(api_client, "configuration"):
