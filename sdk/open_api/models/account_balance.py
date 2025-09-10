@@ -17,20 +17,19 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
-class PerpExecutionListMeta(BaseModel):
+class AccountBalance(BaseModel):
     """
-    PerpExecutionListMeta
+    AccountBalance
     """ # noqa: E501
-    limit: StrictInt = Field(description="Number of items requested")
-    count: StrictInt = Field(description="Number of items returned")
-    end_time: Optional[StrictInt] = Field(default=None, description="Timestamp of last result, in milliseconds", alias="endTime")
-    start_time: Optional[StrictInt] = Field(default=None, description="Timestamp of first result, in milliseconds", alias="startTime")
-    __properties: ClassVar[List[str]] = ["limit", "count", "endTime", "startTime"]
+    account_id: StrictInt = Field(alias="accountId")
+    asset: StrictStr
+    real_balance: StrictStr = Field(description="Sum of account net deposits (transfers, deposits and withdrawals) and realized pnl from closed positions. Realized pnl only applies to RUSD given it is the only settlement asset", alias="realBalance")
+    __properties: ClassVar[List[str]] = ["accountId", "asset", "realBalance"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -50,7 +49,7 @@ class PerpExecutionListMeta(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of PerpExecutionListMeta from a JSON string"""
+        """Create an instance of AccountBalance from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -75,7 +74,7 @@ class PerpExecutionListMeta(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of PerpExecutionListMeta from a dict"""
+        """Create an instance of AccountBalance from a dict"""
         if obj is None:
             return None
 
@@ -83,10 +82,9 @@ class PerpExecutionListMeta(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "limit": obj.get("limit"),
-            "count": obj.get("count"),
-            "endTime": obj.get("endTime"),
-            "startTime": obj.get("startTime")
+            "accountId": obj.get("accountId"),
+            "asset": obj.get("asset"),
+            "realBalance": obj.get("realBalance")
         })
         return _obj
 
