@@ -117,7 +117,7 @@ To run the examples, make sure you have activated the virtual environment first:
 
 ```bash
 source $(poetry env info --path)/bin/activate
-python -m examples.trading.order_entry  # Run a specific example
+python -m examples.rest_api.order_entry  # Run a specific example
 ```
 
 ## Finding Your Account ID
