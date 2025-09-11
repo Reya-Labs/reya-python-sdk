@@ -4,6 +4,7 @@ sdk/open_api/api/__init__.py
 sdk/open_api/api/market_data_api.py
 sdk/open_api/api/order_entry_api.py
 sdk/open_api/api/reference_data_api.py
+sdk/open_api/api/specs_api.py
 sdk/open_api/api/wallet_data_api.py
 sdk/open_api/api_client.py
 sdk/open_api/api_response.py
@@ -11,6 +12,7 @@ sdk/open_api/configuration.py
 sdk/open_api/exceptions.py
 sdk/open_api/models/__init__.py
 sdk/open_api/models/account.py
+sdk/open_api/models/account_balance.py
 sdk/open_api/models/asset_definition.py
 sdk/open_api/models/cancel_order_request.py
 sdk/open_api/models/cancel_order_response.py

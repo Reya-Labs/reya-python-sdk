@@ -66,6 +66,11 @@ async def main():
         accounts = await client.get_accounts()
         print(f"Accounts: {accounts}")
 
+        # Get account balances
+        print("\n--- Getting account balances ---")
+        balances = await client.get_account_balances()
+        print(f"Account balances: {balances}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -18,6 +18,7 @@ from sdk.open_api.api.wallet_data_api import WalletDataApi
 from sdk.open_api.api_client import ApiClient
 from sdk.open_api.configuration import Configuration
 from sdk.open_api.models.account import Account
+from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
@@ -422,6 +423,22 @@ class ReyaTradingClient:
             raise ValueError("No wallet address available. Private key must be provided.")
 
         return await self.wallet.get_wallet_accounts(address=wallet)
+
+    async def get_account_balances(self) -> list[AccountBalance]:
+        """
+        Get account balances for the authenticated wallet asynchronously.
+
+        Returns:
+            Account balances
+
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+
+        return await self.wallet.get_wallet_account_balances(address=wallet)
 
     async def get_spot_executions(self) -> SpotExecutionList:
         """
