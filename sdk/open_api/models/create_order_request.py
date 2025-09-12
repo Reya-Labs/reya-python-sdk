@@ -43,6 +43,7 @@ class CreateOrderRequest(BaseModel):
     nonce: StrictStr = Field(description="Order nonce, see signatures and nonces section for more details.")
     signer_wallet: Annotated[str, Field(strict=True)] = Field(description="Ethereum wallet address", alias="signerWallet")
     expires_after: Optional[StrictInt] = Field(default=None, description="Expiration timestamp (exclusively for IOC orders). The order will only be filled before this timestamp.", alias="expiresAfter")
+    additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "isBuy", "limitPx", "qty", "orderType", "timeInForce", "triggerPx", "reduceOnly", "signature", "nonce", "signerWallet", "expiresAfter"]
 
     @field_validator('symbol')
@@ -92,8 +93,10 @@ class CreateOrderRequest(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
+            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -101,6 +104,11 @@ class CreateOrderRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
@@ -128,6 +136,11 @@ class CreateOrderRequest(BaseModel):
             "signerWallet": obj.get("signerWallet"),
             "expiresAfter": obj.get("expiresAfter")
         })
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 

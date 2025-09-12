@@ -32,6 +32,7 @@ class AssetDefinition(BaseModel):
     price_haircut: StrictStr = Field(description="Notional discount to the value of a collateral when used to satisfy the margin requirements; it does not imply any token conversion, but is rather an accounting adjustment.", alias="priceHaircut")
     liquidation_discount: StrictStr = Field(description="Discount in the token price when liquidating collateral.", alias="liquidationDiscount")
     timestamp: StrictInt = Field(description="Configuration timestamp (milliseconds)")
+    additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["asset", "spotMarketSymbol", "priceHaircut", "liquidationDiscount", "timestamp"]
 
     @field_validator('spot_market_symbol')
@@ -71,8 +72,10 @@ class AssetDefinition(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
+            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -80,6 +83,11 @@ class AssetDefinition(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
@@ -98,6 +106,11 @@ class AssetDefinition(BaseModel):
             "liquidationDiscount": obj.get("liquidationDiscount"),
             "timestamp": obj.get("timestamp")
         })
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 

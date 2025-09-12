@@ -41,6 +41,7 @@ class MarketSummary(BaseModel):
     throttled_oracle_price: Optional[StrictStr] = Field(default=None, description="Last oracle price, at the moment of the last market summary update", alias="throttledOraclePrice")
     throttled_pool_price: Optional[StrictStr] = Field(default=None, description="Last pool price, at the moment of the last market summary update", alias="throttledPoolPrice")
     prices_updated_at: Optional[StrictInt] = Field(default=None, description="Timestamp of the last price update (milliseconds)", alias="pricesUpdatedAt")
+    additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["symbol", "updatedAt", "longOiQty", "shortOiQty", "oiQty", "fundingRate", "longFundingValue", "shortFundingValue", "fundingRateVelocity", "volume24h", "pxChange24h", "throttledOraclePrice", "throttledPoolPrice", "pricesUpdatedAt"]
 
     @field_validator('symbol')
@@ -80,8 +81,10 @@ class MarketSummary(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
+            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -89,6 +92,11 @@ class MarketSummary(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
@@ -116,6 +124,11 @@ class MarketSummary(BaseModel):
             "throttledPoolPrice": obj.get("throttledPoolPrice"),
             "pricesUpdatedAt": obj.get("pricesUpdatedAt")
         })
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 

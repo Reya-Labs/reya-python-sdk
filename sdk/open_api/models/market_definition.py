@@ -36,6 +36,7 @@ class MarketDefinition(BaseModel):
     initial_margin_parameter: StrictStr = Field(description="Minimum percentage of notional that needs to be covered post trade; if the account does not satisfy this requirement, trades will not get executed.", alias="initialMarginParameter")
     max_leverage: StrictInt = Field(description="Maximum leverage allowed", alias="maxLeverage")
     oi_cap: StrictStr = Field(description="Maximum one-sided open interest in units for a given market.", alias="oiCap")
+    additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
 
     @field_validator('symbol')
@@ -75,8 +76,10 @@ class MarketDefinition(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
+            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -84,6 +87,11 @@ class MarketDefinition(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
@@ -106,6 +114,11 @@ class MarketDefinition(BaseModel):
             "maxLeverage": obj.get("maxLeverage"),
             "oiCap": obj.get("oiCap")
         })
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 
