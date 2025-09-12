@@ -28,11 +28,10 @@ sdk/open_api/models/market_summary.py
 sdk/open_api/models/order.py
 sdk/open_api/models/order_status.py
 sdk/open_api/models/order_type.py
+sdk/open_api/models/pagination_meta.py
 sdk/open_api/models/pagination_parameters.py
 sdk/open_api/models/perp_execution.py
 sdk/open_api/models/perp_execution_list.py
-sdk/open_api/models/perp_execution_list_data_inner.py
-sdk/open_api/models/perp_execution_list_meta.py
 sdk/open_api/models/position.py
 sdk/open_api/models/price.py
 sdk/open_api/models/request_error.py
@@ -42,7 +41,7 @@ sdk/open_api/models/server_error_code.py
 sdk/open_api/models/side.py
 sdk/open_api/models/spot_execution.py
 sdk/open_api/models/spot_execution_list.py
-sdk/open_api/models/spot_execution_list_data_inner.py
+sdk/open_api/models/tier_type.py
 sdk/open_api/models/time_in_force.py
 sdk/open_api/models/wallet_configuration.py
 sdk/open_api/rest.py
