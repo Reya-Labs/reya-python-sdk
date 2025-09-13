@@ -7,7 +7,7 @@ from sdk.async_api.time_in_force import TimeInForce
 from sdk.async_api.order_status import OrderStatus
 class Order(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
-  symbol: str = Field()
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   order_id: str = Field(alias='''orderId''')
   qty: Optional[str] = Field(default=None)
@@ -16,7 +16,7 @@ class Order(BaseModel):
   limit_px: str = Field(alias='''limitPx''')
   order_type: OrderType = Field(description='''Order type, (LIMIT = Limit, TP = Take Profit, SL = Stop Loss)''', alias='''orderType''')
   trigger_px: Optional[str] = Field(description='''Price at which TP/SL orders will be triggered, should not be set for other order types.''', default=None, alias='''triggerPx''')
-  time_in_force: Optional[TimeInForce] = Field(description='''Order time in force, exclusively used for LIMIT orders''', default=None, alias='''timeInForce''')
+  time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel)''', default=None, alias='''timeInForce''')
   reduce_only: Optional[bool] = Field(description='''Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.''', default=None, alias='''reduceOnly''')
   status: OrderStatus = Field(description='''Order status''')
   created_at: int = Field(description='''Creation timestamp (milliseconds)''', alias='''createdAt''')

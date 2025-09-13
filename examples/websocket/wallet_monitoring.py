@@ -50,14 +50,15 @@ def on_open(ws):
     ws.wallet.positions(wallet_address).subscribe()
 
     # Subscribe to wallet perpetual executions
-    ws.wallet.perp_executions(wallet_address).subscribe()
+    # ws.wallet.perp_executions(wallet_address).subscribe()
 
     # Subscribe to wallet open orders
-    ws.wallet.order_changes(wallet_address).subscribe()
+    # ws.wallet.order_changes(wallet_address).subscribe()
 
 
 def handle_wallet_positions_data(message: dict[str, Any]) -> None:
     """Handle /v2/wallet/:address/positions channel data with proper type conversion."""
+    logger.info("NEW POSITION DATA")
 
     payload = PositionUpdatePayload.model_validate(message)
 
