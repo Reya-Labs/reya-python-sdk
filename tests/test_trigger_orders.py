@@ -75,13 +75,13 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
             order_type=OrderType.TP,
             symbol=symbol,
             is_buy=False,  # on long
-            limit_px=str(market_price * 2),  # lower than IOC limit price
+            limit_px=str(float(market_price) * 2),  # lower than IOC limit price
             qty="0.01",
         )
         await create_ioc_order(
             reya_tester,
             tp_order_details.symbol,
-            str(market_price * 1.1),
+            str(float(market_price) * 1.1),
             not tp_order_details.is_buy,
             qty=tp_order_details.qty,
         )
@@ -147,7 +147,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
         sl_order_details = OrderDetails(
             symbol=symbol,
             is_buy=False,  # on long
-            limit_px=str(market_price * 0.9),  # higher than IOC limit price
+            limit_px=str(float(market_price) * 0.9),  # higher than IOC limit price
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
             qty="0.01",
@@ -155,7 +155,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
         await create_ioc_order(
             reya_tester,
             sl_order_details.symbol,
-            str(market_price * 1.1),
+            str(float(market_price) * 1.1),
             not sl_order_details.is_buy,
             qty="0.01",
         )
@@ -224,7 +224,7 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
         tp_order_details = OrderDetails(
             symbol=symbol,
             is_buy=True,  # on short position
-            trigger_px=str(market_price * 1.1),
+            trigger_px=str(float(market_price) * 1.1),
             qty=qty,
             account_id=reya_tester.account_id,
             order_type=OrderType.TP,
@@ -232,7 +232,7 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
         sl_order_details = OrderDetails(
             symbol=symbol,
             is_buy=tp_order_details.is_buy,
-            trigger_px=str(market_price * 0.9),
+            trigger_px=str(float(market_price) * 0.9),
             qty=qty,
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
@@ -242,7 +242,7 @@ async def test_success_sltp_when_tight_execution(reya_tester: ReyaTester):
         await create_ioc_order(
             reya_tester,
             tp_order_details.symbol,
-            str(market_price * 0.999),
+            str(float(market_price) * 0.999),
             not tp_order_details.is_buy,
             qty=tp_order_details.qty,
         )
@@ -311,7 +311,7 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
         tp_order_details = OrderDetails(
             symbol=symbol,
             is_buy=True,  # on short position
-            limit_px=str(market_price * 1.1),  # out of the money
+            limit_px=str(float(market_price) * 1.1),  # out of the money
             qty=qty,
             account_id=reya_tester.account_id,
             order_type=OrderType.TP,
@@ -319,7 +319,7 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
         await create_ioc_order(
             reya_tester,
             tp_order_details.symbol,
-            str(market_price * 0.99),
+            str(float(market_price) * 0.99),
             not tp_order_details.is_buy,
             qty=qty,
         )
@@ -367,7 +367,7 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
         sl_order_details = OrderDetails(
             symbol=symbol,
             is_buy=True,  # on short position
-            limit_px=str(market_price * 0.9),  # in the money
+            limit_px=str(float(market_price) * 0.9),  # in the money
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
             qty=qty,
@@ -375,7 +375,7 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
         await create_ioc_order(
             reya_tester,
             sl_order_details.symbol,
-            str(market_price * 0.9),
+            str(float(market_price) * 0.9),
             not sl_order_details.is_buy,
             qty=qty,
         )
@@ -424,13 +424,13 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
         sl_order_details = OrderDetails(
             symbol=symbol,
             is_buy=False,  # on short position
-            limit_px=str(market_price * 0.9),  # in the money
+            limit_px=str(float(market_price) * 0.9),  # in the money
             account_id=reya_tester.account_id,
             order_type=OrderType.SL,
             qty=qty,
         )
         # await create_ioc_order(reya_tester, sl_order_details["market_id"],
-        #                       str(market_price * 0.99), sl_order_details["is_buy"], qty="0.01")
+        #                       str(float(market_price) * 0.99), sl_order_details["is_buy"], qty="0.01")
         await reya_tester.check_position_not_open(sl_order_details.symbol)
 
         # SUBMIT SL
@@ -486,7 +486,7 @@ async def test_failure_sltp_input_validation(reya_tester: ReyaTester):
         tp_order_details = OrderDetails(
             symbol=symbol,
             is_buy=True,
-            limit_px=str(market_price * 1.1),  # higher than IOC limit price
+            limit_px=str(float(market_price) * 1.1),  # higher than IOC limit price
             account_id=reya_tester.account_id,
             order_type=OrderType.TP,
         )
@@ -494,7 +494,7 @@ async def test_failure_sltp_input_validation(reya_tester: ReyaTester):
         await create_ioc_order(
             reya_tester,
             tp_order_details.symbol,
-            str(market_price * 1.01),
+            str(float(market_price) * 1.01),
             tp_order_details.is_buy,
             qty="0.01",
         )

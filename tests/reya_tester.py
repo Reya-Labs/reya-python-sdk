@@ -172,6 +172,9 @@ class ReyaTester:
         trades = await self.get_wallet_perp_executions()
         trade = trades.get(int(sequence_number))
 
+        if trade is None:
+            raise RuntimeError(f"Trade not found for sequence number: {sequence_number}")
+
         return trade
 
     async def get_last_wallet_perp_execution(self) -> PerpExecution:
@@ -181,13 +184,13 @@ class ReyaTester:
 
         return trades[last_trade_sequence_number]
 
-    async def get_market_definition(self, symbol: str) -> Optional[MarketDefinition]:
+    async def get_market_definition(self, symbol: str) -> MarketDefinition:
         """Get market configuration for a specific symbol"""
         markets_config: list[MarketDefinition] = await self.client.reference.get_market_definitions()
         for config in markets_config:
             if config.symbol == symbol:
                 return config
-        return None
+        raise RuntimeError(f"Market definition not found for symbol: {symbol}")
 
     async def get_open_order(self, id: str) -> Optional[Order]:
         """Get open orders"""
@@ -199,9 +202,10 @@ class ReyaTester:
 
     async def close_exposure(self, symbol: str, fail_if_none: bool = True):
         """Close exposure for a specific market"""
-        position: Position = await self.get_position(symbol)
+        position = await self.get_position(symbol)
+        assert position is not None
 
-        if position is None or position.qty == 0:
+        if position is None or float(position.qty) == 0.0:
             logger.warning("No position to close")
             if fail_if_none:
                 assert False
@@ -220,6 +224,8 @@ class ReyaTester:
         )
         logger.debug(f"Order details: {order_details}")
 
+        assert order_details.limit_px is not None
+
         order_id = await self.create_limit_order(
             symbol=symbol,
             is_buy=order_details.is_buy,
@@ -232,7 +238,7 @@ class ReyaTester:
         # If order_id is None, the IOC order was filled immediately, no need to wait
         # Note: this confirms trade has been registered, not neccesarely position
         if order_id is not None:
-            await self.wait_for_trade_confirmation(order_details=order_details, sequence_number=order_id)
+            await self.check_order_execution(order_details=order_details)
 
         position_after = await self.get_position(symbol)
         if position_after is not None:
@@ -266,7 +272,6 @@ class ReyaTester:
         qty: str,
         time_in_force: TimeInForce = TimeInForce.IOC,
         reduce_only: Optional[bool] = None,
-        expect_error: bool = False,
     ) -> Optional[str]:
         """Create an order with the specified parameters"""
         side_text = "BUY" if is_buy else "SELL"
@@ -293,25 +298,16 @@ class ReyaTester:
 
         # Check response format
         logger.info(f"Response: {response}")
-        if response is not None:
-            return response.order_id
 
-        if expect_error:
-            return None
-
-        logger.error(f"❌ Order creation failed: {response}")
-        raise RuntimeError(response)
+        return response.order_id
 
     async def create_tp_order(
-        self, symbol: str, is_buy: bool, trigger_px: str, expect_error: bool = False
+        self, symbol: str, is_buy: bool, trigger_px: str
     ) -> Optional[CreateOrderResponse]:
         """Create an order with the specified parameters"""
 
         market_definition = await self.get_market_definition(symbol=symbol)
-        if not market_definition and expect_error:
-            return None
-        elif not market_definition:
-            raise RuntimeError("Market definition not found for symbol: " + symbol)
+        assert market_definition is not None
 
         params = TriggerOrderParameters(
             market_id=market_definition.market_id,
@@ -328,16 +324,8 @@ class ReyaTester:
 
         response: CreateOrderResponse = await self.client.create_trigger_order(params)
 
-        # Check response format
-        if response is not None:
-            logger.info(f"✅ TP {side_text} order created with ID: {response.order_id}")
-            return response
-
-        if expect_error:
-            return None
-
-        logger.error(f"❌ Order creation failed: {response}")
-        raise RuntimeError(response)
+        logger.info(f"✅ TP {side_text} order created with ID: {response.order_id}")
+        return response
 
     async def create_sl_order(
         self, symbol: str, is_buy: bool, trigger_px: str, expect_error: bool = False
@@ -358,21 +346,13 @@ class ReyaTester:
 
         response = await self.client.create_trigger_order(params)
 
-        # Check response format
-        if response is not None:
-            logger.info(f"✅ SL {side_text} order created with ID: {response.order_id}")
-            return response
 
-        if expect_error:
-            return None
+        logger.info(f"✅ SL {side_text} order created with ID: {response.order_id}")
+        return response
 
-        logger.error(f"❌ Order creation failed: {response}")
-        raise RuntimeError(response)
-
-    async def wait_for_trade_confirmation(
+    """async def wait_for_trade_confirmation(
         self, order_details: OrderDetails, sequence_number: int, timeout: int = 5
     ) -> Optional[PerpExecution]:
-        """Query REST for trade confirmation until timeout"""
         logger.debug("⏳ Waiting for trade confirmation order...")
 
         start_time = time.time()
@@ -400,9 +380,9 @@ class ReyaTester:
 
             await asyncio.sleep(0.5)
 
-        return None
+        return None"""
 
-    async def wait_for_order_cancellation_via_rest(self, order_id: str, timeout: int = 5) -> Optional[str]:
+    async def wait_for_order_cancellation_via_rest(self, order_id: str, timeout: int = 5) -> str:
         """Query REST for order cancellation until timeout"""
         logger.debug("⏳ Waiting for order cancellation...")
 
@@ -418,9 +398,9 @@ class ReyaTester:
 
             await asyncio.sleep(0.5)
 
-        return None
+        raise RuntimeError(f"Order {order_id} not cancelled after {timeout} seconds")
 
-    async def wait_for_order_creation_via_rest(self, order_id: str, timeout: int = 5) -> Optional[Order]:
+    async def wait_for_order_creation_via_rest(self, order_id: str, timeout: int = 5) -> Order:
         """Query REST for order creation until timeout"""
         logger.debug("⏳ Waiting for order creation...")
 
@@ -437,7 +417,7 @@ class ReyaTester:
 
             await asyncio.sleep(0.5)
 
-        return None
+        raise RuntimeError(f"Order {order_id} not created after {timeout} seconds")
 
     """async def wait_for_order_status_update_via_ws(
         self, order_id: str, expected_status: OrderStatus, timeout: int = 5

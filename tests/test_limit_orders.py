@@ -468,6 +468,9 @@ async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
             time_in_force=TimeInForce.GTC,
         )
 
+        assert buy_order_id is not None
+
+
         # Wait for trade confirmation on either order (whichever fills first)
         # TODO: Claudiu - listen to WS for NO trade confirmation
 
@@ -510,7 +513,7 @@ async def test_success_gtc_orders_with_execution(reya_tester: ReyaTester):
         order_details_buy = OrderDetails(
             symbol=symbol,
             is_buy=True,
-            limit_px=str(market_price * 1.0001),
+            limit_px=str(float(market_price) * 1.0001),
             qty=str(0.01),
             order_type=OrderType.LIMIT,
             account_id=reya_tester.account_id,
@@ -563,13 +566,14 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
         order_details_buy = OrderDetails(
             symbol=symbol,
             is_buy=True,
-            limit_px=str(market_price * 0.999),
+            limit_px=str(float(market_price) * 0.999),
             qty=str(0.01),
             order_type=OrderType.LIMIT,
             account_id=reya_tester.account_id,
         )
 
         # BUY
+        assert order_details_buy.limit_px is not None
         buy_order_id = await reya_tester.create_limit_order(
             symbol=order_details_buy.symbol,
             is_buy=order_details_buy.is_buy,
@@ -580,11 +584,13 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
         order_details_sell = OrderDetails(
             symbol=symbol,
             is_buy=False,
-            limit_px=str(market_price * 1.0001),
+            limit_px=str(float(market_price) * 1.0001),
             qty=str(order_details_buy.qty),
             order_type=OrderType.LIMIT,
             account_id=reya_tester.account_id,
         )
+
+        assert order_details_sell.limit_px is not None
         sell_order_id = await reya_tester.create_limit_order(
             symbol=order_details_sell.symbol,
             is_buy=order_details_sell.is_buy,
@@ -592,6 +598,9 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
             qty=order_details_sell.qty,
             time_in_force=TimeInForce.GTC,
         )
+
+        assert buy_order_id is not None
+        assert sell_order_id is not None
 
         # Wait for trade confirmation on either order (whichever fills first)
         order_execution_details = await reya_tester.get_last_wallet_perp_execution()
