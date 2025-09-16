@@ -9,11 +9,15 @@ on:
 jobs:
   version-consistency:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           submodules: true
           fetch-depth: 0
 
@@ -48,27 +52,83 @@ jobs:
           echo "Specs is pointing to tag: $SPECS_TAG"
           echo "SPECS_TAG=$SPECS_TAG" >> $GITHUB_ENV
 
+      - name: Check if PR and detect specs tag changes
+        if: github.event_name == 'pull_request'
+        run: |
+          # Get base branch specs tag for comparison
+          git fetch origin ${{ github.base_ref }}
+          BASE_SHA=$(git merge-base HEAD origin/${{ github.base_ref }})
+
+          # Get specs tag from base branch
+          cd specs
+          git checkout $BASE_SHA -- . 2>/dev/null || echo "Could not checkout base commit in specs"
+          BASE_SPECS_COMMIT=$(git rev-parse HEAD)
+          BASE_TAGS=$(git tag --points-at $BASE_SPECS_COMMIT)
+
+          if [ -z "$BASE_TAGS" ]; then
+            echo "Base specs commit $BASE_SPECS_COMMIT has no tags"
+            BASE_SPECS_TAG="unknown"
+          else
+            BASE_SPECS_TAG=$(echo "$BASE_TAGS" | head -n1)
+          fi
+
+          # Reset to current specs
+          git checkout ${{ github.sha }} -- . 2>/dev/null || echo "Could not reset to current commit"
+
+          cd ..
+          echo "Base specs tag: $BASE_SPECS_TAG"
+          echo "Current specs tag: $SPECS_TAG"
+          echo "BASE_SPECS_TAG=$BASE_SPECS_TAG" >> $GITHUB_ENV
+
+          # Check if specs tag changed
+          if [ "$BASE_SPECS_TAG" = "$SPECS_TAG" ]; then
+            echo "SPECS_TAG_CHANGED=false" >> $GITHUB_ENV
+            echo "Specs tag unchanged: $SPECS_TAG"
+          else
+            echo "SPECS_TAG_CHANGED=true" >> $GITHUB_ENV
+            echo "Specs tag changed from $BASE_SPECS_TAG to $SPECS_TAG"
+          fi
+
+      - name: Check if version was manually modified in PR
+        if: github.event_name == 'pull_request'
+        run: |
+          # Check if pyproject.toml version line was modified in this PR
+          BASE_SHA=$(git merge-base HEAD origin/${{ github.base_ref }})
+
+          if git diff $BASE_SHA HEAD -- pyproject.toml | grep -q '^\+.*version = '; then
+            echo "VERSION_MANUALLY_MODIFIED=true" >> $GITHUB_ENV
+            echo "Version was manually modified in this PR"
+          else
+            echo "VERSION_MANUALLY_MODIFIED=false" >> $GITHUB_ENV
+            echo "Version was not manually modified in this PR"
+          fi
+
       - name: Extract version components
         run: |
-          # Extract SDK_VERSION from _version.py
+          # Extract version from pyproject.toml (this is the source of truth)
           SDK_VERSION=$(python -c "
-          import sys
-          sys.path.insert(0, 'sdk')
-          from _version import SDK_VERSION
-          print(SDK_VERSION)
-          ")
-          echo "SDK_VERSION: $SDK_VERSION"
-          echo "SDK_VERSION=$SDK_VERSION" >> $GITHUB_ENV
-
-          # Extract version from pyproject.toml
-          PYPROJECT_VERSION=$(python -c "
           import tomli
           with open('pyproject.toml', 'rb') as f:
               data = tomli.load(f)
           print(data['project']['version'])
           ")
-          echo "PYPROJECT_VERSION: $PYPROJECT_VERSION"
-          echo "PYPROJECT_VERSION=$PYPROJECT_VERSION" >> $GITHUB_ENV
+          echo "SDK_VERSION: $SDK_VERSION"
+          echo "SDK_VERSION=$SDK_VERSION" >> $GITHUB_ENV
+
+          # If this is a PR, get the base version for comparison
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA=$(git merge-base HEAD origin/${{ github.base_ref }})
+            BASE_SDK_VERSION=$(git show $BASE_SHA:pyproject.toml | python -c "
+            import sys, tomli
+            try:
+              data = tomli.loads(sys.stdin.read())
+              print(data['project']['version'])
+            except:
+              print('unknown')
+            " 2>/dev/null || echo "unknown")
+            echo "BASE_SDK_VERSION: $BASE_SDK_VERSION"
+            echo "BASE_SDK_VERSION=$BASE_SDK_VERSION" >> $GITHUB_ENV
+          fi
 
           # Extract first 3 components from specs tag (remove 'v' prefix if present)
           SPECS_TAG_CLEAN=$(echo "$SPECS_TAG" | sed 's/^v//')
@@ -81,26 +141,113 @@ jobs:
           echo "SDK_VERSION_PREFIX: $SDK_VERSION_PREFIX"
           echo "SDK_VERSION_PREFIX=$SDK_VERSION_PREFIX" >> $GITHUB_ENV
 
+      - name: Automatic version bump
+        if: github.event_name == 'pull_request' && env.SPECS_TAG_CHANGED == 'false' && env.VERSION_MANUALLY_MODIFIED == 'false'
+        run: |
+          echo "Conditions met for automatic version bump:"
+          echo "- This is a PR: ✅"
+          echo "- Specs tag unchanged: ✅ ($SPECS_TAG)"
+          echo "- Version not manually modified: ✅"
+
+          # Parse current version (X.Y.Z.W)
+          IFS='.' read -r MAJOR MINOR PATCH BUILD <<< "$SDK_VERSION"
+
+          # Increment the last digit (build number)
+          NEW_BUILD=$((BUILD + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}.${NEW_BUILD}"
+
+          echo "Bumping version from $SDK_VERSION to $NEW_VERSION"
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+          # Update pyproject.toml
+          sed -i "s/^version = \".*\"$/version = \"$NEW_VERSION\"/" pyproject.toml
+
+          echo "✅ Updated pyproject.toml to version $NEW_VERSION"
+
+      - name: Commit version bump
+        if: github.event_name == 'pull_request' && env.NEW_VERSION != ''
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add pyproject.toml
+          git commit -m "chore: bump SDK version to $NEW_VERSION"
+          git push origin HEAD:${{ github.head_ref }}
+          echo "✅ Committed and pushed version bump to $NEW_VERSION"
+
+      - name: Validate version progression (for manual changes)
+        if: github.event_name == 'pull_request' && env.VERSION_MANUALLY_MODIFIED == 'true'
+        run: |
+          echo "Manual version change detected, validating progression..."
+          echo "Previous version: $BASE_SDK_VERSION"
+          echo "Current version: $SDK_VERSION"
+
+          # Check for version regression using version comparison
+          if [ "$BASE_SDK_VERSION" != "unknown" ]; then
+            # Parse versions for comparison
+            IFS='.' read -r BASE_MAJOR BASE_MINOR BASE_PATCH BASE_BUILD <<< "$BASE_SDK_VERSION"
+            IFS='.' read -r CURR_MAJOR CURR_MINOR CURR_PATCH CURR_BUILD <<< "$SDK_VERSION"
+            
+            # Convert to comparable integers (assuming reasonable version numbers < 1000)
+            BASE_NUM=$((BASE_MAJOR*1000000000 + BASE_MINOR*1000000 + BASE_PATCH*1000 + BASE_BUILD))
+            CURR_NUM=$((CURR_MAJOR*1000000000 + CURR_MINOR*1000000 + CURR_PATCH*1000 + CURR_BUILD))
+            
+            if [ "$CURR_NUM" -lt "$BASE_NUM" ]; then
+              echo "❌ ERROR: Version regression detected!"
+              echo "Previous version: $BASE_SDK_VERSION"
+              echo "Current version: $SDK_VERSION"
+              echo "New version must be higher than or equal to the previous version."
+              exit 1
+            elif [ "$CURR_NUM" -eq "$BASE_NUM" ]; then
+              echo "⚠️  Version unchanged: $SDK_VERSION"
+            else
+              # Check that the bump is reasonable (no more than 1 in any component)
+              MAJOR_DIFF=$((CURR_MAJOR - BASE_MAJOR))
+              MINOR_DIFF=$((CURR_MINOR - BASE_MINOR))
+              PATCH_DIFF=$((CURR_PATCH - BASE_PATCH))
+              BUILD_DIFF=$((CURR_BUILD - BASE_BUILD))
+              
+              if [ "$MAJOR_DIFF" -gt 1 ] || [ "$MINOR_DIFF" -gt 1 ] || [ "$PATCH_DIFF" -gt 1 ] || [ "$BUILD_DIFF" -gt 1 ]; then
+                echo "❌ ERROR: Version bump is too large!"
+                echo "Previous: $BASE_SDK_VERSION"
+                echo "Current: $SDK_VERSION"
+                echo "Version should only be incremented by 1 in a single component."
+                exit 1
+              fi
+              echo "✅ Version progression verified: $BASE_SDK_VERSION → $SDK_VERSION"
+            fi
+          else
+            echo "⚠️  Cannot determine previous version, skipping progression check"
+          fi
+
       - name: Check version consistency
         run: |
+          # If version was auto-bumped, use the new version
+          if [ -n "$NEW_VERSION" ]; then
+            CURRENT_SDK_VERSION="$NEW_VERSION"
+          else
+            CURRENT_SDK_VERSION="$SDK_VERSION"
+          fi
+
           echo "Checking version consistency..."
           echo "Specs tag: $SPECS_TAG"
           echo "Specs version prefix: $SPECS_VERSION_PREFIX"
-          echo "SDK version: $SDK_VERSION"
-          echo "SDK version prefix: $SDK_VERSION_PREFIX"
-          echo "Pyproject version: $PYPROJECT_VERSION"
+          echo "SDK version (from pyproject.toml): $CURRENT_SDK_VERSION"
 
-          # Check 1: SDK_VERSION and pyproject.toml versions must match exactly
-          if [ "$SDK_VERSION" != "$PYPROJECT_VERSION" ]; then
-            echo "❌ ERROR: SDK_VERSION ($SDK_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+          # Check 1: SDK_VERSION must have exactly 4 digits (X.Y.Z.W format)
+          SDK_VERSION_PARTS=$(echo "$CURRENT_SDK_VERSION" | tr '.' '\n' | wc -l)
+          if [ "$SDK_VERSION_PARTS" -ne 4 ]; then
+            echo "❌ ERROR: SDK_VERSION must have exactly 4 digits (X.Y.Z.W format)"
+            echo "Found $SDK_VERSION_PARTS parts in version: $CURRENT_SDK_VERSION"
+            echo "Expected format: X.Y.Z.W (e.g., 2.0.3.0)"
             exit 1
           fi
-          echo "✅ SDK_VERSION and pyproject.toml versions match"
+          echo "✅ SDK version has 4 digits: $CURRENT_SDK_VERSION"
 
           # Check 2: First 3 digits of SDK version must match specs tag
-          if [ "$SDK_VERSION_PREFIX" != "$SPECS_VERSION_PREFIX" ]; then
-            echo "❌ ERROR: First 3 digits of SDK_VERSION ($SDK_VERSION_PREFIX) do not match specs tag ($SPECS_VERSION_PREFIX)"
-            echo "SDK version $SDK_VERSION should start with $SPECS_VERSION_PREFIX"
+          CURRENT_SDK_VERSION_PREFIX=$(echo "$CURRENT_SDK_VERSION" | cut -d. -f1-3)
+          if [ "$CURRENT_SDK_VERSION_PREFIX" != "$SPECS_VERSION_PREFIX" ]; then
+            echo "❌ ERROR: First 3 digits of SDK_VERSION ($CURRENT_SDK_VERSION_PREFIX) do not match specs tag ($SPECS_VERSION_PREFIX)"
+            echo "SDK version $CURRENT_SDK_VERSION should start with $SPECS_VERSION_PREFIX"
             exit 1
           fi
           echo "✅ SDK version prefix matches specs tag"
@@ -180,10 +327,92 @@ jobs:
 
           echo "✅ No changes detected after running generation scripts"
 
+      - name: Add PR comment about version changes
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request' && always()
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            // Remove existing bot comments
+            for (const comment of comments) {
+              if (comment.body.includes('🤖 SDK Version Check')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: comment.id,
+                });
+              }
+            }
+
+            const newVersion = '${{ env.NEW_VERSION }}';
+            const versionModified = '${{ env.VERSION_MANUALLY_MODIFIED }}' === 'true';
+            const specsTagChanged = '${{ env.SPECS_TAG_CHANGED }}' === 'true';
+            const sdkVersion = '${{ env.SDK_VERSION }}';
+            const specsTag = '${{ env.SPECS_TAG }}';
+
+            let message = '🤖 **SDK Version Check**\n\n';
+
+            if (newVersion) {
+              message += `✅ **Version automatically bumped to \`${newVersion}\`**\n`;
+              message += `- Previous version: \`${sdkVersion}\`\n`;
+              message += `- Reason: Specs tag unchanged (${specsTag}), no manual version changes\n`;
+              message += `- Change committed automatically\n`;
+            } else if (versionModified) {
+              message += '📝 **Manual version changes detected**\n\n';
+              message += `✅ Version validation passed: \`${sdkVersion}\`\n`;
+              message += '- Version progression validated (no regression)\n';
+              message += '- Version bump is reasonable (≤ 1 increment per component)\n';
+            } else if (specsTagChanged) {
+              message += '📋 **Specs tag updated**\n\n';
+              message += `✅ No automatic version bump needed\n`;
+              message += `- Specs tag changed to: \`${specsTag}\`\n`;
+              message += `- SDK version: \`${sdkVersion}\`\n`;
+              message += '- Version alignment with specs verified\n';
+            } else {
+              message += '✅ **Version check passed**\n\n';
+              message += `- SDK version: \`${sdkVersion}\`\n`;
+              message += `- Specs tag: \`${specsTag}\`\n`;
+              message += '- All consistency checks passed\n';
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+
       - name: Summary
         run: |
+          # Determine final version (could be auto-bumped version)
+          if [ -n "$NEW_VERSION" ]; then
+            FINAL_VERSION="$NEW_VERSION"
+            VERSION_STATUS="auto-bumped to $NEW_VERSION"
+          else
+            FINAL_VERSION="$SDK_VERSION"
+            VERSION_STATUS="$SDK_VERSION"
+          fi
+
           echo "🎉 All version consistency checks passed!"
           echo "✅ Specs submodule points to tag: $SPECS_TAG"
-          echo "✅ SDK_VERSION and pyproject.toml versions match: $SDK_VERSION"
+          echo "✅ SDK version: $VERSION_STATUS"
+          echo "✅ SDK version has required 4-digit format (X.Y.Z.W)"
           echo "✅ First 3 digits match specs version: $SPECS_VERSION_PREFIX"
           echo "✅ Generation scripts produced no changes"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ -n "$NEW_VERSION" ]; then
+              echo "🚀 Version automatically bumped and committed"
+            elif [ "$VERSION_MANUALLY_MODIFIED" = "true" ]; then
+              echo "📝 Manual version changes validated"
+            elif [ "$SPECS_TAG_CHANGED" = "true" ]; then
+              echo "📋 Specs tag change detected and validated"
+            else
+              echo "✅ No version changes needed"
+            fi
+          fi

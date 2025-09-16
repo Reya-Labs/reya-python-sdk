@@ -1,11 +1,27 @@
 [project]
 name = "reya-python-sdk"
-version = "2.0.4"
+version = "2.0.4.0"
 description = "SDK for interacting with Reya Labs APIs"
 authors = [
     {name = "Reya Labs"}
 ]
 readme = "README.md"
+license = {text = "MIT"}
+homepage = "https://github.com/Reya-Labs/reya-python-sdk"
+repository = "https://github.com/Reya-Labs/reya-python-sdk"
+documentation = "https://github.com/Reya-Labs/reya-python-sdk/blob/main/README.md"
+keywords = ["reya", "sdk", "defi", "trading", "blockchain", "web3"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Office/Business :: Financial",
+]
 requires-python = ">=3.12,<4.0"
 dependencies = [
     "web3>=7.12.1,<8.0.0",
