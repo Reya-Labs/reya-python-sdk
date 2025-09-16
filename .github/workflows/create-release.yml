@@ -1,0 +1,198 @@
+name: Create Release and Tag
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - pyproject.toml
+      - sdk/_version.py
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install tomli
+
+      - name: Get current version
+        id: current-version
+        run: |
+          SDK_VERSION=$(python -c "
+          import tomli
+          with open('pyproject.toml', 'rb') as f:
+              data = tomli.load(f)
+          print(data['project']['version'])
+          ")
+          echo "sdk_version=$SDK_VERSION" >> $GITHUB_OUTPUT
+          echo "Current SDK version: $SDK_VERSION"
+
+      - name: Check if version is new
+        id: check-version-new
+        run: |
+          VERSION="${{ steps.current-version.outputs.sdk_version }}"
+
+          # Check if tag already exists
+          if git tag -l | grep -q "^v${VERSION}$"; then
+            echo "version_is_new=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Tag v$VERSION already exists"
+          else
+            echo "version_is_new=true" >> $GITHUB_OUTPUT
+            echo "✅ Version v$VERSION is new"
+          fi
+
+      - name: Validate version format
+        if: steps.check-version-new.outputs.version_is_new == 'true'
+        run: |
+          VERSION="${{ steps.current-version.outputs.sdk_version }}"
+
+          # Check that version has exactly 4 digits (X.Y.Z.W format)
+          VERSION_PARTS=$(echo "$VERSION" | tr '.' '\n' | wc -l)
+          if [ "$VERSION_PARTS" -ne 4 ]; then
+            echo "❌ ERROR: SDK version must have exactly 4 digits (X.Y.Z.W format)"
+            echo "Found $VERSION_PARTS parts in version: $VERSION"
+            exit 1
+          fi
+          echo "✅ Version format validated: $VERSION"
+
+      - name: Create version tag
+        if: steps.check-version-new.outputs.version_is_new == 'true'
+        run: |
+          VERSION="${{ steps.current-version.outputs.sdk_version }}"
+          COMMIT_SHA="${{ github.sha }}"
+
+          # Create annotated tag with v prefix
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a "v$VERSION" -m "Release version v$VERSION
+
+          Auto-tagged after merge to main branch.
+
+          Reya Python SDK Release v$VERSION
+          - REST API client for Reya's Trading API
+          - RPC client for on-chain actions
+          - WebSocket client for real-time data streaming"
+
+          echo "✅ Created tag v$VERSION for commit $COMMIT_SHA"
+
+      - name: Push tag
+        if: steps.check-version-new.outputs.version_is_new == 'true'
+        run: |
+          VERSION="${{ steps.current-version.outputs.sdk_version }}"
+          git push origin "v$VERSION"
+          echo "✅ Pushed tag v$VERSION to remote"
+
+      - name: Create GitHub Release
+        if: steps.check-version-new.outputs.version_is_new == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ steps.current-version.outputs.sdk_version }}';
+            const commitSha = '${{ github.sha }}';
+
+            // Get the previous tag to generate release notes
+            let previousTag = null;
+            try {
+              const { data: tags } = await github.rest.repos.listTags({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 10
+              });
+
+              // Find the most recent tag that's not the current version
+              previousTag = tags.find(tag => tag.name !== `v${version}`)?.name;
+            } catch (error) {
+              console.log('Could not fetch previous tags:', error.message);
+            }
+
+            // Generate automatic release notes
+            let automaticReleaseNotes = '';
+            if (previousTag) {
+              try {
+                const { data: releaseNotes } = await github.rest.repos.generateReleaseNotes({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_name: `v${version}`,
+                  previous_tag_name: previousTag,
+                });
+                automaticReleaseNotes = releaseNotes.body;
+              } catch (error) {
+                console.log('Could not generate automatic release notes:', error.message);
+              }
+            }
+
+            // Get the commit message for context
+            const { data: commit } = await github.rest.git.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: commitSha,
+            });
+
+            // Build comprehensive release body
+            let releaseBody = `## 🐍 Reya Python SDK Release ${version}
+
+            ### 📦 Installation
+            \`\`\`bash
+            pip install reya-python-sdk
+            \`\`\`
+
+            ### 📋 Release Details
+            - **Release Tag**: \`v${version}\`
+            - **Commit**: \`${commitSha.substring(0, 7)}\`
+            - **Previous Version**: ${previousTag ? `\`${previousTag}\`` : '_First release_'}
+
+            ### 🔄 Latest Changes
+            **${commit.message.split('\n')[0]}**`;
+
+            if (commit.message.split('\n').length > 1) {
+              const additionalLines = commit.message.split('\n').slice(1).filter(line => line.trim()).join('\n');
+              if (additionalLines) {
+                releaseBody += `\n\n${additionalLines}`;
+              }
+            }
+
+            // Add automatic release notes if available
+            if (automaticReleaseNotes) {
+              releaseBody += `\n\n---\n\n${automaticReleaseNotes}`;
+            }
+
+            const { data: release } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${version}`,
+              name: `🏷️ v${version}`,
+              body: releaseBody,
+              draft: false,
+              prerelease: false,
+              generate_release_notes: false, // We're creating custom notes
+            });
+
+            console.log(`✅ Created GitHub release: ${release.html_url}`);
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "=== Create Release Results ==="
+          echo "SDK Version: ${{ steps.current-version.outputs.sdk_version }}"
+          echo "Version is New: ${{ steps.check-version-new.outputs.version_is_new }}"
+
+          if [ "${{ steps.check-version-new.outputs.version_is_new }}" = "true" ]; then
+            echo "✅ Successfully created GitHub release for version v${{ steps.current-version.outputs.sdk_version }}"
+            echo "📦 To publish to PyPI, go to the GitHub release and click 'Publish'"
+          elif [ "${{ steps.check-version-new.outputs.version_is_new }}" = "false" ]; then
+            echo "⚠️ Skipped: Version v${{ steps.current-version.outputs.sdk_version }} already exists"
+          fi
