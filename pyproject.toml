@@ -1,6 +1,6 @@
 [project]
 name = "reya-python-sdk"
-version = "2.0.4.0"
+version = "2.0.4.1"
 description = "SDK for interacting with Reya Labs APIs"
 authors = [
     {name = "Reya Labs"}
