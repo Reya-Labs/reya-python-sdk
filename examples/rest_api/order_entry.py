@@ -255,6 +255,8 @@ async def main():
         logger.info(f"   API URL: {client.config.api_url}")
         logger.info(f"   Wallet: {client.wallet_address}")
 
+        await client.start()
+
         # Collect order IDs for cancellation testing
         all_order_ids = []
 

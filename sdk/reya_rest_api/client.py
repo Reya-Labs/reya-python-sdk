@@ -70,7 +70,7 @@ class ReyaTradingClient:
         wallet_address: Optional[str] = None,
     ):
         """
-        Initialize the Reya Trading client synchronously.
+        Initialize the Reya Trading client.
 
         Args:
             config: Optional trading configuration object
@@ -128,24 +128,20 @@ class ReyaTradingClient:
         self._resources = ResourceManager(api_client)
         self._api_client = api_client
 
-    async def _ensure_market_definitions_loaded(self) -> None:
-        """Load market definitions and build symbol-to-market_id mapping if not already done."""
-        if self._initialized:
-            return
+    async def start(self) -> None:
+        await self._load_market_definitions()
 
-        try:
-            market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
-            self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
-            self._initialized = True
-            self.logger.info(f"Loaded {len(self._symbol_to_market_id)} market definitions")
-        except Exception as e:
-            self.logger.error(f"Failed to load market definitions: {e}")
-            raise
+    async def _load_market_definitions(self) -> None:
+        market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
+        self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+        self._initialized = True
+        self.logger.info(f"Loaded {len(self._symbol_to_market_id)} market definitions")
+
 
     def _get_market_id_from_symbol(self, symbol: str) -> int:
         """Get market_id from symbol. Raises ValueError if symbol not found."""
         if not self._initialized:
-            raise ValueError("Client not initialized. Call _ensure_market_definitions_loaded() first.")
+            raise ValueError("Client not initialized. Call start() first.")
 
         market_id = self._symbol_to_market_id.get(symbol)
         if market_id is None:
@@ -199,8 +195,6 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
-        # Ensure market definitions are loaded
-        await self._ensure_market_definitions_loaded()
 
         # Resolve symbol to market_id
         market_id = self._get_market_id_from_symbol(params.symbol)
@@ -294,8 +288,6 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
-        # Ensure market definitions are loaded
-        await self._ensure_market_definitions_loaded()
 
         # Resolve symbol to market_id
         market_id = self._get_market_id_from_symbol(params.symbol)

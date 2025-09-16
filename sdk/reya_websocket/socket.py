@@ -227,9 +227,9 @@ class ReyaSocket(websocket.WebSocketApp):
             **kwargs: Additional subscription parameters.
         """
         self.active_subscriptions.add(channel)
-        message: SubscribeMessagePayload = {"type": "subscribe", "channel": channel, **kwargs}
+        message = {"type": "subscribe", "channel": channel, **kwargs}
         logger.info(f"Subscribing to {channel}")
-        self.send(json.dumps(message.json()))
+        self.send(json.dumps(message))
 
     def send_unsubscribe(self, channel: str, **kwargs) -> None:
         """Send an unsubscription message.
