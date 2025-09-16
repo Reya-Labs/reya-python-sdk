@@ -1,4 +1,4 @@
-name: Post-Merge Tagging and PyPI Publishing
+name: Create Release and Tag
 
 on:
   push:
@@ -9,12 +9,11 @@ on:
       - sdk/_version.py
 
 jobs:
-  tag-and-publish:
+  create-release:
     runs-on: ubuntu-latest
-    environment: pypi-publishing
     permissions:
       contents: write
-      id-token: write  # Required for PyPI trusted publishing
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install tomli poetry
+          pip install tomli
 
       - name: Get current version
         id: current-version
@@ -85,7 +84,7 @@ jobs:
 
           Reya Python SDK Release v$VERSION
           - REST API client for Reya's Trading API
-          - RPC client for on-chain actions  
+          - RPC client for on-chain actions
           - WebSocket client for real-time data streaming"
 
           echo "✅ Created tag v$VERSION for commit $COMMIT_SHA"
@@ -96,19 +95,6 @@ jobs:
           VERSION="${{ steps.current-version.outputs.sdk_version }}"
           git push origin "v$VERSION"
           echo "✅ Pushed tag v$VERSION to remote"
-
-      - name: Build package
-        if: steps.check-version-new.outputs.version_is_new == 'true'
-        run: |
-          echo "Building Python package..."
-          poetry build
-          echo "✅ Package built successfully"
-
-      - name: Publish to PyPI
-        if: steps.check-version-new.outputs.version_is_new == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          verbose: true
 
       - name: Create GitHub Release
         if: steps.check-version-new.outputs.version_is_new == 'true'
@@ -126,7 +112,7 @@ jobs:
                 repo: context.repo.repo,
                 per_page: 10
               });
-              
+
               // Find the most recent tag that's not the current version
               previousTag = tags.find(tag => tag.name !== `v${version}`)?.name;
             } catch (error) {
@@ -159,7 +145,7 @@ jobs:
             // Build comprehensive release body
             let releaseBody = `## 🐍 Reya Python SDK Release ${version}
 
-            The official Python SDK for interacting with the Reya ecosystem, now available on PyPI!
+            The official Python SDK for interacting with the Reya ecosystem.
 
             ### 📦 Installation
             \`\`\`bash
@@ -173,7 +159,6 @@ jobs:
 
             ### 📋 Release Details
             - **Release Tag**: \`v${version}\`
-            - **PyPI Package**: [\`reya-python-sdk==${version}\`](https://pypi.org/project/reya-python-sdk/${version}/)
             - **Commit**: \`${commitSha.substring(0, 7)}\`
             - **Previous Version**: ${previousTag ? `\`${previousTag}\`` : '_First release_'}
 
@@ -192,7 +177,7 @@ jobs:
               releaseBody += `\n\n---\n\n${automaticReleaseNotes}`;
             }
 
-            releaseBody += `\n\n---\n\n🤖 *This release was automatically created and published to PyPI after merging changes to main branch.*`;
+            releaseBody += `\n\n---\n\n**📦 PyPI Publishing**: This release will be automatically published to PyPI when you publish this GitHub release.\n\n🤖 *This release was automatically created after merging changes to main branch.*`;
 
             const { data: release } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
@@ -210,13 +195,13 @@ jobs:
       - name: Report results
         if: always()
         run: |
-          echo "=== Post-Merge Tagging and Publishing Results ==="
+          echo "=== Create Release Results ==="
           echo "SDK Version: ${{ steps.current-version.outputs.sdk_version }}"
           echo "Version is New: ${{ steps.check-version-new.outputs.version_is_new }}"
 
           if [ "${{ steps.check-version-new.outputs.version_is_new }}" = "true" ]; then
-            echo "✅ Successfully created tag, published to PyPI, and created GitHub release for version v${{ steps.current-version.outputs.sdk_version }}"
-            echo "🐍 PyPI: https://pypi.org/project/reya-python-sdk/${{ steps.current-version.outputs.sdk_version }}/"
+            echo "✅ Successfully created GitHub release for version v${{ steps.current-version.outputs.sdk_version }}"
+            echo "📦 To publish to PyPI, go to the GitHub release and click 'Publish'"
           elif [ "${{ steps.check-version-new.outputs.version_is_new }}" = "false" ]; then
             echo "⚠️ Skipped: Version v${{ steps.current-version.outputs.sdk_version }} already exists"
           fi
