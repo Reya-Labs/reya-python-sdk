@@ -1,0 +1,72 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi-publishing
+    permissions:
+      id-token: write  # Required for PyPI trusted publishing
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: |
+          pip install poetry tomli
+
+      - name: Verify version matches tag
+        run: |
+          # Get version from pyproject.toml
+          PYPROJECT_VERSION=$(python -c "
+          import tomli
+          with open('pyproject.toml', 'rb') as f:
+              data = tomli.load(f)
+          print(data['project']['version'])
+          ")
+
+          # Get tag version (remove 'v' prefix if present)
+          TAG_VERSION=${GITHUB_REF#refs/tags/}
+          TAG_VERSION=${TAG_VERSION#v}
+
+          echo "PyProject version: $PYPROJECT_VERSION"
+          echo "Tag version: $TAG_VERSION"
+
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch: pyproject.toml ($PYPROJECT_VERSION) != tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+          echo "✅ Version matches: $PYPROJECT_VERSION"
+
+      - name: Build package
+        run: |
+          echo "Building Python package for version $PYPROJECT_VERSION..."
+          poetry build
+
+          # Verify the built package
+          ls -la dist/
+          echo "✅ Package built successfully"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+
+      - name: Report success
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/}
+          TAG_VERSION=${TAG_VERSION#v}
+          echo "✅ Successfully published reya-python-sdk v$TAG_VERSION to PyPI!"
+          echo "🐍 PyPI: https://pypi.org/project/reya-python-sdk/$TAG_VERSION/"
+          echo "📦 Install with: pip install reya-python-sdk==$TAG_VERSION"
