@@ -16,7 +16,7 @@ def main():
     load_dotenv()
 
     # Retrieve the margin account ID from environment variables
-    account_id = int(os.environ["ACCOUNT_ID"])
+    account_id = 95681
 
     # Load configuration
     config = get_config()
