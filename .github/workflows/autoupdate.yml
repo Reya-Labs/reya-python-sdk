@@ -1,5 +1,17 @@
-            - name: Auto Update
-  # You may pin to the exact commit or the version.
-  # uses: chinthakagodawita/autoupdate@0707656cd062a3b0cf8fa9b2cda1d1404d74437e
-  uses: chinthakagodawita/autoupdate@v1.7.0
-  
+name: autoupdate
+on:
+  # This will trigger on all pushes to all branches.
+  push: {}
+  # Alternatively, you can only trigger if commits are pushed to certain branches, e.g.:
+  # push:
+  #   branches:
+  #     - master
+  #     - unstable
+jobs:
+  autoupdate:
+    name: autoupdate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: docker://chinthakagodawita/autoupdate-action:v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
