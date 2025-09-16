@@ -145,17 +145,10 @@ jobs:
             // Build comprehensive release body
             let releaseBody = `## 🐍 Reya Python SDK Release ${version}
 
-            The official Python SDK for interacting with the Reya ecosystem.
-
             ### 📦 Installation
             \`\`\`bash
             pip install reya-python-sdk
             \`\`\`
-
-            ### 🚀 Features
-            - **REST API Client** - HTTP client for Reya's Trading API
-            - **RPC Client** - Web3-based client for on-chain actions
-            - **WebSocket Client** - Real-time data streaming client
 
             ### 📋 Release Details
             - **Release Tag**: \`v${version}\`
@@ -177,13 +170,11 @@ jobs:
               releaseBody += `\n\n---\n\n${automaticReleaseNotes}`;
             }
 
-            releaseBody += `\n\n---\n\n**📦 PyPI Publishing**: This release will be automatically published to PyPI when you publish this GitHub release.\n\n🤖 *This release was automatically created after merging changes to main branch.*`;
-
             const { data: release } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: `v${version}`,
-              name: `🏷️ Release v${version}`,
+              name: `🏷️ v${version}`,
               body: releaseBody,
               draft: false,
               prerelease: false,
