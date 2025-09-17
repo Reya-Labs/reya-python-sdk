@@ -2,6 +2,17 @@
 
 This repository contains a Python SDK for interacting with the Reya ecosystem. It provides tools for subscribing to the Reya WebSocket for market data updates and executing on-chain actions via RPC.
 
+## Versioning
+
+The SDK uses a 4-digit semantic versioning scheme: `X.Y.Z.W`
+
+- **X.Y.Z**: Matches the first three digits of the API specifications tag (major.minor.patch)
+- **W**: Build number that increments automatically for SDK-only changes
+
+For example, if the API specs are at version `2.0.3`, the SDK versions will be `2.0.3.0`, `2.0.3.1`, `2.0.3.2`, etc. When the API specs update to `2.0.4`, the SDK will reset to `2.0.4.0`.
+
+This ensures the SDK version always reflects compatibility with the underlying API specifications while allowing for independent SDK improvements and bug fixes.
+
 ## Features
 
 ### REST API Client
