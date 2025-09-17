@@ -16,14 +16,14 @@ from sdk.async_api.market_perp_execution_update_payload import (
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
-
-# Import V2 payload types
-from sdk.async_api.subscribe_message_payload import SubscribeMessagePayload
 from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
+
+# Import V2 payload types
+from sdk.async_api.subscribe_message_payload import SubscribeMessagePayload
 from sdk.async_api.subscribe_message_type import SubscribeMessageType
 from sdk.async_api.wallet_perp_execution_update_payload import (
     WalletPerpExecutionUpdatePayload,

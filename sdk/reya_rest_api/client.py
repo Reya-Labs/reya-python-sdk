@@ -137,7 +137,6 @@ class ReyaTradingClient:
         self._initialized = True
         self.logger.info(f"Loaded {len(self._symbol_to_market_id)} market definitions")
 
-
     def _get_market_id_from_symbol(self, symbol: str) -> int:
         """Get market_id from symbol. Raises ValueError if symbol not found."""
         if not self._initialized:
