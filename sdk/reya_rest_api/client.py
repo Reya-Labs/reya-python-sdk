@@ -23,6 +23,7 @@ from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
@@ -83,6 +84,10 @@ class ReyaTradingClient:
         If any of private_key, api_url, or chain_id are provided, they will override
         the corresponding values in the config.
         """
+        # Initialize symbol to market_id mapping
+        self._symbol_to_market_id: dict[str, int] = {}
+        self._initialized = False
+
         # Setup logging
         self.logger = logging.getLogger("reya_trading.client")
 
@@ -122,6 +127,27 @@ class ReyaTradingClient:
 
         self._resources = ResourceManager(api_client)
         self._api_client = api_client
+
+    async def start(self) -> None:
+        await self._load_market_definitions()
+
+    async def _load_market_definitions(self) -> None:
+        market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
+        self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+        self._initialized = True
+        self.logger.info(f"Loaded {len(self._symbol_to_market_id)} market definitions")
+
+    def _get_market_id_from_symbol(self, symbol: str) -> int:
+        """Get market_id from symbol. Raises ValueError if symbol not found."""
+        if not self._initialized:
+            raise ValueError("Client not initialized. Call start() first.")
+
+        market_id = self._symbol_to_market_id.get(symbol)
+        if market_id is None:
+            available_symbols = list(self._symbol_to_market_id.keys())
+            raise ValueError(f"Unknown symbol '{symbol}'. Available symbols: {available_symbols}")
+
+        return market_id
 
     @property
     def orders(self) -> OrderEntryApi:
@@ -169,6 +195,9 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
+        # Resolve symbol to market_id
+        market_id = self._get_market_id_from_symbol(params.symbol)
+
         if self._signature_generator is None:
             raise ValueError("Private key is required for creating orders")
 
@@ -185,7 +214,7 @@ class ReyaTradingClient:
             raise ValueError("Account ID is required for order signing")
 
         nonce = self._signature_generator.create_orders_gateway_nonce(
-            self.config.account_id, params.market_id, int(time.time_ns() / 1000000)
+            self.config.account_id, market_id, int(time.time_ns() / 1000000)
         )
 
         inputs = self._signature_generator.encode_inputs_limit_order(
@@ -213,7 +242,7 @@ class ReyaTradingClient:
 
         signature = self._signature_generator.sign_raw_order(
             account_id=self.config.account_id,
-            market_id=params.market_id,
+            market_id=market_id,
             exchange_id=self.config.dex_id,
             counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type_int,
@@ -258,6 +287,10 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
+
+        # Resolve symbol to market_id
+        market_id = self._get_market_id_from_symbol(params.symbol)
+
         if self._signature_generator is None:
             raise ValueError("Private key is required for creating orders")
         if self._signature_generator is None:
@@ -274,7 +307,7 @@ class ReyaTradingClient:
         )
 
         nonce = self._signature_generator.create_orders_gateway_nonce(
-            self.config.account_id, params.market_id, int(time.time_ns() / 1000000)
+            self.config.account_id, market_id, int(time.time_ns() / 1000000)
         )
 
         inputs = self._signature_generator.encode_inputs_trigger_order(
@@ -285,7 +318,7 @@ class ReyaTradingClient:
 
         signature = self._signature_generator.sign_raw_order(
             account_id=self.config.account_id,
-            market_id=params.market_id,
+            market_id=market_id,
             exchange_id=self.config.dex_id,
             counterparty_account_ids=[self.config.pool_account_id],
             order_type=order_type_int,
