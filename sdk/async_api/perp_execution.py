@@ -4,16 +4,16 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
 from sdk.async_api.execution_type import ExecutionType
 class PerpExecution(BaseModel): 
-  exchange_id: int = Field(alias='''exchangeId''')
+  exchange_id: int = Field(description='''Unsigned integer''', alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
-  account_id: int = Field(alias='''accountId''')
-  qty: str = Field()
+  account_id: int = Field(description='''Unsigned integer''', alias='''accountId''')
+  qty: str = Field(description='''Non-negative decimal string''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
-  price: str = Field()
-  fee: str = Field()
+  price: str = Field(description='''Decimal string''')
+  fee: str = Field(description='''Decimal string''')
   type: ExecutionType = Field(description='''Type of execution''')
-  timestamp: int = Field(description='''Execution timestamp (milliseconds)''')
-  sequence_number: int = Field(description='''Execution sequence number, increases by 1 for every perp execution in reya chain''', alias='''sequenceNumber''')
+  timestamp: int = Field(description='''Unsigned integer''')
+  sequence_number: int = Field(description='''Unsigned integer''', alias='''sequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
