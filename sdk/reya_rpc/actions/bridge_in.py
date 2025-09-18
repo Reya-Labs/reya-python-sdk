@@ -1,4 +1,5 @@
 import json
+import pathlib
 from dataclasses import dataclass
 
 from web3 import Web3
@@ -17,10 +18,10 @@ class BridgeInParams:
 
 
 # Load contract ABI files
-with open("sdk/reya_rpc/abis/SocketVaultWithPayload.json", encoding="utf-8") as f:
+with open(pathlib.Path(__file__).parent.parent/"abis/SocketVaultWithPayload.json", encoding="utf-8") as f:
     vault_abi = json.load(f)
 
-with open("sdk/reya_rpc/abis/Erc20.json", encoding="utf-8") as f:
+with open(pathlib.Path(__file__).parent.parent/"abis/Erc20.json", encoding="utf-8") as f:
     erc20_abi = json.load(f)
 
 
@@ -157,7 +158,7 @@ def _build_bridge_transaction(
     periphery = config["w3contracts"]["periphery"]
     reya_usdc = config["w3contracts"]["usdc"]
 
-    periphery_calldata = periphery.encodeABI(fn_name="deposit", args=[(account.address, reya_usdc.address)])
+    periphery_calldata = periphery.functions.deposit((account.address, reya_usdc.address))._encode_transaction_data()
     socket_bridge_options = Web3.to_bytes(hexstr=HexStr("0x"))
 
     return vault.functions.bridge(
