@@ -29,7 +29,6 @@ sdk/open_api/models/order.py
 sdk/open_api/models/order_status.py
 sdk/open_api/models/order_type.py
 sdk/open_api/models/pagination_meta.py
-sdk/open_api/models/pagination_parameters.py
 sdk/open_api/models/perp_execution.py
 sdk/open_api/models/perp_execution_list.py
 sdk/open_api/models/position.py

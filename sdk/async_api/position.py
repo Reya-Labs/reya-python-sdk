@@ -9,8 +9,8 @@ class Position(BaseModel):
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   avg_entry_price: str = Field(alias='''avgEntryPrice''')
-  avg_entry_funding_value: str = Field(description='''Average of funding values at the entry times of currently open exposure, which serves as a baseline from which to compute the accrued funding in the position: units x (fundingValue - avgEntryFundingValue)''', alias='''avgEntryFundingValue''')
-  last_trade_sequence_number: int = Field(description='''Sequence number of last execution taken into account for the position.''', alias='''lastTradeSequenceNumber''')
+  avg_entry_funding_value: str = Field(alias='''avgEntryFundingValue''')
+  last_trade_sequence_number: int = Field(alias='''lastTradeSequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
