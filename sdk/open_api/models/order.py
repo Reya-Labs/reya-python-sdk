@@ -31,21 +31,21 @@ class Order(BaseModel):
     """
     Order
     """ # noqa: E501
-    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="exchangeId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     order_id: StrictStr = Field(alias="orderId")
-    qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Non-negative decimal string")
-    exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Non-negative decimal string", alias="execQty")
+    qty: Optional[Annotated[str, Field(strict=True)]] = None
+    exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
     side: Side
-    limit_px: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="limitPx")
+    limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")
     order_type: OrderType = Field(alias="orderType")
-    trigger_px: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string", alias="triggerPx")
+    trigger_px: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="triggerPx")
     time_in_force: Optional[TimeInForce] = Field(default=None, alias="timeInForce")
     reduce_only: Optional[StrictBool] = Field(default=None, description="Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.", alias="reduceOnly")
     status: OrderStatus
-    created_at: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="createdAt")
-    last_update_at: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="lastUpdateAt")
+    created_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="createdAt")
+    last_update_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="lastUpdateAt")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "orderId", "qty", "execQty", "side", "limitPx", "orderType", "triggerPx", "timeInForce", "reduceOnly", "status", "createdAt", "lastUpdateAt"]
 

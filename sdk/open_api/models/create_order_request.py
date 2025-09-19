@@ -29,20 +29,20 @@ class CreateOrderRequest(BaseModel):
     """
     CreateOrderRequest
     """ # noqa: E501
-    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="exchangeId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     is_buy: StrictBool = Field(description="Whether this is a buy order", alias="isBuy")
-    limit_px: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="limitPx")
-    qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Non-negative decimal string")
+    limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")
+    qty: Optional[Annotated[str, Field(strict=True)]] = None
     order_type: OrderType = Field(alias="orderType")
     time_in_force: Optional[TimeInForce] = Field(default=None, alias="timeInForce")
-    trigger_px: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string", alias="triggerPx")
+    trigger_px: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="triggerPx")
     reduce_only: Optional[StrictBool] = Field(default=None, description="Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.", alias="reduceOnly")
     signature: StrictStr = Field(description="See signatures and nonces section for more details on how to generate.")
     nonce: StrictStr = Field(description="Order nonce, see signatures and nonces section for more details.")
-    signer_wallet: Annotated[str, Field(strict=True)] = Field(description="Ethereum wallet address", alias="signerWallet")
-    expires_after: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, description="Unsigned integer", alias="expiresAfter")
+    signer_wallet: Annotated[str, Field(strict=True)] = Field(alias="signerWallet")
+    expires_after: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="expiresAfter")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "isBuy", "limitPx", "qty", "orderType", "timeInForce", "triggerPx", "reduceOnly", "signature", "nonce", "signerWallet", "expiresAfter"]
 

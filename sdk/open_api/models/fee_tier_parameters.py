@@ -28,10 +28,10 @@ class FeeTierParameters(BaseModel):
     """
     FeeTierParameters
     """ # noqa: E501
-    tier_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="tierId")
-    taker_fee: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="takerFee")
-    maker_fee: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="makerFee")
-    volume14d: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string")
+    tier_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="tierId")
+    taker_fee: Annotated[str, Field(strict=True)] = Field(alias="takerFee")
+    maker_fee: Annotated[str, Field(strict=True)] = Field(alias="makerFee")
+    volume14d: Annotated[str, Field(strict=True)]
     tier_type: TierType = Field(alias="tierType")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["tierId", "takerFee", "makerFee", "volume14d", "tierType"]

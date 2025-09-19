@@ -28,19 +28,19 @@ class MarketSummary(BaseModel):
     MarketSummary
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="updatedAt")
-    long_oi_qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="longOiQty")
-    short_oi_qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="shortOiQty")
-    oi_qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="oiQty")
-    funding_rate: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="fundingRate")
-    long_funding_value: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="longFundingValue")
-    short_funding_value: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="shortFundingValue")
-    funding_rate_velocity: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="fundingRateVelocity")
-    volume24h: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string")
-    px_change24h: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string", alias="pxChange24h")
-    throttled_oracle_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string", alias="throttledOraclePrice")
-    throttled_pool_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string", alias="throttledPoolPrice")
-    prices_updated_at: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, description="Unsigned integer", alias="pricesUpdatedAt")
+    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")
+    long_oi_qty: Annotated[str, Field(strict=True)] = Field(alias="longOiQty")
+    short_oi_qty: Annotated[str, Field(strict=True)] = Field(alias="shortOiQty")
+    oi_qty: Annotated[str, Field(strict=True)] = Field(alias="oiQty")
+    funding_rate: Annotated[str, Field(strict=True)] = Field(alias="fundingRate")
+    long_funding_value: Annotated[str, Field(strict=True)] = Field(alias="longFundingValue")
+    short_funding_value: Annotated[str, Field(strict=True)] = Field(alias="shortFundingValue")
+    funding_rate_velocity: Annotated[str, Field(strict=True)] = Field(alias="fundingRateVelocity")
+    volume24h: Annotated[str, Field(strict=True)]
+    px_change24h: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="pxChange24h")
+    throttled_oracle_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="throttledOraclePrice")
+    throttled_pool_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="throttledPoolPrice")
+    prices_updated_at: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="pricesUpdatedAt")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["symbol", "updatedAt", "longOiQty", "shortOiQty", "oiQty", "fundingRate", "longFundingValue", "shortFundingValue", "fundingRateVelocity", "volume24h", "pxChange24h", "throttledOraclePrice", "throttledPoolPrice", "pricesUpdatedAt"]
 

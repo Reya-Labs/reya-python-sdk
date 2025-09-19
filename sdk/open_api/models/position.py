@@ -28,14 +28,14 @@ class Position(BaseModel):
     """
     Position
     """ # noqa: E501
-    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="exchangeId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
-    qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    qty: Annotated[str, Field(strict=True)]
     side: Side
-    avg_entry_price: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="avgEntryPrice")
-    avg_entry_funding_value: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="avgEntryFundingValue")
-    last_trade_sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="lastTradeSequenceNumber")
+    avg_entry_price: Annotated[str, Field(strict=True)] = Field(alias="avgEntryPrice")
+    avg_entry_funding_value: Annotated[str, Field(strict=True)] = Field(alias="avgEntryFundingValue")
+    last_trade_sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(alias="lastTradeSequenceNumber")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "qty", "side", "avgEntryPrice", "avgEntryFundingValue", "lastTradeSequenceNumber"]
 

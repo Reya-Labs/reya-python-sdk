@@ -27,9 +27,9 @@ class AccountBalance(BaseModel):
     """
     AccountBalance
     """ # noqa: E501
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
-    asset: Annotated[str, Field(strict=True)] = Field(description="Trading Asset (e.g., RUSD, WSTETH, BTC, ETH)")
-    real_balance: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="realBalance")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    asset: Annotated[str, Field(strict=True)]
+    real_balance: Annotated[str, Field(strict=True)] = Field(alias="realBalance")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["accountId", "asset", "realBalance"]
 

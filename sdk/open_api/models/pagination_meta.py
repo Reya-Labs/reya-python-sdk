@@ -27,10 +27,10 @@ class PaginationMeta(BaseModel):
     """
     PaginationMeta
     """ # noqa: E501
-    limit: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer")
-    count: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer")
-    end_time: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, description="Unsigned integer", alias="endTime")
-    start_time: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, description="Unsigned integer", alias="startTime")
+    limit: Annotated[int, Field(strict=True, ge=0)]
+    count: Annotated[int, Field(strict=True, ge=0)]
+    end_time: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="endTime")
+    start_time: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="startTime")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["limit", "count", "endTime", "startTime"]
 

@@ -28,8 +28,8 @@ class LiquidityParameters(BaseModel):
     LiquidityParameters
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    depth: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string")
-    velocity_multiplier: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="velocityMultiplier")
+    depth: Annotated[str, Field(strict=True)]
+    velocity_multiplier: Annotated[str, Field(strict=True)] = Field(alias="velocityMultiplier")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["symbol", "depth", "velocityMultiplier"]
 

@@ -27,11 +27,11 @@ class AssetDefinition(BaseModel):
     """
     AssetDefinition
     """ # noqa: E501
-    asset: Annotated[str, Field(strict=True)] = Field(description="Trading Asset (e.g., RUSD, WSTETH, BTC, ETH)")
+    asset: Annotated[str, Field(strict=True)]
     spot_market_symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)", alias="spotMarketSymbol")
-    price_haircut: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="priceHaircut")
-    liquidation_discount: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="liquidationDiscount")
-    timestamp: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer")
+    price_haircut: Annotated[str, Field(strict=True)] = Field(alias="priceHaircut")
+    liquidation_discount: Annotated[str, Field(strict=True)] = Field(alias="liquidationDiscount")
+    timestamp: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["asset", "spotMarketSymbol", "priceHaircut", "liquidationDiscount", "timestamp"]
 

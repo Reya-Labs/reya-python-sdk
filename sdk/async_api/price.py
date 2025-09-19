@@ -4,9 +4,9 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class Price(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
-  oracle_price: str = Field(description='''Decimal string''', alias='''oraclePrice''')
-  pool_price: Optional[str] = Field(description='''Decimal string''', default=None, alias='''poolPrice''')
-  updated_at: int = Field(description='''Unsigned integer''', alias='''updatedAt''')
+  oracle_price: str = Field(alias='''oraclePrice''')
+  pool_price: Optional[str] = Field(default=None, alias='''poolPrice''')
+  updated_at: int = Field(alias='''updatedAt''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')

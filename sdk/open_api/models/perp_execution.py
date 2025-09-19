@@ -29,16 +29,16 @@ class PerpExecution(BaseModel):
     """
     PerpExecution
     """ # noqa: E501
-    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="exchangeId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
-    qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    qty: Annotated[str, Field(strict=True)]
     side: Side
-    price: Annotated[str, Field(strict=True)] = Field(description="Decimal string")
-    fee: Annotated[str, Field(strict=True)] = Field(description="Decimal string")
+    price: Annotated[str, Field(strict=True)]
+    fee: Annotated[str, Field(strict=True)]
     type: ExecutionType
-    timestamp: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer")
-    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="sequenceNumber")
+    timestamp: Annotated[int, Field(strict=True, ge=0)]
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(alias="sequenceNumber")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "qty", "side", "price", "fee", "type", "timestamp", "sequenceNumber"]
 

@@ -27,10 +27,10 @@ class GlobalFeeParameters(BaseModel):
     """
     GlobalFeeParameters
     """ # noqa: E501
-    og_discount: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="ogDiscount")
-    referee_discount: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="refereeDiscount")
-    referrer_rebate: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="referrerRebate")
-    affiliate_referrer_rebate: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="affiliateReferrerRebate")
+    og_discount: Annotated[str, Field(strict=True)] = Field(alias="ogDiscount")
+    referee_discount: Annotated[str, Field(strict=True)] = Field(alias="refereeDiscount")
+    referrer_rebate: Annotated[str, Field(strict=True)] = Field(alias="referrerRebate")
+    affiliate_referrer_rebate: Annotated[str, Field(strict=True)] = Field(alias="affiliateReferrerRebate")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["ogDiscount", "refereeDiscount", "referrerRebate", "affiliateReferrerRebate"]
 

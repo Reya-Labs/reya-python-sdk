@@ -28,9 +28,9 @@ class Price(BaseModel):
     Price
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    oracle_price: Annotated[str, Field(strict=True)] = Field(description="Decimal string", alias="oraclePrice")
-    pool_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string", alias="poolPrice")
-    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="updatedAt")
+    oracle_price: Annotated[str, Field(strict=True)] = Field(alias="oraclePrice")
+    pool_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="poolPrice")
+    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["symbol", "oraclePrice", "poolPrice", "updatedAt"]
 

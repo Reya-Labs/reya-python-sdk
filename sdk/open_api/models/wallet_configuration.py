@@ -27,7 +27,7 @@ class WalletConfiguration(BaseModel):
     """
     WalletConfiguration
     """ # noqa: E501
-    fee_tier_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="feeTierId")
+    fee_tier_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="feeTierId")
     og_status: StrictBool = Field(description="OG status", alias="ogStatus")
     affiliate_status: StrictBool = Field(description="Affiliate status", alias="affiliateStatus")
     referee_status: StrictBool = Field(description="Referee status", alias="refereeStatus")

@@ -28,14 +28,14 @@ class MarketDefinition(BaseModel):
     MarketDefinition
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    market_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="marketId")
-    min_order_qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="minOrderQty")
-    qty_step_size: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="qtyStepSize")
-    tick_size: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="tickSize")
-    liquidation_margin_parameter: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="liquidationMarginParameter")
-    initial_margin_parameter: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="initialMarginParameter")
-    max_leverage: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="maxLeverage")
-    oi_cap: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string", alias="oiCap")
+    market_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="marketId")
+    min_order_qty: Annotated[str, Field(strict=True)] = Field(alias="minOrderQty")
+    qty_step_size: Annotated[str, Field(strict=True)] = Field(alias="qtyStepSize")
+    tick_size: Annotated[str, Field(strict=True)] = Field(alias="tickSize")
+    liquidation_margin_parameter: Annotated[str, Field(strict=True)] = Field(alias="liquidationMarginParameter")
+    initial_margin_parameter: Annotated[str, Field(strict=True)] = Field(alias="initialMarginParameter")
+    max_leverage: Annotated[int, Field(strict=True, ge=0)] = Field(alias="maxLeverage")
+    oi_cap: Annotated[str, Field(strict=True)] = Field(alias="oiCap")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
 

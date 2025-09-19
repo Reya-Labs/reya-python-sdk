@@ -29,15 +29,15 @@ class SpotExecution(BaseModel):
     """
     SpotExecution
     """ # noqa: E501
-    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="exchangeId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     side: Side
-    qty: Annotated[str, Field(strict=True)] = Field(description="Non-negative decimal string")
-    price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Decimal string")
-    fee: Annotated[str, Field(strict=True)] = Field(description="Decimal string")
+    qty: Annotated[str, Field(strict=True)]
+    price: Optional[Annotated[str, Field(strict=True)]] = None
+    fee: Annotated[str, Field(strict=True)]
     type: ExecutionType
-    timestamp: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer")
+    timestamp: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "side", "qty", "price", "fee", "type", "timestamp"]
 

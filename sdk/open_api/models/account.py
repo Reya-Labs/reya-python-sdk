@@ -27,9 +27,9 @@ class Account(BaseModel):
     """
     Account
     """ # noqa: E501
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="accountId")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     name: StrictStr
-    last_update_at: Annotated[int, Field(strict=True, ge=0)] = Field(description="Unsigned integer", alias="lastUpdateAt")
+    last_update_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="lastUpdateAt")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["accountId", "name", "lastUpdateAt"]
 

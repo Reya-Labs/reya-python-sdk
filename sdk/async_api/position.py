@@ -3,14 +3,14 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
 class Position(BaseModel): 
-  exchange_id: int = Field(description='''Unsigned integer''', alias='''exchangeId''')
+  exchange_id: int = Field(alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
-  account_id: int = Field(description='''Unsigned integer''', alias='''accountId''')
-  qty: str = Field(description='''Non-negative decimal string''')
+  account_id: int = Field(alias='''accountId''')
+  qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
-  avg_entry_price: str = Field(description='''Decimal string''', alias='''avgEntryPrice''')
-  avg_entry_funding_value: str = Field(description='''Decimal string''', alias='''avgEntryFundingValue''')
-  last_trade_sequence_number: int = Field(description='''Unsigned integer''', alias='''lastTradeSequenceNumber''')
+  avg_entry_price: str = Field(alias='''avgEntryPrice''')
+  avg_entry_funding_value: str = Field(alias='''avgEntryFundingValue''')
+  last_trade_sequence_number: int = Field(alias='''lastTradeSequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
