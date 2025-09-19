@@ -65,7 +65,7 @@ jobs:
           git ls-tree $BASE_SHA specs
           echo "DEBUG: git ls-tree output for HEAD:"
           git ls-tree HEAD specs
-          
+
           BASE_SPECS_COMMIT=$(git ls-tree $BASE_SHA specs | awk '{print $3}')
           CURRENT_SPECS_COMMIT=$(git ls-tree HEAD specs | awk '{print $3}')
 
@@ -75,7 +75,7 @@ jobs:
           # Get specs tag from base branch commit
           cd specs
           git fetch --tags origin  # Make sure we have all tags
-          
+
           # Get tag for base commit
           BASE_TAGS=$(git tag --points-at $BASE_SPECS_COMMIT 2>/dev/null || echo "")
           if [ -z "$BASE_TAGS" ]; then
