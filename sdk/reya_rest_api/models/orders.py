@@ -11,7 +11,6 @@ class LimitOrderParameters:
     """Limit order parameters."""
 
     symbol: str
-    market_id: int
     is_buy: bool
     limit_px: str
     qty: str
@@ -22,7 +21,6 @@ class LimitOrderParameters:
     def to_dict(self) -> dict[str, Any]:
         return {
             "symbol": self.symbol,
-            "market_id": self.market_id,
             "is_buy": self.is_buy,
             "limit_px": self.limit_px,
             "qty": self.qty,
@@ -37,7 +35,6 @@ class TriggerOrderParameters:
     """Trigger order parameters."""
 
     symbol: str
-    market_id: int
     is_buy: bool
     trigger_px: str
     trigger_type: OrderType
@@ -45,7 +42,6 @@ class TriggerOrderParameters:
     def to_dict(self) -> dict[str, Any]:
         return {
             "symbol": self.symbol,
-            "market_id": self.market_id,
             "is_buy": self.is_buy,
             "trigger_px": self.trigger_px,
             "trigger_type": self.trigger_type,

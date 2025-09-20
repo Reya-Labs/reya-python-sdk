@@ -12,8 +12,8 @@ class PerpExecution(BaseModel):
   price: str = Field()
   fee: str = Field()
   type: ExecutionType = Field(description='''Type of execution''')
-  timestamp: int = Field(description='''Execution timestamp (milliseconds)''')
-  sequence_number: int = Field(description='''Execution sequence number, increases by 1 for every perp execution in reya chain''', alias='''sequenceNumber''')
+  timestamp: int = Field()
+  sequence_number: int = Field(alias='''sequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
