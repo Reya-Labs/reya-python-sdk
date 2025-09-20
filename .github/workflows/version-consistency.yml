@@ -55,16 +55,29 @@ jobs:
       - name: Check if PR and detect specs tag changes
         if: github.event_name == 'pull_request'
         run: |
-          # Get base branch specs tag for comparison
+          # Get base branch specs submodule commit
           git fetch origin ${{ github.base_ref }}
           BASE_SHA=$(git merge-base HEAD origin/${{ github.base_ref }})
 
-          # Get specs tag from base branch
-          cd specs
-          git checkout $BASE_SHA -- . 2>/dev/null || echo "Could not checkout base commit in specs"
-          BASE_SPECS_COMMIT=$(git rev-parse HEAD)
-          BASE_TAGS=$(git tag --points-at $BASE_SPECS_COMMIT)
+          # Get the specs submodule commit hash from base branch
+          echo "DEBUG: BASE_SHA = $BASE_SHA"
+          echo "DEBUG: git ls-tree output for base:"
+          git ls-tree $BASE_SHA specs
+          echo "DEBUG: git ls-tree output for HEAD:"
+          git ls-tree HEAD specs
 
+          BASE_SPECS_COMMIT=$(git ls-tree $BASE_SHA specs | awk '{print $3}')
+          CURRENT_SPECS_COMMIT=$(git ls-tree HEAD specs | awk '{print $3}')
+
+          echo "Base specs commit: $BASE_SPECS_COMMIT"
+          echo "Current specs commit: $CURRENT_SPECS_COMMIT"
+
+          # Get specs tag from base branch commit
+          cd specs
+          git fetch --tags origin  # Make sure we have all tags
+
+          # Get tag for base commit
+          BASE_TAGS=$(git tag --points-at $BASE_SPECS_COMMIT 2>/dev/null || echo "")
           if [ -z "$BASE_TAGS" ]; then
             echo "Base specs commit $BASE_SPECS_COMMIT has no tags"
             BASE_SPECS_TAG="unknown"
@@ -72,20 +85,18 @@ jobs:
             BASE_SPECS_TAG=$(echo "$BASE_TAGS" | head -n1)
           fi
 
-          # Reset to current specs
-          git checkout ${{ github.sha }} -- . 2>/dev/null || echo "Could not reset to current commit"
-
           cd ..
           echo "Base specs tag: $BASE_SPECS_TAG"
           echo "Current specs tag: $SPECS_TAG"
           echo "BASE_SPECS_TAG=$BASE_SPECS_TAG" >> $GITHUB_ENV
 
-          # Check if specs tag changed
-          if [ "$BASE_SPECS_TAG" = "$SPECS_TAG" ]; then
+          # Check if specs commit changed (more reliable than just tag comparison)
+          if [ "$BASE_SPECS_COMMIT" = "$CURRENT_SPECS_COMMIT" ]; then
             echo "SPECS_TAG_CHANGED=false" >> $GITHUB_ENV
-            echo "Specs tag unchanged: $SPECS_TAG"
+            echo "Specs commit unchanged: $CURRENT_SPECS_COMMIT (tag: $SPECS_TAG)"
           else
             echo "SPECS_TAG_CHANGED=true" >> $GITHUB_ENV
+            echo "Specs commit changed from $BASE_SPECS_COMMIT to $CURRENT_SPECS_COMMIT"
             echo "Specs tag changed from $BASE_SPECS_TAG to $SPECS_TAG"
           fi
 
@@ -141,7 +152,7 @@ jobs:
           echo "SDK_VERSION_PREFIX: $SDK_VERSION_PREFIX"
           echo "SDK_VERSION_PREFIX=$SDK_VERSION_PREFIX" >> $GITHUB_ENV
 
-      - name: Automatic version bump
+      - name: Automatic version bump (specs unchanged)
         if: github.event_name == 'pull_request' && env.SPECS_TAG_CHANGED == 'false' && env.VERSION_MANUALLY_MODIFIED == 'false'
         run: |
           echo "Conditions met for automatic version bump:"
@@ -157,6 +168,25 @@ jobs:
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}.${NEW_BUILD}"
 
           echo "Bumping version from $SDK_VERSION to $NEW_VERSION"
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+          # Update pyproject.toml
+          sed -i "s/^version = \".*\"$/version = \"$NEW_VERSION\"/" pyproject.toml
+
+          echo "✅ Updated pyproject.toml to version $NEW_VERSION"
+
+      - name: Automatic version update for specs tag change
+        if: github.event_name == 'pull_request' && env.SPECS_TAG_CHANGED == 'true' && env.VERSION_MANUALLY_MODIFIED == 'false'
+        run: |
+          echo "Conditions met for automatic version update due to specs tag change:"
+          echo "- This is a PR: ✅"
+          echo "- Specs tag changed: ✅ (from $BASE_SPECS_TAG to $SPECS_TAG)"
+          echo "- Version not manually modified: ✅"
+
+          # Update SDK version to match new specs version with .0 build number
+          NEW_VERSION="${SPECS_VERSION_PREFIX}.0"
+
+          echo "Updating version from $SDK_VERSION to $NEW_VERSION to match specs tag $SPECS_TAG"
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
           # Update pyproject.toml
@@ -357,10 +387,15 @@ jobs:
 
             let message = '🤖 **SDK Version Check**\n\n';
 
-            if (newVersion) {
+            if (newVersion && !specsTagChanged) {
               message += `✅ **Version automatically bumped to \`${newVersion}\`**\n`;
               message += `- Previous version: \`${sdkVersion}\`\n`;
               message += `- Reason: Specs tag unchanged (${specsTag}), no manual version changes\n`;
+              message += `- Change committed automatically\n`;
+            } else if (newVersion && specsTagChanged) {
+              message += `✅ **Version automatically updated to \`${newVersion}\`**\n`;
+              message += `- Previous version: \`${sdkVersion}\`\n`;
+              message += `- Reason: Specs tag changed to ${specsTag}, version updated to match\n`;
               message += `- Change committed automatically\n`;
             } else if (versionModified) {
               message += '📝 **Manual version changes detected**\n\n';
