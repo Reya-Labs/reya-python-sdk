@@ -61,13 +61,7 @@ class ReyaTradingClient:
     """
 
     def __init__(
-        self,
-        config: Optional[TradingConfig] = None,
-        private_key: Optional[str] = None,
-        api_url: Optional[str] = None,
-        chain_id: Optional[int] = None,
-        account_id: Optional[int] = None,
-        wallet_address: Optional[str] = None,
+        self
     ):
         """
         Initialize the Reya Trading client.
@@ -92,19 +86,7 @@ class ReyaTradingClient:
         self.logger = logging.getLogger("reya_trading.client")
 
         # Get config from environment if not provided
-        self._config = config or get_config()
-
-        # Override config values if provided
-        if private_key:
-            self._config.private_key = private_key
-        if api_url:
-            self._config.api_url = api_url
-        if chain_id:
-            self._config.chain_id = chain_id
-        if account_id:
-            self._config.account_id = account_id
-        if wallet_address:
-            self._config.wallet_address = wallet_address
+        self._config = get_config()
 
         # Create signature generator
         self._signature_generator = SignatureGenerator(self._config)
