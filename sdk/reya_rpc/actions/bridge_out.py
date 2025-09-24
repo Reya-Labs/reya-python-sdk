@@ -1,4 +1,5 @@
 import json
+import pathlib
 from dataclasses import dataclass
 
 from sdk.reya_rpc.exceptions import NetworkConfigurationError
@@ -14,10 +15,10 @@ class BridgeOutParams:
 
 
 # Load contract ABI files
-with open("sdk/reya_rpc/abis/SocketControllerWithPayload.json", encoding="utf-8") as f:
+with open(pathlib.Path(__file__).parent.parent/"abis/SocketControllerWithPayload.json", encoding="utf-8") as f:
     controller_abi = json.load(f)
 
-with open("sdk/reya_rpc/abis/Erc20.json", encoding="utf-8") as f:
+with open(pathlib.Path(__file__).parent.parent/"abis/Erc20.json", encoding="utf-8") as f:
     erc20_abi = json.load(f)
 
 
