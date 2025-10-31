@@ -32,13 +32,13 @@ class SignatureGenerator:
         if not self._private_key:
             raise ValueError("Private key is required for signing")
 
-        # Calculate public address from private key
-        self._public_address: str = str(Account.from_key(self._private_key).address)
+        # Calculate signer wallet address from private key
+        self._signer_wallet_address: str = str(Account.from_key(self._private_key).address)
 
     @property
-    def public_address(self) -> str:
-        """Get the public address derived from the private key."""
-        return self._public_address
+    def signer_wallet_address(self) -> str:
+        """Get the signer wallet address derived from the private key."""
+        return self._signer_wallet_address
 
     def scale(self, decimals: int):
         """Returns a function that scales a number (str, int, float, or Decimal) to an integer."""
@@ -160,7 +160,7 @@ class SignatureGenerator:
                 "counterpartyAccountIds": counterparty_account_ids,
                 "orderType": order_type,
                 "inputs": inputs,
-                "signer": self._public_address,
+                "signer": self._signer_wallet_address,
                 "nonce": nonce,
             },
         }

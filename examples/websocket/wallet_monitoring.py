@@ -6,7 +6,7 @@ Before running this example, ensure you have a .env file with the following vari
 - PRIVATE_KEY: Your Ethereum private key
 - ACCOUNT_ID: Your Reya account ID
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- WALLET_ADDRESS: The wallet address to monitor
+- OWNER_WALLET_ADDRESS: The owner wallet address to monitor (required)
 """
 
 from typing import Any
@@ -38,10 +38,10 @@ def on_open(ws):
     """Handle WebSocket connection open event."""
     logger.info("Connection established, subscribing to wallet data")
 
-    # Get wallet address from environment
-    wallet_address = os.environ.get("WALLET_ADDRESS")
+    # Get owner wallet address from environment
+    wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
     if not wallet_address:
-        logger.error("WALLET_ADDRESS environment variable not set")
+        logger.error("OWNER_WALLET_ADDRESS environment variable is required")
         return
 
     logger.info(f"Monitoring wallet: {wallet_address}")
