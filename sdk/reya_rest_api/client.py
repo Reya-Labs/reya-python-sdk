@@ -176,12 +176,6 @@ class ReyaTradingClient:
 
     @property
     def wallet_address(self) -> Optional[str]:
-        """Get the wallet address from config or signature generator."""
-        # First check if wallet address is directly provided in config
-        if self._config.wallet_address:
-            return self._config.wallet_address
-
-        # Otherwise derive it from private key if available
         return self._signature_generator.public_address if self._signature_generator else None
 
     async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
@@ -254,8 +248,6 @@ class ReyaTradingClient:
         # Build the order request
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order creation")
-        if self.config.wallet_address is None:
-            raise ValueError("Wallet address is required for order creation")
 
         order_request = CreateOrderRequest(
             accountId=self.config.account_id,
@@ -270,7 +262,7 @@ class ReyaTradingClient:
             reduceOnly=params.reduce_only,
             signature=signature,
             nonce=str(nonce),
-            signerWallet=self.config.wallet_address,
+            signerWallet=self.wallet_address
         )
 
         response = await self.orders.create_order(create_order_request=order_request)
