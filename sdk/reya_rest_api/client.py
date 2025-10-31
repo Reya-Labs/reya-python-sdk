@@ -262,7 +262,7 @@ class ReyaTradingClient:
             reduceOnly=params.reduce_only,
             signature=signature,
             nonce=str(nonce),
-            signerWallet=self.wallet_address
+            signerWallet=self.wallet_address,
         )
 
         response = await self.orders.create_order(create_order_request=order_request)
