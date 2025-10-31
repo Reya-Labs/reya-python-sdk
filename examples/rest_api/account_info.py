@@ -18,12 +18,12 @@ async def main():
     load_dotenv()
 
     async with ReyaTradingClient() as client:
-        if not client.wallet_address:
+        if not client.owner_wallet_address:
             print("Error: No wallet address found in environment variables.")
             print("Please set either WALLET_ADDRESS or PRIVATE_KEY in your .env file.")
             return
 
-        print(f"Using wallet address: {client.wallet_address}")
+        print(f"Using wallet address: {client.owner_wallet_address}")
 
         print("\n--- Getting accounts ---")
 

@@ -32,7 +32,7 @@ async def main():
 
         if config:
             print(f"\n--- Getting trades for market {symbol} ---")
-            trades = await client.wallet.get_wallet_perp_executions(address=client.wallet_address or "")
+            trades = await client.wallet.get_wallet_perp_executions(address=client.owner_wallet_address or "")
             print(f"Market trades: {trades}")
 
             print(f"\n--- Getting trackers for market {symbol} ---")

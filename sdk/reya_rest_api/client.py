@@ -67,7 +67,6 @@ class ReyaTradingClient:
         api_url: Optional[str] = None,
         chain_id: Optional[int] = None,
         account_id: Optional[int] = None,
-        wallet_address: Optional[str] = None,
     ):
         """
         Initialize the Reya Trading client.
@@ -103,8 +102,6 @@ class ReyaTradingClient:
             self._config.chain_id = chain_id
         if account_id:
             self._config.account_id = account_id
-        if wallet_address:
-            self._config.wallet_address = wallet_address
 
         # Create signature generator
         self._signature_generator = SignatureGenerator(self._config)
@@ -175,14 +172,19 @@ class ReyaTradingClient:
         return self._config
 
     @property
-    def wallet_address(self) -> Optional[str]:
-        """Get the wallet address from config or signature generator."""
-        # First check if wallet address is directly provided in config
-        if self._config.wallet_address:
-            return self._config.wallet_address
+    def signer_wallet_address(self) -> str:
+        """Get the signer wallet address (derived from private key)."""
+        return self._signature_generator.signer_wallet_address
 
-        # Otherwise derive it from private key if available
-        return self._signature_generator.public_address if self._signature_generator else None
+    @property
+    def owner_wallet_address(self) -> str:
+        """
+        Get the owner wallet address for querying wallet data.
+
+        Wallet that owns ACCOUNT_ID, the signer_wallet will either be the same as owner_wallet_address, or a wallet
+        that was given permissions to trade on behalf ot he owner_wallet_address
+        """
+        return self._config.owner_wallet_address
 
     async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
@@ -254,8 +256,6 @@ class ReyaTradingClient:
         # Build the order request
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order creation")
-        if self.config.wallet_address is None:
-            raise ValueError("Wallet address is required for order creation")
 
         order_request = CreateOrderRequest(
             accountId=self.config.account_id,
@@ -270,7 +270,7 @@ class ReyaTradingClient:
             reduceOnly=params.reduce_only,
             signature=signature,
             nonce=str(nonce),
-            signerWallet=self.config.wallet_address,
+            signerWallet=self.signer_wallet_address,
         )
 
         response = await self.orders.create_order(create_order_request=order_request)
@@ -329,8 +329,6 @@ class ReyaTradingClient:
 
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order creation")
-        if self.config.wallet_address is None:
-            raise ValueError("Wallet address is required for order creation")
 
         order_request = CreateOrderRequest(
             accountId=self.config.account_id,
@@ -343,7 +341,7 @@ class ReyaTradingClient:
             expiresAfter=None,
             signature=signature,
             nonce=str(nonce),
-            signerWallet=self.config.wallet_address,
+            signerWallet=self.signer_wallet_address,
         )
 
         response = await self.orders.create_order(create_order_request=order_request)
@@ -379,7 +377,7 @@ class ReyaTradingClient:
         Get positions for a wallet address asynchronously.
 
         Args:
-            wallet_address: Optional wallet address (defaults to current wallet)
+            wallet_address: Optional wallet address (defaults to owner_wallet_address)
 
         Returns:
             Positions data
@@ -387,7 +385,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = wallet_address or self.wallet_address
+        wallet = wallet_address or self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
@@ -395,7 +393,7 @@ class ReyaTradingClient:
 
     async def get_open_orders(self) -> list[Order]:
         """
-        Get open orders for the authenticated wallet asynchronously.
+        Get open orders for the owner wallet asynchronously.
 
         Returns:
             List of open orders
@@ -403,7 +401,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = self.wallet_address
+        wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
@@ -411,7 +409,7 @@ class ReyaTradingClient:
 
     async def get_configuration(self) -> WalletConfiguration:
         """
-        Get account configuration asynchronously.
+        Get account configuration for the owner wallet asynchronously.
 
         Returns:
             Account configuration information
@@ -419,7 +417,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = self.wallet_address
+        wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
@@ -427,7 +425,7 @@ class ReyaTradingClient:
 
     async def get_perp_executions(self) -> PerpExecutionList:
         """
-        Get perp executions for the authenticated wallet asynchronously.
+        Get perp executions for the owner wallet asynchronously.
 
         Returns:
             Dictionary containing trades data and metadata
@@ -435,7 +433,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = self.wallet_address
+        wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
@@ -443,7 +441,7 @@ class ReyaTradingClient:
 
     async def get_accounts(self) -> list[Account]:
         """
-        Get accounts for the authenticated wallet asynchronously.
+        Get accounts for the owner wallet asynchronously.
 
         Returns:
             Account information
@@ -451,7 +449,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = self.wallet_address
+        wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
@@ -459,7 +457,7 @@ class ReyaTradingClient:
 
     async def get_account_balances(self) -> list[AccountBalance]:
         """
-        Get account balances for the authenticated wallet asynchronously.
+        Get account balances for the owner wallet asynchronously.
 
         Returns:
             Account balances
@@ -467,7 +465,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = self.wallet_address
+        wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
@@ -475,7 +473,7 @@ class ReyaTradingClient:
 
     async def get_spot_executions(self) -> SpotExecutionList:
         """
-        Get spot executions (i.e. auto exchanges) for the authenticated wallet asynchronously.
+        Get spot executions (i.e. auto exchanges) for the owner wallet asynchronously.
 
         Returns:
             Spot executions
@@ -483,7 +481,7 @@ class ReyaTradingClient:
         Raises:
             ValueError: If no wallet address is available or API returns an error
         """
-        wallet = self.wallet_address
+        wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available. Private key must be provided.")
 
