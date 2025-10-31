@@ -172,8 +172,8 @@ class ReyaTradingClient:
         return self._config
 
     @property
-    def wallet_address(self) -> Optional[str]:
-        return self._signature_generator.public_address if self._signature_generator else None
+    def wallet_address(self) -> str:
+        return self._signature_generator.public_address
 
     async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
