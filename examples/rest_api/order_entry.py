@@ -216,7 +216,7 @@ async def run_order_retrieval_test(client: ReyaTradingClient):
 
     # Get trades
     logger.info("Retrieving trades...")
-    trades = await client.wallet.get_wallet_perp_executions(address=client.wallet_address or "")
+    trades = await client.wallet.get_wallet_perp_executions(address=client.owner_wallet_address or "")
     logger.info(f"📊 Found {len(trades.data)} trades")
 
     # Get open orders
@@ -253,7 +253,7 @@ async def main():
         logger.info(f"   Account ID: {client.config.account_id}")
         logger.info(f"   Chain ID: {client.config.chain_id}")
         logger.info(f"   API URL: {client.config.api_url}")
-        logger.info(f"   Wallet: {client.wallet_address}")
+        logger.info(f"   Wallet: {client.owner_wallet_address}")
 
         await client.start()
 
