@@ -67,7 +67,6 @@ class ReyaTradingClient:
         api_url: Optional[str] = None,
         chain_id: Optional[int] = None,
         account_id: Optional[int] = None,
-        wallet_address: Optional[str] = None,
     ):
         """
         Initialize the Reya Trading client.
@@ -103,8 +102,6 @@ class ReyaTradingClient:
             self._config.chain_id = chain_id
         if account_id:
             self._config.account_id = account_id
-        if wallet_address:
-            self._config.wallet_address = wallet_address
 
         # Create signature generator
         self._signature_generator = SignatureGenerator(self._config)
@@ -321,8 +318,6 @@ class ReyaTradingClient:
 
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order creation")
-        if self.config.wallet_address is None:
-            raise ValueError("Wallet address is required for order creation")
 
         order_request = CreateOrderRequest(
             accountId=self.config.account_id,
@@ -335,7 +330,7 @@ class ReyaTradingClient:
             expiresAfter=None,
             signature=signature,
             nonce=str(nonce),
-            signerWallet=self.config.wallet_address,
+            signerWallet=self.wallet_address,
         )
 
         response = await self.orders.create_order(create_order_request=order_request)
