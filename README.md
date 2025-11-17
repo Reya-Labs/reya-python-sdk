@@ -166,7 +166,7 @@ ACCOUNT_ID=your_account_id
 PRIVATE_KEY=your_private_key
 CHAIN_ID=1729                   # Use 89346162 for testnet
 REYA_WS_URL=wss://ws.reya.xyz/  # Use wss://websocket-testnet.reya.xyz/ for testnet
-REYA_API_BASE_URL=https://api.reya.xyz/v2  # Use https://api-test.reya.xyz/v2 for testnet
+REYA_API_BASE_URL=https://api.reya.xyz/v2  # Use https://api-cronos.reya.xyz/v2 for testnet
 OWNER_WALLET_ADDRESS=your_wallet_address    # Required: wallet address for data queries
 ```
 
