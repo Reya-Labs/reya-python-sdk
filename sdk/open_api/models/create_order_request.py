@@ -43,8 +43,9 @@ class CreateOrderRequest(BaseModel):
     nonce: StrictStr = Field(description="Order nonce, see signatures and nonces section for more details.")
     signer_wallet: Annotated[str, Field(strict=True)] = Field(alias="signerWallet")
     expires_after: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="expiresAfter")
+    client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "isBuy", "limitPx", "qty", "orderType", "timeInForce", "triggerPx", "reduceOnly", "signature", "nonce", "signerWallet", "expiresAfter"]
+    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "isBuy", "limitPx", "qty", "orderType", "timeInForce", "triggerPx", "reduceOnly", "signature", "nonce", "signerWallet", "expiresAfter", "clientOrderId"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -161,7 +162,8 @@ class CreateOrderRequest(BaseModel):
             "signature": obj.get("signature"),
             "nonce": obj.get("nonce"),
             "signerWallet": obj.get("signerWallet"),
-            "expiresAfter": obj.get("expiresAfter")
+            "expiresAfter": obj.get("expiresAfter"),
+            "clientOrderId": obj.get("clientOrderId")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

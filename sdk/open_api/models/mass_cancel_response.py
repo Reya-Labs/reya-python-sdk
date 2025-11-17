@@ -17,33 +17,19 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class CancelOrderRequest(BaseModel):
+class MassCancelResponse(BaseModel):
     """
-    CancelOrderRequest
+    MassCancelResponse
     """ # noqa: E501
-    order_id: Optional[StrictStr] = Field(default=None, description="Internal matching engine order ID to cancel. Provide either orderId OR clientOrderId, not both. For spot markets, this is the order ID returned in the CreateOrderResponse.", alias="orderId")
-    client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
-    account_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="accountId")
-    symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    signature: StrictStr = Field(description="See signatures section for more details on how to generate.")
+    cancelled_count: Annotated[int, Field(strict=True, ge=0)] = Field(alias="cancelledCount")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "accountId", "symbol", "signature"]
-
-    @field_validator('symbol')
-    def symbol_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if value is None:
-            return value
-
-        if not re.match(r"^[A-Za-z0-9]+$", value):
-            raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
-        return value
+    __properties: ClassVar[List[str]] = ["cancelledCount"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -63,7 +49,7 @@ class CancelOrderRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of CancelOrderRequest from a JSON string"""
+        """Create an instance of MassCancelResponse from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -95,7 +81,7 @@ class CancelOrderRequest(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of CancelOrderRequest from a dict"""
+        """Create an instance of MassCancelResponse from a dict"""
         if obj is None:
             return None
 
@@ -103,11 +89,7 @@ class CancelOrderRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "orderId": obj.get("orderId"),
-            "clientOrderId": obj.get("clientOrderId"),
-            "accountId": obj.get("accountId"),
-            "symbol": obj.get("symbol"),
-            "signature": obj.get("signature")
+            "cancelledCount": obj.get("cancelledCount")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

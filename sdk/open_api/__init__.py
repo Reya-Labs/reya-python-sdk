@@ -46,6 +46,8 @@ __all__ = [
     "LiquidityParameters",
     "MarketDefinition",
     "MarketSummary",
+    "MassCancelRequest",
+    "MassCancelResponse",
     "Order",
     "OrderStatus",
     "OrderType",
@@ -61,6 +63,7 @@ __all__ = [
     "Side",
     "SpotExecution",
     "SpotExecutionList",
+    "SpotMarketDefinition",
     "TierType",
     "TimeInForce",
     "WalletConfiguration",
@@ -99,6 +102,8 @@ from sdk.open_api.models.global_fee_parameters import GlobalFeeParameters as Glo
 from sdk.open_api.models.liquidity_parameters import LiquidityParameters as LiquidityParameters
 from sdk.open_api.models.market_definition import MarketDefinition as MarketDefinition
 from sdk.open_api.models.market_summary import MarketSummary as MarketSummary
+from sdk.open_api.models.mass_cancel_request import MassCancelRequest as MassCancelRequest
+from sdk.open_api.models.mass_cancel_response import MassCancelResponse as MassCancelResponse
 from sdk.open_api.models.order import Order as Order
 from sdk.open_api.models.order_status import OrderStatus as OrderStatus
 from sdk.open_api.models.order_type import OrderType as OrderType
@@ -114,6 +119,7 @@ from sdk.open_api.models.server_error_code import ServerErrorCode as ServerError
 from sdk.open_api.models.side import Side as Side
 from sdk.open_api.models.spot_execution import SpotExecution as SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList as SpotExecutionList
+from sdk.open_api.models.spot_market_definition import SpotMarketDefinition as SpotMarketDefinition
 from sdk.open_api.models.tier_type import TierType as TierType
 from sdk.open_api.models.time_in_force import TimeInForce as TimeInForce
 from sdk.open_api.models.wallet_configuration import WalletConfiguration as WalletConfiguration

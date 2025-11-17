@@ -28,6 +28,8 @@ from sdk.open_api.models.global_fee_parameters import GlobalFeeParameters
 from sdk.open_api.models.liquidity_parameters import LiquidityParameters
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.market_summary import MarketSummary
+from sdk.open_api.models.mass_cancel_request import MassCancelRequest
+from sdk.open_api.models.mass_cancel_response import MassCancelResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
@@ -43,6 +45,7 @@ from sdk.open_api.models.server_error_code import ServerErrorCode
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
+from sdk.open_api.models.spot_market_definition import SpotMarketDefinition
 from sdk.open_api.models.tier_type import TierType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.open_api.models.wallet_configuration import WalletConfiguration

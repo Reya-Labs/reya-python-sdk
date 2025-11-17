@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
-from typing import Any, ClassVar, Dict, List
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional
 from sdk.open_api.models.order_status import OrderStatus
 from typing import Optional, Set
 from typing_extensions import Self
@@ -29,8 +29,9 @@ class CancelOrderResponse(BaseModel):
     """ # noqa: E501
     status: OrderStatus
     order_id: StrictStr = Field(description="Cancelled order ID", alias="orderId")
+    client_order_id: Optional[StrictInt] = Field(default=None, description="Client-provided order ID echoed back from the request", alias="clientOrderId")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["status", "orderId"]
+    __properties: ClassVar[List[str]] = ["status", "orderId", "clientOrderId"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -91,7 +92,8 @@ class CancelOrderResponse(BaseModel):
 
         _obj = cls.model_validate({
             "status": obj.get("status"),
-            "orderId": obj.get("orderId")
+            "orderId": obj.get("orderId"),
+            "clientOrderId": obj.get("clientOrderId")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

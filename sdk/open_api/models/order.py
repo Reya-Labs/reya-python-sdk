@@ -37,6 +37,7 @@ class Order(BaseModel):
     order_id: StrictStr = Field(alias="orderId")
     qty: Optional[Annotated[str, Field(strict=True)]] = None
     exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
+    cum_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="cumQty")
     side: Side
     limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")
     order_type: OrderType = Field(alias="orderType")
@@ -47,7 +48,7 @@ class Order(BaseModel):
     created_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="createdAt")
     last_update_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="lastUpdateAt")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "orderId", "qty", "execQty", "side", "limitPx", "orderType", "triggerPx", "timeInForce", "reduceOnly", "status", "createdAt", "lastUpdateAt"]
+    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "orderId", "qty", "execQty", "cumQty", "side", "limitPx", "orderType", "triggerPx", "timeInForce", "reduceOnly", "status", "createdAt", "lastUpdateAt"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -68,6 +69,16 @@ class Order(BaseModel):
 
     @field_validator('exec_qty')
     def exec_qty_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if value is None:
+            return value
+
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
+
+    @field_validator('cum_qty')
+    def cum_qty_validate_regular_expression(cls, value):
         """Validates the regular expression"""
         if value is None:
             return value
@@ -157,6 +168,7 @@ class Order(BaseModel):
             "orderId": obj.get("orderId"),
             "qty": obj.get("qty"),
             "execQty": obj.get("execQty"),
+            "cumQty": obj.get("cumQty"),
             "side": obj.get("side"),
             "limitPx": obj.get("limitPx"),
             "orderType": obj.get("orderType"),

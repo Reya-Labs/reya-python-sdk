@@ -60,14 +60,7 @@ class ReyaTradingClient:
     with resources for managing orders and accounts.
     """
 
-    def __init__(
-        self,
-        config: Optional[TradingConfig] = None,
-        private_key: Optional[str] = None,
-        api_url: Optional[str] = None,
-        chain_id: Optional[int] = None,
-        account_id: Optional[int] = None,
-    ):
+    def __init__(self):
         """
         Initialize the Reya Trading client.
 
@@ -91,17 +84,7 @@ class ReyaTradingClient:
         self.logger = logging.getLogger("reya_trading.client")
 
         # Get config from environment if not provided
-        self._config = config or get_config()
-
-        # Override config values if provided
-        if private_key:
-            self._config.private_key = private_key
-        if api_url:
-            self._config.api_url = api_url
-        if chain_id:
-            self._config.chain_id = chain_id
-        if account_id:
-            self._config.account_id = account_id
+        self._config = get_config()
 
         # Create signature generator
         self._signature_generator = SignatureGenerator(self._config)
@@ -129,10 +112,42 @@ class ReyaTradingClient:
         await self._load_market_definitions()
 
     async def _load_market_definitions(self) -> None:
-        market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
-        self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+        """Load both perp and spot market definitions."""
+        perp_count = 0
+        spot_count = 0
+
+        # Try to load perp market definitions (may fail if risk matrix data is missing)
+        try:
+            market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
+            self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+            perp_count = len(market_definitions)
+            self.logger.info(f"Loaded {perp_count} perp market definitions")
+        except Exception as e:
+            self.logger.warning(f"Failed to load perp market definitions: {e}")
+            self._symbol_to_market_id = {}
+
+        # Load spot market definitions from /spotMarketDefinitions endpoint
+        try:
+            spot_market_definitions = await self.reference.get_spot_market_definitions()
+            for market in spot_market_definitions:
+                self._symbol_to_market_id[market.symbol] = market.market_id
+            spot_count = len(spot_market_definitions)
+            self.logger.info(f"Loaded {spot_count} spot market definitions from /spotMarketDefinitions")
+        except Exception as e:
+            self.logger.warning(f"Failed to load spot market definitions: {e}")
+
         self._initialized = True
-        self.logger.info(f"Loaded {len(self._symbol_to_market_id)} market definitions")
+        total_markets = perp_count + spot_count
+        self.logger.info(f"Loaded {total_markets} total market definitions ({perp_count} perp, {spot_count} spot)")
+
+    def _is_spot_market(self, symbol: str) -> bool:
+        """
+        Determine if a symbol represents a spot market.
+
+        Logic: If the symbol does NOT end with 'PERP', it's a spot market.
+        Examples: ETHRUSD (spot), BTCRUSD (spot), ETHRUSDPERP (perp)
+        """
+        return not symbol.upper().endswith("PERP")
 
     def _get_market_id_from_symbol(self, symbol: str) -> int:
         """Get market_id from symbol. Raises ValueError if symbol not found."""
@@ -143,6 +158,9 @@ class ReyaTradingClient:
         if market_id is None:
             available_symbols = list(self._symbol_to_market_id.keys())
             raise ValueError(f"Unknown symbol '{symbol}'. Available symbols: {available_symbols}")
+
+        is_spot = self._is_spot_market(symbol)
+        self.logger.debug(f"Symbol '{symbol}' resolved to market_id {market_id} ({'spot' if is_spot else 'perp'})")
 
         return market_id
 
@@ -215,9 +233,14 @@ class ReyaTradingClient:
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
 
-        nonce = self._signature_generator.create_orders_gateway_nonce(
-            self.config.account_id, market_id, int(time.time_ns() / 1000000)
-        )
+        # For spot markets, use microsecond timestamp as nonce (fits in uint64)
+        # For perp markets, use 32-byte nonce
+        if self._is_spot_market(params.symbol):
+            nonce = int(time.time() * 1_000_000)  # microsecond timestamp
+        else:
+            nonce = self._signature_generator.create_orders_gateway_nonce(
+                self.config.account_id, market_id, int(time.time_ns() / 1000000)
+            )
 
         inputs = self._signature_generator.encode_inputs_limit_order(
             is_buy=params.is_buy,
@@ -225,28 +248,44 @@ class ReyaTradingClient:
             qty=Decimal(params.qty),
         )
 
+        # Determine deadline based on order type and market type
         if params.time_in_force != TimeInForce.IOC:
-            deadline = CONDITIONAL_ORDER_DEADLINE
+            # For GTC orders: use real timestamp for spot markets, 10^18 for perp markets
+            if self._is_spot_market(params.symbol):
+                deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+            else:
+                deadline = CONDITIONAL_ORDER_DEADLINE
         elif params.expires_after is None:
             deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
         else:
             deadline = params.expires_after
 
-        order_type_int = (
-            OrdersGatewayOrderType.LIMIT_ORDER
-            if params.time_in_force == TimeInForce.GTC
-            else (
-                OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER
-                if params.reduce_only is True
-                else OrdersGatewayOrderType.MARKET_ORDER
+        # For spot markets, ALWAYS use LIMIT_ORDER_SPOT (6) regardless of timeInForce
+        # The blockchain only supports matching LimitOrderSpot against LimitOrderSpot for spot trades
+        # TimeInForce behavior is encoded in the inputs field, not in the orderType
+        if self._is_spot_market(params.symbol):
+            order_type_int = OrdersGatewayOrderType.LIMIT_ORDER_SPOT
+        else:
+            # For perp markets, use orderType based on timeInForce
+            order_type_int = (
+                OrdersGatewayOrderType.LIMIT_ORDER
+                if params.time_in_force == TimeInForce.GTC
+                else (
+                    OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER
+                    if params.reduce_only is True
+                    else OrdersGatewayOrderType.MARKET_ORDER
+                )
             )
-        )
+
+        # For spot markets, counterparty_account_ids should be empty []
+        # Spot trades are matched against an orderbook, rather than directly against the pool.
+        counterparty_ids = [] if self._is_spot_market(params.symbol) else [self.config.pool_account_id]
 
         signature = self._signature_generator.sign_raw_order(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-            counterparty_account_ids=[self.config.pool_account_id],
+            counterparty_account_ids=counterparty_ids,
             order_type=order_type_int,
             inputs=inputs,
             deadline=deadline,
@@ -266,7 +305,7 @@ class ReyaTradingClient:
             qty=params.qty,
             orderType=OrderType.LIMIT,
             timeInForce=params.time_in_force,
-            expiresAfter=deadline if params.time_in_force == TimeInForce.IOC else None,
+            expiresAfter=deadline,
             reduceOnly=params.reduce_only,
             signature=signature,
             nonce=str(nonce),
@@ -289,6 +328,10 @@ class ReyaTradingClient:
         """
 
         # Resolve symbol to market_id
+
+        if self._is_spot_market(params.symbol):
+            raise ValueError("Trigger orders are not supported for spot markets")
+
         market_id = self._get_market_id_from_symbol(params.symbol)
 
         if self._signature_generator is None:
@@ -348,26 +391,46 @@ class ReyaTradingClient:
 
         return response
 
-    async def cancel_order(self, order_id: str) -> CancelOrderResponse:
+    async def cancel_order(
+        self,
+        order_id: str,
+        symbol: Optional[str] = None,
+        account_id: Optional[int] = None
+    ) -> CancelOrderResponse:
         """
         Cancel an existing order asynchronously.
 
         Args:
             order_id: ID of the order to cancel
+            symbol: Trading symbol (required for spot market orders, e.g., ETHRUSD, BTCRUSD)
+            account_id: Account ID (required for spot market orders)
 
         Returns:
             API response for the order cancellation
 
         Raises:
-            ValueError: If the API returns an error
+            ValueError: If symbol and account_id are not provided for spot orders
         """
         if self._signature_generator is None:
             raise ValueError("Private key is required for cancelling orders")
 
+        # For spot markets (symbols containing "RUSD" but not "PERP"), both symbol and account_id are required
+        if symbol and "RUSD" in symbol and "PERP" not in symbol:
+            # This is a spot market order
+            if account_id is None:
+                raise ValueError(
+                    f"account_id is required for spot market order cancellation (symbol: {symbol})"
+                )
+
         # Sign the cancellation request
         signature = self._signature_generator.sign_cancel_order(order_id)
 
-        cancel_order_request = CancelOrderRequest(orderId=order_id, signature=signature)
+        cancel_order_request = CancelOrderRequest(
+            orderId=order_id,
+            signature=signature,
+            symbol=symbol,
+            accountId=account_id
+        )
 
         response = await self.orders.cancel_order(cancel_order_request)
         return response

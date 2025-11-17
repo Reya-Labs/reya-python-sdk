@@ -17,32 +17,50 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class CancelOrderRequest(BaseModel):
+class SpotMarketDefinition(BaseModel):
     """
-    CancelOrderRequest
+    SpotMarketDefinition
     """ # noqa: E501
-    order_id: Optional[StrictStr] = Field(default=None, description="Internal matching engine order ID to cancel. Provide either orderId OR clientOrderId, not both. For spot markets, this is the order ID returned in the CreateOrderResponse.", alias="orderId")
-    client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
-    account_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="accountId")
-    symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    signature: StrictStr = Field(description="See signatures section for more details on how to generate.")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    market_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="marketId")
+    min_order_qty: Annotated[str, Field(strict=True)] = Field(alias="minOrderQty")
+    qty_step_size: Annotated[str, Field(strict=True)] = Field(alias="qtyStepSize")
+    tick_size: Annotated[str, Field(strict=True)] = Field(alias="tickSize")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "accountId", "symbol", "signature"]
+    __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if value is None:
-            return value
-
         if not re.match(r"^[A-Za-z0-9]+$", value):
             raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
+        return value
+
+    @field_validator('min_order_qty')
+    def min_order_qty_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
+
+    @field_validator('qty_step_size')
+    def qty_step_size_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
+
+    @field_validator('tick_size')
+    def tick_size_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
     model_config = ConfigDict(
@@ -63,7 +81,7 @@ class CancelOrderRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of CancelOrderRequest from a JSON string"""
+        """Create an instance of SpotMarketDefinition from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -95,7 +113,7 @@ class CancelOrderRequest(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of CancelOrderRequest from a dict"""
+        """Create an instance of SpotMarketDefinition from a dict"""
         if obj is None:
             return None
 
@@ -103,11 +121,11 @@ class CancelOrderRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "orderId": obj.get("orderId"),
-            "clientOrderId": obj.get("clientOrderId"),
-            "accountId": obj.get("accountId"),
             "symbol": obj.get("symbol"),
-            "signature": obj.get("signature")
+            "marketId": obj.get("marketId"),
+            "minOrderQty": obj.get("minOrderQty"),
+            "qtyStepSize": obj.get("qtyStepSize"),
+            "tickSize": obj.get("tickSize")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

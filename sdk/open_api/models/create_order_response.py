@@ -17,8 +17,9 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
+from typing_extensions import Annotated
 from sdk.open_api.models.order_status import OrderStatus
 from typing import Optional, Set
 from typing_extensions import Self
@@ -28,9 +29,32 @@ class CreateOrderResponse(BaseModel):
     CreateOrderResponse
     """ # noqa: E501
     status: OrderStatus
+    exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
+    cum_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="cumQty")
     order_id: Optional[StrictStr] = Field(default=None, description="Created order ID (currently generated for all order types except IOC)", alias="orderId")
+    client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["status", "orderId"]
+    __properties: ClassVar[List[str]] = ["status", "execQty", "cumQty", "orderId", "clientOrderId"]
+
+    @field_validator('exec_qty')
+    def exec_qty_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if value is None:
+            return value
+
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
+
+    @field_validator('cum_qty')
+    def cum_qty_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if value is None:
+            return value
+
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -91,7 +115,10 @@ class CreateOrderResponse(BaseModel):
 
         _obj = cls.model_validate({
             "status": obj.get("status"),
-            "orderId": obj.get("orderId")
+            "execQty": obj.get("execQty"),
+            "cumQty": obj.get("cumQty"),
+            "orderId": obj.get("orderId"),
+            "clientOrderId": obj.get("clientOrderId")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():
