@@ -117,24 +117,17 @@ class ReyaTradingClient:
         spot_count = 0
 
         # Try to load perp market definitions (may fail if risk matrix data is missing)
-        try:
-            market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
-            self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
-            perp_count = len(market_definitions)
-            self.logger.info(f"Loaded {perp_count} perp market definitions")
-        except Exception as e:
-            self.logger.warning(f"Failed to load perp market definitions: {e}")
-            self._symbol_to_market_id = {}
+        market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
+        self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+        perp_count = len(market_definitions)
+        self.logger.info(f"Loaded {perp_count} perp market definitions")
 
         # Load spot market definitions from /spotMarketDefinitions endpoint
-        try:
-            spot_market_definitions = await self.reference.get_spot_market_definitions()
-            for market in spot_market_definitions:
-                self._symbol_to_market_id[market.symbol] = market.market_id
-            spot_count = len(spot_market_definitions)
-            self.logger.info(f"Loaded {spot_count} spot market definitions from /spotMarketDefinitions")
-        except Exception as e:
-            self.logger.warning(f"Failed to load spot market definitions: {e}")
+        spot_market_definitions = await self.reference.get_spot_market_definitions()
+        for market in spot_market_definitions:
+            self._symbol_to_market_id[market.symbol] = market.market_id
+        spot_count = len(spot_market_definitions)
+        self.logger.info(f"Loaded {spot_count} spot market definitions from /spotMarketDefinitions")
 
         self._initialized = True
         total_markets = perp_count + spot_count
