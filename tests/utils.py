@@ -12,6 +12,7 @@ from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.side import Side
+from sdk.open_api.models.spot_execution import SpotExecution
 
 
 def check_error_message(error_message: str, expected_keywords: list[str]):
@@ -59,6 +60,24 @@ def match_order(expected_order: Order, order_output: PerpExecution, expected_qty
 
     # For regular orders, compare with expected order qty
     return order_output.qty == expected_order.qty
+
+
+def match_spot_order(expected_order: Order, spot_execution: SpotExecution, expected_qty: Optional[str] = None):
+    """Match a spot order against a spot execution"""
+    basic_match = (
+        spot_execution.account_id == expected_order.account_id
+        and spot_execution.symbol == expected_order.symbol
+        and spot_execution.side == expected_order.side
+    )
+
+    if not basic_match:
+        return False
+
+    # Compare quantity
+    if expected_qty:
+        return expected_qty == spot_execution.qty
+
+    return spot_execution.qty == expected_order.qty
 
 
 def match_order_WS(order_details: Order, order_output: dict):

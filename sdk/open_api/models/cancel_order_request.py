@@ -31,9 +31,10 @@ class CancelOrderRequest(BaseModel):
     client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
     account_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="accountId")
     symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
-    signature: StrictStr = Field(description="See signatures section for more details on how to generate.")
+    signature: Optional[StrictStr] = Field(default=None, description="See signatures section for more details on how to generate. Required for perp markets, optional for spot markets.")
+    nonce: Optional[StrictStr] = Field(default=None, description="Microsecond timestamp nonce for order cancellation. Must be a unique value for each cancellation request.")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "accountId", "symbol", "signature"]
+    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "accountId", "symbol", "signature", "nonce"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -107,7 +108,8 @@ class CancelOrderRequest(BaseModel):
             "clientOrderId": obj.get("clientOrderId"),
             "accountId": obj.get("accountId"),
             "symbol": obj.get("symbol"),
-            "signature": obj.get("signature")
+            "signature": obj.get("signature"),
+            "nonce": obj.get("nonce")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

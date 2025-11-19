@@ -1,3 +1,4 @@
+import os
 import pytest
 from dotenv import load_dotenv
 
@@ -62,3 +63,89 @@ async def reya_tester(reya_tester_base):
         logger.warning(f"Error during cleanup: {e}")
 
     logger.info("🧹 Test cleanup completed")
+
+
+@pytest.fixture(scope="function")
+async def maker_tester():
+    """Create a ReyaTester instance for the maker account (7971)"""
+    load_dotenv()
+
+    # Save original env vars
+    original_account_id = os.environ.get("ACCOUNT_ID")
+    original_private_key = os.environ.get("PRIVATE_KEY")
+    original_api_url = os.environ.get("REYA_API_URL")
+    original_wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
+    os.environ["ACCOUNT_ID"] = "7971"
+
+
+    tester = ReyaTester()
+    await tester.client.start()
+    await tester.setup()
+
+    logger.info(f"🏭 Maker account initialized: {tester.account_id}")
+
+    yield tester
+
+    # Cleanup
+    logger.info("----------- Cleaning up maker account -----------")
+    try:
+        if tester.websocket:
+            tester.websocket.close()
+        await tester.close_active_orders(fail_if_none=False)
+        await tester.client.close()
+        logger.info("✅ Maker cleanup completed")
+    except Exception as e:
+        logger.warning(f"Error during maker cleanup: {e}")
+
+    # Restore original env
+    if original_account_id:
+        os.environ["ACCOUNT_ID"] = original_account_id
+    if original_private_key:
+        os.environ["PRIVATE_KEY"] = original_private_key
+    if original_api_url:
+        os.environ["REYA_API_URL"] = original_api_url
+    if original_wallet_address:
+        os.environ["OWNER_WALLET_ADDRESS"] = original_wallet_address
+
+
+@pytest.fixture(scope="function")
+async def taker_tester():
+    """Create a ReyaTester instance for the taker account (8041)"""
+    load_dotenv()
+
+    # Save original env vars
+    original_account_id = os.environ.get("ACCOUNT_ID")
+    original_private_key = os.environ.get("PRIVATE_KEY")
+    original_api_url = os.environ.get("REYA_API_URL")
+    original_wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
+
+    os.environ["ACCOUNT_ID"] = "8041"
+
+    tester = ReyaTester()
+    await tester.client.start()
+    await tester.setup()
+
+    logger.info(f"🎯 Taker account initialized: {tester.account_id}")
+
+    yield tester
+
+    # Cleanup
+    logger.info("----------- Cleaning up taker account -----------")
+    try:
+        if tester.websocket:
+            tester.websocket.close()
+        await tester.close_active_orders(fail_if_none=False)
+        await tester.client.close()
+        logger.info("✅ Taker cleanup completed")
+    except Exception as e:
+        logger.warning(f"Error during taker cleanup: {e}")
+
+    # Restore original env
+    if original_account_id:
+        os.environ["ACCOUNT_ID"] = original_account_id
+    if original_private_key:
+        os.environ["PRIVATE_KEY"] = original_private_key
+    if original_api_url:
+        os.environ["REYA_API_URL"] = original_api_url
+    if original_wallet_address:
+        os.environ["OWNER_WALLET_ADDRESS"] = original_wallet_address

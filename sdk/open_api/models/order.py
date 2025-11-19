@@ -57,6 +57,13 @@ class Order(BaseModel):
             raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
         return value
 
+    @field_validator('created_at', 'last_update_at', mode='before')
+    def convert_timestamp_to_int(cls, value):
+        """Converts float timestamps to integers"""
+        if isinstance(value, float):
+            return int(value)
+        return value
+
     @field_validator('qty')
     def qty_validate_regular_expression(cls, value):
         """Validates the regular expression"""

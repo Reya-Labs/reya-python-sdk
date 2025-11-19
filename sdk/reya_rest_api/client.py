@@ -407,22 +407,28 @@ class ReyaTradingClient:
         if self._signature_generator is None:
             raise ValueError("Private key is required for cancelling orders")
 
-        # For spot markets (symbols containing "RUSD" but not "PERP"), both symbol and account_id are required
-        if symbol and "RUSD" in symbol and "PERP" not in symbol:
-            # This is a spot market order
+        # Determine if this is a spot market order
+        is_spot_order = symbol and "RUSD" in symbol and "PERP" not in symbol
+
+        # For spot markets, both symbol and account_id are required, but signature is optional
+        if is_spot_order:
             if account_id is None:
                 raise ValueError(
                     f"account_id is required for spot market order cancellation (symbol: {symbol})"
                 )
 
-        # Sign the cancellation request
+        # Generate signature and nonce for order cancellation
+        # Signature is required for all cancellations (spot and perp)
+        # Nonce is a microsecond timestamp to ensure uniqueness
         signature = self._signature_generator.sign_cancel_order(order_id)
+        nonce = str(int(time.time() * 1_000_000))  # microsecond timestamp
 
         cancel_order_request = CancelOrderRequest(
-            orderId=order_id,
+            order_id=order_id,
             signature=signature,
+            nonce=nonce,
             symbol=symbol,
-            accountId=account_id
+            account_id=account_id
         )
 
         response = await self.orders.cancel_order(cancel_order_request)
@@ -542,6 +548,35 @@ class ReyaTradingClient:
             raise ValueError("No wallet address available. Private key must be provided.")
 
         return await self.wallet.get_wallet_spot_executions(address=wallet)
+
+    async def get_market_depth(self, symbol: str) -> dict:
+        """
+        Get L2 market depth (orderbook) for a given symbol.
+
+        Args:
+            symbol: Market symbol (e.g., 'WETHRUSD', 'BTCRUSD')
+
+        Returns:
+            Market depth with bids and asks
+            {
+                "symbol": "WETHRUSD",
+                "type": "SNAPSHOT",
+                "bids": [{"price": "3996", "quantity": "0.0001"}],
+                "asks": [{"price": "4004", "quantity": "0.0001"}],
+                "updatedAt": 1234567890000000
+            }
+
+        Raises:
+            ValueError: If symbol is invalid or API returns an error
+        """
+        # Direct HTTP request to depth endpoint (not in generated API yet)
+        import aiohttp
+        url = f"{self._config.api_url}/market/{symbol}/depth"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise ValueError(f"Failed to get market depth: {response.status}")
+                return await response.json()
 
     async def close(self) -> None:
         """
