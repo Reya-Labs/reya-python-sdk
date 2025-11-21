@@ -13,3 +13,5 @@ class OrdersGatewayOrderType(IntEnum):
     LIMIT_ORDER = 2
     MARKET_ORDER = 3
     REDUCE_ONLY_MARKET_ORDER = 4
+    FULL_CLOSE_ORDER = 5
+    LIMIT_ORDER_SPOT = 6

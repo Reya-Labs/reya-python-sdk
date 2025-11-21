@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class Price(BaseModel): 
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   oracle_price: str = Field(alias='''oraclePrice''')
   pool_price: Optional[str] = Field(default=None, alias='''poolPrice''')
   updated_at: int = Field(alias='''updatedAt''')

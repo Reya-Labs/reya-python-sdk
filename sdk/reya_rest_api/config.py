@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 MAINNET_CHAIN_ID = 1729
-REYA_DEX_ID = 2
+REYA_DEX_ID = 5
 
 
 @dataclass

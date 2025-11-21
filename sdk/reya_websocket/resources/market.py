@@ -24,6 +24,7 @@ class MarketResource:
         self._all_markets_summary = AllMarketsSummaryResource(socket)
         self._market_summary = MarketSummaryResource(socket)
         self._market_perp_executions = MarketPerpExecutionsResource(socket)
+        self._market_depth = MarketDepthResource(socket)
 
     @property
     def all_markets_summary(self) -> "AllMarketsSummaryResource":
@@ -51,6 +52,17 @@ class MarketResource:
             A subscription object for the specified market perpetual executions.
         """
         return self._market_perp_executions.for_symbol(symbol)
+
+    def depth(self, symbol: str) -> "MarketDepthSubscription":
+        """Get L2 market depth (orderbook) for a specific symbol.
+
+        Args:
+            symbol: The trading symbol (e.g., "BTCRUSDPERP", "WETHRUSD").
+
+        Returns:
+            A subscription object for the specified market depth.
+        """
+        return self._market_depth.for_symbol(symbol)
 
 
 class AllMarketsSummaryResource(SubscribableResource):
@@ -180,4 +192,54 @@ class MarketPerpExecutionsSubscription:
 
     def unsubscribe(self) -> None:
         """Unsubscribe from market perpetual executions."""
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class MarketDepthResource(SubscribableParameterizedResource):
+    """Resource for accessing market depth (L2 orderbook)."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        """Initialize the market depth resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket, "/v2/market/{symbol}/depth")
+
+    def for_symbol(self, symbol: str) -> "MarketDepthSubscription":
+        """Create a subscription for a specific market's depth.
+
+        Args:
+            symbol: The trading symbol (e.g., "WETHRUSD", "BTCRUSD").
+
+        Returns:
+            A subscription object for the specified market depth.
+        """
+        return MarketDepthSubscription(self.socket, symbol)
+
+
+class MarketDepthSubscription:
+    """Manages a subscription to market depth for a specific symbol."""
+
+    def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a market depth subscription.
+
+        Args:
+            socket: The WebSocket connection to use for this subscription.
+            symbol: The trading symbol (e.g., "WETHRUSD", "BTCRUSD").
+        """
+        self.socket = socket
+        self.symbol = symbol
+        self.path = f"/v2/market/{symbol}/depth"
+
+    def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to market depth.
+
+        Args:
+            batched: Whether to receive updates in batches.
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self) -> None:
+        """Unsubscribe from market depth."""
         self.socket.send_unsubscribe(channel=self.path)

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class MarketSummary(BaseModel): 
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   updated_at: int = Field(alias='''updatedAt''')
   long_oi_qty: str = Field(alias='''longOiQty''')
   short_oi_qty: str = Field(alias='''shortOiQty''')

@@ -5,7 +5,7 @@ from sdk.async_api.side import Side
 from sdk.async_api.execution_type import ExecutionType
 class PerpExecution(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
