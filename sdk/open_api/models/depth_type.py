@@ -18,21 +18,20 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class OrderType(str, Enum):
+class DepthType(str, Enum):
     """
-    Order type, (LIMIT = Limit, TP = Take Profit, SL = Stop Loss)
+    Depth message type (SNAPSHOT = full book, UPDATE = single level change)
     """
 
     """
     allowed enum values
     """
-    LIMIT = 'LIMIT'
-    TP = 'TP'
-    SL = 'SL'
+    SNAPSHOT = 'SNAPSHOT'
+    UPDATE = 'UPDATE'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of OrderType from a JSON string"""
+        """Create an instance of DepthType from a JSON string"""
         return cls(json.loads(json_str))
 
 

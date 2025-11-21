@@ -19,9 +19,12 @@ sdk/open_api/models/cancel_order_response.py
 sdk/open_api/models/candle_history_data.py
 sdk/open_api/models/create_order_request.py
 sdk/open_api/models/create_order_response.py
+sdk/open_api/models/depth.py
+sdk/open_api/models/depth_type.py
 sdk/open_api/models/execution_type.py
 sdk/open_api/models/fee_tier_parameters.py
 sdk/open_api/models/global_fee_parameters.py
+sdk/open_api/models/level.py
 sdk/open_api/models/liquidity_parameters.py
 sdk/open_api/models/market_definition.py
 sdk/open_api/models/market_summary.py
