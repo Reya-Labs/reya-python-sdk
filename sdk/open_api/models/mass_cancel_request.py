@@ -18,7 +18,7 @@ import re  # noqa: F401
 import json
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, Dict, List, Optional
 from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
@@ -28,11 +28,12 @@ class MassCancelRequest(BaseModel):
     Request to cancel all orders matching the specified filters
     """ # noqa: E501
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
-    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     signature: StrictStr = Field(description="See signatures and nonces section for more details on how to generate.")
     nonce: StrictStr = Field(description="See signatures and nonces section for more details.")
+    expires_after: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="expiresAfter")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["accountId", "symbol", "signature", "nonce"]
+    __properties: ClassVar[List[str]] = ["accountId", "symbol", "signature", "nonce", "expiresAfter"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -102,7 +103,8 @@ class MassCancelRequest(BaseModel):
             "accountId": obj.get("accountId"),
             "symbol": obj.get("symbol"),
             "signature": obj.get("signature"),
-            "nonce": obj.get("nonce")
+            "nonce": obj.get("nonce"),
+            "expiresAfter": obj.get("expiresAfter")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

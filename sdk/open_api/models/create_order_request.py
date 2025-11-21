@@ -30,7 +30,7 @@ class CreateOrderRequest(BaseModel):
     CreateOrderRequest
     """ # noqa: E501
     exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
-    symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     is_buy: StrictBool = Field(description="Whether this is a buy order", alias="isBuy")
     limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")

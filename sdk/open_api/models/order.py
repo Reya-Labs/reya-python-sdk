@@ -32,7 +32,7 @@ class Order(BaseModel):
     Order
     """ # noqa: E501
     exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
-    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     order_id: StrictStr = Field(alias="orderId")
     qty: Optional[Annotated[str, Field(strict=True)]] = None

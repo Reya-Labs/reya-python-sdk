@@ -27,7 +27,7 @@ class Price(BaseModel):
     """
     Price
     """ # noqa: E501
-    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     oracle_price: Annotated[str, Field(strict=True)] = Field(alias="oraclePrice")
     pool_price: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="poolPrice")
     updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")

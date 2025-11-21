@@ -7,7 +7,7 @@ from sdk.async_api.time_in_force import TimeInForce
 from sdk.async_api.order_status import OrderStatus
 class Order(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   order_id: str = Field(alias='''orderId''')
   qty: Optional[str] = Field(default=None)

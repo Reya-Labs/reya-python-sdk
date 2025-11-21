@@ -438,7 +438,7 @@ class ReyaTradingClient:
             client_order_id_int = client_order_id if client_order_id is not None else 0
 
             # Generate EIP-712 signature for SPOT orders
-            signature = self._signature_generator.sign_cancel_order(
+            signature = self._signature_generator.sign_cancel_order_spot(
                 account_id=account_id,
                 market_id=market_id,
                 order_id=order_id_int,
@@ -457,6 +457,7 @@ class ReyaTradingClient:
             nonce=str(nonce) if nonce is not None else None,
             symbol=symbol,
             accountId=account_id,
+            expiresAfter=deadline,
         )
 
         response = await self.orders.cancel_order(cancel_order_request)
@@ -520,6 +521,7 @@ class ReyaTradingClient:
             symbol=symbol,
             signature=signature,
             nonce=str(nonce),
+            expiresAfter=deadline,
         )
 
         response = await self.orders.cancel_all(mass_cancel_request)

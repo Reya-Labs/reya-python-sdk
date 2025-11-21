@@ -4,7 +4,7 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.depth_type import DepthType
 from sdk.async_api.level import Level
 class Depth(BaseModel): 
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   type: DepthType = Field(description='''Depth message type (SNAPSHOT = full book, UPDATE = single level change)''')
   bids: List[Level] = Field(description='''Bid side levels aggregated by price, sorted descending by price''')
   asks: List[Level] = Field(description='''Ask side levels aggregated by price, sorted ascending by price''')

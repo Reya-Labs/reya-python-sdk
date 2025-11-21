@@ -470,7 +470,11 @@ class ReyaTester:
         cancelled_order_id = None
         for order in active_orders:
             try:
-                await self.client.cancel_order(order_id=order.order_id)
+                await self.client.cancel_order(
+                    order_id=order.order_id,
+                    symbol=order.symbol,
+                    account_id=order.account_id
+                )
 
                 # Note: this confirms trade has been registered, not neccesarely position
                 cancelled_order_id = await self.wait_for_order_state(
@@ -811,7 +815,11 @@ class ReyaTester:
         for order in open_orders:
             logger.warning(f"  - Checking order ID: {order.order_id}, Symbol: {order.symbol}, Status: {order.status}")
             try:
-                await self.client.cancel_order(order_id=order.order_id)
+                await self.client.cancel_order(
+                    order_id=order.order_id,
+                    symbol=order.symbol,
+                    account_id=order.account_id
+                )
                 # If cancel succeeded, this is a legitimate order that we need to wait for
                 logger.warning(f"Order {order.order_id} exists in matching engine, waiting for cancellation...")
                 legitimate_orders.append(order)
@@ -837,7 +845,11 @@ class ReyaTester:
         remaining_legitimate = []
         for order in remaining_orders:
             try:
-                await self.client.cancel_order(order_id=order.order_id)
+                await self.client.cancel_order(
+                    order_id=order.order_id,
+                    symbol=order.symbol,
+                    account_id=order.account_id
+                )
             except Exception as e:
                 if "Missing order" not in str(e):
                     remaining_legitimate.append(order)

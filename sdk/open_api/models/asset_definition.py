@@ -28,7 +28,7 @@ class AssetDefinition(BaseModel):
     AssetDefinition
     """ # noqa: E501
     asset: Annotated[str, Field(strict=True)]
-    spot_market_symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)", alias="spotMarketSymbol")
+    spot_market_symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)", alias="spotMarketSymbol")
     price_haircut: Annotated[str, Field(strict=True)] = Field(alias="priceHaircut")
     liquidation_discount: Annotated[str, Field(strict=True)] = Field(alias="liquidationDiscount")
     timestamp: Annotated[int, Field(strict=True, ge=0)]

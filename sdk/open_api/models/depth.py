@@ -29,7 +29,7 @@ class Depth(BaseModel):
     """
     Depth
     """ # noqa: E501
-    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     type: DepthType
     bids: List[Level] = Field(description="Bid side levels aggregated by price, sorted descending by price")
     asks: List[Level] = Field(description="Ask side levels aggregated by price, sorted ascending by price")

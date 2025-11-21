@@ -27,7 +27,7 @@ class MarketSummary(BaseModel):
     """
     MarketSummary
     """ # noqa: E501
-    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")
     long_oi_qty: Annotated[str, Field(strict=True)] = Field(alias="longOiQty")
     short_oi_qty: Annotated[str, Field(strict=True)] = Field(alias="shortOiQty")

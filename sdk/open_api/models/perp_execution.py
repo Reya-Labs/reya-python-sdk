@@ -30,7 +30,7 @@ class PerpExecution(BaseModel):
     PerpExecution
     """ # noqa: E501
     exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
-    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     qty: Annotated[str, Field(strict=True)]
     side: Side
