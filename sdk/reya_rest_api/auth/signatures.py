@@ -174,31 +174,133 @@ class SignatureGenerator:
             else f"0x{signed_message.signature.hex()}"
         )
 
-    def sign_cancel_order(self, order_id: str) -> str:
+    def sign_cancel_order(
+        self,
+        account_id: int,
+        market_id: int,
+        order_id: int,
+        client_order_id: int,
+        nonce: int,
+        deadline: int,
+    ) -> str:
         """
-        Sign an order cancellation message using personal_sign.
+        Sign an order cancellation message using EIP-712 (for SPOT orders).
+
+        This method generates an EIP-712 signature for cancelling a specific order.
+        For SPOT market orders, both orderId and clientOrderId must be provided.
 
         Args:
-            order_id: ID of the order to cancel
+            account_id: The Reya account ID
+            market_id: The market ID for this order
+            order_id: Internal matching engine order ID to cancel
+            client_order_id: Client-provided order ID
+            nonce: Unique nonce for this cancellation (microsecond timestamp)
+            deadline: Signature expiration timestamp (milliseconds)
 
         Returns:
             Hex-encoded signature
         """
-        # Create cancellation message
-        cancel_message = {
-            "orderId": order_id,
-            "status": "cancelled",
-            "actionType": "changeStatus",
+        # Define EIP-712 domain
+        domain = {
+            "name": "Reya",
+            "version": "1",
+            "verifyingContract": self.config.default_orders_gateway_address,
         }
 
-        # Convert to JSON string
-        message_str = json.dumps(cancel_message, separators=(",", ":"))
+        # Define the message types for EIP-712 (OrderCancel format for SPOT)
+        types = {
+            "OrderCancel": [
+                {"name": "verifyingChainId", "type": "uint64"},
+                {"name": "deadline", "type": "uint64"},
+                {"name": "cancel", "type": "OrderCancelDetails"},
+            ],
+            "OrderCancelDetails": [
+                {"name": "accountId", "type": "uint64"},
+                {"name": "marketId", "type": "uint64"},
+                {"name": "orderId", "type": "uint64"},
+                {"name": "clOrdId", "type": "uint64"},
+                {"name": "nonce", "type": "uint64"},
+            ],
+        }
 
-        # Prepare an EIP-191 message
-        signable_message = encode_defunct(text=message_str)
+        # Create the message to sign
+        message = {
+            "verifyingChainId": self._chain_id,
+            "deadline": deadline,
+            "cancel": {
+                "accountId": account_id,
+                "marketId": market_id,
+                "orderId": order_id,
+                "clOrdId": client_order_id,
+                "nonce": nonce,
+            },
+        }
 
-        # Sign the message
-        signed_message = Account.sign_message(signable_message, private_key=self._private_key)
+        # Sign the message using EIP-712
+        signed_message = Account.sign_typed_data(self._private_key, domain, types, message)
+
+        return (
+            signed_message.signature.hex()
+            if signed_message.signature.hex().startswith("0x")
+            else f"0x{signed_message.signature.hex()}"
+        )
+
+    def sign_mass_cancel(
+        self,
+        account_id: int,
+        market_id: int,
+        nonce: int,
+        deadline: int,
+    ) -> str:
+        """
+        Sign a mass cancel request using EIP-712 (for SPOT orders).
+
+        This method generates an EIP-712 signature for cancelling all orders
+        for a specific account and market.
+
+        Args:
+            account_id: The Reya account ID
+            market_id: The market ID
+            nonce: Unique nonce for this mass cancel (microsecond timestamp)
+            deadline: Signature expiration timestamp (milliseconds)
+
+        Returns:
+            Hex-encoded signature
+        """
+        # Define EIP-712 domain
+        domain = {
+            "name": "Reya",
+            "version": "1",
+            "verifyingContract": self.config.default_orders_gateway_address,
+        }
+
+        # Define the message types for EIP-712 (MassCancel format for SPOT)
+        types = {
+            "MassCancel": [
+                {"name": "verifyingChainId", "type": "uint64"},
+                {"name": "deadline", "type": "uint64"},
+                {"name": "massCancel", "type": "MassCancelDetails"},
+            ],
+            "MassCancelDetails": [
+                {"name": "accountId", "type": "uint64"},
+                {"name": "marketId", "type": "uint64"},
+                {"name": "nonce", "type": "uint64"},
+            ],
+        }
+
+        # Create the message to sign
+        message = {
+            "verifyingChainId": self._chain_id,
+            "deadline": deadline,
+            "massCancel": {
+                "accountId": account_id,
+                "marketId": market_id,
+                "nonce": nonce,
+            },
+        }
+
+        # Sign the message using EIP-712
+        signed_message = Account.sign_typed_data(self._private_key, domain, types, message)
 
         return (
             signed_message.signature.hex()

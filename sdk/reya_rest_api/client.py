@@ -23,6 +23,8 @@ from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.open_api.models.mass_cancel_request import MassCancelRequest
+from sdk.open_api.models.mass_cancel_response import MassCancelResponse
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_type import OrderType
@@ -388,7 +390,8 @@ class ReyaTradingClient:
         self,
         order_id: str,
         symbol: Optional[str] = None,
-        account_id: Optional[int] = None
+        account_id: Optional[int] = None,
+        client_order_id: Optional[int] = None,
     ) -> CancelOrderResponse:
         """
         Cancel an existing order asynchronously.
@@ -397,6 +400,7 @@ class ReyaTradingClient:
             order_id: ID of the order to cancel
             symbol: Trading symbol (required for spot market orders, e.g., ETHRUSD, BTCRUSD)
             account_id: Account ID (required for spot market orders)
+            client_order_id: Client order ID (optional, used for signature generation)
 
         Returns:
             API response for the order cancellation
@@ -410,28 +414,119 @@ class ReyaTradingClient:
         # Determine if this is a spot market order
         is_spot_order = symbol and "RUSD" in symbol and "PERP" not in symbol
 
-        # For spot markets, both symbol and account_id are required, but signature is optional
+        # For spot markets, symbol and account_id are required
         if is_spot_order:
+            if symbol is None:
+                raise ValueError("symbol is required for spot market order cancellation")
             if account_id is None:
                 raise ValueError(
                     f"account_id is required for spot market order cancellation (symbol: {symbol})"
                 )
 
-        # Generate signature and nonce for order cancellation
-        # Signature is required for all cancellations (spot and perp)
-        # Nonce is a microsecond timestamp to ensure uniqueness
-        signature = self._signature_generator.sign_cancel_order(order_id)
-        nonce = str(int(time.time() * 1_000_000))  # microsecond timestamp
+            # Get market_id from symbol
+            market_id = self._get_market_id_from_symbol(symbol)
+
+            # Generate nonce (microsecond timestamp)
+            nonce = int(time.time() * 1_000_000)
+
+            # Generate deadline (current time + 5 seconds)
+            deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+
+            # For EIP-712 signature, we need both orderId and clOrdId
+            # If one is not provided, use 0 as placeholder
+            order_id_int = int(order_id) if order_id else 0
+            client_order_id_int = client_order_id if client_order_id is not None else 0
+
+            # Generate EIP-712 signature for SPOT orders
+            signature = self._signature_generator.sign_cancel_order(
+                account_id=account_id,
+                market_id=market_id,
+                order_id=order_id_int,
+                client_order_id=client_order_id_int,
+                nonce=nonce,
+                deadline=deadline,
+            )
+        else:
+            # For perp orders, use the old signature method (if still needed)
+            # Note: This path may need to be updated based on your perp cancel requirements
+            raise NotImplementedError(
+                "Perp order cancellation signature method needs to be defined. "
+                "Please use the appropriate signature method for perp orders."
+            )
 
         cancel_order_request = CancelOrderRequest(
-            order_id=order_id,
+            orderId=order_id,
+            clientOrderId=client_order_id,
             signature=signature,
-            nonce=nonce,
+            nonce=str(nonce),
             symbol=symbol,
-            account_id=account_id
+            accountId=account_id,
         )
 
         response = await self.orders.cancel_order(cancel_order_request)
+        return response
+
+    async def mass_cancel(
+        self,
+        symbol: str,
+        account_id: Optional[int] = None,
+    ) -> MassCancelResponse:
+        """
+        Cancel all orders for a specific market asynchronously.
+
+        This operation is only supported for SPOT markets.
+
+        Args:
+            symbol: Trading symbol (e.g., ETHRUSD, BTCRUSD)
+            account_id: Account ID (optional, defaults to config account_id)
+
+        Returns:
+            API response for the mass cancellation
+
+        Raises:
+            ValueError: If symbol is not a spot market or account_id is missing
+        """
+        if self._signature_generator is None:
+            raise ValueError("Private key is required for mass cancel")
+
+        # Verify this is a spot market
+        if not self._is_spot_market(symbol):
+            raise ValueError(
+                f"Mass cancel is only supported for spot markets. "
+                f"Symbol '{symbol}' appears to be a perp market."
+            )
+
+        # Use config account_id if not provided
+        if account_id is None:
+            account_id = self.config.account_id
+            if account_id is None:
+                raise ValueError("account_id is required for mass cancel")
+
+        # Get market_id from symbol
+        market_id = self._get_market_id_from_symbol(symbol)
+
+        # Generate nonce (microsecond timestamp)
+        nonce = int(time.time_ns()/1000)
+
+        # Generate deadline (current time + 5 seconds)
+        deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+
+        # Generate EIP-712 signature for mass cancel
+        signature = self._signature_generator.sign_mass_cancel(
+            account_id=account_id,
+            market_id=market_id,
+            nonce=nonce,
+            deadline=deadline,
+        )
+
+        mass_cancel_request = MassCancelRequest(
+            accountId=account_id,
+            symbol=symbol,
+            signature=signature,
+            nonce=str(nonce),
+        )
+
+        response = await self.orders.cancel_all(mass_cancel_request)
         return response
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
