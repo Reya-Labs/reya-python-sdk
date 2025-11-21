@@ -174,7 +174,39 @@ class SignatureGenerator:
             else f"0x{signed_message.signature.hex()}"
         )
 
-    def sign_cancel_order(
+    def sign_cancel_order_perps(self, order_id: str) -> str:
+        """
+        Sign an order cancellation message using personal_sign.
+
+        Args:
+            order_id: ID of the order to cancel
+
+        Returns:
+            Hex-encoded signature
+        """
+        # Create cancellation message
+        cancel_message = {
+            "orderId": order_id,
+            "status": "cancelled",
+            "actionType": "changeStatus",
+        }
+
+        # Convert to JSON string
+        message_str = json.dumps(cancel_message, separators=(",", ":"))
+
+        # Prepare an EIP-191 message
+        signable_message = encode_defunct(text=message_str)
+
+        # Sign the message
+        signed_message = Account.sign_message(signable_message, private_key=self._private_key)
+
+        return (
+            signed_message.signature.hex()
+            if signed_message.signature.hex().startswith("0x")
+            else f"0x{signed_message.signature.hex()}"
+        )
+
+    def sign_cancel_order_spot(
         self,
         account_id: int,
         market_id: int,

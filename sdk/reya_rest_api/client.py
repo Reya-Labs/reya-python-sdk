@@ -447,18 +447,14 @@ class ReyaTradingClient:
                 deadline=deadline,
             )
         else:
-            # For perp orders, use the old signature method (if still needed)
-            # Note: This path may need to be updated based on your perp cancel requirements
-            raise NotImplementedError(
-                "Perp order cancellation signature method needs to be defined. "
-                "Please use the appropriate signature method for perp orders."
-            )
+            signature = self._signature_generator.sign_cancel_order_perps(order_id)
+            nonce = None
 
         cancel_order_request = CancelOrderRequest(
             orderId=order_id,
             clientOrderId=client_order_id,
             signature=signature,
-            nonce=str(nonce),
+            nonce=str(nonce) if nonce is not None else None,
             symbol=symbol,
             accountId=account_id,
         )
