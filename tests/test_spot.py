@@ -81,7 +81,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     # Step 2: Check L2 depth to verify maker order is visible
     logger.info("\n📊 Step 2: Checking L2 depth...")
     # Wait a moment for order to appear in orderbook
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.2)
 
     # Fetch L2 depth via REST
     depth = await maker_tester.get_market_depth(symbol)
@@ -152,7 +152,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     # Step 6: Verify balances changed appropriately
     logger.info("\n💰 Step 6: Verifying balance changes...")
     # Wait a moment for balance updates to propagate
-    await asyncio.sleep(2)
+    await asyncio.sleep(0.5)
 
     # Get updated balances for both accounts
     maker_final_balances = await maker_tester.get_balances()
@@ -359,7 +359,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
     logger.info(f"Mass cancel response: {response}")
     
     # Wait a moment for cancellations to propagate
-    await asyncio.sleep(2)
+    await asyncio.sleep(0.5)
     
     # Verify all orders are cancelled
     logger.info("\n📊 Step 4: Verifying all orders are cancelled...")

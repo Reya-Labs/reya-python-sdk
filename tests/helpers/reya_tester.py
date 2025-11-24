@@ -117,7 +117,7 @@ class ReyaTester:
         logger.info("WebSocket connected for trade monitoring")
 
         # Wait a moment for subscriptions to complete
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.3)
 
         await self.close_active_orders(fail_if_none=False)
         await self.close_exposures(fail_if_none=False)
@@ -449,7 +449,7 @@ class ReyaTester:
                 return
 
             logger.debug(f"Still have {len(position_after)} positions, waiting...")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.2)
 
         # Timeout reached, positions still exist
         position_after = await self.get_positions()
@@ -576,7 +576,7 @@ class ReyaTester:
                 ), f"expected {rest_position.to_str()} to equal {ws_position.to_str()}"
                 return rest_trade
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
         raise RuntimeError(f"Order not executed after {timeout} seconds, rest_trade: {rest_trade is not None}, ws_trade: {ws_trade is not None}, rest_position: {rest_position is not None}, ws_position: {ws_position is not None}")
 
@@ -637,7 +637,7 @@ class ReyaTester:
                 ), f"expected {rest_trade.to_str()} to equal {ws_trade.to_str()}"
                 return rest_trade
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
         raise RuntimeError(f"Order not executed after {timeout} seconds, rest_trade: {rest_trade is not None}, ws_trade: {ws_trade is not None}, rest_closed: {rest_closed}, ws_position: {ws_position is not None}")
 
@@ -678,7 +678,7 @@ class ReyaTester:
                 ), f"expected {rest_execution.to_str()} to equal {ws_execution.to_str()}"
                 return rest_execution
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
         raise RuntimeError(
             f"Spot execution not confirmed after {timeout} seconds, rest: {rest_execution is not None}, ws: {ws_execution is not None}"
@@ -722,7 +722,7 @@ class ReyaTester:
             if rest_match and ws_match:
                 return order_id
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
         raise RuntimeError(f"Order {order_id} did not reach {expected_status.value} state after {timeout} seconds")
 
@@ -767,7 +767,7 @@ class ReyaTester:
                 logger.info(f" ✅ Order created via REST only: {rest_order} (took {elapsed_time:.2f}s)")
                 return rest_order
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
         raise RuntimeError(f"Order {order_id} not created after {timeout} seconds")
 
@@ -837,7 +837,7 @@ class ReyaTester:
 
         # Wait for legitimate orders to be cancelled
         logger.warning(f"Waiting for {len(legitimate_orders)} legitimate orders to be cancelled...")
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.3)
 
         # Check again
         remaining_orders = await self.client.get_open_orders()
@@ -1036,7 +1036,7 @@ class ReyaTester:
 
         # Add small delay for position data to be available
         import asyncio
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.3)
 
         # Verify position was created
         from sdk.reya_rest_api.config import REYA_DEX_ID
@@ -1132,7 +1132,7 @@ class ReyaTester:
 
         # Give some time for position to be updated after flip
         import asyncio
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
 
         # Verify flipped position
         from sdk.reya_rest_api.config import REYA_DEX_ID
