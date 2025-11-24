@@ -18,7 +18,8 @@ from sdk.open_api.models.position import Position
 from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
-from tests.reya_tester import ReyaTester, limit_order_params_to_order, logger, trigger_order_params_to_order
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 
 
 def assert_tp_sl_order_submission(

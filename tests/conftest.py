@@ -2,7 +2,8 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from tests.reya_tester import ReyaTester, logger
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import logger
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ async def reya_tester(reya_tester_base):
 
 @pytest.fixture(scope="function")
 async def maker_tester():
-    """Create a ReyaTester instance for the maker account (7971)"""
+    """Create a ReyaTester instance for the maker account"""
     load_dotenv()
 
     # Save original env vars
@@ -75,7 +76,10 @@ async def maker_tester():
     original_private_key = os.environ.get("PRIVATE_KEY")
     original_api_url = os.environ.get("REYA_API_URL")
     original_wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
-    os.environ["ACCOUNT_ID"] = "7971"
+    
+    # Get maker account ID from env, fallback to default if not set
+    maker_account_id = os.environ.get("MAKER_ACCOUNT_ID", "8017")
+    os.environ["ACCOUNT_ID"] = maker_account_id
 
 
     tester = ReyaTester()
@@ -110,7 +114,7 @@ async def maker_tester():
 
 @pytest.fixture(scope="function")
 async def taker_tester():
-    """Create a ReyaTester instance for the taker account (8041)"""
+    """Create a ReyaTester instance for the taker account"""
     load_dotenv()
 
     # Save original env vars
@@ -119,7 +123,9 @@ async def taker_tester():
     original_api_url = os.environ.get("REYA_API_URL")
     original_wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
 
-    os.environ["ACCOUNT_ID"] = "8041"
+    # Get taker account ID from env, fallback to default if not set
+    taker_account_id = os.environ.get("TAKER_ACCOUNT_ID", "8044")
+    os.environ["ACCOUNT_ID"] = taker_account_id
 
     tester = ReyaTester()
     await tester.client.start()

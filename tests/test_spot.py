@@ -10,7 +10,8 @@ from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
-from tests.reya_tester import ReyaTester, limit_order_params_to_order, logger
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import limit_order_params_to_order, logger
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,8 @@ import time
 
 import pytest
 
-from tests.reya_tester import ReyaTester, logger
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import logger
 
 
 @pytest.mark.asyncio

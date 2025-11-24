@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from tests.reya_tester import ReyaTester
+from tests.helpers.reya_tester import ReyaTester
 
 logger = logging.getLogger("reya.integration_tests")
 

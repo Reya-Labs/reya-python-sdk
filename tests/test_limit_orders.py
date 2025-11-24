@@ -13,7 +13,8 @@ from sdk.open_api.models.position import Position
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
-from tests.reya_tester import ReyaTester, limit_order_params_to_order, logger, trigger_order_params_to_order
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 
 
 async def assert_position_changes(

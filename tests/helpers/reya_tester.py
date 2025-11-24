@@ -27,7 +27,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from sdk.reya_websocket import ReyaSocket
-from tests.utils import match_order, match_spot_order
+from tests.helpers.utils import match_order, match_spot_order
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
