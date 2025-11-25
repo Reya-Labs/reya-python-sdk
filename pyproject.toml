@@ -154,3 +154,20 @@ disable = """
 norecursedirs =["hooks", "*.egg", ".eggs", "dist", "build", "docs", ".tox", ".git", "__pycache__"]
 doctest_optionflags = ["NUMBER", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
 asyncio_mode = "auto"
+
+# Test markers for categorization
+markers = [
+    "spot: Spot trading tests (ETHRUSD, BTCRUSD)",
+    "perp: Perpetual trading tests (ETHRUSDPERP, BTCRUSDPERP)",
+    "market_data: Market data endpoint tests",
+    "slow: Tests that take longer than 5 seconds",
+    "maker_taker: Tests requiring two accounts (maker and taker)",
+    "websocket: Tests that verify WebSocket events",
+    "rest: Tests that verify REST API responses",
+    "e2e: Full end-to-end flow tests",
+    "ioc: Immediate-Or-Cancel order tests",
+    "gtc: Good-Till-Cancelled order tests",
+    "trigger: Trigger order tests (SL/TP)",
+    "cancel: Order cancellation tests",
+    "balance: Balance verification tests",
+]
