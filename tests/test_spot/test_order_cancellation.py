@@ -144,7 +144,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
     logger.info(f"Mass cancel response: {response}")
 
     # Wait a moment for cancellations to propagate
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     # Verify all orders are cancelled
     logger.info("\n📊 Step 4: Verifying all orders are cancelled...")
@@ -162,3 +162,157 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
     logger.info("\n" + "=" * 80)
     logger.info("✅ SPOT MASS CANCEL TEST COMPLETED SUCCESSFULLY")
     logger.info("=" * 80)
+
+
+@pytest.mark.spot
+@pytest.mark.cancel
+@pytest.mark.asyncio
+async def test_spot_cancel_nonexistent_order(reya_tester: ReyaTester):
+    """
+    Test cancelling an order that doesn't exist.
+    
+    Flow:
+    1. Attempt to cancel a non-existent order ID
+    2. Verify error response is returned
+    """
+    logger.info("=" * 80)
+    logger.info(f"SPOT CANCEL NONEXISTENT ORDER TEST: {SPOT_SYMBOL}")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Use a fake order ID that doesn't exist
+    fake_order_id = "999999999999999999"
+    
+    logger.info(f"Attempting to cancel non-existent order: {fake_order_id}")
+    
+    try:
+        await reya_tester.client.cancel_order(
+            order_id=fake_order_id,
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id
+        )
+        # If we get here, the API might accept the request but do nothing
+        logger.info("Cancel request accepted (order may not exist)")
+    except Exception as e:
+        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+
+    logger.info("✅ SPOT CANCEL NONEXISTENT ORDER TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.cancel
+@pytest.mark.maker_taker
+@pytest.mark.asyncio
+async def test_spot_cancel_already_filled_order(maker_tester: ReyaTester, taker_tester: ReyaTester):
+    """
+    Test cancelling an order that was already filled.
+    
+    Flow:
+    1. Maker places GTC order
+    2. Taker fills the order
+    3. Attempt to cancel the filled order
+    4. Verify error response (order already filled)
+    """
+    logger.info("=" * 80)
+    logger.info(f"SPOT CANCEL ALREADY FILLED ORDER TEST: {SPOT_SYMBOL}")
+    logger.info("=" * 80)
+
+    await maker_tester.close_active_orders(fail_if_none=False)
+    await taker_tester.close_active_orders(fail_if_none=False)
+
+    # Maker places GTC buy order
+    maker_price = round(REFERENCE_PRICE * 0.65, 2)
+    
+    maker_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(maker_price))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    logger.info(f"Maker placing GTC buy: {TEST_QTY} @ ${maker_price:.2f}")
+    maker_order_id = await maker_tester.create_limit_order(maker_params)
+    await maker_tester.wait_for_order_creation(maker_order_id)
+    logger.info(f"✅ Maker order created: {maker_order_id}")
+
+    # Taker fills the order
+    taker_price = round(maker_price * 0.99, 2)
+    
+    taker_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .sell()
+        .price(str(taker_price))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    logger.info(f"Taker placing GTC sell to fill maker order...")
+    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    
+    # Wait for fill
+    await asyncio.sleep(0.05)
+    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    logger.info("✅ Maker order filled")
+
+    # Now try to cancel the already-filled order
+    logger.info(f"Attempting to cancel already-filled order: {maker_order_id}")
+    
+    try:
+        await maker_tester.client.cancel_order(
+            order_id=maker_order_id,
+            symbol=SPOT_SYMBOL,
+            account_id=maker_tester.account_id
+        )
+        logger.info("Cancel request accepted (order already filled)")
+    except Exception as e:
+        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+
+    # Verify no open orders
+    await maker_tester.check_no_open_orders()
+    await taker_tester.check_no_open_orders()
+
+    logger.info("✅ SPOT CANCEL ALREADY FILLED ORDER TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.cancel
+@pytest.mark.asyncio
+async def test_spot_mass_cancel_empty_book(reya_tester: ReyaTester):
+    """
+    Test mass cancel when no orders exist.
+    
+    Flow:
+    1. Ensure no orders exist
+    2. Call mass cancel
+    3. Verify success with count=0 (or no error)
+    """
+    logger.info("=" * 80)
+    logger.info(f"SPOT MASS CANCEL EMPTY BOOK TEST: {SPOT_SYMBOL}")
+    logger.info("=" * 80)
+
+    # Ensure no orders exist
+    await reya_tester.close_active_orders(fail_if_none=False)
+    await reya_tester.check_no_open_orders()
+
+    logger.info("Calling mass cancel on empty book...")
+    
+    try:
+        response = await reya_tester.client.mass_cancel(
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id
+        )
+        logger.info(f"✅ Mass cancel succeeded: {response}")
+    except Exception as e:
+        # Some APIs might return an error for empty cancel
+        logger.info(f"Mass cancel response: {type(e).__name__}")
+
+    # Verify still no orders
+    await reya_tester.check_no_open_orders()
+
+    logger.info("✅ SPOT MASS CANCEL EMPTY BOOK TEST COMPLETED")

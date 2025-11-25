@@ -154,6 +154,10 @@ disable = """
 norecursedirs =["hooks", "*.egg", ".eggs", "dist", "build", "docs", ".tox", ".git", "__pycache__"]
 doctest_optionflags = ["NUMBER", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
 asyncio_mode = "auto"
+# Use session-scoped event loop for all async fixtures and tests (pytest-asyncio 0.24+)
+# This enables sharing a single WebSocket/API connection across all tests
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 # Test markers for categorization
 markers = [

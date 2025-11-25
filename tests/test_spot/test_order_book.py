@@ -45,7 +45,7 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
 
     # Subscribe to market depth
     reya_tester.subscribe_to_market_depth(SPOT_SYMBOL)
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.05)
 
     # Get initial depth
     initial_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
@@ -71,7 +71,7 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
     logger.info(f"✅ Order created: {order_id}")
 
     # Wait for depth to update
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     # Get updated depth
     updated_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
@@ -99,7 +99,7 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
     await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
 
     # Wait for depth to update
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     # Verify order removed from depth
     final_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
@@ -158,7 +158,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
         logger.info(f"✅ Order {i+1} created: {order_id}")
 
     # Wait for depth to update
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     # Get depth and verify aggregation
     depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
@@ -186,7 +186,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
             account_id=reya_tester.account_id
         )
     
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.05)
     await reya_tester.check_no_open_orders()
 
     logger.info("✅ SPOT DEPTH AGGREGATION TEST COMPLETED")
@@ -253,7 +253,7 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
     logger.info(f"✅ Ask order created: {ask_order_id}")
 
     # Wait for depth to update
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     # Get depth
     depth = await maker_tester.get_market_depth(SPOT_SYMBOL)
@@ -291,7 +291,7 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
     await maker_tester.client.cancel_order(order_id=bid_order_id, symbol=SPOT_SYMBOL, account_id=maker_tester.account_id)
     await taker_tester.client.cancel_order(order_id=ask_order_id, symbol=SPOT_SYMBOL, account_id=taker_tester.account_id)
     
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.05)
     await maker_tester.check_no_open_orders()
     await taker_tester.check_no_open_orders()
 

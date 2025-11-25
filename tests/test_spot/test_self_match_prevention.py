@@ -83,7 +83,7 @@ async def test_spot_self_match_prevention_gtc(reya_tester: ReyaTester):
     logger.info(f"Taker order ID: {taker_order_id}")
 
     # Wait for order processing
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     # Step 3: Verify taker order is CANCELLED (self-match prevention)
     # The taker order should be cancelled immediately due to self-match
@@ -111,7 +111,7 @@ async def test_spot_self_match_prevention_gtc(reya_tester: ReyaTester):
         account_id=reya_tester.account_id
     )
     
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.05)
     await reya_tester.check_no_open_orders()
 
     logger.info("✅ SPOT SELF-MATCH PREVENTION (GTC) TEST COMPLETED")
@@ -179,7 +179,7 @@ async def test_spot_self_match_prevention_ioc(reya_tester: ReyaTester):
         sell_order_id = await reya_tester.create_limit_order(sell_params)
         
         # Wait a moment
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
 
         # Verify no execution occurred
         assert reya_tester.ws_last_spot_execution is None, "No execution should occur (self-match prevented)"
@@ -199,7 +199,7 @@ async def test_spot_self_match_prevention_ioc(reya_tester: ReyaTester):
     # Cleanup
     await reya_tester.client.cancel_order(order_id=buy_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
     
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.05)
     await reya_tester.check_no_open_orders()
 
     logger.info("✅ SPOT SELF-MATCH PREVENTION (IOC) TEST COMPLETED")

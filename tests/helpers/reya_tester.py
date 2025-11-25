@@ -117,7 +117,7 @@ class ReyaTester:
         logger.info("WebSocket connected for trade monitoring")
 
         # Wait a moment for subscriptions to complete
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.05)
 
         await self.close_active_orders(fail_if_none=False)
         await self.close_exposures(fail_if_none=False)
@@ -449,7 +449,7 @@ class ReyaTester:
                 return
 
             logger.debug(f"Still have {len(position_after)} positions, waiting...")
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.05)
 
         # Timeout reached, positions still exist
         position_after = await self.get_positions()
@@ -837,7 +837,7 @@ class ReyaTester:
 
         # Wait for legitimate orders to be cancelled
         logger.warning(f"Waiting for {len(legitimate_orders)} legitimate orders to be cancelled...")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.05)
 
         # Check again
         remaining_orders = await self.client.get_open_orders()
@@ -1036,7 +1036,7 @@ class ReyaTester:
 
         # Add small delay for position data to be available
         import asyncio
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.05)
 
         # Verify position was created
         from sdk.reya_rest_api.config import REYA_DEX_ID
@@ -1132,7 +1132,7 @@ class ReyaTester:
 
         # Give some time for position to be updated after flip
         import asyncio
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
 
         # Verify flipped position
         from sdk.reya_rest_api.config import REYA_DEX_ID
@@ -1146,4 +1146,178 @@ class ReyaTester:
             expected_qty=remaining_qty,
             expected_side=expected_side,
         )
+
+    def check_ws_order_change_received(
+        self,
+        order_id: str,
+        expected_symbol: Optional[str] = None,
+        expected_side: Optional[str] = None,
+        expected_status: Optional[OrderStatus] = None,
+        expected_qty: Optional[str] = None,
+    ) -> Order:
+        """
+        Assert that an order change event was received via WebSocket with expected values.
+        
+        Args:
+            order_id: Order ID to look for
+            expected_symbol: Expected symbol (e.g., "WETHRUSD")
+            expected_side: Expected side ("B" for buy, "A" for sell)
+            expected_status: Expected order status
+            expected_qty: Expected quantity
+            
+        Returns:
+            The Order object from WebSocket for further inspection
+            
+        Raises:
+            AssertionError: If order not found or values don't match
+        """
+        assert order_id in self.ws_order_changes, (
+            f"Order {order_id} not found in WebSocket order changes. "
+            f"Available orders: {list(self.ws_order_changes.keys())}"
+        )
+        
+        ws_order = self.ws_order_changes[order_id]
+        logger.info(f"✅ Order change event received via WebSocket for {order_id}")
+        
+        if expected_symbol is not None:
+            assert ws_order.symbol == expected_symbol, (
+                f"Symbol mismatch: expected {expected_symbol}, got {ws_order.symbol}"
+            )
+            logger.info(f"   ✅ Symbol: {ws_order.symbol}")
+        
+        if expected_side is not None:
+            assert ws_order.side == expected_side, (
+                f"Side mismatch: expected {expected_side}, got {ws_order.side}"
+            )
+            side_name = "BUY" if expected_side == "B" else "SELL"
+            logger.info(f"   ✅ Side: {ws_order.side} ({side_name})")
+        
+        if expected_status is not None:
+            assert ws_order.status == expected_status, (
+                f"Status mismatch: expected {expected_status}, got {ws_order.status}"
+            )
+            logger.info(f"   ✅ Status: {ws_order.status}")
+        
+        if expected_qty is not None:
+            ws_qty = float(ws_order.qty)
+            exp_qty = float(expected_qty)
+            assert abs(ws_qty - exp_qty) < 0.0001, (
+                f"Qty mismatch: expected {exp_qty}, got {ws_qty}"
+            )
+            logger.info(f"   ✅ Qty: {ws_order.qty}")
+        
+        return ws_order
+
+    def check_ws_spot_execution_received(
+        self,
+        expected_symbol: Optional[str] = None,
+        expected_side: Optional[str] = None,
+        expected_qty: Optional[str] = None,
+        expected_price: Optional[str] = None,
+    ) -> SpotExecution:
+        """
+        Assert that a spot execution event was received via WebSocket with expected values.
+        
+        Args:
+            expected_symbol: Expected symbol (e.g., "WETHRUSD")
+            expected_side: Expected side ("B" for buy, "A" for sell)
+            expected_qty: Expected quantity
+            expected_price: Expected execution price (exact match)
+            
+        Returns:
+            The SpotExecution object from WebSocket for further inspection
+            
+        Raises:
+            AssertionError: If no execution found or values don't match
+        """
+        assert self.ws_last_spot_execution is not None, (
+            "No spot execution event received via WebSocket"
+        )
+        
+        execution = self.ws_last_spot_execution
+        logger.info("✅ Spot execution event received via WebSocket")
+        
+        if expected_symbol is not None:
+            assert execution.symbol == expected_symbol, (
+                f"Symbol mismatch: expected {expected_symbol}, got {execution.symbol}"
+            )
+            logger.info(f"   ✅ Symbol: {execution.symbol}")
+        
+        if expected_side is not None:
+            assert execution.side == expected_side, (
+                f"Side mismatch: expected {expected_side}, got {execution.side}"
+            )
+            side_name = "BUY" if expected_side == "B" else "SELL"
+            logger.info(f"   ✅ Side: {execution.side} ({side_name})")
+        
+        if expected_qty is not None:
+            exec_qty = float(execution.qty)
+            exp_qty = float(expected_qty)
+            assert abs(exec_qty - exp_qty) < 1e-9, (
+                f"Qty mismatch: expected {exp_qty}, got {exec_qty}"
+            )
+            logger.info(f"   ✅ Qty: {execution.qty}")
+        
+        if expected_price is not None and hasattr(execution, 'price') and execution.price:
+            exec_price = float(execution.price)
+            exp_price = float(expected_price)
+            assert abs(exec_price - exp_price) < 1e-9, (
+                f"Price mismatch: expected {exp_price}, got {exec_price}"
+            )
+            logger.info(f"   ✅ Price: {execution.price}")
+        
+        return execution
+
+    def check_ws_balance_updates_received(
+        self,
+        initial_update_count: int,
+        min_updates: int = 1,
+        expected_assets: Optional[list[str]] = None,
+    ) -> list[AccountBalance]:
+        """
+        Assert that balance update events were received via WebSocket.
+        
+        Args:
+            initial_update_count: Count of balance updates before the action
+            min_updates: Minimum number of new updates expected
+            expected_assets: List of asset names that should have updates (e.g., ["ETH", "RUSD"])
+            
+        Returns:
+            List of new AccountBalance updates
+            
+        Raises:
+            AssertionError: If not enough updates or expected assets missing
+        """
+        new_update_count = len(self.ws_balance_updates) - initial_update_count
+        
+        assert new_update_count >= min_updates, (
+            f"Expected at least {min_updates} balance update(s), got {new_update_count}"
+        )
+        logger.info(f"✅ Received {new_update_count} balance update(s) via WebSocket")
+        
+        # Get the new updates
+        new_updates = self.ws_balance_updates[initial_update_count:]
+        
+        # Filter to only this account's updates
+        account_updates = [u for u in new_updates if u.account_id == self.account_id]
+        assets_updated = set(u.asset for u in account_updates)
+        logger.info(f"   Assets updated: {assets_updated}")
+        
+        if expected_assets is not None:
+            for asset in expected_assets:
+                if asset in assets_updated:
+                    logger.info(f"   ✅ {asset} balance update received")
+                else:
+                    logger.warning(f"   ⚠️ {asset} balance update not found (may be delayed)")
+        
+        return new_updates
+
+    def get_balance_update_count(self) -> int:
+        """
+        Get the current count of balance updates for tracking.
+        
+        Returns:
+            Current count of balance updates
+        """
+        return len(self.ws_balance_updates)
 

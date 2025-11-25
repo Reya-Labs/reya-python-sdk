@@ -86,7 +86,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
 
     # Step 2: Check L2 depth to verify maker order is visible
     logger.info("\n📊 Step 2: Checking L2 depth...")
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(0.05)
 
     depth = await maker_tester.get_market_depth(SPOT_SYMBOL)
     logger.info(f"Market depth type: {depth.get('type', 'unknown')}")
@@ -152,7 +152,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
 
     # Step 6: Verify balances changed appropriately
     logger.info("\n💰 Step 6: Verifying balance changes...")
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
 
     maker_final_balances = await maker_tester.get_balances()
     taker_final_balances = await taker_tester.get_balances()
