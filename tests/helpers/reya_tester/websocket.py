@@ -1,0 +1,211 @@
+"""WebSocket state management for ReyaTester."""
+
+from typing import TYPE_CHECKING, Optional
+import json
+import logging
+
+from sdk.open_api.models.account_balance import AccountBalance
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.position import Position
+from sdk.open_api.models.price import Price
+from sdk.open_api.models.spot_execution import SpotExecution
+
+if TYPE_CHECKING:
+    from .tester import ReyaTester
+
+logger = logging.getLogger("reya.integration_tests")
+
+
+class WebSocketState:
+    """WebSocket state tracking and management."""
+
+    def __init__(self, tester: "ReyaTester"):
+        self._t = tester
+        
+        # State tracking
+        self.last_trade: Optional[PerpExecution] = None
+        self.last_spot_execution: Optional[SpotExecution] = None
+        self.order_changes: dict[str, Order] = {}
+        self.positions: dict[str, Position] = {}
+        self.balances: dict[str, AccountBalance] = {}
+        self.balance_updates: list[AccountBalance] = []
+        self.current_prices: dict[str, Price] = {}
+        self.last_depth: dict[str, dict] = {}
+
+    def clear(self) -> None:
+        """Clear all WebSocket state."""
+        self.last_trade = None
+        self.last_spot_execution = None
+        self.order_changes.clear()
+        self.positions.clear()
+        self.balances.clear()
+        self.balance_updates.clear()
+        self.current_prices.clear()
+        self.last_depth.clear()
+
+    def clear_balance_updates(self) -> None:
+        """Clear the list of balance updates."""
+        self.balance_updates.clear()
+        logger.debug("Cleared WebSocket balance updates")
+
+    def get_balance_updates_for_account(self, account_id: int) -> list[AccountBalance]:
+        """Get all balance updates for a specific account."""
+        return [b for b in self.balance_updates if b.account_id == account_id]
+
+    def get_balance_update_count(self) -> int:
+        """Get the current count of balance updates."""
+        return len(self.balance_updates)
+
+    def subscribe_to_market_depth(self, symbol: str) -> None:
+        """Subscribe to L2 market depth updates for a specific symbol."""
+        if self._t._websocket is None:
+            raise RuntimeError("WebSocket not connected - call setup() first")
+        self._t._websocket.market.depth(symbol).subscribe()
+        logger.info(f"Subscribed to market depth for {symbol}")
+
+    def on_open(self, ws) -> None:
+        """Handle WebSocket connection open."""
+        logger.info("WebSocket opened, subscribing to trade feeds")
+
+        ws.wallet.perp_executions(self._t.owner_wallet_address).subscribe()
+        ws.wallet.spot_executions(self._t.owner_wallet_address).subscribe()
+        ws.wallet.order_changes(self._t.owner_wallet_address).subscribe()
+        ws.wallet.positions(self._t.owner_wallet_address).subscribe()
+        ws.wallet.balances(self._t.owner_wallet_address).subscribe()
+
+    def on_message(self, ws, message) -> None:
+        """Handle WebSocket messages."""
+        message_type = message.get("type")
+        logger.info(f"Received message: {message}")
+        
+        if message_type == "subscribed":
+            channel = message.get("channel", "unknown")
+            logger.info(f"✅ Subscribed to {channel}")
+        elif message_type == "channel_data":
+            channel = message.get("channel", "unknown")
+
+            if "perpExecutions" in channel:
+                for e in message["data"]:
+                    trade = PerpExecution.from_dict(e)
+                    assert trade is not None
+                    self.last_trade = trade
+
+            if "spotExecutions" in channel:
+                for e in message["data"]:
+                    execution = SpotExecution.from_dict(e)
+                    assert execution is not None
+                    self.last_spot_execution = execution
+
+            if "orderChanges" in channel:
+                for o in message["data"]:
+                    order = Order.from_dict(o)
+                    assert order is not None
+                    self.order_changes[order.order_id] = order
+
+            if "positions" in channel:
+                for p in message["data"]:
+                    position = Position.from_dict(p)
+                    assert position is not None
+                    self.positions[position.symbol] = position
+
+            if "balances" in channel or "accountBalances" in channel:
+                for b in message["data"]:
+                    balance = AccountBalance.from_dict(b)
+                    assert balance is not None
+                    self.balances[balance.asset] = balance
+                    self.balance_updates.append(balance)
+                    logger.debug(f"Added balance update: account_id={balance.account_id}, asset={balance.asset}")
+
+            if "depth" in channel:
+                depth_data = message["data"]
+                symbol = channel.split("/")[3]
+                self.last_depth[symbol] = depth_data
+
+        elif message_type == "ping":
+            ws.send(json.dumps({"type": "pong"}))
+
+    def verify_spot_trade_balance_changes(
+        self,
+        maker_account_id: int,
+        taker_account_id: int,
+        maker_initial_balances: dict[str, AccountBalance],
+        maker_final_balances: dict[str, AccountBalance],
+        taker_initial_balances: dict[str, AccountBalance],
+        taker_final_balances: dict[str, AccountBalance],
+        base_asset: str,
+        quote_asset: str,
+        qty: str,
+        price: str,
+        is_maker_buyer: bool,
+    ) -> None:
+        """Verify that balance changes for a spot trade match expected amounts."""
+        qty_float = float(qty)
+        price_float = float(price)
+        notional = qty_float * price_float
+
+        logger.info("\n💰 Verifying spot trade balance changes...")
+        logger.info(f"Trade: qty={qty} {base_asset} at price={price} {quote_asset}")
+        logger.info(f"Notional: {notional} {quote_asset}")
+        logger.info(f"Maker is {'BUYER' if is_maker_buyer else 'SELLER'}")
+
+        maker_initial_base = maker_initial_balances.get(base_asset)
+        maker_final_base = maker_final_balances.get(base_asset)
+        maker_initial_quote = maker_initial_balances.get(quote_asset)
+        maker_final_quote = maker_final_balances.get(quote_asset)
+
+        taker_initial_base = taker_initial_balances.get(base_asset)
+        taker_final_base = taker_final_balances.get(base_asset)
+        taker_initial_quote = taker_initial_balances.get(quote_asset)
+        taker_final_quote = taker_final_balances.get(quote_asset)
+
+        logger.info(f"Maker balances - initial: base={maker_initial_base}, quote={maker_initial_quote}")
+        logger.info(f"Maker balances - final: base={maker_final_base}, quote={maker_final_quote}")
+        logger.info(f"Taker balances - initial: base={taker_initial_base}, quote={taker_initial_quote}")
+        logger.info(f"Taker balances - final: base={taker_final_base}, quote={taker_final_quote}")
+
+        assert maker_initial_base and maker_final_base, f"Maker {base_asset} balance not found"
+        assert maker_initial_quote and maker_final_quote, f"Maker {quote_asset} balance not found"
+        assert taker_initial_base and taker_final_base, f"Taker {base_asset} balance not found"
+        assert taker_initial_quote and taker_final_quote, f"Taker {quote_asset} balance not found"
+
+        maker_base_change = float(maker_final_base.real_balance) - float(maker_initial_base.real_balance)
+        maker_quote_change = float(maker_final_quote.real_balance) - float(maker_initial_quote.real_balance)
+        taker_base_change = float(taker_final_base.real_balance) - float(taker_initial_base.real_balance)
+        taker_quote_change = float(taker_final_quote.real_balance) - float(taker_initial_quote.real_balance)
+
+        logger.info(f"Maker {base_asset} change: {maker_base_change:.6f} (expected: {'+' if is_maker_buyer else '-'}{qty_float:.6f})")
+        logger.info(f"Maker {quote_asset} change: {maker_quote_change:.6f} (expected: {'-' if is_maker_buyer else '+'}{notional:.6f})")
+        logger.info(f"Taker {base_asset} change: {taker_base_change:.6f} (expected: {'-' if is_maker_buyer else '+'}{qty_float:.6f})")
+        logger.info(f"Taker {quote_asset} change: {taker_quote_change:.6f} (expected: {'+' if is_maker_buyer else '-'}{notional:.6f})")
+
+        tolerance = 0.001
+
+        if is_maker_buyer:
+            expected_maker_base_change = qty_float
+            expected_maker_quote_change = -notional
+            expected_taker_base_change = -qty_float
+            expected_taker_quote_change = notional
+        else:
+            expected_maker_base_change = -qty_float
+            expected_maker_quote_change = notional
+            expected_taker_base_change = qty_float
+            expected_taker_quote_change = -notional
+
+        assert abs(maker_base_change - expected_maker_base_change) <= abs(expected_maker_base_change * tolerance), (
+            f"Maker {base_asset} change {maker_base_change:.6f} does not match expected {expected_maker_base_change:.6f}"
+        )
+
+        assert abs(maker_quote_change - expected_maker_quote_change) <= abs(expected_maker_quote_change * tolerance), (
+            f"Maker {quote_asset} change {maker_quote_change:.6f} does not match expected {expected_maker_quote_change:.6f}"
+        )
+
+        assert abs(taker_base_change - expected_taker_base_change) <= abs(expected_taker_base_change * tolerance), (
+            f"Taker {base_asset} change {taker_base_change:.6f} does not match expected {expected_taker_base_change:.6f}"
+        )
+
+        assert abs(taker_quote_change - expected_taker_quote_change) <= abs(expected_taker_quote_change * tolerance), (
+            f"Taker {quote_asset} change {taker_quote_change:.6f} does not match expected {expected_taker_quote_change:.6f}"
+        )
+
+        logger.info("✅ All balance changes verified successfully!")

@@ -1,0 +1,265 @@
+"""Wait operations for ReyaTester."""
+
+from typing import TYPE_CHECKING, Optional
+import asyncio
+import logging
+import time
+
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.spot_execution import SpotExecution
+from sdk.open_api.models.spot_execution_list import SpotExecutionList
+
+from tests.helpers.utils import match_order, match_spot_order
+
+if TYPE_CHECKING:
+    from .tester import ReyaTester
+
+logger = logging.getLogger("reya.integration_tests")
+
+
+class Waiters:
+    """Wait operations for async events."""
+
+    def __init__(self, tester: "ReyaTester"):
+        self._t = tester
+
+    async def for_order_execution(self, expected_order: Order, timeout: int = 10) -> PerpExecution:
+        """Wait for perp order execution confirmation via both REST and WebSocket."""
+        logger.info("⏳ Waiting for trade confirmation order...")
+
+        start_time = time.time()
+        rest_trade = None
+        ws_trade = None
+        trade_seq_num = None
+        ws_position = None
+        rest_position = None
+
+        while time.time() - start_time < timeout:
+            last_trade = await self._t.data.last_perp_execution()
+
+            if ws_trade is None and self._t.ws.last_trade is not None:
+                if match_order(expected_order, self._t.ws.last_trade):
+                    elapsed_time = time.time() - start_time
+                    logger.info(
+                        f" ✅ Trade confirmed via WS: {self._t.ws.last_trade.sequence_number} (took {elapsed_time:.2f}s)"
+                    )
+                    ws_trade = self._t.ws.last_trade
+                    trade_seq_num = self._t.ws.last_trade.sequence_number
+                    assert ws_trade is not None
+
+            if (
+                ws_position is None
+                and expected_order.symbol in self._t.ws.positions
+                and trade_seq_num == self._t.ws.positions[expected_order.symbol].last_trade_sequence_number
+            ):
+                ws_position = self._t.ws.positions[expected_order.symbol]
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Position confirmed via WS: {expected_order.symbol} (took {elapsed_time:.2f}s)")
+
+            if rest_trade is None and match_order(expected_order, last_trade):
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
+                rest_trade = last_trade
+                trade_seq_num = last_trade.sequence_number
+
+            position = await self._t.data.position(expected_order.symbol)
+            if rest_position is None and position is not None and trade_seq_num == position.last_trade_sequence_number:
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Position confirmed via REST: {expected_order.symbol} (took {elapsed_time:.2f}s)")
+                rest_position = position
+
+            if rest_trade and ws_trade and rest_position and ws_position:
+                assert (
+                    rest_trade.to_str() == ws_trade.to_str()
+                ), f"expected {rest_trade.to_str()} to equal {ws_trade.to_str()}"
+                assert (
+                    rest_position.to_str() == ws_position.to_str()
+                ), f"expected {rest_position.to_str()} to equal {ws_position.to_str()}"
+                return rest_trade
+
+            await asyncio.sleep(0.1)
+
+        raise RuntimeError(
+            f"Order not executed after {timeout} seconds, rest_trade: {rest_trade is not None}, "
+            f"ws_trade: {ws_trade is not None}, rest_position: {rest_position is not None}, ws_position: {ws_position is not None}"
+        )
+
+    async def for_closing_order_execution(
+        self, expected_order: Order, expected_qty: Optional[str] = None, timeout: int = 10
+    ) -> PerpExecution:
+        """Wait for position-closing trade confirmation."""
+        logger.info("⏳ Waiting for position-closing trade confirmation...")
+
+        start_time = time.time()
+        rest_trade = None
+        ws_trade = None
+        trade_seq_num = None
+        ws_position = None
+        rest_closed = False
+
+        while time.time() - start_time < timeout:
+            last_trade = await self._t.data.last_perp_execution()
+
+            if ws_trade is None and self._t.ws.last_trade is not None:
+                if match_order(expected_order, self._t.ws.last_trade, expected_qty):
+                    elapsed_time = time.time() - start_time
+                    logger.info(
+                        f" ✅ Trade confirmed via WS: {self._t.ws.last_trade.sequence_number} (took {elapsed_time:.2f}s)"
+                    )
+                    ws_trade = self._t.ws.last_trade
+                    trade_seq_num = self._t.ws.last_trade.sequence_number
+                    assert ws_trade is not None
+
+            if (
+                ws_position is None
+                and expected_order.symbol in self._t.ws.positions
+                and trade_seq_num == self._t.ws.positions[expected_order.symbol].last_trade_sequence_number
+            ):
+                ws_position = self._t.ws.positions[expected_order.symbol]
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Position confirmed via WS: {expected_order.symbol} (took {elapsed_time:.2f}s)")
+
+            if rest_trade is None and match_order(expected_order, last_trade, expected_qty):
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
+                rest_trade = last_trade
+                trade_seq_num = last_trade.sequence_number
+
+            position = await self._t.data.position(expected_order.symbol)
+            if not rest_closed and position is None:
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Position confirmed via REST: {expected_order.symbol} (took {elapsed_time:.2f}s)")
+                rest_closed = True
+
+            if rest_trade and ws_trade and rest_closed and ws_position:
+                assert (
+                    rest_trade.to_str() == ws_trade.to_str()
+                ), f"expected {rest_trade.to_str()} to equal {ws_trade.to_str()}"
+                return rest_trade
+
+            await asyncio.sleep(0.1)
+
+        raise RuntimeError(
+            f"Order not executed after {timeout} seconds, rest_trade: {rest_trade is not None}, "
+            f"ws_trade: {ws_trade is not None}, rest_closed: {rest_closed}, ws_position: {ws_position is not None}"
+        )
+
+    async def for_spot_execution(self, expected_order: Order, timeout: int = 10) -> SpotExecution:
+        """Wait for spot execution confirmation via both REST and WebSocket."""
+        logger.info("⏳ Waiting for spot execution confirmation...")
+
+        start_time = time.time()
+        rest_execution = None
+        ws_execution = None
+
+        while time.time() - start_time < timeout:
+            if ws_execution is None and self._t.ws.last_spot_execution is not None:
+                if match_spot_order(expected_order, self._t.ws.last_spot_execution):
+                    elapsed_time = time.time() - start_time
+                    logger.info(
+                        f" ✅ Spot execution confirmed via WS: {self._t.ws.last_spot_execution.order_id} (took {elapsed_time:.2f}s)"
+                    )
+                    ws_execution = self._t.ws.last_spot_execution
+
+            if rest_execution is None and ws_execution is not None:
+                executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(
+                    address=self._t.owner_wallet_address
+                )
+                for execution in executions_list.data:
+                    if execution.order_id == ws_execution.order_id:
+                        elapsed_time = time.time() - start_time
+                        logger.info(f" ✅ Spot execution confirmed via REST: {execution.order_id} (took {elapsed_time:.2f}s)")
+                        rest_execution = execution
+                        break
+
+            if rest_execution and ws_execution:
+                assert (
+                    rest_execution.to_str() == ws_execution.to_str()
+                ), f"expected {rest_execution.to_str()} to equal {ws_execution.to_str()}"
+                return rest_execution
+
+            await asyncio.sleep(0.1)
+
+        raise RuntimeError(
+            f"Spot execution not confirmed after {timeout} seconds, rest: {rest_execution is not None}, ws: {ws_execution is not None}"
+        )
+
+    async def for_order_state(self, order_id: str, expected_status: OrderStatus, timeout: int = 10) -> str:
+        """Wait for order to reach a specific state."""
+        logger.debug(f"⏳ Waiting for order to reach state: {expected_status.value}...")
+        assert expected_status != OrderStatus.OPEN, "use for_order_creation instead"
+
+        start_time = time.time()
+        rest_match = False
+        ws_match = False
+
+        while time.time() - start_time < timeout:
+            orders: list[Order] = await self._t.client.get_open_orders()
+            orders_ids = [order.order_id for order in orders]
+
+            if rest_match == False and order_id not in orders_ids:
+                elapsed_time = time.time() - start_time
+                logger.info(
+                    f" ✅ Order reached {expected_status.value} state via REST: {order_id} (took {elapsed_time:.2f}s)"
+                )
+                rest_match = True
+
+            ws_order = self._t.ws.order_changes.get(order_id)
+            if not ws_match and ws_order and ws_order.status == expected_status:
+                elapsed_time = time.time() - start_time
+                logger.info(
+                    f" ✅ Order reached {expected_status.value} state via WS: {order_id} (took {elapsed_time:.2f}s)"
+                )
+                ws_match = True
+            if ws_order and ws_order.status != OrderStatus.OPEN and ws_order.status != expected_status:
+                raise RuntimeError(
+                    f"Order {order_id} reached {ws_order.status.value} state via WS, but expected {expected_status}"
+                )
+
+            if rest_match and ws_match:
+                return order_id
+
+            await asyncio.sleep(0.1)
+
+        raise RuntimeError(f"Order {order_id} did not reach {expected_status.value} state after {timeout} seconds")
+
+    async def for_order_creation(self, order_id: str, timeout: int = 10) -> Order:
+        """Wait for order creation confirmation."""
+        logger.debug("⏳ Waiting for order creation...")
+
+        start_time = time.time()
+        rest_order = None
+        ws_order = None
+
+        while time.time() - start_time < timeout:
+            orders = await self._t.client.get_open_orders()
+            for order in orders:
+                if rest_order is None and order.order_id == order_id:
+                    elapsed_time = time.time() - start_time
+                    logger.info(f" ✅ Order created via REST: {order} (took {elapsed_time:.2f}s)")
+                    rest_order = order
+                    break
+
+            if ws_order is None and order_id in self._t.ws.order_changes:
+                ws_order = self._t.ws.order_changes[order_id]
+                if ws_order.status in ["OPEN", "PARTIALLY_FILLED"]:
+                    elapsed_time = time.time() - start_time
+                    logger.info(f" ✅ Order created via WS: {ws_order} (took {elapsed_time:.2f}s)")
+
+            if rest_order and ws_order:
+                assert rest_order.order_id == ws_order.order_id
+                return rest_order
+            elif ws_order:
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Order created via WS only: {ws_order} (took {elapsed_time:.2f}s)")
+                return ws_order
+            elif rest_order:
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Order created via REST only: {rest_order} (took {elapsed_time:.2f}s)")
+                return rest_order
+
+            await asyncio.sleep(0.1)
+
+        raise RuntimeError(f"Order {order_id} not created after {timeout} seconds")
