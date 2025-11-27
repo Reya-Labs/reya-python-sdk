@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
 from typing import Optional, Set
@@ -29,11 +29,13 @@ class SpotMarketDefinition(BaseModel):
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     market_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="marketId")
+    base_asset: StrictStr = Field(description="Base asset symbol", alias="baseAsset")
+    quote_asset: StrictStr = Field(description="Quote asset symbol", alias="quoteAsset")
     min_order_qty: Annotated[str, Field(strict=True)] = Field(alias="minOrderQty")
     qty_step_size: Annotated[str, Field(strict=True)] = Field(alias="qtyStepSize")
     tick_size: Annotated[str, Field(strict=True)] = Field(alias="tickSize")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize"]
+    __properties: ClassVar[List[str]] = ["symbol", "marketId", "baseAsset", "quoteAsset", "minOrderQty", "qtyStepSize", "tickSize"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -123,6 +125,8 @@ class SpotMarketDefinition(BaseModel):
         _obj = cls.model_validate({
             "symbol": obj.get("symbol"),
             "marketId": obj.get("marketId"),
+            "baseAsset": obj.get("baseAsset"),
+            "quoteAsset": obj.get("quoteAsset"),
             "minOrderQty": obj.get("minOrderQty"),
             "qtyStepSize": obj.get("qtyStepSize"),
             "tickSize": obj.get("tickSize")
