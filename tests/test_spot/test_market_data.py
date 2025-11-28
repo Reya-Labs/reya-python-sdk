@@ -18,8 +18,8 @@ from sdk.open_api.models import OrderStatus
 logger = logging.getLogger("reya.integration_tests")
 
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -108,7 +108,6 @@ async def test_spot_executions_rest(maker_tester: ReyaTester, taker_tester: Reya
         .price(str(round(maker_price * 0.99, 2)))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 

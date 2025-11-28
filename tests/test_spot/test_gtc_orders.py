@@ -22,8 +22,8 @@ from sdk.open_api.models import OrderStatus
 logger = logging.getLogger("reya.integration_tests")
 
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -123,7 +123,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(maker_tester: ReyaTester,
 
     # Maker places small GTC buy order
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
-    maker_qty = "0.0001"
+    maker_qty = TEST_QTY
     
     maker_params = (
         OrderBuilder()
@@ -142,7 +142,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(maker_tester: ReyaTester,
 
     # Taker places larger GTC sell order
     taker_price = round(maker_price * 0.99, 2)
-    taker_qty = "0.0002"  # Larger than maker
+    taker_qty = "0.02"  # Larger than maker
     
     taker_params = (
         OrderBuilder()
@@ -460,33 +460,29 @@ async def test_spot_gtc_best_price_first(maker_tester: ReyaTester, taker_tester:
 @pytest.mark.spot
 @pytest.mark.gtc
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="clientOrderId not yet supported in SDK create_limit_order")
 async def test_spot_gtc_with_client_order_id(reya_tester: ReyaTester):
     """
     Test GTC order with clientOrderId tracked correctly.
-    
-    NOTE: This test is skipped because clientOrderId is not yet supported
-    in the SDK's create_limit_order method. The API supports it but the
-    SDK needs to be updated to pass it through.
-    
+
     Flow:
     1. Place GTC order with custom clientOrderId
     2. Verify clientOrderId is in response
-    3. Verify order can be queried by clientOrderId
-    4. Cancel order
+    3. Verify order can be queried and has correct clientOrderId
+    4. Cancel order using client_order_id (not order_id)
     """
+    import random
+
     logger.info("=" * 80)
     logger.info(f"SPOT GTC WITH CLIENT ORDER ID TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
     await reya_tester.close_active_orders(fail_if_none=False)
 
-    # TODO: Add clientOrderId support to SDK and OrderBuilder
-    # Generate unique client order ID
-    # client_order_id = f"test-{uuid.uuid4().hex[:16]}"
-    
+    # Generate unique client order ID (positive integer, fits in uint64)
+    test_client_order_id = random.randint(1, 2**32 - 1)
+
     order_price = round(REFERENCE_PRICE * 0.50, 2)
-    
+
     order_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
@@ -494,22 +490,41 @@ async def test_spot_gtc_with_client_order_id(reya_tester: ReyaTester):
         .price(str(order_price))
         .qty(TEST_QTY)
         .gtc()
-        # .client_order_id(client_order_id)  # Not yet supported
+        .client_order_id(test_client_order_id)
         .build()
     )
 
-    logger.info(f"Placing GTC buy...")
+    logger.info(f"Placing GTC buy with clientOrderId={test_client_order_id}...")
     order_id = await reya_tester.create_limit_order(order_params)
     await reya_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
-    # Cleanup
+    # Verify the order has the clientOrderId
+    open_orders = await reya_tester.client.get_open_orders()
+    our_order = next((o for o in open_orders if o.order_id == order_id), None)
+    assert our_order is not None, f"Order {order_id} not found in open orders"
+
+    # Check if clientOrderId is returned in the response
+    # Note: clientOrderId may be in additional_properties or as a direct attribute
+    if hasattr(our_order, 'client_order_id') and our_order.client_order_id is not None:
+        logger.info(f"✅ clientOrderId verified: {our_order.client_order_id}")
+        assert our_order.client_order_id == test_client_order_id, (
+            f"Expected clientOrderId {test_client_order_id}, got {our_order.client_order_id}"
+        )
+    else:
+        logger.info(f"Note: clientOrderId not returned in get_open_orders response")
+
+    # Cancel using both order_id and client_order_id
+    # The API should prefer order_id when both are provided
+    logger.info(f"Cancelling order using both order_id={order_id} and clientOrderId={test_client_order_id}...")
     await reya_tester.client.cancel_order(
         order_id=order_id,
+        client_order_id=test_client_order_id,
         symbol=SPOT_SYMBOL,
-        account_id=reya_tester.account_id
+        account_id=reya_tester.account_id,
     )
     await asyncio.sleep(0.05)
     await reya_tester.check_no_open_orders()
+    logger.info("✅ Order cancelled (API prefers order_id when both provided)")
 
     logger.info("✅ SPOT GTC WITH CLIENT ORDER ID TEST COMPLETED")

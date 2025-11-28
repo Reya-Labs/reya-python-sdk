@@ -1,0 +1,1412 @@
+"""
+Tests for API server validation checks in the matching-engine controller.
+
+These tests verify that the API properly validates:
+- Signature validity (EIP-712 signature verification)
+- Nonce validity (monotonically increasing)
+- Deadline validity (not expired)
+- Balance validity (IOC orders)
+- Price/Qty step size validity
+
+High and Medium priority validation tests for spot market orders.
+"""
+
+import asyncio
+import time
+from decimal import Decimal
+
+import pytest
+
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.create_order_request import CreateOrderRequest
+from sdk.open_api.models.cancel_order_request import CancelOrderRequest
+from sdk.open_api.models.mass_cancel_request import MassCancelRequest
+from sdk.reya_rest_api.auth.signatures import SignatureGenerator
+from sdk.reya_rest_api.config import TradingConfig
+
+from tests.helpers import ReyaTester
+from tests.helpers.builders import OrderBuilder
+from tests.helpers.reya_tester import logger
+
+
+# Test configuration
+SPOT_SYMBOL = "WETHRUSD"
+SPOT_MARKET_ID = 5
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"
+
+
+# ============================================================================
+# SIGNATURE VALIDATION TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_invalid_signature(reya_tester: ReyaTester):
+    """
+    Test that an order with an invalid signature is rejected.
+
+    The API should verify the EIP-712 signature and reject orders
+    where the signature doesn't match the order data.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER INVALID SIGNATURE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Create a valid order request but with a tampered signature
+    order_price = round(REFERENCE_PRICE * 0.50, 2)
+    deadline = int(time.time() * 1000) + 60000  # 1 minute from now
+    nonce = int(time.time() * 1_000_000)
+
+    # Use a completely fake signature (valid format but wrong data)
+    fake_signature = "0x" + "ab" * 65  # 65 bytes = r(32) + s(32) + v(1)
+
+    order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=deadline,
+        reduceOnly=None,
+        signature=fake_signature,
+        nonce=str(nonce),
+        signerWallet=reya_tester.client.signer_wallet_address,
+    )
+
+    logger.info("Sending order with invalid signature...")
+
+    try:
+        response = await reya_tester.client.orders.create_order(create_order_request=order_request)
+        pytest.fail(f"Order with invalid signature should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Invalid signature'
+        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "Invalid signature" in error_msg, f"Expected 'Invalid signature' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER INVALID SIGNATURE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_wrong_signer(reya_tester: ReyaTester):
+    """
+    Test that an order signed by a different wallet is rejected.
+
+    The API should verify that the signer has permission to trade
+    on the specified account.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER WRONG SIGNER TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Create a different private key for signing
+    wrong_private_key = "0x" + "12" * 32  # A different private key
+
+    # Create config with different private key
+    # Use the same config values but with a different private key
+    wrong_config = TradingConfig(
+        api_url=reya_tester.client.config.api_url,
+        chain_id=reya_tester.chain_id,
+        owner_wallet_address=reya_tester.client.config.owner_wallet_address,
+        private_key=wrong_private_key,
+        account_id=reya_tester.account_id,
+    )
+    wrong_signer = SignatureGenerator(wrong_config)
+
+    order_price = round(REFERENCE_PRICE * 0.50, 2)
+    deadline = int(time.time() * 1000) + 60000
+    nonce = int(time.time() * 1_000_000)
+
+    # Sign with the wrong private key
+    inputs = wrong_signer.encode_inputs_limit_order(
+        is_buy=True,
+        limit_px=Decimal(str(order_price)),
+        qty=Decimal(TEST_QTY),
+    )
+
+    signature = wrong_signer.sign_raw_order(
+        account_id=reya_tester.account_id,  # Same account
+        market_id=SPOT_MARKET_ID,
+        exchange_id=reya_tester.client.config.dex_id,
+        counterparty_account_ids=[],
+        order_type=6,  # LIMIT_ORDER_SPOT
+        inputs=inputs,
+        deadline=deadline,
+        nonce=nonce,
+    )
+
+    order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=deadline,
+        reduceOnly=None,
+        signature=signature,
+        nonce=str(nonce),
+        signerWallet=wrong_signer.signer_wallet_address,  # Wrong signer
+    )
+
+    logger.info(f"Sending order signed by wrong wallet: {wrong_signer.signer_wallet_address}")
+
+    try:
+        response = await reya_tester.client.orders.create_order(create_order_request=order_request)
+        pytest.fail(f"Order from unauthorized signer should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect either:
+        # - CREATE_ORDER_OTHER_ERROR with 'Invalid signature' (signature validation fails), or
+        # - CANCEL_ORDER_OTHER_ERROR with 'Unauthorized: signer does not have permission' (permission check fails)
+        has_valid_error = (
+            ("CREATE_ORDER_OTHER_ERROR" in error_msg and "Invalid signature" in error_msg) or
+            ("Unauthorized: signer does not have permission" in error_msg)
+        )
+        assert has_valid_error, f"Expected signature or permission error, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER WRONG SIGNER TEST COMPLETED")
+
+
+# ============================================================================
+# DEADLINE VALIDATION TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_expired_deadline(reya_tester: ReyaTester):
+    """
+    Test that an order with an expired deadline is rejected.
+
+    The API should check that deadline > current time.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER EXPIRED DEADLINE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    order_price = round(REFERENCE_PRICE * 0.50, 2)
+    # Set deadline in the past
+    expired_deadline = int(time.time() * 1000) - 60000  # 1 minute ago
+    nonce = int(time.time() * 1_000_000)
+
+    # Get signature generator from client
+    sig_gen = reya_tester.client._signature_generator
+
+    inputs = sig_gen.encode_inputs_limit_order(
+        is_buy=True,
+        limit_px=Decimal(str(order_price)),
+        qty=Decimal(TEST_QTY),
+    )
+
+    signature = sig_gen.sign_raw_order(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        exchange_id=reya_tester.client.config.dex_id,
+        counterparty_account_ids=[],
+        order_type=6,  # LIMIT_ORDER_SPOT
+        inputs=inputs,
+        deadline=expired_deadline,
+        nonce=nonce,
+    )
+
+    order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=expired_deadline,
+        reduceOnly=None,
+        signature=signature,
+        nonce=str(nonce),
+        signerWallet=reya_tester.client.signer_wallet_address,
+    )
+
+    logger.info(f"Sending order with expired deadline: {expired_deadline}")
+
+    try:
+        response = await reya_tester.client.orders.create_order(create_order_request=order_request)
+        pytest.fail(f"Order with expired deadline should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: message='Order deadline has passed'
+        # Note: API currently returns CANCEL_ORDER_OTHER_ERROR instead of CREATE_ORDER_OTHER_ERROR (known issue)
+        assert "Order deadline has passed" in error_msg, f"Expected 'Order deadline has passed' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER EXPIRED DEADLINE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_cancel_expired_deadline(reya_tester: ReyaTester):
+    """
+    Test that a cancel request with an expired deadline is rejected.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT CANCEL EXPIRED DEADLINE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # First create a valid order
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(round(REFERENCE_PRICE * 0.50, 2)))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(order_id)
+    logger.info(f"Created order: {order_id}")
+
+    # Now try to cancel with expired deadline
+    expired_deadline = int(time.time() * 1000) - 60000  # 1 minute ago
+    nonce = int(time.time() * 1_000_000)
+
+    sig_gen = reya_tester.client._signature_generator
+    signature = sig_gen.sign_cancel_order_spot(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        order_id=int(order_id),
+        client_order_id=0,
+        nonce=nonce,
+        deadline=expired_deadline,
+    )
+
+    cancel_request = CancelOrderRequest(
+        orderId=order_id,
+        symbol=SPOT_SYMBOL,
+        accountId=reya_tester.account_id,
+        signature=signature,
+        nonce=str(nonce),
+        expiresAfter=expired_deadline,
+    )
+
+    logger.info(f"Sending cancel with expired deadline: {expired_deadline}")
+
+    try:
+        response = await reya_tester.client.orders.cancel_order(cancel_order_request=cancel_request)
+        pytest.fail(f"Cancel with expired deadline should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Order deadline has passed'
+        assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
+        assert "Order deadline has passed" in error_msg, f"Expected 'Order deadline has passed' message, got: {e}"
+        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    # Clean up - cancel with valid request
+    await reya_tester.client.cancel_order(
+        order_id=order_id,
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id,
+    )
+    await asyncio.sleep(0.1)
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT CANCEL EXPIRED DEADLINE TEST COMPLETED")
+
+
+# ============================================================================
+# NONCE VALIDATION TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_reused_nonce(reya_tester: ReyaTester):
+    """
+    Test that reusing a nonce is rejected.
+
+    Nonces must be monotonically increasing to prevent replay attacks.
+    First sends a valid order with a specific nonce, then tries to reuse that nonce.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER REUSED NONCE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    order_price = round(REFERENCE_PRICE * 0.50, 2)
+
+    # Step 1: Create a valid order with a specific nonce to establish it
+    first_nonce = int(time.time() * 1_000_000)
+    first_deadline = int(time.time() * 1000) + 60000
+
+    sig_gen = reya_tester.client._signature_generator
+
+    inputs = sig_gen.encode_inputs_limit_order(
+        is_buy=True,
+        limit_px=Decimal(str(order_price)),
+        qty=Decimal(TEST_QTY),
+    )
+
+    first_signature = sig_gen.sign_raw_order(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        exchange_id=reya_tester.client.config.dex_id,
+        counterparty_account_ids=[],
+        order_type=6,
+        inputs=inputs,
+        deadline=first_deadline,
+        nonce=first_nonce,
+    )
+
+    first_order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=first_deadline,
+        reduceOnly=None,
+        signature=first_signature,
+        nonce=str(first_nonce),
+        signerWallet=reya_tester.client.signer_wallet_address,
+    )
+
+    logger.info(f"Step 1: Sending first order with nonce: {first_nonce}")
+    first_response = await reya_tester.client.orders.create_order(create_order_request=first_order_request)
+    logger.info(f"✅ First order created: {first_response.order_id}")
+
+    # Cancel the first order to clean up
+    await reya_tester.client.cancel_order(
+        order_id=first_response.order_id,
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id,
+    )
+    await asyncio.sleep(0.1)
+
+    # Step 2: Try to reuse the same nonce - should fail
+    reused_deadline = int(time.time() * 1000) + 60000
+
+    reused_signature = sig_gen.sign_raw_order(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        exchange_id=reya_tester.client.config.dex_id,
+        counterparty_account_ids=[],
+        order_type=6,
+        inputs=inputs,
+        deadline=reused_deadline,
+        nonce=first_nonce,  # Reuse the same nonce
+    )
+
+    reused_order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=reused_deadline,
+        reduceOnly=None,
+        signature=reused_signature,
+        nonce=str(first_nonce),  # Reuse the same nonce
+        signerWallet=reya_tester.client.signer_wallet_address,
+    )
+
+    logger.info(f"Step 2: Sending order with reused nonce: {first_nonce}")
+
+    try:
+        response = await reya_tester.client.orders.create_order(create_order_request=reused_order_request)
+        pytest.fail(f"Order with reused nonce should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: message='Invalid nonce: expected nonce > X, got Y'
+        assert "Invalid nonce: expected nonce >" in error_msg, \
+            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER REUSED NONCE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_old_nonce(reya_tester: ReyaTester):
+    """
+    Test that using an old nonce (nonce - 1) is rejected.
+
+    Nonces must be monotonically increasing to prevent replay attacks.
+    First sends a valid order with a specific nonce, then tries nonce-1.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER OLD NONCE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    order_price = round(REFERENCE_PRICE * 0.50, 2)
+
+    # Step 1: Create a valid order with a specific nonce to establish it
+    first_nonce = int(time.time() * 1_000_000)
+    first_deadline = int(time.time() * 1000) + 60000
+
+    sig_gen = reya_tester.client._signature_generator
+
+    inputs = sig_gen.encode_inputs_limit_order(
+        is_buy=True,
+        limit_px=Decimal(str(order_price)),
+        qty=Decimal(TEST_QTY),
+    )
+
+    first_signature = sig_gen.sign_raw_order(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        exchange_id=reya_tester.client.config.dex_id,
+        counterparty_account_ids=[],
+        order_type=6,
+        inputs=inputs,
+        deadline=first_deadline,
+        nonce=first_nonce,
+    )
+
+    first_order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=first_deadline,
+        reduceOnly=None,
+        signature=first_signature,
+        nonce=str(first_nonce),
+        signerWallet=reya_tester.client.signer_wallet_address,
+    )
+
+    logger.info(f"Step 1: Sending first order with nonce: {first_nonce}")
+    first_response = await reya_tester.client.orders.create_order(create_order_request=first_order_request)
+    logger.info(f"✅ First order created: {first_response.order_id}")
+
+    # Cancel the first order to clean up
+    await reya_tester.client.cancel_order(
+        order_id=first_response.order_id,
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id,
+    )
+    await asyncio.sleep(0.1)
+
+    # Step 2: Try to use nonce - 1 - should fail
+    old_nonce = first_nonce - 1
+    old_deadline = int(time.time() * 1000) + 60000
+
+    old_signature = sig_gen.sign_raw_order(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        exchange_id=reya_tester.client.config.dex_id,
+        counterparty_account_ids=[],
+        order_type=6,
+        inputs=inputs,
+        deadline=old_deadline,
+        nonce=old_nonce,  # Use nonce - 1
+    )
+
+    old_order_request = CreateOrderRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        exchangeId=reya_tester.client.config.dex_id,
+        isBuy=True,
+        limitPx=str(order_price),
+        qty=TEST_QTY,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
+        expiresAfter=old_deadline,
+        reduceOnly=None,
+        signature=old_signature,
+        nonce=str(old_nonce),  # Use nonce - 1
+        signerWallet=reya_tester.client.signer_wallet_address,
+    )
+
+    logger.info(f"Step 2: Sending order with old nonce (nonce-1): {old_nonce}")
+
+    try:
+        response = await reya_tester.client.orders.create_order(create_order_request=old_order_request)
+        pytest.fail(f"Order with old nonce should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: message='Invalid nonce: expected nonce > X, got Y'
+        assert "Invalid nonce: expected nonce >" in error_msg, \
+            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER OLD NONCE TEST COMPLETED")
+
+
+# ============================================================================
+# BALANCE VALIDATION TESTS (IOC ORDERS)
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_ioc_insufficient_balance_buy(reya_tester: ReyaTester):
+    """
+    Test that an IOC buy order exceeding RUSD balance is rejected.
+
+    IOC orders have pre-trade balance validation to prevent failed executions.
+    Gets the actual RUSD balance and tries to exceed it by a small amount.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT IOC INSUFFICIENT BALANCE (BUY) TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Get the actual RUSD balance for this account
+    balances = await reya_tester.client.get_account_balances()
+    rusd_balance = None
+    for b in balances:
+        if b.account_id == reya_tester.account_id and b.asset == "RUSD":
+            rusd_balance = Decimal(b.real_balance)
+            break
+
+    if rusd_balance is None or rusd_balance <= 0:
+        pytest.skip("No RUSD balance available for this test")
+
+    logger.info(f"Current RUSD balance: {rusd_balance}")
+
+    # Calculate qty that would require slightly more RUSD than available
+    # At REFERENCE_PRICE, we need (rusd_balance / price) + small_extra ETH
+    order_price = Decimal(str(REFERENCE_PRICE))
+    max_qty_at_price = rusd_balance / order_price
+    # Request 10% more than we can afford
+    exceeding_qty = str((max_qty_at_price * Decimal("1.1")).quantize(Decimal("0.01")))
+
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(order_price))
+        .qty(exceeding_qty)
+        .ioc()
+        .build()
+    )
+
+    required_rusd = Decimal(exceeding_qty) * order_price
+    logger.info(f"Sending IOC buy for {exceeding_qty} ETH @ ${order_price}")
+    logger.info(f"Required RUSD: {required_rusd}, Available: {rusd_balance}")
+
+    try:
+        order_id = await reya_tester.create_limit_order(order_params)
+        pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Insufficient balance: required X, available Y'
+        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "Insufficient balance" in error_msg, f"Expected 'Insufficient balance' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT IOC INSUFFICIENT BALANCE (BUY) TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_ioc_insufficient_balance_sell(reya_tester: ReyaTester):
+    """
+    Test that an IOC sell order exceeding ETH balance is rejected.
+
+    IOC orders have pre-trade balance validation to prevent failed executions.
+    Gets the actual ETH balance and tries to exceed it by a small amount.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT IOC INSUFFICIENT BALANCE (SELL) TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Get the actual ETH balance for this account
+    balances = await reya_tester.client.get_account_balances()
+    eth_balance = None
+    for b in balances:
+        if b.account_id == reya_tester.account_id and b.asset == "ETH":
+            eth_balance = Decimal(b.real_balance)
+            break
+
+    if eth_balance is None or eth_balance <= 0:
+        pytest.skip("No ETH balance available for this test")
+
+    logger.info(f"Current ETH balance: {eth_balance}")
+
+    # Request 10% more ETH than we have
+    exceeding_qty = str((eth_balance * Decimal("1.1")).quantize(Decimal("0.01")))
+    order_price = str(REFERENCE_PRICE)
+
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .sell()
+        .price(order_price)
+        .qty(exceeding_qty)
+        .ioc()
+        .build()
+    )
+
+    logger.info(f"Sending IOC sell for {exceeding_qty} ETH @ ${order_price}")
+    logger.info(f"Required ETH: {exceeding_qty}, Available: {eth_balance}")
+
+    try:
+        order_id = await reya_tester.create_limit_order(order_params)
+        pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Insufficient balance: required X, available Y'
+        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "Insufficient balance" in error_msg, f"Expected 'Insufficient balance' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT IOC INSUFFICIENT BALANCE (SELL) TEST COMPLETED")
+
+
+# ============================================================================
+# PRICE/QTY STEP SIZE VALIDATION TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_qty_below_minimum(reya_tester: ReyaTester):
+    """
+    Test that an order with quantity below minimum is rejected.
+
+    Each market has a minimum order base (e.g., 0.01 for WETHRUSD).
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER QTY BELOW MINIMUM TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Use a quantity below the minimum (0.01 for WETHRUSD)
+    tiny_qty = "0.001"  # Below minimum
+    order_price = str(round(REFERENCE_PRICE * 0.50, 2))
+
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(order_price)
+        .qty(tiny_qty)
+        .gtc()
+        .build()
+    )
+
+    logger.info(f"Sending order with qty below minimum: {tiny_qty}")
+
+    try:
+        order_id = await reya_tester.create_limit_order(order_params)
+        # If accepted, clean up
+        await reya_tester.client.cancel_order(
+            order_id=order_id,
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id,
+        )
+        await asyncio.sleep(0.05)
+        pytest.fail(f"Order with qty below minimum should have been rejected, got: {order_id}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order quantity X is below minimum order base Y'
+        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "is below minimum order base" in error_msg, f"Expected 'is below minimum order base' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER QTY BELOW MINIMUM TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_qty_not_step_multiple(reya_tester: ReyaTester):
+    """
+    Test that an order with quantity not a multiple of step size is rejected.
+
+    Quantities must be multiples of the market's base step size.
+    Note: This test uses a quantity with excessive decimal places (0.0123456789)
+    that is unlikely to be a valid step multiple for any market.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER QTY NOT STEP MULTIPLE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Use a quantity with excessive decimal places that won't be a step multiple
+    non_step_qty = "0.0123456789"
+    order_price = str(round(REFERENCE_PRICE * 0.50, 2))
+
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(order_price)
+        .qty(non_step_qty)
+        .gtc()
+        .build()
+    )
+
+    logger.info(f"Sending order with non-step-multiple qty: {non_step_qty}")
+
+    try:
+        order_id = await reya_tester.create_limit_order(order_params)
+        # If accepted, clean up
+        await reya_tester.client.cancel_order(
+            order_id=order_id,
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id,
+        )
+        await asyncio.sleep(0.05)
+        pytest.fail(f"Order with non-step qty should have been rejected, got: {order_id}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order quantity X does not conform to base spacing Y'
+        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "does not conform to base spacing" in error_msg, \
+            f"Expected 'does not conform to base spacing' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER QTY NOT STEP MULTIPLE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_order_price_not_tick_multiple(reya_tester: ReyaTester):
+    """
+    Test that an order with price not a multiple of tick size is rejected.
+
+    Prices must be multiples of the market's tick size.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT ORDER PRICE NOT TICK MULTIPLE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Use a price with too many decimal places (beyond tick precision)
+    # Most markets have tick size like 0.01, so 0.001 precision would be invalid
+    non_tick_price = "250.123456789"
+
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(non_tick_price)
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    logger.info(f"Sending order with non-tick-multiple price: {non_tick_price}")
+
+    try:
+        order_id = await reya_tester.create_limit_order(order_params)
+        # If accepted, clean up
+        await reya_tester.client.cancel_order(
+            order_id=order_id,
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id,
+        )
+        await asyncio.sleep(0.05)
+        pytest.fail(f"Order with non-tick-multiple price should have been rejected, got: {order_id}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order price X does not conform to price spacing Y'
+        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "does not conform to price spacing" in error_msg, f"Expected 'does not conform to price spacing' message, got: {e}"
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT ORDER PRICE NOT TICK MULTIPLE TEST COMPLETED")
+
+
+# ============================================================================
+# CANCEL ORDER VALIDATION TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_cancel_invalid_signature(reya_tester: ReyaTester):
+    """
+    Test that a cancel request with an invalid signature is rejected.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT CANCEL INVALID SIGNATURE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # First create a valid order
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(round(REFERENCE_PRICE * 0.50, 2)))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(order_id)
+    logger.info(f"Created order: {order_id}")
+
+    # Try to cancel with invalid signature
+    fake_signature = "0x" + "cd" * 65
+    deadline = int(time.time() * 1000) + 60000
+    nonce = int(time.time() * 1_000_000)
+
+    cancel_request = CancelOrderRequest(
+        orderId=order_id,
+        symbol=SPOT_SYMBOL,
+        accountId=reya_tester.account_id,
+        signature=fake_signature,
+        nonce=str(nonce),
+        expiresAfter=deadline,
+    )
+
+    logger.info("Sending cancel with invalid signature...")
+
+    try:
+        response = await reya_tester.client.orders.cancel_order(cancel_order_request=cancel_request)
+        pytest.fail(f"Cancel with invalid signature should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid signature: unable to recover signer from signature'
+        assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
+        assert "Invalid signature: unable to recover signer from signature" in error_msg, \
+            f"Expected 'Invalid signature: unable to recover signer from signature' message, got: {e}"
+        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    # Clean up - cancel with valid request
+    await reya_tester.client.cancel_order(
+        order_id=order_id,
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id,
+    )
+    await asyncio.sleep(0.1)
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT CANCEL INVALID SIGNATURE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_cancel_reused_nonce(reya_tester: ReyaTester):
+    """
+    Test that a cancel request with a reused nonce is rejected.
+
+    First creates and cancels an order with a specific nonce, then tries to
+    reuse that nonce for another cancel.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT CANCEL REUSED NONCE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Step 1: Create first order and cancel it with a specific nonce
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(round(REFERENCE_PRICE * 0.50, 2)))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    first_order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(first_order_id)
+    logger.info(f"Step 1: Created first order: {first_order_id}")
+
+    first_nonce = int(time.time() * 1_000_000)
+    first_deadline = int(time.time() * 1000) + 60000
+
+    sig_gen = reya_tester.client._signature_generator
+    first_signature = sig_gen.sign_cancel_order_spot(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        order_id=int(first_order_id),
+        client_order_id=0,
+        nonce=first_nonce,
+        deadline=first_deadline,
+    )
+
+    first_cancel_request = CancelOrderRequest(
+        orderId=first_order_id,
+        symbol=SPOT_SYMBOL,
+        accountId=reya_tester.account_id,
+        signature=first_signature,
+        nonce=str(first_nonce),
+        expiresAfter=first_deadline,
+    )
+
+    logger.info(f"Step 1: Cancelling first order with nonce: {first_nonce}")
+    await reya_tester.client.orders.cancel_order(cancel_order_request=first_cancel_request)
+    await asyncio.sleep(0.1)
+    logger.info("✅ First cancel succeeded")
+
+    # Step 2: Create second order and try to cancel with reused nonce
+    second_order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(second_order_id)
+    logger.info(f"Step 2: Created second order: {second_order_id}")
+
+    reused_deadline = int(time.time() * 1000) + 60000
+    reused_signature = sig_gen.sign_cancel_order_spot(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        order_id=int(second_order_id),
+        client_order_id=0,
+        nonce=first_nonce,  # Reuse the same nonce
+        deadline=reused_deadline,
+    )
+
+    reused_cancel_request = CancelOrderRequest(
+        orderId=second_order_id,
+        symbol=SPOT_SYMBOL,
+        accountId=reya_tester.account_id,
+        signature=reused_signature,
+        nonce=str(first_nonce),  # Reuse the same nonce
+        expiresAfter=reused_deadline,
+    )
+
+    logger.info(f"Step 2: Trying to cancel with reused nonce: {first_nonce}")
+
+    try:
+        response = await reya_tester.client.orders.cancel_order(cancel_order_request=reused_cancel_request)
+        pytest.fail(f"Cancel with reused nonce should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid nonce: expected nonce > X, got Y'
+        assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
+        assert "Invalid nonce: expected nonce >" in error_msg, \
+            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    # Clean up - cancel with valid request
+    await reya_tester.client.cancel_order(
+        order_id=second_order_id,
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id,
+    )
+    await asyncio.sleep(0.1)
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT CANCEL REUSED NONCE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_cancel_old_nonce(reya_tester: ReyaTester):
+    """
+    Test that a cancel request with an old nonce (nonce - 1) is rejected.
+
+    First creates and cancels an order with a specific nonce, then tries to
+    use nonce-1 for another cancel.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT CANCEL OLD NONCE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Step 1: Create first order and cancel it with a specific nonce
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(round(REFERENCE_PRICE * 0.50, 2)))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    first_order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(first_order_id)
+    logger.info(f"Step 1: Created first order: {first_order_id}")
+
+    first_nonce = int(time.time() * 1_000_000)
+    first_deadline = int(time.time() * 1000) + 60000
+
+    sig_gen = reya_tester.client._signature_generator
+    first_signature = sig_gen.sign_cancel_order_spot(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        order_id=int(first_order_id),
+        client_order_id=0,
+        nonce=first_nonce,
+        deadline=first_deadline,
+    )
+
+    first_cancel_request = CancelOrderRequest(
+        orderId=first_order_id,
+        symbol=SPOT_SYMBOL,
+        accountId=reya_tester.account_id,
+        signature=first_signature,
+        nonce=str(first_nonce),
+        expiresAfter=first_deadline,
+    )
+
+    logger.info(f"Step 1: Cancelling first order with nonce: {first_nonce}")
+    await reya_tester.client.orders.cancel_order(cancel_order_request=first_cancel_request)
+    await asyncio.sleep(0.1)
+    logger.info("✅ First cancel succeeded")
+
+    # Step 2: Create second order and try to cancel with nonce - 1
+    second_order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(second_order_id)
+    logger.info(f"Step 2: Created second order: {second_order_id}")
+
+    old_nonce = first_nonce - 1
+    old_deadline = int(time.time() * 1000) + 60000
+    old_signature = sig_gen.sign_cancel_order_spot(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        order_id=int(second_order_id),
+        client_order_id=0,
+        nonce=old_nonce,  # Use nonce - 1
+        deadline=old_deadline,
+    )
+
+    old_cancel_request = CancelOrderRequest(
+        orderId=second_order_id,
+        symbol=SPOT_SYMBOL,
+        accountId=reya_tester.account_id,
+        signature=old_signature,
+        nonce=str(old_nonce),  # Use nonce - 1
+        expiresAfter=old_deadline,
+    )
+
+    logger.info(f"Step 2: Trying to cancel with old nonce (nonce-1): {old_nonce}")
+
+    try:
+        response = await reya_tester.client.orders.cancel_order(cancel_order_request=old_cancel_request)
+        pytest.fail(f"Cancel with old nonce should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid nonce: expected nonce > X, got Y'
+        assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
+        assert "Invalid nonce: expected nonce >" in error_msg, \
+            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    # Clean up - cancel with valid request
+    await reya_tester.client.cancel_order(
+        order_id=second_order_id,
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id,
+    )
+    await asyncio.sleep(0.1)
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT CANCEL OLD NONCE TEST COMPLETED")
+
+
+# ============================================================================
+# MASS CANCEL VALIDATION TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_mass_cancel_invalid_signature(reya_tester: ReyaTester):
+    """
+    Test that a mass cancel with an invalid signature is rejected.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT MASS CANCEL INVALID SIGNATURE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Create a fake signature
+    fake_signature = "0x" + "ab" * 65
+    deadline = int(time.time() * 1000) + 60000
+    nonce = int(time.time() * 1_000_000)
+
+    mass_cancel_request = MassCancelRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        signature=fake_signature,
+        nonce=str(nonce),
+        expiresAfter=deadline,
+    )
+
+    logger.info("Sending mass cancel with invalid signature...")
+
+    try:
+        response = await reya_tester.client.orders.cancel_all(mass_cancel_request)
+        pytest.fail(f"Mass cancel with invalid signature should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: Invalid signature error
+        assert "Invalid signature" in error_msg or "CANCEL" in error_msg, \
+            f"Expected signature error, got: {e}"
+        logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT MASS CANCEL INVALID SIGNATURE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_mass_cancel_expired_deadline(reya_tester: ReyaTester):
+    """
+    Test that a mass cancel with an expired deadline is rejected.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT MASS CANCEL EXPIRED DEADLINE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Use an expired deadline (1 hour in the past)
+    expired_deadline = int(time.time() * 1000) - 3600000
+    nonce = int(time.time() * 1_000_000)
+
+    sig_gen = reya_tester.client._signature_generator
+    signature = sig_gen.sign_mass_cancel(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        nonce=nonce,
+        deadline=expired_deadline,
+    )
+
+    mass_cancel_request = MassCancelRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        signature=signature,
+        nonce=str(nonce),
+        expiresAfter=expired_deadline,
+    )
+
+    logger.info(f"Sending mass cancel with expired deadline: {expired_deadline}")
+
+    try:
+        response = await reya_tester.client.orders.cancel_all(mass_cancel_request)
+        pytest.fail(f"Mass cancel with expired deadline should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: deadline passed error
+        assert "deadline" in error_msg.lower() or "expired" in error_msg.lower() or "CANCEL" in error_msg, \
+            f"Expected deadline error, got: {e}"
+        logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT MASS CANCEL EXPIRED DEADLINE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_mass_cancel_reused_nonce(reya_tester: ReyaTester):
+    """
+    Test that a mass cancel with a reused nonce is rejected.
+
+    First performs a successful mass cancel with a specific nonce, then
+    tries to reuse that nonce.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT MASS CANCEL REUSED NONCE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Step 1: Perform a valid mass cancel with a specific nonce
+    first_nonce = int(time.time() * 1_000_000)
+    first_deadline = int(time.time() * 1000) + 60000
+
+    sig_gen = reya_tester.client._signature_generator
+    first_signature = sig_gen.sign_mass_cancel(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        nonce=first_nonce,
+        deadline=first_deadline,
+    )
+
+    first_mass_cancel_request = MassCancelRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        signature=first_signature,
+        nonce=str(first_nonce),
+        expiresAfter=first_deadline,
+    )
+
+    logger.info(f"Step 1: Performing mass cancel with nonce: {first_nonce}")
+    await reya_tester.client.orders.cancel_all(first_mass_cancel_request)
+    logger.info("✅ First mass cancel succeeded")
+
+    # Step 2: Try to reuse the same nonce
+    reused_deadline = int(time.time() * 1000) + 60000
+    reused_signature = sig_gen.sign_mass_cancel(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        nonce=first_nonce,  # Reuse the same nonce
+        deadline=reused_deadline,
+    )
+
+    reused_mass_cancel_request = MassCancelRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        signature=reused_signature,
+        nonce=str(first_nonce),  # Reuse the same nonce
+        expiresAfter=reused_deadline,
+    )
+
+    logger.info(f"Step 2: Trying mass cancel with reused nonce: {first_nonce}")
+
+    try:
+        response = await reya_tester.client.orders.cancel_all(reused_mass_cancel_request)
+        pytest.fail(f"Mass cancel with reused nonce should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: Invalid nonce error
+        assert "Invalid nonce: expected nonce >" in error_msg, \
+            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT MASS CANCEL REUSED NONCE TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_mass_cancel_old_nonce(reya_tester: ReyaTester):
+    """
+    Test that a mass cancel with an old nonce (nonce - 1) is rejected.
+
+    First performs a successful mass cancel with a specific nonce, then
+    tries to use nonce-1.
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT MASS CANCEL OLD NONCE TEST")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Step 1: Perform a valid mass cancel with a specific nonce
+    first_nonce = int(time.time() * 1_000_000)
+    first_deadline = int(time.time() * 1000) + 60000
+
+    sig_gen = reya_tester.client._signature_generator
+    first_signature = sig_gen.sign_mass_cancel(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        nonce=first_nonce,
+        deadline=first_deadline,
+    )
+
+    first_mass_cancel_request = MassCancelRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        signature=first_signature,
+        nonce=str(first_nonce),
+        expiresAfter=first_deadline,
+    )
+
+    logger.info(f"Step 1: Performing mass cancel with nonce: {first_nonce}")
+    await reya_tester.client.orders.cancel_all(first_mass_cancel_request)
+    logger.info("✅ First mass cancel succeeded")
+
+    # Step 2: Try to use nonce - 1
+    old_nonce = first_nonce - 1
+    old_deadline = int(time.time() * 1000) + 60000
+    old_signature = sig_gen.sign_mass_cancel(
+        account_id=reya_tester.account_id,
+        market_id=SPOT_MARKET_ID,
+        nonce=old_nonce,  # Use nonce - 1
+        deadline=old_deadline,
+    )
+
+    old_mass_cancel_request = MassCancelRequest(
+        accountId=reya_tester.account_id,
+        symbol=SPOT_SYMBOL,
+        signature=old_signature,
+        nonce=str(old_nonce),  # Use nonce - 1
+        expiresAfter=old_deadline,
+    )
+
+    logger.info(f"Step 2: Trying mass cancel with old nonce (nonce-1): {old_nonce}")
+
+    try:
+        response = await reya_tester.client.orders.cancel_all(old_mass_cancel_request)
+        pytest.fail(f"Mass cancel with old nonce should have been rejected, got: {response}")
+    except Exception as e:
+        error_msg = str(e)
+        # Expect: Invalid nonce error
+        assert "Invalid nonce: expected nonce >" in error_msg, \
+            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:150]}")
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ SPOT MASS CANCEL OLD NONCE TEST COMPLETED")

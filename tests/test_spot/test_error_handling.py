@@ -20,8 +20,8 @@ from tests.helpers.builders.order_builder import OrderBuilder
 logger = logging.getLogger("reya.integration_tests")
 
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot

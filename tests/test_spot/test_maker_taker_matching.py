@@ -21,8 +21,8 @@ from tests.helpers.reya_tester import limit_order_params_to_order, logger
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -124,7 +124,6 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
         .price(str(taker_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 

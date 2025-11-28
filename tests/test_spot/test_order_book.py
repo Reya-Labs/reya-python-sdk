@@ -18,8 +18,8 @@ from tests.helpers.reya_tester import logger
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -138,7 +138,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
 
     # Place two orders at the same price
     order_price = round(REFERENCE_PRICE * 0.80, 2)  # 20% below reference
-    qty_per_order = "0.0001"
+    qty_per_order = TEST_QTY
     
     order_ids = []
     for i in range(2):

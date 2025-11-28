@@ -17,6 +17,7 @@ class LimitOrderParameters:
     time_in_force: time_in_force.TimeInForce
     reduce_only: Optional[bool] = None
     expires_after: Optional[int] = None
+    client_order_id: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -27,6 +28,7 @@ class LimitOrderParameters:
             "reduce_only": self.reduce_only,
             "expires_after": self.expires_after,
             "time_in_force": self.time_in_force,
+            "client_order_id": self.client_order_id,
         }
 
 

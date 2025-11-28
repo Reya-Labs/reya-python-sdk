@@ -57,6 +57,7 @@ class OrderBuilder:
     _time_in_force: TimeInForce = field(default_factory=lambda: TimeInForce.GTC)
     _reduce_only: Optional[bool] = None
     _expires_after: Optional[int] = None
+    _client_order_id: Optional[int] = None
     
     def symbol(self, symbol: str) -> "OrderBuilder":
         """Set the trading symbol (e.g., 'ETHRUSD', 'ETHRUSDPERP')."""
@@ -127,11 +128,16 @@ class OrderBuilder:
         """Set expiration timestamp in milliseconds (IOC orders only)."""
         self._expires_after = timestamp_ms
         return self
-    
+
+    def client_order_id(self, client_order_id: int) -> "OrderBuilder":
+        """Set a client-provided order ID for tracking."""
+        self._client_order_id = client_order_id
+        return self
+
     def build(self) -> LimitOrderParameters:
         """
         Build and return the LimitOrderParameters.
-        
+
         Returns:
             LimitOrderParameters configured with all set values.
         """
@@ -143,6 +149,7 @@ class OrderBuilder:
             time_in_force=self._time_in_force,
             reduce_only=self._reduce_only,
             expires_after=self._expires_after,
+            client_order_id=self._client_order_id,
         )
     
     def copy(self) -> "OrderBuilder":
@@ -155,6 +162,7 @@ class OrderBuilder:
         builder._time_in_force = self._time_in_force
         builder._reduce_only = self._reduce_only
         builder._expires_after = self._expires_after
+        builder._client_order_id = self._client_order_id
         return builder
 
 

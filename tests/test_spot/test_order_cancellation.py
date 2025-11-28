@@ -18,8 +18,8 @@ from tests.helpers.reya_tester import limit_order_params_to_order, logger
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -207,10 +207,10 @@ async def test_spot_cancel_nonexistent_order(reya_tester: ReyaTester):
 async def test_spot_cancel_already_filled_order(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test cancelling an order that was already filled.
-    
+
     Flow:
-    1. Maker places GTC order
-    2. Taker fills the order
+    1. Maker places GTC sell order (maker has more ETH)
+    2. Taker buys with IOC (taker has more RUSD)
     3. Attempt to cancel the filled order
     4. Verify error response (order already filled)
     """
@@ -221,39 +221,39 @@ async def test_spot_cancel_already_filled_order(maker_tester: ReyaTester, taker_
     await maker_tester.close_active_orders(fail_if_none=False)
     await taker_tester.close_active_orders(fail_if_none=False)
 
-    # Maker places GTC buy order
-    maker_price = round(REFERENCE_PRICE * 0.65, 2)
-    
+    # Maker places GTC sell order (maker has more ETH)
+    maker_price = round(REFERENCE_PRICE * 1.50, 2)
+
     maker_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
-        .buy()
+        .sell()
         .price(str(maker_price))
         .qty(TEST_QTY)
         .gtc()
         .build()
     )
 
-    logger.info(f"Maker placing GTC buy: {TEST_QTY} @ ${maker_price:.2f}")
+    logger.info(f"Maker placing GTC sell: {TEST_QTY} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
-    # Taker fills the order
-    taker_price = round(maker_price * 0.99, 2)
-    
+    # Taker buys with IOC (taker has more RUSD)
+    taker_price = round(maker_price * 1.01, 2)
+
     taker_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
-        .sell()
+        .buy()
         .price(str(taker_price))
         .qty(TEST_QTY)
-        .gtc()
+        .ioc()
         .build()
     )
 
-    logger.info(f"Taker placing GTC sell to fill maker order...")
-    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    logger.info(f"Taker placing IOC buy to fill maker order...")
+    await taker_tester.create_limit_order(taker_params)
     
     # Wait for fill
     await asyncio.sleep(0.05)

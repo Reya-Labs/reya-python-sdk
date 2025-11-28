@@ -139,12 +139,20 @@ class WebSocketState:
         price: str,
         is_maker_buyer: bool,
     ) -> None:
-        """Verify that balance changes for a spot trade match expected amounts."""
-        qty_float = float(qty)
-        price_float = float(price)
-        notional = qty_float * price_float
+        """
+        Verify that balance changes for a spot trade match expected amounts EXACTLY.
 
-        logger.info("\n💰 Verifying spot trade balance changes...")
+        Note: Spot trading has ZERO fees, so we verify exact balance changes:
+        - Base asset change = qty (exactly)
+        - Quote asset change = qty * price (exactly)
+        """
+        from decimal import Decimal
+
+        qty_decimal = Decimal(qty)
+        price_decimal = Decimal(price)
+        notional = qty_decimal * price_decimal
+
+        logger.info("\n💰 Verifying EXACT spot trade balance changes (zero fees)...")
         logger.info(f"Trade: qty={qty} {base_asset} at price={price} {quote_asset}")
         logger.info(f"Notional: {notional} {quote_asset}")
         logger.info(f"Maker is {'BUYER' if is_maker_buyer else 'SELLER'}")
@@ -169,43 +177,44 @@ class WebSocketState:
         assert taker_initial_base and taker_final_base, f"Taker {base_asset} balance not found"
         assert taker_initial_quote and taker_final_quote, f"Taker {quote_asset} balance not found"
 
-        maker_base_change = float(maker_final_base.real_balance) - float(maker_initial_base.real_balance)
-        maker_quote_change = float(maker_final_quote.real_balance) - float(maker_initial_quote.real_balance)
-        taker_base_change = float(taker_final_base.real_balance) - float(taker_initial_base.real_balance)
-        taker_quote_change = float(taker_final_quote.real_balance) - float(taker_initial_quote.real_balance)
+        # Use Decimal for exact comparison (spot has zero fees)
+        maker_base_change = Decimal(maker_final_base.real_balance) - Decimal(maker_initial_base.real_balance)
+        maker_quote_change = Decimal(maker_final_quote.real_balance) - Decimal(maker_initial_quote.real_balance)
+        taker_base_change = Decimal(taker_final_base.real_balance) - Decimal(taker_initial_base.real_balance)
+        taker_quote_change = Decimal(taker_final_quote.real_balance) - Decimal(taker_initial_quote.real_balance)
 
-        logger.info(f"Maker {base_asset} change: {maker_base_change:.6f} (expected: {'+' if is_maker_buyer else '-'}{qty_float:.6f})")
-        logger.info(f"Maker {quote_asset} change: {maker_quote_change:.6f} (expected: {'-' if is_maker_buyer else '+'}{notional:.6f})")
-        logger.info(f"Taker {base_asset} change: {taker_base_change:.6f} (expected: {'-' if is_maker_buyer else '+'}{qty_float:.6f})")
-        logger.info(f"Taker {quote_asset} change: {taker_quote_change:.6f} (expected: {'+' if is_maker_buyer else '-'}{notional:.6f})")
+        logger.info(f"Maker {base_asset} change: {maker_base_change} (expected: {'+' if is_maker_buyer else '-'}{qty_decimal})")
+        logger.info(f"Maker {quote_asset} change: {maker_quote_change} (expected: {'-' if is_maker_buyer else '+'}{notional})")
+        logger.info(f"Taker {base_asset} change: {taker_base_change} (expected: {'-' if is_maker_buyer else '+'}{qty_decimal})")
+        logger.info(f"Taker {quote_asset} change: {taker_quote_change} (expected: {'+' if is_maker_buyer else '-'}{notional})")
 
-        tolerance = 0.001
-
+        # Calculate expected EXACT changes (zero fees)
         if is_maker_buyer:
-            expected_maker_base_change = qty_float
+            expected_maker_base_change = qty_decimal
             expected_maker_quote_change = -notional
-            expected_taker_base_change = -qty_float
+            expected_taker_base_change = -qty_decimal
             expected_taker_quote_change = notional
         else:
-            expected_maker_base_change = -qty_float
+            expected_maker_base_change = -qty_decimal
             expected_maker_quote_change = notional
-            expected_taker_base_change = qty_float
+            expected_taker_base_change = qty_decimal
             expected_taker_quote_change = -notional
 
-        assert abs(maker_base_change - expected_maker_base_change) <= abs(expected_maker_base_change * tolerance), (
-            f"Maker {base_asset} change {maker_base_change:.6f} does not match expected {expected_maker_base_change:.6f}"
+        # Verify EXACT match (spot has zero fees)
+        assert maker_base_change == expected_maker_base_change, (
+            f"Maker {base_asset} change {maker_base_change} does not exactly match expected {expected_maker_base_change}"
         )
 
-        assert abs(maker_quote_change - expected_maker_quote_change) <= abs(expected_maker_quote_change * tolerance), (
-            f"Maker {quote_asset} change {maker_quote_change:.6f} does not match expected {expected_maker_quote_change:.6f}"
+        assert maker_quote_change == expected_maker_quote_change, (
+            f"Maker {quote_asset} change {maker_quote_change} does not exactly match expected {expected_maker_quote_change}"
         )
 
-        assert abs(taker_base_change - expected_taker_base_change) <= abs(expected_taker_base_change * tolerance), (
-            f"Taker {base_asset} change {taker_base_change:.6f} does not match expected {expected_taker_base_change:.6f}"
+        assert taker_base_change == expected_taker_base_change, (
+            f"Taker {base_asset} change {taker_base_change} does not exactly match expected {expected_taker_base_change}"
         )
 
-        assert abs(taker_quote_change - expected_taker_quote_change) <= abs(expected_taker_quote_change * tolerance), (
-            f"Taker {quote_asset} change {taker_quote_change:.6f} does not match expected {expected_taker_quote_change:.6f}"
+        assert taker_quote_change == expected_taker_quote_change, (
+            f"Taker {quote_asset} change {taker_quote_change} does not exactly match expected {expected_taker_quote_change}"
         )
 
-        logger.info("✅ All balance changes verified successfully!")
+        logger.info("✅ All balance changes verified EXACTLY (zero fees confirmed)!")

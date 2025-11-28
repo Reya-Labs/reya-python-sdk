@@ -20,8 +20,8 @@ from tests.helpers.reya_tester import limit_order_params_to_order, logger
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -73,7 +73,6 @@ async def test_spot_ioc_full_fill(maker_tester: ReyaTester, taker_tester: ReyaTe
         .price(str(taker_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -136,7 +135,6 @@ async def test_spot_ioc_no_match_cancels(reya_tester: ReyaTester):
         .price(str(low_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -195,7 +193,7 @@ async def test_spot_ioc_partial_fill(maker_tester: ReyaTester, taker_tester: Rey
 
     # Use a price far from market to ensure only our orders interact
     maker_price = round(REFERENCE_PRICE * 0.70, 2)  # 30% below reference
-    maker_qty = "0.0001"
+    maker_qty = TEST_QTY
     
     maker_order_params = (
         OrderBuilder()
@@ -214,8 +212,8 @@ async def test_spot_ioc_partial_fill(maker_tester: ReyaTester, taker_tester: Rey
 
     # Taker sends larger IOC sell order at or below maker's price
     taker_price = round(maker_price * 0.99, 2)  # Below maker to ensure match
-    taker_qty = "0.0002"  # Larger than maker - will partially fill
-    
+    taker_qty = "0.02"  # Larger than maker - will partially fill
+
     taker_order_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
@@ -223,7 +221,6 @@ async def test_spot_ioc_partial_fill(maker_tester: ReyaTester, taker_tester: Rey
         .price(str(taker_price))
         .qty(taker_qty)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -305,7 +302,6 @@ async def test_spot_ioc_sell_full_fill(maker_tester: ReyaTester, taker_tester: R
         .price(str(taker_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -351,7 +347,7 @@ async def test_spot_ioc_multiple_price_level_crossing(maker_tester: ReyaTester, 
     # Maker places multiple GTC buy orders at different prices
     price_1 = round(REFERENCE_PRICE * 0.60, 2)  # Lower price
     price_2 = round(REFERENCE_PRICE * 0.65, 2)  # Higher price (better for seller)
-    qty_per_order = "0.0001"
+    qty_per_order = TEST_QTY
     
     # First order at lower price
     order_1_params = (
@@ -387,8 +383,8 @@ async def test_spot_ioc_multiple_price_level_crossing(maker_tester: ReyaTester, 
 
     # Taker sends IOC sell order large enough to fill both
     taker_price = round(price_1 * 0.99, 2)  # Below both prices
-    taker_qty = "0.0002"  # Enough to fill both orders
-    
+    taker_qty = "0.02"  # Enough to fill both orders
+
     taker_order_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
@@ -396,7 +392,6 @@ async def test_spot_ioc_multiple_price_level_crossing(maker_tester: ReyaTester, 
         .price(str(taker_price))
         .qty(taker_qty)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -448,7 +443,6 @@ async def test_spot_ioc_price_qty_validation(reya_tester: ReyaTester):
         .price(str(REFERENCE_PRICE))
         .qty("0")
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -469,7 +463,6 @@ async def test_spot_ioc_price_qty_validation(reya_tester: ReyaTester):
             .price("-100")
             .qty(TEST_QTY)
             .ioc()
-            .reduce_only(False)
             .build()
         )
 

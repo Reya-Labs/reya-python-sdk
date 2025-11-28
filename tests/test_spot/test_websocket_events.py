@@ -23,8 +23,8 @@ from sdk.open_api.models import OrderStatus
 logger = logging.getLogger("reya.integration_tests")
 
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -140,11 +140,11 @@ async def test_spot_ws_order_changes_on_fill(maker_tester: ReyaTester, taker_tes
         .sell()
         .price(str(taker_price))
         .qty(TEST_QTY)
-        .gtc()
+        .ioc()
         .build()
     )
 
-    logger.info(f"Taker placing GTC sell to fill maker order...")
+    logger.info(f"Taker placing IOC sell to fill maker order...")
     await taker_tester.create_limit_order(taker_params)
 
     # Wait for fill
@@ -280,7 +280,6 @@ async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: R
         .price(str(taker_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 
@@ -359,7 +358,6 @@ async def test_spot_ws_balance_updates(maker_tester: ReyaTester, taker_tester: R
         .price(str(taker_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
 

@@ -305,6 +305,7 @@ class ReyaTradingClient:
             signature=signature,
             nonce=str(nonce),
             signerWallet=self.signer_wallet_address,
+            clientOrderId=params.client_order_id,
         )
 
         response = await self.orders.create_order(create_order_request=order_request)
@@ -388,7 +389,7 @@ class ReyaTradingClient:
 
     async def cancel_order(
         self,
-        order_id: str,
+        order_id: Optional[str] = None,
         symbol: Optional[str] = None,
         account_id: Optional[int] = None,
         client_order_id: Optional[int] = None,
@@ -396,17 +397,21 @@ class ReyaTradingClient:
         """
         Cancel an existing order asynchronously.
 
+        For spot markets, you must provide EITHER order_id OR client_order_id (not both).
+        For perp markets, order_id is required.
+
         Args:
-            order_id: ID of the order to cancel
+            order_id: ID of the order to cancel (required for perp, optional for spot if client_order_id provided)
             symbol: Trading symbol (required for spot market orders, e.g., ETHRUSD, BTCRUSD)
             account_id: Account ID (required for spot market orders)
-            client_order_id: Client order ID (optional, used for signature generation)
+            client_order_id: Client order ID (optional for spot, alternative to order_id)
 
         Returns:
             API response for the order cancellation
 
         Raises:
             ValueError: If symbol and account_id are not provided for spot orders
+            ValueError: If neither order_id nor client_order_id is provided for spot orders
         """
         if self._signature_generator is None:
             raise ValueError("Private key is required for cancelling orders")
@@ -422,7 +427,18 @@ class ReyaTradingClient:
                 raise ValueError(
                     f"account_id is required for spot market order cancellation (symbol: {symbol})"
                 )
+            # For spot markets: must provide at least one of order_id or client_order_id
+            # If both are provided, the API will prefer order_id
+            if not order_id and not client_order_id:
+                raise ValueError(
+                    "For spot orders, must provide either order_id or client_order_id"
+                )
+        else:
+            # For perp markets, order_id is required
+            if not order_id:
+                raise ValueError("order_id is required for perp market order cancellation")
 
+        if is_spot_order:
             # Get market_id from symbol
             market_id = self._get_market_id_from_symbol(symbol)
 
@@ -449,6 +465,7 @@ class ReyaTradingClient:
         else:
             signature = self._signature_generator.sign_cancel_order_perps(order_id)
             nonce = None
+            deadline = None
 
         cancel_order_request = CancelOrderRequest(
             orderId=order_id,

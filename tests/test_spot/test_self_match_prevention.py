@@ -18,8 +18,8 @@ from tests.helpers.reya_tester import logger
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 4000.0
-TEST_QTY = "0.0001"
+REFERENCE_PRICE = 500.0
+TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
@@ -168,7 +168,6 @@ async def test_spot_self_match_prevention_ioc(reya_tester: ReyaTester):
         .price(str(taker_price))
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
     
@@ -211,55 +210,58 @@ async def test_spot_self_match_prevention_ioc(reya_tester: ReyaTester):
 async def test_spot_cross_account_match_works(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Verify that matching DOES work between different accounts.
-    
+
     This is a sanity check to confirm that while self-match is prevented,
     cross-account matching works correctly.
+
+    Note: This test has MAKER selling ETH and TAKER buying ETH to preserve
+    taker's ETH balance for other tests.
     """
     logger.info("=" * 80)
     logger.info(f"SPOT CROSS-ACCOUNT MATCH TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.close_active_orders(fail_if_none=False)
+    await taker_tester.close_active_orders(fail_if_none=False)
 
-    # Maker places GTC buy order
-    order_price = round(REFERENCE_PRICE * 0.999, 2)
-    
+    # Maker places GTC sell order (maker has more ETH)
+    order_price = round(REFERENCE_PRICE * 1.50, 2)  # High price to avoid other matches
+
     maker_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
-        .buy()
+        .sell()
         .price(str(order_price))
         .qty(TEST_QTY)
         .gtc()
         .build()
     )
-    
+
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
-    # Taker sends IOC sell order (different account - should match)
+    # Taker sends IOC buy order (different account - should match)
+    # Taker buys ETH with RUSD (taker has more RUSD)
     taker_params = (
         OrderBuilder()
         .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(order_price * 0.99))  # Below maker price
+        .buy()
+        .price(str(order_price * 1.01))  # Above maker price to ensure match
         .qty(TEST_QTY)
         .ioc()
-        .reduce_only(False)
         .build()
     )
-    
-    logger.info("Taker sending IOC sell (different account - should match)...")
-    taker_order_id = await taker_tester.create_limit_order(taker_params)
+
+    logger.info("Taker sending IOC buy (different account - should match)...")
+    await taker_tester.create_limit_order(taker_params)
 
     # Wait for execution
     from tests.helpers.reya_tester import limit_order_params_to_order
     expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
     execution = await taker_tester.wait_for_spot_execution(expected_order)
-    
+
     logger.info(f"✅ Execution confirmed: {execution.order_id}")
 
     # Verify maker order is filled
