@@ -688,6 +688,29 @@ class ReyaTradingClient:
                     raise ValueError(f"Failed to get market depth: {response.status}")
                 return await response.json()
 
+    async def get_market_spot_executions(self, symbol: str) -> SpotExecutionList:
+        """
+        Get spot executions for a specific market.
+
+        Args:
+            symbol: Market symbol (e.g., 'WETHRUSD', 'BTCRUSD')
+
+        Returns:
+            SpotExecutionList: List of spot executions for the market
+
+        Raises:
+            ValueError: If symbol is invalid or API returns an error
+        """
+        # Direct HTTP request to market spot executions endpoint
+        import aiohttp
+        url = f"{self._config.api_url}/market/{symbol}/spotExecutions"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise ValueError(f"Failed to get market spot executions: {response.status}")
+                data = await response.json()
+                return SpotExecutionList.from_dict(data)
+
     async def close(self) -> None:
         """
         Close the underlying HTTP client session.

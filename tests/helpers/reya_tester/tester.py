@@ -206,6 +206,17 @@ class ReyaTester:
     def subscribe_to_market_depth(self, symbol: str):
         self.ws.subscribe_to_market_depth(symbol)
 
+    def subscribe_to_market_spot_executions(self, symbol: str):
+        self.ws.subscribe_to_market_spot_executions(symbol)
+
+    @property
+    def ws_market_spot_executions(self):
+        """Backward compatibility."""
+        return self.ws.market_spot_executions
+
+    def clear_market_spot_executions(self, symbol: str = None):
+        self.ws.clear_market_spot_executions(symbol)
+
     async def get_market_definition(self, symbol: str):
         return await self.data.market_definition(symbol)
 

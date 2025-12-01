@@ -26,7 +26,8 @@ class WebSocketState:
         # State tracking
         self.last_trade: Optional[PerpExecution] = None
         self.last_spot_execution: Optional[SpotExecution] = None
-        self.spot_executions: list[SpotExecution] = []  # All spot executions received
+        self.spot_executions: list[SpotExecution] = []  # All spot executions received (wallet-level)
+        self.market_spot_executions: dict[str, list[SpotExecution]] = {}  # Market-level spot executions by symbol
         self.order_changes: dict[str, Order] = {}
         self.positions: dict[str, Position] = {}
         self.balances: dict[str, AccountBalance] = {}
@@ -39,6 +40,7 @@ class WebSocketState:
         self.last_trade = None
         self.last_spot_execution = None
         self.spot_executions.clear()
+        self.market_spot_executions.clear()
         self.order_changes.clear()
         self.positions.clear()
         self.balances.clear()
@@ -72,6 +74,22 @@ class WebSocketState:
         self._t._websocket.market.depth(symbol).subscribe()
         logger.info(f"Subscribed to market depth for {symbol}")
 
+    def subscribe_to_market_spot_executions(self, symbol: str) -> None:
+        """Subscribe to market-level spot executions for a specific symbol."""
+        if self._t._websocket is None:
+            raise RuntimeError("WebSocket not connected - call setup() first")
+        self._t._websocket.market.spot_executions(symbol).subscribe()
+        logger.info(f"Subscribed to market spot executions for {symbol}")
+
+    def clear_market_spot_executions(self, symbol: Optional[str] = None) -> None:
+        """Clear market spot executions. If symbol provided, clear only that symbol."""
+        if symbol:
+            self.market_spot_executions.pop(symbol, None)
+            logger.debug(f"Cleared market spot executions for {symbol}")
+        else:
+            self.market_spot_executions.clear()
+            logger.debug("Cleared all market spot executions")
+
     def on_open(self, ws) -> None:
         """Handle WebSocket connection open."""
         logger.info("WebSocket opened, subscribing to trade feeds")
@@ -104,6 +122,22 @@ class WebSocketState:
                 }
                 self.last_depth[symbol] = normalized
                 logger.info(f"Stored depth snapshot for {symbol}: {len(normalized['bids'])} bids, {len(normalized['asks'])} asks")
+            
+            # Handle initial snapshot for market spot executions channel
+            if "/market/" in channel and "spotExecutions" in channel and "contents" in message:
+                contents = message["contents"]
+                symbol = channel.split("/")[3]  # /v2/market/{symbol}/spotExecutions
+                data = contents.get("data", [])
+                
+                if symbol not in self.market_spot_executions:
+                    self.market_spot_executions[symbol] = []
+                
+                for e in data:
+                    execution = SpotExecution.from_dict(e)
+                    if execution:
+                        self.market_spot_executions[symbol].append(execution)
+                
+                logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
         elif message_type == "channel_data":
             channel = message.get("channel", "unknown")
 
@@ -114,11 +148,26 @@ class WebSocketState:
                     self.last_trade = trade
 
             if "spotExecutions" in channel:
+                # Determine if this is a market-level or wallet-level channel
+                # Market: /v2/market/{symbol}/spotExecutions
+                # Wallet: /v2/wallet/{address}/spotExecutions
+                is_market_channel = "/market/" in channel
+                
                 for e in message["data"]:
                     execution = SpotExecution.from_dict(e)
                     assert execution is not None
                     self.last_spot_execution = execution
-                    self.spot_executions.append(execution)
+                    
+                    if is_market_channel:
+                        # Extract symbol from channel: /v2/market/{symbol}/spotExecutions
+                        symbol = channel.split("/")[3]
+                        if symbol not in self.market_spot_executions:
+                            self.market_spot_executions[symbol] = []
+                        self.market_spot_executions[symbol].append(execution)
+                        logger.debug(f"Added market spot execution for {symbol}: {execution.execution_id}")
+                    else:
+                        # Wallet-level execution
+                        self.spot_executions.append(execution)
 
             if "orderChanges" in channel:
                 for o in message["data"]:

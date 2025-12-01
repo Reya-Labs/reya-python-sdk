@@ -24,6 +24,7 @@ class MarketResource:
         self._all_markets_summary = AllMarketsSummaryResource(socket)
         self._market_summary = MarketSummaryResource(socket)
         self._market_perp_executions = MarketPerpExecutionsResource(socket)
+        self._market_spot_executions = MarketSpotExecutionsResource(socket)
         self._market_depth = MarketDepthResource(socket)
 
     @property
@@ -52,6 +53,17 @@ class MarketResource:
             A subscription object for the specified market perpetual executions.
         """
         return self._market_perp_executions.for_symbol(symbol)
+
+    def spot_executions(self, symbol: str) -> "MarketSpotExecutionsSubscription":
+        """Get spot executions for a specific symbol.
+
+        Args:
+            symbol: The trading symbol (e.g., "WETHRUSD", "BTCRUSD").
+
+        Returns:
+            A subscription object for the specified market spot executions.
+        """
+        return self._market_spot_executions.for_symbol(symbol)
 
     def depth(self, symbol: str) -> "MarketDepthSubscription":
         """Get L2 market depth (orderbook) for a specific symbol.
@@ -192,6 +204,56 @@ class MarketPerpExecutionsSubscription:
 
     def unsubscribe(self) -> None:
         """Unsubscribe from market perpetual executions."""
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class MarketSpotExecutionsResource(SubscribableParameterizedResource):
+    """Resource for accessing market spot executions."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        """Initialize the market spot executions resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket, "/v2/market/{symbol}/spotExecutions")
+
+    def for_symbol(self, symbol: str) -> "MarketSpotExecutionsSubscription":
+        """Create a subscription for a specific market's spot executions.
+
+        Args:
+            symbol: The trading symbol (e.g., "WETHRUSD", "BTCRUSD").
+
+        Returns:
+            A subscription object for the specified market spot executions.
+        """
+        return MarketSpotExecutionsSubscription(self.socket, symbol)
+
+
+class MarketSpotExecutionsSubscription:
+    """Manages a subscription to market spot executions for a specific symbol."""
+
+    def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a market spot executions subscription.
+
+        Args:
+            socket: The WebSocket connection to use for this subscription.
+            symbol: The trading symbol (e.g., "WETHRUSD", "BTCRUSD").
+        """
+        self.socket = socket
+        self.symbol = symbol
+        self.path = f"/v2/market/{symbol}/spotExecutions"
+
+    def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to market spot executions.
+
+        Args:
+            batched: Whether to receive updates in batches.
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self) -> None:
+        """Unsubscribe from market spot executions."""
         self.socket.send_unsubscribe(channel=self.path)
 
 
