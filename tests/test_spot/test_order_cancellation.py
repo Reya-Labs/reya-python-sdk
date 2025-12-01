@@ -400,3 +400,54 @@ async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
 
     logger.info("✅ SPOT CANCEL BY CLIENT ORDER ID TEST COMPLETED")
 
+
+@pytest.mark.spot
+@pytest.mark.cancel
+@pytest.mark.asyncio
+async def test_spot_mass_cancel_no_orders(reya_tester: ReyaTester):
+    """
+    Test mass cancel when no orders exist for the account/market.
+
+    Flow:
+    1. Ensure no open orders exist
+    2. Execute mass cancel
+    3. Verify response indicates 0 orders cancelled
+    4. Verify no errors are raised
+    """
+    logger.info("=" * 80)
+    logger.info(f"SPOT MASS CANCEL NO ORDERS TEST: {SPOT_SYMBOL}")
+    logger.info("=" * 80)
+
+    # Ensure no open orders exist
+    await reya_tester.close_active_orders(fail_if_none=False)
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ Confirmed no open orders exist")
+
+    # Execute mass cancel on empty order book (for this account)
+    logger.info("Executing mass cancel with no orders...")
+    response = await reya_tester.client.mass_cancel(
+        symbol=SPOT_SYMBOL,
+        account_id=reya_tester.account_id
+    )
+
+    # Verify response
+    logger.info(f"Mass cancel response: {response}")
+
+    # The response should indicate 0 orders were cancelled
+    if hasattr(response, 'cancelled_count'):
+        assert response.cancelled_count == 0, \
+            f"Expected 0 cancelled orders, got {response.cancelled_count}"
+        logger.info("✅ Response correctly shows 0 orders cancelled")
+    elif hasattr(response, 'cancelledCount'):
+        assert response.cancelledCount == 0, \
+            f"Expected 0 cancelled orders, got {response.cancelledCount}"
+        logger.info("✅ Response correctly shows 0 orders cancelled")
+    else:
+        # If response doesn't have count, just verify no error was raised
+        logger.info("✅ Mass cancel succeeded without error (no count in response)")
+
+    # Verify still no open orders
+    await reya_tester.check_no_open_orders()
+
+    logger.info("✅ SPOT MASS CANCEL NO ORDERS TEST COMPLETED")
+

@@ -132,6 +132,11 @@ class ReyaTester:
         self.ws.last_spot_execution = value
 
     @property
+    def ws_spot_executions(self):
+        """Backward compatibility."""
+        return self.ws.spot_executions
+
+    @property
     def ws_order_changes(self):
         """Backward compatibility."""
         return self.ws.order_changes
@@ -185,6 +190,9 @@ class ReyaTester:
 
     def clear_balance_updates(self):
         self.ws.clear_balance_updates()
+
+    def clear_spot_executions(self):
+        self.ws.clear_spot_executions()
 
     def get_balance_updates_for_account(self, account_id: int):
         return self.ws.get_balance_updates_for_account(account_id)

@@ -26,6 +26,7 @@ class WebSocketState:
         # State tracking
         self.last_trade: Optional[PerpExecution] = None
         self.last_spot_execution: Optional[SpotExecution] = None
+        self.spot_executions: list[SpotExecution] = []  # All spot executions received
         self.order_changes: dict[str, Order] = {}
         self.positions: dict[str, Position] = {}
         self.balances: dict[str, AccountBalance] = {}
@@ -37,6 +38,7 @@ class WebSocketState:
         """Clear all WebSocket state."""
         self.last_trade = None
         self.last_spot_execution = None
+        self.spot_executions.clear()
         self.order_changes.clear()
         self.positions.clear()
         self.balances.clear()
@@ -48,6 +50,12 @@ class WebSocketState:
         """Clear the list of balance updates."""
         self.balance_updates.clear()
         logger.debug("Cleared WebSocket balance updates")
+
+    def clear_spot_executions(self) -> None:
+        """Clear the list of spot executions."""
+        self.spot_executions.clear()
+        self.last_spot_execution = None
+        logger.debug("Cleared WebSocket spot executions")
 
     def get_balance_updates_for_account(self, account_id: int) -> list[AccountBalance]:
         """Get all balance updates for a specific account."""
@@ -110,6 +118,7 @@ class WebSocketState:
                     execution = SpotExecution.from_dict(e)
                     assert execution is not None
                     self.last_spot_execution = execution
+                    self.spot_executions.append(execution)
 
             if "orderChanges" in channel:
                 for o in message["data"]:

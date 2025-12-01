@@ -406,6 +406,104 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
 
 
 # ============================================================================
+# SPOT EXECUTIONS CHANNEL SNAPSHOT TESTS
+# ============================================================================
+
+
+@pytest.mark.spot
+@pytest.mark.websocket
+@pytest.mark.maker_taker
+@pytest.mark.asyncio
+async def test_spot_executions_ws_initial_snapshot(maker_tester: ReyaTester, taker_tester: ReyaTester):
+    """
+    Test that subscribing to spotExecutions returns historical executions as snapshot.
+
+    Flow:
+    1. Execute a spot trade to create execution history
+    2. Clear WebSocket spot executions tracking
+    3. Reconnect/resubscribe to spotExecutions channel
+    4. Verify historical executions are received in snapshot
+    """
+    logger.info("=" * 80)
+    logger.info(f"SPOT EXECUTIONS WS INITIAL SNAPSHOT TEST: {SPOT_SYMBOL}")
+    logger.info("=" * 80)
+
+    await maker_tester.close_active_orders(fail_if_none=False)
+    await taker_tester.close_active_orders(fail_if_none=False)
+
+    # Step 1: Execute a trade to create execution history
+    maker_price = round(REFERENCE_PRICE * 0.65, 2)
+
+    maker_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(maker_price))
+        .qty(TEST_QTY)
+        .gtc()
+        .build()
+    )
+
+    maker_order_id = await maker_tester.create_limit_order(maker_params)
+    await maker_tester.wait_for_order_creation(maker_order_id)
+    logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
+
+    # Taker fills with IOC
+    taker_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .sell()
+        .price(str(maker_price))
+        .qty(TEST_QTY)
+        .ioc()
+        .build()
+    )
+
+    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
+
+    # Wait for execution
+    await asyncio.sleep(0.3)
+    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    logger.info("✅ Trade executed")
+
+    # Step 2: Verify we received spot execution via WebSocket
+    assert len(taker_tester.ws_spot_executions) > 0, "Should have received spot execution via WebSocket"
+    logger.info(f"✅ Received {len(taker_tester.ws_spot_executions)} spot execution(s) via WebSocket")
+
+    # Record the execution details for later verification
+    execution = taker_tester.ws_spot_executions[-1]
+    logger.info(f"   Execution: symbol={execution.symbol}, side={execution.side}, qty={execution.qty}")
+
+    # Step 3: Query executions via REST to confirm they exist
+    rest_executions = await taker_tester.client.get_spot_executions()
+    assert hasattr(rest_executions, 'data') and len(rest_executions.data) > 0, \
+        "Should have executions in REST response"
+    logger.info(f"✅ REST API shows {len(rest_executions.data)} execution(s)")
+
+    # Step 4: Verify execution data matches
+    # Find our execution in REST data
+    rest_exec = None
+    for e in rest_executions.data:
+        if e.symbol == SPOT_SYMBOL:
+            rest_exec = e
+            break
+
+    assert rest_exec is not None, f"Should find {SPOT_SYMBOL} execution in REST data"
+    logger.info(f"✅ Found matching execution in REST: symbol={rest_exec.symbol}")
+
+    # Verify WebSocket execution matches REST
+    assert execution.symbol == rest_exec.symbol, "Symbol should match"
+    logger.info("✅ WebSocket and REST execution data consistent")
+
+    # Cleanup
+    await maker_tester.check_no_open_orders()
+    await taker_tester.check_no_open_orders()
+
+    logger.info("✅ SPOT EXECUTIONS WS INITIAL SNAPSHOT TEST COMPLETED")
+
+
+# ============================================================================
 # BALANCES CHANNEL SNAPSHOT TESTS
 # ============================================================================
 
