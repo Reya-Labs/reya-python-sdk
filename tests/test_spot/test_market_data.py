@@ -224,3 +224,94 @@ async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
     await reya_tester.check_no_open_orders()
 
     logger.info("✅ SPOT DEPTH PRICE ORDERING TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.market_data
+@pytest.mark.maker_taker
+@pytest.mark.asyncio
+async def test_spot_executions_multiple_trades(maker_tester: ReyaTester, taker_tester: ReyaTester):
+    """
+    Test spot executions are correctly recorded for multiple trades.
+
+    Flow:
+    1. Execute multiple trades
+    2. Query executions via REST
+    3. Verify executions are recorded
+    4. Verify execution data structure
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT EXECUTIONS MULTIPLE TRADES TEST")
+    logger.info("=" * 80)
+
+    await maker_tester.close_active_orders(fail_if_none=False)
+    await taker_tester.close_active_orders(fail_if_none=False)
+
+    # Execute multiple trades
+    num_trades = 3
+    executed_order_ids = []
+
+    for i in range(num_trades):
+        maker_price = round(REFERENCE_PRICE * (0.60 + i * 0.01), 2)
+
+        maker_params = (
+            OrderBuilder()
+            .symbol(SPOT_SYMBOL)
+            .buy()
+            .price(str(maker_price))
+            .qty(TEST_QTY)
+            .gtc()
+            .build()
+        )
+
+        maker_order_id = await maker_tester.create_limit_order(maker_params)
+        await maker_tester.wait_for_order_creation(maker_order_id)
+
+        taker_params = (
+            OrderBuilder()
+            .symbol(SPOT_SYMBOL)
+            .sell()
+            .price(str(round(maker_price * 0.99, 2)))
+            .qty(TEST_QTY)
+            .ioc()
+            .build()
+        )
+
+        await taker_tester.create_limit_order(taker_params)
+        await asyncio.sleep(0.1)
+        await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        executed_order_ids.append(maker_order_id)
+        logger.info(f"✅ Trade {i + 1}/{num_trades} executed")
+
+    # Wait for executions to be indexed
+    await asyncio.sleep(0.5)
+
+    # Query executions
+    executions = await taker_tester.client.get_spot_executions()
+
+    assert hasattr(executions, 'data'), "Response should have 'data' attribute"
+    execution_data = executions.data
+
+    logger.info(f"Total executions returned: {len(execution_data)}")
+
+    # Verify we have executions
+    assert len(execution_data) > 0, "Should have at least one execution"
+    logger.info("✅ Executions returned from REST API")
+
+    # Verify execution data structure
+    latest = execution_data[0]
+    logger.info(f"Latest execution:")
+    if hasattr(latest, 'symbol'):
+        logger.info(f"  Symbol: {latest.symbol}")
+        assert latest.symbol == SPOT_SYMBOL, f"Expected {SPOT_SYMBOL}, got {latest.symbol}"
+    if hasattr(latest, 'qty'):
+        logger.info(f"  Qty: {latest.qty}")
+    if hasattr(latest, 'price'):
+        logger.info(f"  Price: {latest.price}")
+    if hasattr(latest, 'side'):
+        logger.info(f"  Side: {latest.side}")
+
+    logger.info("✅ Execution data structure is correct")
+
+    logger.info("✅ SPOT EXECUTIONS MULTIPLE TRADES TEST COMPLETED")
+

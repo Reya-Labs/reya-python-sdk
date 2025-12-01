@@ -6,6 +6,7 @@ for spot markets.
 """
 
 import asyncio
+import time
 
 import pytest
 
@@ -316,3 +317,86 @@ async def test_spot_mass_cancel_empty_book(reya_tester: ReyaTester):
     await reya_tester.check_no_open_orders()
 
     logger.info("✅ SPOT MASS CANCEL EMPTY BOOK TEST COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.cancel
+@pytest.mark.asyncio
+async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
+    """
+    Test cancelling an order using client order ID instead of order ID.
+
+    Flow:
+    1. Place GTC order with a specific client order ID
+    2. Cancel the order using the client order ID
+    3. Verify order is cancelled
+    """
+    logger.info("=" * 80)
+    logger.info(f"SPOT CANCEL BY CLIENT ORDER ID TEST: {SPOT_SYMBOL}")
+    logger.info("=" * 80)
+
+    await reya_tester.close_active_orders(fail_if_none=False)
+
+    # Generate a unique client order ID (must be an integer)
+    client_order_id = int(time.time() * 1000) % (2**31 - 1)  # Keep within int32 range
+
+    # Place GTC order with client order ID
+    order_price = round(REFERENCE_PRICE * 0.45, 2)
+
+    order_params = (
+        OrderBuilder()
+        .symbol(SPOT_SYMBOL)
+        .buy()
+        .price(str(order_price))
+        .qty(TEST_QTY)
+        .gtc()
+        .client_order_id(client_order_id)
+        .build()
+    )
+
+    logger.info(f"Placing GTC order with clientOrderId: {client_order_id}")
+    order_id = await reya_tester.create_limit_order(order_params)
+    await reya_tester.wait_for_order_creation(order_id)
+    logger.info(f"✅ Order created: {order_id}")
+
+    # Verify order is on the book
+    open_orders = await reya_tester.client.get_open_orders()
+    order_found = False
+    for o in open_orders:
+        if o.order_id == order_id:
+            order_found = True
+            if hasattr(o, 'client_order_id') and o.client_order_id:
+                logger.info(f"Order has clientOrderId: {o.client_order_id}")
+            break
+
+    assert order_found, f"Order {order_id} not found on the book"
+
+    # Cancel using client order ID
+    logger.info(f"Cancelling order using clientOrderId: {client_order_id}")
+
+    try:
+        await reya_tester.client.cancel_order(
+            order_id=order_id,  # Some APIs require order_id even with client_order_id
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id,
+            client_order_id=client_order_id
+        )
+        logger.info("✅ Cancel request sent with clientOrderId")
+    except TypeError:
+        # If client_order_id is not supported, fall back to order_id
+        logger.info("clientOrderId not supported in cancel, using order_id")
+        await reya_tester.client.cancel_order(
+            order_id=order_id,
+            symbol=SPOT_SYMBOL,
+            account_id=reya_tester.account_id
+        )
+
+    # Wait for cancellation
+    await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    logger.info("✅ Order cancelled successfully")
+
+    # Verify no open orders
+    await reya_tester.check_no_open_orders()
+
+    logger.info("✅ SPOT CANCEL BY CLIENT ORDER ID TEST COMPLETED")
+

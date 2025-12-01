@@ -82,6 +82,20 @@ class WebSocketState:
         if message_type == "subscribed":
             channel = message.get("channel", "unknown")
             logger.info(f"✅ Subscribed to {channel}")
+            
+            # Handle initial snapshot for depth channel
+            if "depth" in channel and "contents" in message:
+                contents = message["contents"]
+                symbol = contents.get("symbol") or channel.split("/")[3]
+                # Normalize snapshot format (px/qty -> price/quantity)
+                normalized = {
+                    "type": contents.get("type", "SNAPSHOT"),
+                    "bids": [{"price": b.get("px", b.get("price")), "quantity": b.get("qty", b.get("quantity"))} for b in contents.get("bids", [])],
+                    "asks": [{"price": a.get("px", a.get("price")), "quantity": a.get("qty", a.get("quantity"))} for a in contents.get("asks", [])],
+                    "updatedAt": contents.get("updatedAt")
+                }
+                self.last_depth[symbol] = normalized
+                logger.info(f"Stored depth snapshot for {symbol}: {len(normalized['bids'])} bids, {len(normalized['asks'])} asks")
         elif message_type == "channel_data":
             channel = message.get("channel", "unknown")
 
@@ -120,7 +134,35 @@ class WebSocketState:
             if "depth" in channel:
                 depth_data = message["data"]
                 symbol = channel.split("/")[3]
-                self.last_depth[symbol] = depth_data
+                # Normalize update format and merge with existing depth
+                existing = self.last_depth.get(symbol, {"bids": [], "asks": []})
+                
+                # Process bid updates
+                for update in depth_data.get("bids", []):
+                    price = update.get("price")
+                    qty = update.get("quantity", "0")
+                    # Remove existing entry at this price
+                    existing["bids"] = [b for b in existing.get("bids", []) if b.get("price") != price]
+                    # Add if quantity > 0
+                    if float(qty) > 0:
+                        existing["bids"].append({"price": price, "quantity": qty})
+                
+                # Process ask updates
+                for update in depth_data.get("asks", []):
+                    price = update.get("price")
+                    qty = update.get("quantity", "0")
+                    # Remove existing entry at this price
+                    existing["asks"] = [a for a in existing.get("asks", []) if a.get("price") != price]
+                    # Add if quantity > 0
+                    if float(qty) > 0:
+                        existing["asks"].append({"price": price, "quantity": qty})
+                
+                # Sort bids descending, asks ascending
+                existing["bids"] = sorted(existing.get("bids", []), key=lambda x: float(x.get("price", 0)), reverse=True)
+                existing["asks"] = sorted(existing.get("asks", []), key=lambda x: float(x.get("price", 0)))
+                existing["updatedAt"] = depth_data.get("updatedAt")
+                
+                self.last_depth[symbol] = existing
 
         elif message_type == "ping":
             ws.send(json.dumps({"type": "pong"}))
