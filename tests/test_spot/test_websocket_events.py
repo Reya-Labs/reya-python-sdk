@@ -67,10 +67,7 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
     await reya_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
-    # Wait for WebSocket event
-    await asyncio.sleep(0.1)
-
-    # Verify order change event using ReyaTester method
+    # Verify order change event using ReyaTester method (wait_for_order_creation already waits for WS)
     reya_tester.check_ws_order_change_received(
         order_id=order_id,
         expected_symbol=SPOT_SYMBOL,
@@ -286,17 +283,18 @@ async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: R
     logger.info(f"Taker placing IOC sell: {TEST_QTY} @ ${taker_price:.2f}")
     await taker_tester.create_limit_order(taker_params)
 
-    # Wait for execution
-    await asyncio.sleep(0.05)
+    # Wait for spot execution event via WebSocket (with proper timeout)
+    from tests.helpers.reya_tester import limit_order_params_to_order
+    expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
+    execution = await taker_tester.wait_for_spot_execution(expected_order, timeout=5)
 
-    # Verify spot execution event using ReyaTester method
-    # Execution price should be the maker's price (exact match)
-    taker_tester.check_ws_spot_execution_received(
-        expected_symbol=SPOT_SYMBOL,
-        expected_side="A",  # Taker was selling
-        expected_qty=TEST_QTY,
-        expected_price=str(maker_price),
-    )
+    # Verify spot execution details
+    assert execution is not None, "No spot execution event received via WebSocket"
+    assert execution.symbol == SPOT_SYMBOL
+    assert execution.side.value == "A"  # Taker was selling
+    assert execution.qty == TEST_QTY
+    assert float(execution.price) == maker_price  # Compare as floats to handle "325" vs "325.0"
+    logger.info(f"✅ Spot execution received: {execution.order_id}")
 
     # Verify no open orders
     await maker_tester.check_no_open_orders()
@@ -364,8 +362,9 @@ async def test_spot_ws_balance_updates(maker_tester: ReyaTester, taker_tester: R
     logger.info(f"Taker placing IOC sell: {TEST_QTY} @ ${taker_price:.2f}")
     await taker_tester.create_limit_order(taker_params)
 
-    # Wait for trade and balance updates
-    await asyncio.sleep(0.05)
+    # Wait for balance updates via WebSocket (with proper timeout)
+    await maker_tester.wait_for_balance_updates(maker_initial_count, min_updates=1, timeout=5.0)
+    await taker_tester.wait_for_balance_updates(taker_initial_count, min_updates=1, timeout=5.0)
 
     # Verify balance updates using ReyaTester methods
     maker_tester.check_ws_balance_updates_received(

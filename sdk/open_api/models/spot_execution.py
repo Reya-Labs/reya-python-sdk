@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
 from sdk.open_api.models.execution_type import ExecutionType
 from sdk.open_api.models.side import Side
@@ -33,11 +33,11 @@ class SpotExecution(BaseModel):
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     maker_account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="makerAccountId")
-    order_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="orderId")
-    maker_order_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="makerOrderId")
+    order_id: StrictStr = Field(description="Order ID for the taker", alias="orderId")
+    maker_order_id: StrictStr = Field(description="Order ID for the maker", alias="makerOrderId")
     side: Side
     qty: Annotated[str, Field(strict=True)]
-    price: Optional[Annotated[str, Field(strict=True)]] = None
+    price: Annotated[str, Field(strict=True)]
     fee: Annotated[str, Field(strict=True)]
     type: ExecutionType
     timestamp: Annotated[int, Field(strict=True, ge=0)]
@@ -61,9 +61,6 @@ class SpotExecution(BaseModel):
     @field_validator('price')
     def price_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if value is None:
-            return value
-
         if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
             raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value

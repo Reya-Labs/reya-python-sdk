@@ -7,7 +7,6 @@ This test uses TWO separate accounts to verify the complete spot trading flow:
 """
 
 import asyncio
-import time
 
 import pytest
 
@@ -127,7 +126,6 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
         .build()
     )
 
-    start_timestamp = int(time.time() * 1000)
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
     logger.info(f"Created taker order with ID: {taker_order_id} at price ${taker_price:.2f}")
 
@@ -135,7 +133,10 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     logger.info("\n⏳ Step 4: Waiting for spot execution...")
     expected_taker_order = limit_order_params_to_order(taker_order_params, taker_tester.account_id)
 
-    taker_execution = await taker_tester.wait_for_spot_execution(expected_taker_order)
+    # Match by order_id to avoid picking up stale executions from previous tests
+    taker_execution = await taker_tester.wait_for_spot_execution(
+        expected_taker_order, order_id=taker_order_id
+    )
     logger.info(f"✅ Taker execution confirmed: {taker_execution.order_id}")
 
     await taker_tester.check_spot_execution(taker_execution, expected_taker_order)

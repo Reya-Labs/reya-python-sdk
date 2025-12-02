@@ -75,7 +75,7 @@ async def reya_tester(reya_tester_session):
     # Clear WebSocket tracking state for fresh test
     reya_tester_session.ws_order_changes.clear()
     reya_tester_session.ws_balance_updates.clear()
-    reya_tester_session.ws_last_spot_execution = None
+    reya_tester_session.ws.clear_spot_executions()  # Clear all spot executions
     reya_tester_session.ws_last_trade = None
     
     yield reya_tester_session
@@ -168,7 +168,7 @@ async def maker_tester(maker_tester_session):
     await maker_tester_session.close_active_orders(fail_if_none=False)
     maker_tester_session.ws_order_changes.clear()
     maker_tester_session.ws_balance_updates.clear()
-    maker_tester_session.ws_last_spot_execution = None
+    maker_tester_session.ws.clear_spot_executions()  # Clear all spot executions
     maker_tester_session.ws_last_trade = None
     
     yield maker_tester_session
@@ -184,7 +184,7 @@ async def taker_tester(taker_tester_session):
     await taker_tester_session.close_active_orders(fail_if_none=False)
     taker_tester_session.ws_order_changes.clear()
     taker_tester_session.ws_balance_updates.clear()
-    taker_tester_session.ws_last_spot_execution = None
+    taker_tester_session.ws.clear_spot_executions()  # Clear all spot executions
     taker_tester_session.ws_last_trade = None
     
     yield taker_tester_session

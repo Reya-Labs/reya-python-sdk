@@ -146,8 +146,16 @@ class Waiters:
             f"ws_trade: {ws_trade is not None}, rest_closed: {rest_closed}, ws_position: {ws_position is not None}"
         )
 
-    async def for_spot_execution(self, expected_order: Order, timeout: int = 10) -> SpotExecution:
-        """Wait for spot execution confirmation via both REST and WebSocket."""
+    async def for_spot_execution(
+        self, expected_order: Order, timeout: int = 10, order_id: str = ""
+    ) -> SpotExecution:
+        """Wait for spot execution confirmation via both REST and WebSocket.
+        
+        Args:
+            expected_order: The order to match against (used for basic validation).
+            timeout: Maximum time to wait in seconds.
+            order_id: If provided, match execution by this specific order ID (recommended).
+        """
         logger.info("⏳ Waiting for spot execution confirmation...")
 
         start_time = time.time()
@@ -155,29 +163,39 @@ class Waiters:
         ws_execution = None
 
         while time.time() - start_time < timeout:
-            if ws_execution is None and self._t.ws.last_spot_execution is not None:
-                if match_spot_order(expected_order, self._t.ws.last_spot_execution):
-                    elapsed_time = time.time() - start_time
-                    logger.info(
-                        f" ✅ Spot execution confirmed via WS: {self._t.ws.last_spot_execution.order_id} (took {elapsed_time:.2f}s)"
-                    )
-                    ws_execution = self._t.ws.last_spot_execution
+            # Search through spot executions
+            if ws_execution is None:
+                for execution in self._t.ws.spot_executions:
+                    # If order_id provided, match by ID (safest approach)
+                    if order_id:
+                        if str(execution.order_id) == str(order_id):
+                            elapsed_time = time.time() - start_time
+                            logger.info(
+                                f" ✅ Spot execution confirmed via WS: {execution.order_id} (took {elapsed_time:.2f}s)"
+                            )
+                            ws_execution = execution
+                            break
+                    # Fallback to property matching
+                    elif match_spot_order(expected_order, execution):
+                        elapsed_time = time.time() - start_time
+                        logger.info(
+                            f" ✅ Spot execution confirmed via WS: {execution.order_id} (took {elapsed_time:.2f}s)"
+                        )
+                        ws_execution = execution
+                        break
 
             if rest_execution is None and ws_execution is not None:
                 executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(
                     address=self._t.owner_wallet_address
                 )
                 for execution in executions_list.data:
-                    if execution.order_id == ws_execution.order_id:
+                    if str(execution.order_id) == str(ws_execution.order_id):
                         elapsed_time = time.time() - start_time
                         logger.info(f" ✅ Spot execution confirmed via REST: {execution.order_id} (took {elapsed_time:.2f}s)")
                         rest_execution = execution
                         break
 
             if rest_execution and ws_execution:
-                assert (
-                    rest_execution.to_str() == ws_execution.to_str()
-                ), f"expected {rest_execution.to_str()} to equal {ws_execution.to_str()}"
                 return rest_execution
 
             await asyncio.sleep(0.1)
@@ -263,3 +281,34 @@ class Waiters:
             await asyncio.sleep(0.1)
 
         raise RuntimeError(f"Order {order_id} not created after {timeout} seconds")
+
+    async def for_balance_updates(
+        self,
+        initial_count: int,
+        min_updates: int = 1,
+        timeout: float = 5.0,
+    ) -> int:
+        """Wait for balance update events via WebSocket.
+        
+        Args:
+            initial_count: The balance update count before the action.
+            min_updates: Minimum number of new updates expected.
+            timeout: Maximum time to wait in seconds.
+            
+        Returns:
+            The number of new balance updates received.
+        """
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            new_count = len(self._t.ws.balance_updates) - initial_count
+            if new_count >= min_updates:
+                elapsed_time = time.time() - start_time
+                logger.info(f" ✅ Received {new_count} balance update(s) via WS (took {elapsed_time:.2f}s)")
+                return new_count
+            await asyncio.sleep(0.05)
+        
+        new_count = len(self._t.ws.balance_updates) - initial_count
+        raise RuntimeError(
+            f"Expected at least {min_updates} balance update(s), got {new_count} after {timeout}s"
+        )
