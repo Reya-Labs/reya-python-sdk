@@ -79,9 +79,9 @@ async def test_spot_ioc_full_fill(maker_tester: ReyaTester, taker_tester: ReyaTe
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
     logger.info(f"Taker IOC order sent: {taker_order_id}")
 
-    # Step 3: Wait for execution
+    # Step 3: Wait for execution (strict matching on order_id and all fields)
     expected_taker_order = limit_order_params_to_order(taker_order_params, taker_tester.account_id)
-    execution = await taker_tester.wait_for_spot_execution(expected_taker_order)
+    execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_taker_order)
     
     # Step 4: Verify execution
     await taker_tester.check_spot_execution(execution, expected_taker_order)

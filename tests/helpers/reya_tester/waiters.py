@@ -11,7 +11,12 @@ from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 
-from tests.helpers.utils import match_order, match_spot_order
+from tests.helpers.utils import (
+    match_order,
+    match_spot_order,
+    validate_spot_execution_fields,
+    validate_order_change_fields,
+)
 
 if TYPE_CHECKING:
     from .tester import ReyaTester
@@ -147,41 +152,48 @@ class Waiters:
         )
 
     async def for_spot_execution(
-        self, expected_order: Order, timeout: int = 10, order_id: str = ""
+        self, order_id: str, expected_order: Order, timeout: int = 10
     ) -> SpotExecution:
         """Wait for spot execution confirmation via both REST and WebSocket.
         
+        Performs strict matching on order_id and validates all important fields.
+        
         Args:
-            expected_order: The order to match against (used for basic validation).
+            order_id: The order ID to match (required).
+            expected_order: The expected order to validate against.
             timeout: Maximum time to wait in seconds.
-            order_id: If provided, match execution by this specific order ID (recommended).
         """
-        logger.info("⏳ Waiting for spot execution confirmation...")
+        if not order_id:
+            raise ValueError("order_id is required for reliable execution matching")
+        
+        logger.info(f"⏳ Waiting for spot execution (order_id={order_id})...")
 
         start_time = time.time()
         rest_execution = None
         ws_execution = None
 
+        # Set order_id on expected_order for matching
+        expected_order.order_id = order_id
+
         while time.time() - start_time < timeout:
-            # Search through spot executions
+            # Search through spot executions by order_id
             if ws_execution is None:
                 for execution in self._t.ws.spot_executions:
-                    # If order_id provided, match by ID (safest approach)
-                    if order_id:
-                        if str(execution.order_id) == str(order_id):
-                            elapsed_time = time.time() - start_time
+                    if str(execution.order_id) == str(order_id):
+                        elapsed_time = time.time() - start_time
+                        
+                        # Validate all fields match expected order
+                        if match_spot_order(execution, expected_order):
                             logger.info(
-                                f" ✅ Spot execution confirmed via WS: {execution.order_id} (took {elapsed_time:.2f}s)"
+                                f" ✅ Spot execution confirmed via WS: order_id={order_id} (took {elapsed_time:.2f}s)"
                             )
                             ws_execution = execution
-                            break
-                    # Fallback to property matching
-                    elif match_spot_order(expected_order, execution):
-                        elapsed_time = time.time() - start_time
-                        logger.info(
-                            f" ✅ Spot execution confirmed via WS: {execution.order_id} (took {elapsed_time:.2f}s)"
-                        )
-                        ws_execution = execution
+                        else:
+                            # Log validation errors
+                            validation_errors = validate_spot_execution_fields(execution, expected_order)
+                            for error in validation_errors:
+                                logger.warning(f"   ⚠️ Validation: {error}")
+                            ws_execution = execution  # Still use it, but warn
                         break
 
             if rest_execution is None and ws_execution is not None:
@@ -189,9 +201,9 @@ class Waiters:
                     address=self._t.owner_wallet_address
                 )
                 for execution in executions_list.data:
-                    if str(execution.order_id) == str(ws_execution.order_id):
+                    if str(execution.order_id) == str(order_id):
                         elapsed_time = time.time() - start_time
-                        logger.info(f" ✅ Spot execution confirmed via REST: {execution.order_id} (took {elapsed_time:.2f}s)")
+                        logger.info(f" ✅ Spot execution confirmed via REST: order_id={order_id} (took {elapsed_time:.2f}s)")
                         rest_execution = execution
                         break
 
@@ -201,7 +213,8 @@ class Waiters:
             await asyncio.sleep(0.1)
 
         raise RuntimeError(
-            f"Spot execution not confirmed after {timeout} seconds, rest: {rest_execution is not None}, ws: {ws_execution is not None}"
+            f"Spot execution not confirmed after {timeout} seconds, "
+            f"order_id={order_id}, rest: {rest_execution is not None}, ws: {ws_execution is not None}"
         )
 
     async def for_order_state(self, order_id: str, expected_status: OrderStatus, timeout: int = 10) -> str:
@@ -245,9 +258,17 @@ class Waiters:
 
         raise RuntimeError(f"Order {order_id} did not reach {expected_status.value} state after {timeout} seconds")
 
-    async def for_order_creation(self, order_id: str, timeout: int = 10) -> Order:
-        """Wait for order creation confirmation."""
-        logger.debug("⏳ Waiting for order creation...")
+    async def for_order_creation(
+        self, order_id: str, expected_order: Optional[Order] = None, timeout: int = 10
+    ) -> Order:
+        """Wait for order creation confirmation via REST and WebSocket.
+        
+        Args:
+            order_id: The order ID to wait for (required).
+            expected_order: If provided, validates WS order fields match expected values.
+            timeout: Maximum time to wait in seconds.
+        """
+        logger.debug(f"⏳ Waiting for order creation (order_id={order_id})...")
 
         start_time = time.time()
         rest_order = None
@@ -258,26 +279,37 @@ class Waiters:
             for order in orders:
                 if rest_order is None and order.order_id == order_id:
                     elapsed_time = time.time() - start_time
-                    logger.info(f" ✅ Order created via REST: {order} (took {elapsed_time:.2f}s)")
+                    logger.info(f" ✅ Order created via REST: order_id={order_id} (took {elapsed_time:.2f}s)")
                     rest_order = order
                     break
 
             if ws_order is None and order_id in self._t.ws.order_changes:
                 ws_order = self._t.ws.order_changes[order_id]
-                if ws_order.status in ["OPEN", "PARTIALLY_FILLED"]:
+                ws_status = ws_order.status.value if hasattr(ws_order.status, 'value') else ws_order.status
+                if ws_status in ["OPEN", "PARTIALLY_FILLED"]:
                     elapsed_time = time.time() - start_time
-                    logger.info(f" ✅ Order created via WS: {ws_order} (took {elapsed_time:.2f}s)")
+                    logger.info(f" ✅ Order created via WS: order_id={order_id}, status={ws_status} (took {elapsed_time:.2f}s)")
+                    
+                    # Validate fields if expected_order provided
+                    if expected_order:
+                        expected_order.order_id = order_id
+                        validation_errors = validate_order_change_fields(ws_order, expected_order)
+                        if validation_errors:
+                            for error in validation_errors:
+                                logger.warning(f"   ⚠️ Validation: {error}")
 
             if rest_order and ws_order:
-                assert rest_order.order_id == ws_order.order_id
+                assert rest_order.order_id == ws_order.order_id, (
+                    f"Order ID mismatch: REST={rest_order.order_id}, WS={ws_order.order_id}"
+                )
                 return rest_order
             elif ws_order:
                 elapsed_time = time.time() - start_time
-                logger.info(f" ✅ Order created via WS only: {ws_order} (took {elapsed_time:.2f}s)")
+                logger.info(f" ✅ Order created via WS only: order_id={order_id} (took {elapsed_time:.2f}s)")
                 return ws_order
             elif rest_order:
                 elapsed_time = time.time() - start_time
-                logger.info(f" ✅ Order created via REST only: {rest_order} (took {elapsed_time:.2f}s)")
+                logger.info(f" ✅ Order created via REST only: order_id={order_id} (took {elapsed_time:.2f}s)")
                 return rest_order
 
             await asyncio.sleep(0.1)

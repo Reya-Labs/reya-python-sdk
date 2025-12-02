@@ -806,9 +806,9 @@ async def test_partial_fill_then_self_match_cancels_remainder(
     logger.info(f"Account 2 sending SELL @ ${account2_sell_price:.2f}, qty={taker_qty}...")
     account2_sell_id = await taker_tester.create_limit_order(account2_sell_params)
 
-    # Wait for execution using order_id (partial fill, so qty won't match expected)
+    # Wait for execution (strict matching on order_id and all fields)
     expected_order = limit_order_params_to_order(account2_sell_params, taker_tester.account_id)
-    execution = await taker_tester.wait_for_spot_execution(expected_order, timeout=5, order_id=account2_sell_id)
+    execution = await taker_tester.wait_for_spot_execution(account2_sell_id, expected_order, timeout=5)
     logger.info(f"✅ Execution: Account 2 SELL matched Account 1 BUY, qty={execution.qty}")
 
     # Step 4: Verify Account 1's BUY is filled
@@ -896,11 +896,11 @@ async def test_cross_account_match_works(maker_tester: ReyaTester, taker_tester:
         .ioc()
         .build()
     )
-    await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.create_limit_order(taker_params)
 
-    # Wait for execution
+    # Wait for execution (strict matching on order_id and all fields)
     expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
-    execution = await taker_tester.wait_for_spot_execution(expected_order)
+    execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_order)
     logger.info(f"✅ Execution: {execution.order_id}")
 
     # Verify maker filled
@@ -980,11 +980,11 @@ async def test_non_crossing_orders_can_match_other_accounts(
         .ioc()
         .build()
     )
-    await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.create_limit_order(taker_params)
 
-    # Wait for execution
+    # Wait for execution (strict matching on order_id and all fields)
     expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
-    execution = await taker_tester.wait_for_spot_execution(expected_order)
+    execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_order)
     logger.info(f"✅ Execution: {execution.order_id}")
 
     # Verify Account 1's buy filled, sell remains

@@ -281,12 +281,12 @@ async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: R
     )
 
     logger.info(f"Taker placing IOC sell: {TEST_QTY} @ ${taker_price:.2f}")
-    await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.create_limit_order(taker_params)
 
-    # Wait for spot execution event via WebSocket (with proper timeout)
+    # Wait for spot execution event via WebSocket (strict matching on order_id and all fields)
     from tests.helpers.reya_tester import limit_order_params_to_order
     expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
-    execution = await taker_tester.wait_for_spot_execution(expected_order, timeout=5)
+    execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_order, timeout=5)
 
     # Verify spot execution details
     assert execution is not None, "No spot execution event received via WebSocket"

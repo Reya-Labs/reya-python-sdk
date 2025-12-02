@@ -135,10 +135,8 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     logger.info("\n⏳ Step 4: Waiting for spot execution...")
     expected_taker_order = limit_order_params_to_order(taker_order_params, taker_tester.account_id)
 
-    # Match by order_id to avoid picking up stale executions from previous tests
-    taker_execution = await taker_tester.wait_for_spot_execution(
-        expected_taker_order, order_id=taker_order_id
-    )
+    # Strict matching on order_id and all fields
+    taker_execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_taker_order)
     logger.info(f"✅ Taker execution confirmed: {taker_execution.order_id}")
 
     await taker_tester.check_spot_execution(taker_execution, expected_taker_order)

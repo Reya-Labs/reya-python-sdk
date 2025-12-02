@@ -243,14 +243,14 @@ class ReyaTester:
     async def wait_for_closing_order_execution(self, expected_order, expected_qty=None, timeout: int = 10):
         return await self.wait.for_closing_order_execution(expected_order, expected_qty, timeout)
 
-    async def wait_for_spot_execution(self, expected_order, timeout: int = 10, order_id: str = ""):
-        return await self.wait.for_spot_execution(expected_order, timeout, order_id)
+    async def wait_for_spot_execution(self, order_id: str, expected_order, timeout: int = 10):
+        return await self.wait.for_spot_execution(order_id, expected_order, timeout)
 
     async def wait_for_order_state(self, order_id: str, expected_status, timeout: int = 10):
         return await self.wait.for_order_state(order_id, expected_status, timeout)
 
-    async def wait_for_order_creation(self, order_id: str, timeout: int = 10):
-        return await self.wait.for_order_creation(order_id, timeout)
+    async def wait_for_order_creation(self, order_id: str, expected_order=None, timeout: int = 10):
+        return await self.wait.for_order_creation(order_id, expected_order, timeout)
 
     async def wait_for_balance_updates(self, initial_count: int, min_updates: int = 1, timeout: float = 5.0):
         return await self.wait.for_balance_updates(initial_count, min_updates, timeout)
