@@ -24,6 +24,7 @@ from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
+from sdk.async_api.depth import Depth
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse
 from sdk.open_api.models.market_definition import MarketDefinition
@@ -688,7 +689,7 @@ class ReyaTradingClient:
 
         return await self.wallet.get_wallet_spot_executions(address=wallet)
 
-    async def get_market_depth(self, symbol: str) -> dict:
+    async def get_market_depth(self, symbol: str) -> Depth:
         """
         Get L2 market depth (orderbook) for a given symbol.
 
@@ -696,14 +697,7 @@ class ReyaTradingClient:
             symbol: Market symbol (e.g., 'WETHRUSD', 'BTCRUSD')
 
         Returns:
-            Market depth with bids and asks
-            {
-                "symbol": "WETHRUSD",
-                "type": "SNAPSHOT",
-                "bids": [{"price": "3996", "quantity": "0.0001"}],
-                "asks": [{"price": "4004", "quantity": "0.0001"}],
-                "updatedAt": 1234567890000000
-            }
+            Depth: Market depth with bids and asks (typed from spec)
 
         Raises:
             ValueError: If symbol is invalid or API returns an error
@@ -715,7 +709,8 @@ class ReyaTradingClient:
             async with session.get(url) as response:
                 if response.status != 200:
                     raise ValueError(f"Failed to get market depth: {response.status}")
-                return await response.json()
+                data = await response.json()
+                return Depth.model_validate(data)
 
     async def get_market_spot_executions(self, symbol: str) -> SpotExecutionList:
         """

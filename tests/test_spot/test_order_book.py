@@ -9,6 +9,8 @@ import asyncio
 
 import pytest
 
+from sdk.async_api.depth import Depth
+from sdk.async_api.level import Level
 from sdk.open_api.models.order_status import OrderStatus
 
 from tests.helpers import ReyaTester
@@ -49,7 +51,8 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
 
     # Get initial depth
     initial_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
-    initial_bid_count = len(initial_depth.get('bids', []))
+    assert isinstance(initial_depth, Depth), f"Expected Depth type, got {type(initial_depth)}"
+    initial_bid_count = len(initial_depth.bids)
     logger.info(f"Initial depth: {initial_bid_count} bids")
 
     # Place GTC buy order at specific price
@@ -75,15 +78,17 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
 
     # Get updated depth
     updated_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
-    bids = updated_depth.get('bids', [])
+    assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
+    bids = updated_depth.bids
     
-    # Find our order in bids
+    # Find our order in bids (using typed Level.px attribute)
     order_found = False
     for bid in bids:
-        bid_price = float(bid.get('price', 0))
+        assert isinstance(bid, Level), f"Expected Level type, got {type(bid)}"
+        bid_price = float(bid.px)
         if abs(bid_price - order_price) < 0.01:
             order_found = True
-            bid_qty = float(bid.get('quantity', 0))
+            bid_qty = float(bid.qty)
             logger.info(f"✅ Found order in depth: ${bid_price:.2f} x {bid_qty}")
             break
 
@@ -103,11 +108,11 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
 
     # Verify order removed from depth
     final_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
-    final_bids = final_depth.get('bids', [])
+    final_bids = final_depth.bids
     
     order_still_present = False
     for bid in final_bids:
-        bid_price = float(bid.get('price', 0))
+        bid_price = float(bid.px)
         if abs(bid_price - order_price) < 0.01:
             order_still_present = True
             break
@@ -162,13 +167,14 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
 
     # Get depth and verify aggregation
     depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
-    bids = depth.get('bids', [])
+    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    bids = depth.bids
     
     aggregated_qty = None
     for bid in bids:
-        bid_price = float(bid.get('price', 0))
+        bid_price = float(bid.px)
         if abs(bid_price - order_price) < 0.01:
-            aggregated_qty = float(bid.get('quantity', 0))
+            aggregated_qty = float(bid.qty)
             break
 
     expected_total = float(qty_per_order) * 2
@@ -257,24 +263,25 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
 
     # Get depth
     depth = await maker_tester.get_market_depth(SPOT_SYMBOL)
-    bids = depth.get('bids', [])
-    asks = depth.get('asks', [])
+    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    bids = depth.bids
+    asks = depth.asks
 
     logger.info(f"Depth: {len(bids)} bids, {len(asks)} asks")
 
-    # Find our orders
+    # Find our orders (using typed Level.px attribute)
     our_bid = None
     our_ask = None
     
     for bid in bids:
-        price = float(bid.get('price', 0))
+        price = float(bid.px)
         if abs(price - bid_price) < 1.0:  # Allow some tolerance
             our_bid = price
             logger.info(f"Found our bid at ${price:.2f}")
             break
     
     for ask in asks:
-        price = float(ask.get('price', 0))
+        price = float(ask.px)
         if abs(price - ask_price) < 1.0:  # Allow some tolerance
             our_ask = price
             logger.info(f"Found our ask at ${price:.2f}")

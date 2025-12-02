@@ -225,15 +225,17 @@ class Waiters:
                 rest_match = True
 
             ws_order = self._t.ws.order_changes.get(order_id)
-            if not ws_match and ws_order and ws_order.status == expected_status:
+            # Compare enum values (strings) since async_api and open_api have different enum classes
+            ws_status_value = ws_order.status.value if ws_order else None
+            if not ws_match and ws_order and ws_status_value == expected_status.value:
                 elapsed_time = time.time() - start_time
                 logger.info(
                     f" ✅ Order reached {expected_status.value} state via WS: {order_id} (took {elapsed_time:.2f}s)"
                 )
                 ws_match = True
-            if ws_order and ws_order.status != OrderStatus.OPEN and ws_order.status != expected_status:
+            if ws_order and ws_status_value != OrderStatus.OPEN.value and ws_status_value != expected_status.value:
                 raise RuntimeError(
-                    f"Order {order_id} reached {ws_order.status.value} state via WS, but expected {expected_status}"
+                    f"Order {order_id} reached {ws_status_value} state via WS, but expected {expected_status.value}"
                 )
 
             if rest_match and ws_match:

@@ -10,6 +10,7 @@ import asyncio
 
 import pytest
 
+from sdk.async_api.depth import Depth
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 
@@ -88,16 +89,17 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     await asyncio.sleep(0.05)
 
     depth = await maker_tester.get_market_depth(SPOT_SYMBOL)
-    logger.info(f"Market depth type: {depth.get('type', 'unknown')}")
-    logger.info(f"Bids: {len(depth.get('bids', []))} levels")
-    logger.info(f"Asks: {len(depth.get('asks', []))} levels")
+    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    logger.info(f"Market depth type: {depth.type}")
+    logger.info(f"Bids: {len(depth.bids)} levels")
+    logger.info(f"Asks: {len(depth.asks)} levels")
 
-    # Verify our maker order appears in the bids
-    bids = depth.get('bids', [])
+    # Verify our maker order appears in the bids (using typed Level.px/qty attributes)
+    bids = depth.bids
     maker_order_found = False
     for bid in bids:
-        bid_price = float(bid['price'])
-        bid_qty = float(bid['quantity'])
+        bid_price = float(bid.px)
+        bid_qty = float(bid.qty)
         logger.info(f"  Bid: ${bid_price:.2f} x {bid_qty:.6f}")
         if abs(bid_price - maker_price) < 0.01:
             maker_order_found = True
@@ -162,8 +164,6 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     quote_asset = "RUSD"
 
     maker_tester.verify_spot_trade_balance_changes(
-        maker_account_id=maker_tester.account_id,
-        taker_account_id=taker_tester.account_id,
         maker_initial_balances=maker_initial_balances,
         maker_final_balances=maker_final_balances,
         taker_initial_balances=taker_initial_balances,

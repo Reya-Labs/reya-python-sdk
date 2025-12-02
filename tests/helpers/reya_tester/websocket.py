@@ -1,15 +1,30 @@
-"""WebSocket state management for ReyaTester."""
+"""WebSocket state management for ReyaTester.
+
+This module uses async_api types directly from the WebSocket SDK.
+These types match the AsyncAPI spec and are auto-generated.
+"""
 
 from typing import TYPE_CHECKING, Optional
 import json
 import logging
 
-from sdk.open_api.models.account_balance import AccountBalance
-from sdk.open_api.models.order import Order
-from sdk.open_api.models.perp_execution import PerpExecution
-from sdk.open_api.models.position import Position
-from sdk.open_api.models.price import Price
-from sdk.open_api.models.spot_execution import SpotExecution
+# Import async_api types (auto-generated from AsyncAPI spec)
+from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
+from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.depth import Depth
+from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
+from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
+from sdk.async_api.order import Order as AsyncOrder
+from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
+from sdk.async_api.position import Position as AsyncPosition
+from sdk.async_api.position_update_payload import PositionUpdatePayload
+from sdk.async_api.spot_execution import SpotExecution as AsyncSpotExecution
+from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
+from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
+from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
+
+from sdk.reya_websocket import WebSocketMessage
 
 if TYPE_CHECKING:
     from .tester import ReyaTester
@@ -18,22 +33,25 @@ logger = logging.getLogger("reya.integration_tests")
 
 
 class WebSocketState:
-    """WebSocket state tracking and management."""
+    """WebSocket state tracking and management.
+    
+    Uses async_api types directly from WebSocket messages.
+    These types are auto-generated from the AsyncAPI spec.
+    """
 
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
         
-        # State tracking
-        self.last_trade: Optional[PerpExecution] = None
-        self.last_spot_execution: Optional[SpotExecution] = None
-        self.spot_executions: list[SpotExecution] = []  # All spot executions received (wallet-level)
-        self.market_spot_executions: dict[str, list[SpotExecution]] = {}  # Market-level spot executions by symbol
-        self.order_changes: dict[str, Order] = {}
-        self.positions: dict[str, Position] = {}
-        self.balances: dict[str, AccountBalance] = {}
-        self.balance_updates: list[AccountBalance] = []
-        self.current_prices: dict[str, Price] = {}
-        self.last_depth: dict[str, dict] = {}
+        # State tracking - using async_api types directly
+        self.last_trade: Optional[AsyncPerpExecution] = None
+        self.last_spot_execution: Optional[AsyncSpotExecution] = None
+        self.spot_executions: list[AsyncSpotExecution] = []  # All spot executions received (wallet-level)
+        self.market_spot_executions: dict[str, list[AsyncSpotExecution]] = {}  # Market-level spot executions by symbol
+        self.order_changes: dict[str, AsyncOrder] = {}
+        self.positions: dict[str, AsyncPosition] = {}
+        self.balances: dict[str, AsyncAccountBalance] = {}  # async_api AccountBalance
+        self.balance_updates: list[AsyncAccountBalance] = []
+        self.last_depth: dict[str, Depth] = {}
 
     def clear(self) -> None:
         """Clear all WebSocket state."""
@@ -45,7 +63,6 @@ class WebSocketState:
         self.positions.clear()
         self.balances.clear()
         self.balance_updates.clear()
-        self.current_prices.clear()
         self.last_depth.clear()
 
     def clear_balance_updates(self) -> None:
@@ -59,7 +76,7 @@ class WebSocketState:
         self.last_spot_execution = None
         logger.debug("Cleared WebSocket spot executions")
 
-    def get_balance_updates_for_account(self, account_id: int) -> list[AccountBalance]:
+    def get_balance_updates_for_account(self, account_id: int) -> list[AsyncAccountBalance]:
         """Get all balance updates for a specific account."""
         return [b for b in self.balance_updates if b.account_id == account_id]
 
@@ -100,139 +117,118 @@ class WebSocketState:
         ws.wallet.positions(self._t.owner_wallet_address).subscribe()
         ws.wallet.balances(self._t.owner_wallet_address).subscribe()
 
-    def on_message(self, ws, message) -> None:
-        """Handle WebSocket messages."""
-        message_type = message.get("type")
-        logger.info(f"Received message: {message}")
+    def on_message(self, ws, message: WebSocketMessage) -> None:
+        """Handle WebSocket messages using typed payloads from SDK.
         
-        if message_type == "subscribed":
-            channel = message.get("channel", "unknown")
-            logger.info(f"✅ Subscribed to {channel}")
+        The SDK parses all messages into typed Pydantic models automatically.
+        This follows the same pattern as the REST API - no raw dict access.
+        """
+        logger.info(f"Received message: {type(message).__name__}")
+        
+        # Handle subscribed messages with initial snapshots
+        if isinstance(message, SubscribedMessagePayload):
+            logger.info(f"✅ Subscribed to {message.channel}")
             
             # Handle initial snapshot for depth channel
-            if "depth" in channel and "contents" in message:
-                contents = message["contents"]
-                symbol = contents.get("symbol") or channel.split("/")[3]
-                # Normalize snapshot format (px/qty -> price/quantity)
-                normalized = {
-                    "type": contents.get("type", "SNAPSHOT"),
-                    "bids": [{"price": b.get("px", b.get("price")), "quantity": b.get("qty", b.get("quantity"))} for b in contents.get("bids", [])],
-                    "asks": [{"price": a.get("px", a.get("price")), "quantity": a.get("qty", a.get("quantity"))} for a in contents.get("asks", [])],
-                    "updatedAt": contents.get("updatedAt")
-                }
-                self.last_depth[symbol] = normalized
-                logger.info(f"Stored depth snapshot for {symbol}: {len(normalized['bids'])} bids, {len(normalized['asks'])} asks")
+            if "depth" in message.channel and message.contents:
+                depth = Depth.model_validate(message.contents)
+                self.last_depth[depth.symbol] = depth
+                logger.info(f"Stored depth snapshot for {depth.symbol}: {len(depth.bids)} bids, {len(depth.asks)} asks")
             
             # Handle initial snapshot for market spot executions channel
-            if "/market/" in channel and "spotExecutions" in channel and "contents" in message:
-                contents = message["contents"]
-                symbol = channel.split("/")[3]  # /v2/market/{symbol}/spotExecutions
-                data = contents.get("data", [])
+            if "/market/" in message.channel and "spotExecutions" in message.channel and message.contents:
+                symbol = message.channel.split("/")[3]  # /v2/market/{symbol}/spotExecutions
+                data = message.contents.get("data", [])
                 
                 if symbol not in self.market_spot_executions:
                     self.market_spot_executions[symbol] = []
                 
                 for e in data:
-                    execution = SpotExecution.from_dict(e)
-                    if execution:
-                        self.market_spot_executions[symbol].append(execution)
+                    execution = AsyncSpotExecution.model_validate(e)
+                    self.market_spot_executions[symbol].append(execution)
                 
                 logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
-        elif message_type == "channel_data":
-            channel = message.get("channel", "unknown")
-
-            if "perpExecutions" in channel:
-                for e in message["data"]:
-                    trade = PerpExecution.from_dict(e)
-                    assert trade is not None
-                    self.last_trade = trade
-
-            if "spotExecutions" in channel:
-                # Determine if this is a market-level or wallet-level channel
-                # Market: /v2/market/{symbol}/spotExecutions
-                # Wallet: /v2/wallet/{address}/spotExecutions
-                is_market_channel = "/market/" in channel
+        
+        # Handle perp executions - store async_api type directly
+        elif isinstance(message, WalletPerpExecutionUpdatePayload):
+            for trade in message.data:
+                self.last_trade = trade
+        
+        # Handle spot executions (market or wallet level) - store async_api type directly
+        elif isinstance(message, (MarketSpotExecutionUpdatePayload, WalletSpotExecutionUpdatePayload)):
+            is_market_channel = "/market/" in message.channel
+            for exec_data in message.data:
+                self.last_spot_execution = exec_data
                 
-                for e in message["data"]:
-                    execution = SpotExecution.from_dict(e)
-                    assert execution is not None
-                    self.last_spot_execution = execution
-                    
-                    if is_market_channel:
-                        # Extract symbol from channel: /v2/market/{symbol}/spotExecutions
-                        symbol = channel.split("/")[3]
-                        if symbol not in self.market_spot_executions:
-                            self.market_spot_executions[symbol] = []
-                        self.market_spot_executions[symbol].append(execution)
-                        logger.debug(f"Added market spot execution for {symbol}: {execution.execution_id}")
-                    else:
-                        # Wallet-level execution
-                        self.spot_executions.append(execution)
-
-            if "orderChanges" in channel:
-                for o in message["data"]:
-                    order = Order.from_dict(o)
-                    assert order is not None
-                    self.order_changes[order.order_id] = order
-
-            if "positions" in channel:
-                for p in message["data"]:
-                    position = Position.from_dict(p)
-                    assert position is not None
-                    self.positions[position.symbol] = position
-
-            if "balances" in channel or "accountBalances" in channel:
-                for b in message["data"]:
-                    balance = AccountBalance.from_dict(b)
-                    assert balance is not None
-                    self.balances[balance.asset] = balance
-                    self.balance_updates.append(balance)
-                    logger.debug(f"Added balance update: account_id={balance.account_id}, asset={balance.asset}")
-
-            if "depth" in channel:
-                depth_data = message["data"]
-                symbol = channel.split("/")[3]
-                # Normalize update format and merge with existing depth
-                existing = self.last_depth.get(symbol, {"bids": [], "asks": []})
+                if is_market_channel:
+                    symbol = message.channel.split("/")[3]
+                    if symbol not in self.market_spot_executions:
+                        self.market_spot_executions[symbol] = []
+                    self.market_spot_executions[symbol].append(exec_data)
+                    logger.debug(f"Added market spot execution for {symbol}: {exec_data.order_id}")
+                else:
+                    self.spot_executions.append(exec_data)
+        
+        # Handle order changes - store async_api type directly
+        elif isinstance(message, OrderChangeUpdatePayload):
+            for order_data in message.data:
+                self.order_changes[order_data.order_id] = order_data
+        
+        # Handle position updates - store async_api type directly
+        elif isinstance(message, PositionUpdatePayload):
+            for pos_data in message.data:
+                self.positions[pos_data.symbol] = pos_data
+        
+        # Handle depth updates
+        elif isinstance(message, MarketDepthUpdatePayload):
+            depth = message.data
+            symbol = depth.symbol
+            existing = self.last_depth.get(symbol)
+            
+            if existing is None:
+                self.last_depth[symbol] = depth
+            else:
+                # Merge updates into existing depth
+                existing_bids = list(existing.bids) if existing.bids else []
+                existing_asks = list(existing.asks) if existing.asks else []
                 
                 # Process bid updates
-                for update in depth_data.get("bids", []):
-                    price = update.get("price")
-                    qty = update.get("quantity", "0")
-                    # Remove existing entry at this price
-                    existing["bids"] = [b for b in existing.get("bids", []) if b.get("price") != price]
-                    # Add if quantity > 0
-                    if float(qty) > 0:
-                        existing["bids"].append({"price": price, "quantity": qty})
+                for level in depth.bids:
+                    existing_bids = [b for b in existing_bids if b.px != level.px]
+                    if float(level.qty) > 0:
+                        existing_bids.append(level)
                 
                 # Process ask updates
-                for update in depth_data.get("asks", []):
-                    price = update.get("price")
-                    qty = update.get("quantity", "0")
-                    # Remove existing entry at this price
-                    existing["asks"] = [a for a in existing.get("asks", []) if a.get("price") != price]
-                    # Add if quantity > 0
-                    if float(qty) > 0:
-                        existing["asks"].append({"price": price, "quantity": qty})
+                for level in depth.asks:
+                    existing_asks = [a for a in existing_asks if a.px != level.px]
+                    if float(level.qty) > 0:
+                        existing_asks.append(level)
                 
                 # Sort bids descending, asks ascending
-                existing["bids"] = sorted(existing.get("bids", []), key=lambda x: float(x.get("price", 0)), reverse=True)
-                existing["asks"] = sorted(existing.get("asks", []), key=lambda x: float(x.get("price", 0)))
-                existing["updatedAt"] = depth_data.get("updatedAt")
+                existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
+                existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
                 
-                self.last_depth[symbol] = existing
-
-        elif message_type == "ping":
-            ws.send(json.dumps({"type": "pong"}))
+                self.last_depth[symbol] = Depth(
+                    symbol=symbol,
+                    type=existing.type,
+                    bids=existing_bids,
+                    asks=existing_asks,
+                    updatedAt=depth.updated_at,  # Use alias for input, access via snake_case
+                )
+        
+        # Handle account balance updates - store async_api type directly
+        elif isinstance(message, AccountBalanceUpdatePayload):
+            for balance_data in message.data:
+                self.balances[balance_data.asset] = balance_data
+                self.balance_updates.append(balance_data)
+                logger.debug(f"Added balance update: account_id={balance_data.account_id}, asset={balance_data.asset}")
 
     def verify_spot_trade_balance_changes(
         self,
-        maker_account_id: int,
-        taker_account_id: int,
-        maker_initial_balances: dict[str, AccountBalance],
-        maker_final_balances: dict[str, AccountBalance],
-        taker_initial_balances: dict[str, AccountBalance],
-        taker_final_balances: dict[str, AccountBalance],
+        maker_initial_balances: dict[str, AsyncAccountBalance],
+        maker_final_balances: dict[str, AsyncAccountBalance],
+        taker_initial_balances: dict[str, AsyncAccountBalance],
+        taker_final_balances: dict[str, AsyncAccountBalance],
         base_asset: str,
         quote_asset: str,
         qty: str,

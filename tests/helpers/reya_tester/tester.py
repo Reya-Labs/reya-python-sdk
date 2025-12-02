@@ -8,6 +8,8 @@ import os
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_websocket import ReyaSocket
 
+from sdk.async_api.depth import Depth
+
 from .data import DataOperations
 from .orders import OrderOperations
 from .positions import PositionOperations
@@ -200,7 +202,7 @@ class ReyaTester:
     def verify_spot_trade_balance_changes(self, *args, **kwargs):
         return self.ws.verify_spot_trade_balance_changes(*args, **kwargs)
 
-    async def get_market_depth(self, symbol: str):
+    async def get_market_depth(self, symbol: str) -> Depth:
         return await self.data.market_depth(symbol)
 
     def subscribe_to_market_depth(self, symbol: str):

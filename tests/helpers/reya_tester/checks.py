@@ -278,17 +278,21 @@ class Checks:
             logger.info(f"   ✅ Symbol: {ws_order.symbol}")
 
         if expected_side is not None:
-            assert ws_order.side == expected_side, (
-                f"Side mismatch: expected {expected_side}, got {ws_order.side}"
+            # Compare enum value (string) since async_api uses enum types
+            ws_side_value = ws_order.side.value if hasattr(ws_order.side, 'value') else ws_order.side
+            assert ws_side_value == expected_side, (
+                f"Side mismatch: expected {expected_side}, got {ws_side_value}"
             )
             side_name = "BUY" if expected_side == "B" else "SELL"
-            logger.info(f"   ✅ Side: {ws_order.side} ({side_name})")
+            logger.info(f"   ✅ Side: {ws_side_value} ({side_name})")
 
         if expected_status is not None:
-            assert ws_order.status == expected_status, (
-                f"Status mismatch: expected {expected_status}, got {ws_order.status}"
+            # Compare enum value (string) since async_api uses enum types
+            ws_status_value = ws_order.status.value if hasattr(ws_order.status, 'value') else ws_order.status
+            assert ws_status_value == expected_status, (
+                f"Status mismatch: expected {expected_status}, got {ws_status_value}"
             )
-            logger.info(f"   ✅ Status: {ws_order.status}")
+            logger.info(f"   ✅ Status: {ws_status_value}")
 
         if expected_qty is not None:
             ws_qty = float(ws_order.qty)
@@ -322,11 +326,13 @@ class Checks:
             logger.info(f"   ✅ Symbol: {execution.symbol}")
 
         if expected_side is not None:
-            assert execution.side == expected_side, (
-                f"Side mismatch: expected {expected_side}, got {execution.side}"
+            # Compare enum value (string) since async_api uses enum types
+            exec_side_value = execution.side.value if hasattr(execution.side, 'value') else execution.side
+            assert exec_side_value == expected_side, (
+                f"Side mismatch: expected {expected_side}, got {exec_side_value}"
             )
             side_name = "BUY" if expected_side == "B" else "SELL"
-            logger.info(f"   ✅ Side: {execution.side} ({side_name})")
+            logger.info(f"   ✅ Side: {exec_side_value} ({side_name})")
 
         if expected_qty is not None:
             exec_qty = float(execution.qty)

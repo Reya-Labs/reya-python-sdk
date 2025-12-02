@@ -15,6 +15,8 @@ import asyncio
 import pytest
 import logging
 
+from sdk.async_api.depth import Depth
+from sdk.async_api.level import Level
 from sdk.open_api.models import OrderStatus
 
 from tests.helpers import ReyaTester
@@ -89,14 +91,16 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
     # Step 3: Verify initial snapshot contains our orders
     depth_snapshot = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
     assert depth_snapshot is not None, "Should have received depth snapshot via WebSocket"
+    assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
 
-    bids = depth_snapshot.get('bids', [])
+    bids = depth_snapshot.bids
     logger.info(f"Depth snapshot received: {len(bids)} bids")
 
-    # Verify our orders are in the snapshot (use 'price' key - normalized by handler)
+    # Verify our orders are in the snapshot (using typed Level.px attribute)
     found_prices = set()
     for bid in bids:
-        bid_price = float(bid.get('price') or bid.get('px') or 0)
+        assert isinstance(bid, Level), f"Expected Level type, got {type(bid)}"
+        bid_price = float(bid.px)
         for expected_price in prices:
             if abs(bid_price - expected_price) < 1.0:  # Allow small tolerance
                 found_prices.add(expected_price)
@@ -108,7 +112,7 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
     logger.info(f"✅ All {len(prices)} orders found in initial snapshot")
 
     # Step 4: Verify bid ordering (descending by price)
-    bid_prices = [float(b.get('price') or b.get('px') or 0) for b in bids]
+    bid_prices = [float(b.px) for b in bids]
     if len(bid_prices) >= 2:
         is_descending = all(bid_prices[i] >= bid_prices[i + 1] for i in range(len(bid_prices) - 1))
         assert is_descending, f"Bids should be in descending order: {bid_prices}"
@@ -193,15 +197,16 @@ async def test_spot_depth_ws_snapshot_with_asks(maker_tester: ReyaTester, taker_
     # Verify snapshot
     depth_snapshot = maker_tester.ws_last_depth.get(SPOT_SYMBOL)
     assert depth_snapshot is not None, "Should have received depth snapshot"
+    assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
 
-    bids = depth_snapshot.get('bids', [])
-    asks = depth_snapshot.get('asks', [])
+    bids = depth_snapshot.bids
+    asks = depth_snapshot.asks
 
     logger.info(f"Snapshot: {len(bids)} bids, {len(asks)} asks")
 
-    # Find our orders
-    bid_found = any(abs(float(b.get('price', 0)) - bid_price) < 1.0 for b in bids)
-    ask_found = any(abs(float(a.get('price', 0)) - ask_price) < 1.0 for a in asks)
+    # Find our orders (using typed Level.px attribute)
+    bid_found = any(abs(float(b.px) - bid_price) < 1.0 for b in bids)
+    ask_found = any(abs(float(a.px) - ask_price) < 1.0 for a in asks)
 
     assert bid_found, f"Bid at ${bid_price:.2f} not found in snapshot"
     assert ask_found, f"Ask at ${ask_price:.2f} not found in snapshot"
@@ -210,7 +215,7 @@ async def test_spot_depth_ws_snapshot_with_asks(maker_tester: ReyaTester, taker_
 
     # Verify ask ordering (ascending by price)
     if len(asks) >= 2:
-        ask_prices = [float(a.get('price', 0)) for a in asks]
+        ask_prices = [float(a.px) for a in asks]
         is_ascending = all(ask_prices[i] <= ask_prices[i + 1] for i in range(len(ask_prices) - 1))
         assert is_ascending, f"Asks should be in ascending order: {ask_prices}"
         logger.info("✅ Asks are correctly ordered (ascending by price)")
@@ -257,7 +262,7 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
     await asyncio.sleep(0.3)
 
     initial_snapshot = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
-    initial_bid_count = len(initial_snapshot.get('bids', [])) if initial_snapshot else 0
+    initial_bid_count = len(initial_snapshot.bids) if initial_snapshot else 0
     logger.info(f"Initial snapshot: {initial_bid_count} bids")
 
     # Step 2: Place a new order
@@ -283,9 +288,10 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
     # Step 3: Verify incremental update contains new order
     updated_depth = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
     assert updated_depth is not None, "Should have received depth update"
+    assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
 
-    bids = updated_depth.get('bids', [])
-    order_found = any(abs(float(b.get('price', 0)) - order_price) < 0.01 for b in bids)
+    bids = updated_depth.bids
+    order_found = any(abs(float(b.px) - order_price) < 0.01 for b in bids)
     assert order_found, f"New order at ${order_price:.2f} should appear in depth after incremental update"
     logger.info("✅ New order appears in depth after incremental update")
 
@@ -304,9 +310,9 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
 
     # Step 5: Verify order removed from depth
     final_depth = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
-    final_bids = final_depth.get('bids', []) if final_depth else []
+    final_bids = final_depth.bids if final_depth else []
 
-    order_still_present = any(abs(float(b.get('price', 0)) - order_price) < 0.01 for b in final_bids)
+    order_still_present = any(abs(float(b.px) - order_price) < 0.01 for b in final_bids)
     assert not order_still_present, f"Cancelled order at ${order_price:.2f} should be removed from depth"
     logger.info("✅ Cancelled order removed from depth after incremental update")
 

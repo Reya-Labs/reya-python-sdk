@@ -13,6 +13,7 @@ import logging
 
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
+from sdk.async_api.depth import Depth
 from sdk.open_api.models import OrderStatus
 
 logger = logging.getLogger("reya.integration_tests")
@@ -194,13 +195,14 @@ async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
 
     # Get depth
     depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
-    bids = depth.get('bids', [])
+    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    bids = depth.bids
     
     logger.info(f"Bids in depth: {len(bids)}")
 
     # Verify bids are in descending order (highest price first)
     if len(bids) >= 2:
-        bid_prices = [float(b.get('price', 0)) for b in bids]
+        bid_prices = [float(b.px) for b in bids]
         is_descending = all(bid_prices[i] >= bid_prices[i+1] for i in range(len(bid_prices)-1))
         
         logger.info(f"Bid prices: {bid_prices[:5]}")  # Show first 5

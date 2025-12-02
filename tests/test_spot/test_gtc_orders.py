@@ -17,6 +17,7 @@ import uuid
 
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
+from sdk.async_api.depth import Depth
 from sdk.open_api.models import OrderStatus
 
 logger = logging.getLogger("reya.integration_tests")
@@ -230,11 +231,12 @@ async def test_spot_gtc_no_match_added_to_book(reya_tester: ReyaTester):
     # Verify order appears in L2 depth
     await asyncio.sleep(0.1)
     depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
-    bids = depth.get('bids', [])
+    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    bids = depth.bids
     
     found_in_depth = False
     for bid in bids:
-        price = float(bid.get('price', 0))
+        price = float(bid.px)
         if abs(price - order_price) < 1.0:
             found_in_depth = True
             logger.info(f"✅ Order found in L2 depth at ${price:.2f}")
