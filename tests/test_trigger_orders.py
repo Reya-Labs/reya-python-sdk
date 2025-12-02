@@ -434,8 +434,8 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
 
     # Step 6: Verify both SL and TP orders are cancelled
     # Add a small delay to allow for order cancellation processing
-    await reya_tester.wait_for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10000)
-    await reya_tester.wait_for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10000)
+    await reya_tester.wait_for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10)
+    await reya_tester.wait_for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10)
 
     # Final verification - no open orders
     await reya_tester.check_no_open_orders()
@@ -527,8 +527,8 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     )
 
     # Step 6: Verify both SL and TP orders are cancelled (since they were for the long position)
-    await reya_tester.wait_for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10000)
-    await reya_tester.wait_for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10000)
+    await reya_tester.wait_for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10)
+    await reya_tester.wait_for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10)
 
     # Final verification - no open orders
     await reya_tester.check_no_open_orders()
@@ -601,7 +601,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     await reya_tester.check_position_not_open(symbol)
 
     # Step 5: Verify TP order gets cancelled (since position is closed by SL)
-    await reya_tester.wait_for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10000)
+    await reya_tester.wait_for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10)
 
     # Final verification - no open orders
     await reya_tester.check_no_open_orders()
@@ -674,7 +674,7 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
     await reya_tester.check_position_not_open(symbol)
 
     # Step 5: Verify SL order gets cancelled (since position is closed by TP)
-    await reya_tester.wait_for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10000)
+    await reya_tester.wait_for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10)
 
     # Final verification - no open orders
     await reya_tester.check_no_open_orders()

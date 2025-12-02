@@ -8,6 +8,7 @@ from typing import Optional
 
 import logging
 import time
+import threading
 from decimal import Decimal
 
 from sdk._version import SDK_VERSION
@@ -61,6 +62,10 @@ class ReyaTradingClient:
     This class provides a high-level interface to the Reya Trading API,
     with resources for managing orders and accounts.
     """
+    
+    # Class-level nonce tracking per wallet address (shared across all instances)
+    _wallet_nonces: dict[str, int] = {}
+    _wallet_nonce_lock = threading.Lock()
 
     def __init__(self):
         """
@@ -143,6 +148,30 @@ class ReyaTradingClient:
         Examples: ETHRUSD (spot), BTCRUSD (spot), ETHRUSDPERP (perp)
         """
         return not symbol.upper().endswith("PERP")
+
+    def _get_next_nonce(self) -> int:
+        """
+        Generate a monotonically increasing nonce for spot market operations.
+        
+        Uses microsecond timestamp as base, but ensures the nonce is always
+        greater than the last used nonce to prevent race conditions when
+        multiple orders are created in quick succession.
+        
+        Nonces are tracked per-wallet at the class level, so multiple client
+        instances sharing the same wallet will use the same nonce counter.
+        
+        Returns:
+            A unique nonce guaranteed to be greater than any previously returned nonce.
+        """
+        wallet_address = self._config.owner_wallet_address.lower()
+        
+        with ReyaTradingClient._wallet_nonce_lock:
+            current_time_nonce = int(time.time() * 1_000_000)
+            last_nonce = ReyaTradingClient._wallet_nonces.get(wallet_address, 0)
+            # Ensure nonce is always greater than the last used nonce
+            new_nonce = max(current_time_nonce, last_nonce + 1)
+            ReyaTradingClient._wallet_nonces[wallet_address] = new_nonce
+            return new_nonce
 
     def _get_market_id_from_symbol(self, symbol: str) -> int:
         """Get market_id from symbol. Raises ValueError if symbol not found."""
@@ -228,10 +257,10 @@ class ReyaTradingClient:
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
 
-        # For spot markets, use microsecond timestamp as nonce (fits in uint64)
+        # For spot markets, use monotonically increasing nonce (fits in uint64)
         # For perp markets, use 32-byte nonce
         if self._is_spot_market(params.symbol):
-            nonce = int(time.time() * 1_000_000)  # microsecond timestamp
+            nonce = self._get_next_nonce()
         else:
             nonce = self._signature_generator.create_orders_gateway_nonce(
                 self.config.account_id, market_id, int(time.time_ns() / 1000000)
@@ -442,8 +471,8 @@ class ReyaTradingClient:
             # Get market_id from symbol
             market_id = self._get_market_id_from_symbol(symbol)
 
-            # Generate nonce (microsecond timestamp)
-            nonce = int(time.time() * 1_000_000)
+            # Generate monotonically increasing nonce
+            nonce = self._get_next_nonce()
 
             # Generate deadline (current time + 5 seconds)
             deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
@@ -519,8 +548,8 @@ class ReyaTradingClient:
         # Get market_id from symbol
         market_id = self._get_market_id_from_symbol(symbol)
 
-        # Generate nonce (microsecond timestamp)
-        nonce = int(time.time_ns()/1000)
+        # Generate monotonically increasing nonce
+        nonce = self._get_next_nonce()
 
         # Generate deadline (current time + 5 seconds)
         deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS

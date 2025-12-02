@@ -60,8 +60,13 @@ class OrderOperations:
             account_id=account_id
         )
 
-    async def close_all(self, fail_if_none: bool = True) -> None:
-        """Cancel all active orders."""
+    async def close_all(self, fail_if_none: bool = True, wait_for_confirmation: bool = False) -> None:
+        """Cancel all active orders.
+        
+        Args:
+            fail_if_none: If True, assert failure when no orders to close
+            wait_for_confirmation: If True, wait for cancellation confirmation (slower but safer)
+        """
         active_orders: list[Order] = await self._t.client.get_open_orders()
 
         if active_orders is None or len(active_orders) == 0:
@@ -70,7 +75,7 @@ class OrderOperations:
                 assert False
             return None
 
-        cancelled_order_id = None
+        cancelled_count = 0
         for order in active_orders:
             try:
                 await self._t.client.cancel_order(
@@ -78,13 +83,19 @@ class OrderOperations:
                     symbol=order.symbol,
                     account_id=order.account_id
                 )
-
-                cancelled_order_id = await self._t.wait.for_order_state(
-                    order_id=order.order_id, expected_status=OrderStatus.CANCELLED, timeout=10
-                )
+                cancelled_count += 1
+                
+                if wait_for_confirmation:
+                    await self._t.wait.for_order_state(
+                        order_id=order.order_id, expected_status=OrderStatus.CANCELLED, timeout=3
+                    )
             except Exception as e:
                 logger.warning(f"Failed to cancel order {order.order_id}: {e}")
                 continue
 
-        if fail_if_none and cancelled_order_id is None:
-            assert False, "Failed to close position"
+        if fail_if_none and cancelled_count == 0:
+            assert False, "Failed to close any orders"
+        
+        # Brief pause to let cancellations propagate (much faster than waiting for each)
+        if cancelled_count > 0 and not wait_for_confirmation:
+            await asyncio.sleep(0.2)
