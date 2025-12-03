@@ -69,7 +69,8 @@ async def reya_tester(reya_tester_session):
     
     Reuses the session-scoped connection but ensures clean state for each test.
     """
-    # Clean up any leftover orders from previous test
+    # Clean up any leftover positions and orders from previous test
+    await reya_tester_session.close_exposures(fail_if_none=False)
     await reya_tester_session.close_active_orders(fail_if_none=False)
     
     # Clear WebSocket tracking state for fresh test
@@ -80,7 +81,8 @@ async def reya_tester(reya_tester_session):
     
     yield reya_tester_session
     
-    # Clean up orders after test (connection stays open)
+    # Clean up positions and orders after test (connection stays open)
+    await reya_tester_session.close_exposures(fail_if_none=False)
     await reya_tester_session.close_active_orders(fail_if_none=False)
 
 

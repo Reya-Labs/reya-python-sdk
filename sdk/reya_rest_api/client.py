@@ -321,6 +321,13 @@ class ReyaTradingClient:
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order creation")
 
+        # Only include expiresAfter for IOC orders and spot markets
+        # GTC perp orders don't support expiresAfter
+        is_ioc_or_spot = params.time_in_force == TimeInForce.IOC or self._is_spot_market(params.symbol)
+        
+        # reduceOnly is only supported for perp IOC orders
+        is_perp_ioc = params.time_in_force == TimeInForce.IOC and not self._is_spot_market(params.symbol)
+        
         order_request = CreateOrderRequest(
             accountId=self.config.account_id,
             symbol=params.symbol,
@@ -330,8 +337,8 @@ class ReyaTradingClient:
             qty=params.qty,
             orderType=OrderType.LIMIT,
             timeInForce=params.time_in_force,
-            expiresAfter=deadline,
-            reduceOnly=params.reduce_only,
+            expiresAfter=deadline if is_ioc_or_spot else None,
+            reduceOnly=params.reduce_only if is_perp_ioc else None,
             signature=signature,
             nonce=str(nonce),
             signerWallet=self.signer_wallet_address,

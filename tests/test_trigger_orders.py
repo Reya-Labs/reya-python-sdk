@@ -569,18 +569,19 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
         expected_side=Side.B,  # Long position
     )
 
-    # Step 2: Create SL order that is "in cross" (above current market price for a sell order)
-    # This should execute immediately as it's already triggered
+    # Step 2: Create SL order that is "in cross" (trigger price ABOVE current market for a long position SL)
+    # SL for long triggers when price <= trigger_px, so setting trigger_px ABOVE market means it's already triggered
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # Sell to close long position
-        trigger_px=str(float(market_price) * 0.99),  # Just below market - should trigger immediately
+        trigger_px=str(float(market_price) * 1.01),  # Just above market - should trigger immediately
         trigger_type=OrderType.SL,
     )
     sl_response = await reya_tester.create_trigger_order(sl_params)
     logger.info(f"Created SL order with ID: {sl_response.order_id}")
 
-    # Step 3: Create TP order that is NOT in cross (well above market price)
+    # Step 3: Create TP order that is NOT in cross (well below market price for a long position)
+    # TP for long triggers when price >= trigger_px, so setting trigger_px well above market means it won't trigger
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # Sell to close long position
@@ -642,7 +643,8 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
         expected_side=Side.B,  # Long position
     )
 
-    # Step 2: Create SL order that is NOT in cross (well below market price)
+    # Step 2: Create SL order that is NOT in cross (well above market price for a long position)
+    # SL for long triggers when price <= trigger_px, so setting trigger_px well below market means it won't trigger
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # Sell to close long position
@@ -652,12 +654,12 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
     sl_response = await reya_tester.create_trigger_order(sl_params)
     logger.info(f"Created SL order with ID: {sl_response.order_id}")
 
-    # Step 3: Create TP order that is "in cross" (at or below current market price for a sell order)
-    # This should execute immediately as it's already triggered
+    # Step 3: Create TP order that is "in cross" (trigger price BELOW current market for a long position TP)
+    # TP for long triggers when price >= trigger_px, so setting trigger_px BELOW market means it's already triggered
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # Sell to close long position
-        trigger_px=str(float(market_price) * 1.01),  # Just above market - should trigger immediately
+        trigger_px=str(float(market_price) * 0.99),  # Just below market - should trigger immediately
         trigger_type=OrderType.TP,
     )
     tp_response = await reya_tester.create_trigger_order(tp_params)

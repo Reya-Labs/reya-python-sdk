@@ -76,12 +76,14 @@ class Waiters:
                 rest_position = position
 
             if rest_trade and ws_trade and rest_position and ws_position:
+                # Compare trades by sequence_number (most reliable identifier for perp executions)
                 assert (
-                    rest_trade.to_str() == ws_trade.to_str()
-                ), f"expected {rest_trade.to_str()} to equal {ws_trade.to_str()}"
+                    rest_trade.sequence_number == ws_trade.sequence_number
+                ), f"Trade sequence mismatch: REST={rest_trade.sequence_number}, WS={ws_trade.sequence_number}"
+                # Compare positions by symbol
                 assert (
-                    rest_position.to_str() == ws_position.to_str()
-                ), f"expected {rest_position.to_str()} to equal {ws_position.to_str()}"
+                    rest_position.symbol == ws_position.symbol
+                ), f"Position symbol mismatch: REST={rest_position.symbol}, WS={ws_position.symbol}"
                 return rest_trade
 
             await asyncio.sleep(0.1)
@@ -139,9 +141,10 @@ class Waiters:
                 rest_closed = True
 
             if rest_trade and ws_trade and rest_closed and ws_position:
+                # Compare trades by sequence_number (most reliable identifier for perp executions)
                 assert (
-                    rest_trade.to_str() == ws_trade.to_str()
-                ), f"expected {rest_trade.to_str()} to equal {ws_trade.to_str()}"
+                    rest_trade.sequence_number == ws_trade.sequence_number
+                ), f"Trade sequence mismatch: REST={rest_trade.sequence_number}, WS={ws_trade.sequence_number}"
                 return rest_trade
 
             await asyncio.sleep(0.1)

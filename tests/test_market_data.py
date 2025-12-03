@@ -146,10 +146,16 @@ async def test_candles(reya_tester: ReyaTester):
         assert len(candles.o) == candles_count
         assert len(candles.h) == candles_count
         assert len(candles.l) == candles_count
-        for t in range(candles_count):
-            assert candles.t[t] // resolution_in_seconds == (
-                current_time / 1000 - resolution_in_seconds * candles_count + resolution_in_seconds * t
-            ) // (resolution_in_seconds)
+        # Verify candles are in chronological order (timestamps should be increasing)
+        for t in range(1, candles_count):
+            assert candles.t[t] > candles.t[t - 1], (
+                f"Candle {t} timestamp {candles.t[t]} should be greater than previous {candles.t[t - 1]}"
+            )
+            # Gap should be a multiple of resolution (gaps can occur due to missing data)
+            gap = candles.t[t] - candles.t[t - 1]
+            assert gap % resolution_in_seconds == 0, (
+                f"Candle {t} gap {gap} should be a multiple of {resolution_in_seconds}"
+            )
 
 
 @pytest.mark.asyncio

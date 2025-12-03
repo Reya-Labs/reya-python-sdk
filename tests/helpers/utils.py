@@ -28,21 +28,26 @@ def _compare_qty(qty1: Optional[str], qty2: Optional[str]) -> bool:
         return qty1 == qty2
 
 
-def match_order(order: PerpExecution, expected: Order) -> bool:
-    """Match a perp execution against expected values.
+def match_order(expected: Order, execution: PerpExecution, expected_qty: Optional[str] = None) -> bool:
+    """Match a perp execution against expected order values.
     
-    Performs strict matching on ALL important fields:
-    - order_id, account_id, symbol, side, qty
+    Note: PerpExecution does NOT have order_id, so we match by:
+    - account_id, symbol, side, qty
+    
+    Args:
+        expected: The expected order to match against.
+        execution: The perp execution to check.
+        expected_qty: Optional override for qty comparison (used for closing orders).
     """
-    if str(order.order_id) != str(expected.order_id):
+    if execution.account_id != expected.account_id:
         return False
-    if order.account_id != expected.account_id:
+    if execution.symbol != expected.symbol:
         return False
-    if order.symbol != expected.symbol:
+    if _get_enum_value(execution.side) != _get_enum_value(expected.side):
         return False
-    if _get_enum_value(order.side) != _get_enum_value(expected.side):
-        return False
-    if not _compare_qty(order.qty, expected.qty):
+    # Use expected_qty if provided, otherwise use expected.qty
+    qty_to_match = expected_qty if expected_qty is not None else expected.qty
+    if not _compare_qty(execution.qty, qty_to_match):
         return False
     return True
 
