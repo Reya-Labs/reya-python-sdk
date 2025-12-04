@@ -1,6 +1,7 @@
 """Data retrieval operations for ReyaTester."""
 
 from typing import TYPE_CHECKING, Optional
+
 import logging
 
 from sdk.async_api.depth import Depth

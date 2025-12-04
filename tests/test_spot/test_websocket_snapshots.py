@@ -12,13 +12,13 @@ the initial snapshot contains the correct state before incremental updates.
 """
 
 import asyncio
-import pytest
 import logging
+
+import pytest
 
 from sdk.async_api.depth import Depth
 from sdk.async_api.level import Level
 from sdk.open_api.models import OrderStatus
-
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 
@@ -63,15 +63,7 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
 
     order_ids = []
     for price in prices:
-        order_params = (
-            OrderBuilder()
-            .symbol(SPOT_SYMBOL)
-            .buy()
-            .price(str(price))
-            .qty(TEST_QTY)
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
 
         order_id = await reya_tester.create_limit_order(order_params)
         await reya_tester.wait_for_order_creation(order_id)
@@ -106,9 +98,9 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
                 found_prices.add(expected_price)
                 logger.info(f"  ✅ Found order at ${bid_price:.2f}")
 
-    assert len(found_prices) == len(prices), (
-        f"Expected to find all {len(prices)} orders in snapshot, found {len(found_prices)}. Bids: {bids}"
-    )
+    assert len(found_prices) == len(
+        prices
+    ), f"Expected to find all {len(prices)} orders in snapshot, found {len(found_prices)}. Bids: {bids}"
     logger.info(f"✅ All {len(prices)} orders found in initial snapshot")
 
     # Step 4: Verify bid ordering (descending by price)
@@ -120,11 +112,7 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
 
     # Cleanup
     for order_id in order_ids:
-        await reya_tester.client.cancel_order(
-            order_id=order_id,
-            symbol=SPOT_SYMBOL,
-            account_id=reya_tester.account_id
-        )
+        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
 
     await asyncio.sleep(0.1)
     await reya_tester.check_no_open_orders()
@@ -155,15 +143,7 @@ async def test_spot_depth_ws_snapshot_with_asks(maker_tester: ReyaTester, taker_
 
     # Place bid (maker buys with RUSD)
     bid_price = round(REFERENCE_PRICE * 0.50, 2)
-    bid_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(bid_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    bid_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(bid_price)).qty(TEST_QTY).gtc().build()
 
     bid_order_id = await maker_tester.create_limit_order(bid_params)
     await maker_tester.wait_for_order_creation(bid_order_id)
@@ -171,15 +151,7 @@ async def test_spot_depth_ws_snapshot_with_asks(maker_tester: ReyaTester, taker_
 
     # Place ask (taker sells ETH)
     ask_price = round(REFERENCE_PRICE * 1.50, 2)
-    ask_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(ask_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    ask_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(ask_price)).qty(TEST_QTY).gtc().build()
 
     ask_order_id = await taker_tester.create_limit_order(ask_params)
     await taker_tester.wait_for_order_creation(ask_order_id)
@@ -268,15 +240,7 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
     # Step 2: Place a new order
     order_price = round(REFERENCE_PRICE * 0.45, 2)  # Very low price to be unique
 
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(order_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     order_id = await reya_tester.create_limit_order(order_params)
     await reya_tester.wait_for_order_creation(order_id)
@@ -296,11 +260,7 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
     logger.info("✅ New order appears in depth after incremental update")
 
     # Step 4: Cancel the order
-    await reya_tester.client.cancel_order(
-        order_id=order_id,
-        symbol=SPOT_SYMBOL,
-        account_id=reya_tester.account_id
-    )
+    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
 
     await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
     logger.info("Order cancelled")
@@ -359,15 +319,7 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
 
     order_ids = []
     for price in prices:
-        order_params = (
-            OrderBuilder()
-            .symbol(SPOT_SYMBOL)
-            .buy()
-            .price(str(price))
-            .qty(TEST_QTY)
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
 
         order_id = await reya_tester.create_limit_order(order_params)
         await reya_tester.wait_for_order_creation(order_id)
@@ -379,9 +331,7 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
 
     # Verify order changes were received for each order
     for order_id in order_ids:
-        assert order_id in reya_tester.ws_order_changes, (
-            f"Order {order_id} should be in orderChanges"
-        )
+        assert order_id in reya_tester.ws_order_changes, f"Order {order_id} should be in orderChanges"
         order = reya_tester.ws_order_changes[order_id]
         assert order.symbol == SPOT_SYMBOL
         logger.info(f"✅ Order change received for {order_id}: status={order.status}")
@@ -399,11 +349,7 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
 
     # Cleanup
     for order_id in order_ids:
-        await reya_tester.client.cancel_order(
-            order_id=order_id,
-            symbol=SPOT_SYMBOL,
-            account_id=reya_tester.account_id
-        )
+        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
 
     await asyncio.sleep(0.1)
     await reya_tester.check_no_open_orders()
@@ -440,30 +386,14 @@ async def test_spot_executions_ws_initial_snapshot(maker_tester: ReyaTester, tak
     # Step 1: Execute a trade to create execution history
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
 
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
 
     # Taker fills with IOC
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(maker_price)).qty(TEST_QTY).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_params)
     logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
@@ -483,8 +413,7 @@ async def test_spot_executions_ws_initial_snapshot(maker_tester: ReyaTester, tak
 
     # Step 3: Query executions via REST to confirm they exist
     rest_executions = await taker_tester.client.get_spot_executions()
-    assert hasattr(rest_executions, 'data') and len(rest_executions.data) > 0, \
-        "Should have executions in REST response"
+    assert hasattr(rest_executions, "data") and len(rest_executions.data) > 0, "Should have executions in REST response"
     logger.info(f"✅ REST API shows {len(rest_executions.data)} execution(s)")
 
     # Step 4: Verify execution data matches
@@ -546,14 +475,14 @@ async def test_spot_balances_ws_initial_snapshot(reya_tester: ReyaTester):
     logger.info("✅ Received balance data via WebSocket")
 
     # Verify key assets are present (ETH and RUSD are common)
-    for asset in ['ETH', 'RUSD']:
+    for asset in ["ETH", "RUSD"]:
         if asset in rest_balances:
             # WebSocket should have received data for this asset
             assert asset in ws_balances, f"{asset} should be in WebSocket balances"
             logger.info(f"✅ {asset} present in WebSocket balances")
 
     # Log balance values for debugging (don't assert equality due to multi-account)
-    for asset in ['ETH', 'RUSD']:
+    for asset in ["ETH", "RUSD"]:
         if asset in rest_balances and asset in ws_balances:
             rest_val = rest_balances[asset].real_balance
             ws_val = ws_balances[asset].real_balance
@@ -590,27 +519,13 @@ async def test_spot_balances_ws_update_after_trade(maker_tester: ReyaTester, tak
     # Execute a trade
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
 
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
     taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(round(maker_price * 0.99, 2)))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
+        OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(round(maker_price * 0.99, 2))).qty(TEST_QTY).ioc().build()
     )
 
     await taker_tester.create_limit_order(taker_params)
@@ -634,10 +549,10 @@ async def test_spot_balances_ws_update_after_trade(maker_tester: ReyaTester, tak
     maker_assets = {u.asset for u in maker_updates}
     taker_assets = {u.asset for u in taker_updates}
 
-    assert 'ETH' in maker_assets, "Maker should have ETH balance update"
-    assert 'RUSD' in maker_assets, "Maker should have RUSD balance update"
-    assert 'ETH' in taker_assets, "Taker should have ETH balance update"
-    assert 'RUSD' in taker_assets, "Taker should have RUSD balance update"
+    assert "ETH" in maker_assets, "Maker should have ETH balance update"
+    assert "RUSD" in maker_assets, "Maker should have RUSD balance update"
+    assert "ETH" in taker_assets, "Taker should have ETH balance update"
+    assert "RUSD" in taker_assets, "Taker should have RUSD balance update"
 
     logger.info("✅ Balance updates received for both ETH and RUSD")
 
@@ -647,7 +562,7 @@ async def test_spot_balances_ws_update_after_trade(maker_tester: ReyaTester, tak
     maker_rest_balances = await maker_tester.get_balances()
     maker_ws_balances = maker_tester.ws_balances
 
-    for asset in ['ETH', 'RUSD']:
+    for asset in ["ETH", "RUSD"]:
         if asset in maker_rest_balances and asset in maker_ws_balances:
             rest_val = maker_rest_balances[asset].real_balance
             ws_val = maker_ws_balances[asset].real_balance

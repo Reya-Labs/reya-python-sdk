@@ -60,20 +60,20 @@ WebSocketMessage = Union[
     UnsubscribedMessagePayload,
     ErrorMessagePayload,
     # Market channels
-    MarketsSummaryUpdatePayload,      # /v2/markets/summary
-    MarketSummaryUpdatePayload,       # /v2/market/{symbol}/summary
-    MarketPerpExecutionUpdatePayload, # /v2/market/{symbol}/perpExecutions
-    MarketSpotExecutionUpdatePayload, # /v2/market/{symbol}/spotExecutions
-    MarketDepthUpdatePayload,         # /v2/market/{symbol}/depth
+    MarketsSummaryUpdatePayload,  # /v2/markets/summary
+    MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+    MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
+    MarketSpotExecutionUpdatePayload,  # /v2/market/{symbol}/spotExecutions
+    MarketDepthUpdatePayload,  # /v2/market/{symbol}/depth
     # Wallet channels
-    PositionUpdatePayload,            # /v2/wallet/{address}/positions
-    OrderChangeUpdatePayload,         # /v2/wallet/{address}/orderChanges
-    WalletPerpExecutionUpdatePayload, # /v2/wallet/{address}/perpExecutions
-    WalletSpotExecutionUpdatePayload, # /v2/wallet/{address}/spotExecutions
-    AccountBalanceUpdatePayload,      # /v2/wallet/{address}/accountBalances
+    PositionUpdatePayload,  # /v2/wallet/{address}/positions
+    OrderChangeUpdatePayload,  # /v2/wallet/{address}/orderChanges
+    WalletPerpExecutionUpdatePayload,  # /v2/wallet/{address}/perpExecutions
+    WalletSpotExecutionUpdatePayload,  # /v2/wallet/{address}/spotExecutions
+    AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
     # Price channels
-    PricesUpdatePayload,              # /v2/prices
-    PriceUpdatePayload,               # /v2/prices/{symbol}
+    PricesUpdatePayload,  # /v2/prices
+    PriceUpdatePayload,  # /v2/prices/{symbol}
 ]
 
 
@@ -156,25 +156,26 @@ class ReyaSocket(websocket.WebSocketApp):
 
     def _wrap_message_handler(self) -> Callable[[websocket.WebSocket, str], None]:
         """Create a message handler that parses JSON into typed Pydantic models.
-        
+
         Following REST API patterns:
         - All messages are parsed into typed models
         - Parsing failures raise WebSocketDataError
         - Callbacks receive typed payloads directly
         """
+
         def wrapper(ws: websocket.WebSocket, message: str) -> None:
             logger.debug(f"RAW WEBSOCKET MESSAGE: {message!r}")
             raw = json.loads(message)
-            
+
             # Parse into typed model (raises WebSocketDataError on failure)
             typed_message = self._parse_message(raw)
-            
+
             # Call user callback or default with typed message
             if self._user_on_message is not None:
                 self._user_on_message(ws, typed_message)
             else:
                 self._default_on_message(ws, typed_message)
-        
+
         return wrapper
 
     def _get_payload_type(self, channel: str) -> Optional[type[BaseModel]]:
@@ -236,29 +237,29 @@ class ReyaSocket(websocket.WebSocketApp):
         try:
             if message_type == "ping":
                 return PingMessagePayload.model_validate(message)
-            
+
             elif message_type == "pong":
                 return PongMessagePayload.model_validate(message)
-            
+
             elif message_type == "subscribed":
                 return SubscribedMessagePayload.model_validate(message)
-            
+
             elif message_type == "unsubscribed":
                 return UnsubscribedMessagePayload.model_validate(message)
-            
+
             elif message_type == "error":
                 return ErrorMessagePayload.model_validate(message)
-            
+
             elif message_type == "channel_data":
                 channel = message.get("channel", "")
                 payload_type = self._get_payload_type(channel)
                 if payload_type is None:
                     raise WebSocketDataError(f"Unknown channel: {channel}")
                 return payload_type.model_validate(message)
-            
+
             else:
                 raise WebSocketDataError(f"Unknown message type: {message_type}")
-                
+
         except ValidationError as e:
             logger.error(f"Failed to parse {message_type} message: {e}")
             raise WebSocketDataError(f"Invalid {message_type} message format: {e}")
@@ -354,7 +355,7 @@ class ReyaSocket(websocket.WebSocketApp):
 
     def _default_on_message(self, _ws: websocket.WebSocket, message: WebSocketMessage) -> None:
         """Default handler for message events.
-        
+
         Args:
             message: Typed Pydantic model for the WebSocket message.
         """

@@ -1,6 +1,7 @@
 """Wait operations for ReyaTester."""
 
 from typing import TYPE_CHECKING, Optional
+
 import asyncio
 import logging
 import time
@@ -10,12 +11,11 @@ from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
-
 from tests.helpers.utils import (
     match_order,
     match_spot_order,
-    validate_spot_execution_fields,
     validate_order_change_fields,
+    validate_spot_execution_fields,
 )
 
 if TYPE_CHECKING:
@@ -154,13 +154,11 @@ class Waiters:
             f"ws_trade: {ws_trade is not None}, rest_closed: {rest_closed}, ws_position: {ws_position is not None}"
         )
 
-    async def for_spot_execution(
-        self, order_id: str, expected_order: Order, timeout: int = 10
-    ) -> SpotExecution:
+    async def for_spot_execution(self, order_id: str, expected_order: Order, timeout: int = 10) -> SpotExecution:
         """Wait for spot execution confirmation via both REST and WebSocket.
-        
+
         Performs strict matching on order_id and validates all important fields.
-        
+
         Args:
             order_id: The order ID to match (required).
             expected_order: The expected order to validate against.
@@ -168,7 +166,7 @@ class Waiters:
         """
         if not order_id:
             raise ValueError("order_id is required for reliable execution matching")
-        
+
         logger.info(f"⏳ Waiting for spot execution (order_id={order_id})...")
 
         start_time = time.time()
@@ -184,7 +182,7 @@ class Waiters:
                 for execution in self._t.ws.spot_executions:
                     if str(execution.order_id) == str(order_id):
                         elapsed_time = time.time() - start_time
-                        
+
                         # Validate all fields match expected order
                         if match_spot_order(execution, expected_order):
                             logger.info(
@@ -206,7 +204,9 @@ class Waiters:
                 for execution in executions_list.data:
                     if str(execution.order_id) == str(order_id):
                         elapsed_time = time.time() - start_time
-                        logger.info(f" ✅ Spot execution confirmed via REST: order_id={order_id} (took {elapsed_time:.2f}s)")
+                        logger.info(
+                            f" ✅ Spot execution confirmed via REST: order_id={order_id} (took {elapsed_time:.2f}s)"
+                        )
                         rest_execution = execution
                         break
 
@@ -265,7 +265,7 @@ class Waiters:
         self, order_id: str, expected_order: Optional[Order] = None, timeout: int = 10
     ) -> Order:
         """Wait for order creation confirmation via REST and WebSocket.
-        
+
         Args:
             order_id: The order ID to wait for (required).
             expected_order: If provided, validates WS order fields match expected values.
@@ -288,11 +288,13 @@ class Waiters:
 
             if ws_order is None and order_id in self._t.ws.order_changes:
                 ws_order = self._t.ws.order_changes[order_id]
-                ws_status = ws_order.status.value if hasattr(ws_order.status, 'value') else ws_order.status
+                ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
                 if ws_status in ["OPEN", "PARTIALLY_FILLED"]:
                     elapsed_time = time.time() - start_time
-                    logger.info(f" ✅ Order created via WS: order_id={order_id}, status={ws_status} (took {elapsed_time:.2f}s)")
-                    
+                    logger.info(
+                        f" ✅ Order created via WS: order_id={order_id}, status={ws_status} (took {elapsed_time:.2f}s)"
+                    )
+
                     # Validate fields if expected_order provided
                     if expected_order:
                         expected_order.order_id = order_id
@@ -302,9 +304,9 @@ class Waiters:
                                 logger.warning(f"   ⚠️ Validation: {error}")
 
             if rest_order and ws_order:
-                assert rest_order.order_id == ws_order.order_id, (
-                    f"Order ID mismatch: REST={rest_order.order_id}, WS={ws_order.order_id}"
-                )
+                assert (
+                    rest_order.order_id == ws_order.order_id
+                ), f"Order ID mismatch: REST={rest_order.order_id}, WS={ws_order.order_id}"
                 return rest_order
             elif ws_order:
                 elapsed_time = time.time() - start_time
@@ -326,17 +328,17 @@ class Waiters:
         timeout: float = 5.0,
     ) -> int:
         """Wait for balance update events via WebSocket.
-        
+
         Args:
             initial_count: The balance update count before the action.
             min_updates: Minimum number of new updates expected.
             timeout: Maximum time to wait in seconds.
-            
+
         Returns:
             The number of new balance updates received.
         """
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             new_count = len(self._t.ws.balance_updates) - initial_count
             if new_count >= min_updates:
@@ -344,8 +346,6 @@ class Waiters:
                 logger.info(f" ✅ Received {new_count} balance update(s) via WS (took {elapsed_time:.2f}s)")
                 return new_count
             await asyncio.sleep(0.05)
-        
+
         new_count = len(self._t.ws.balance_updates) - initial_count
-        raise RuntimeError(
-            f"Expected at least {min_updates} balance update(s), got {new_count} after {timeout}s"
-        )
+        raise RuntimeError(f"Expected at least {min_updates} balance update(s), got {new_count} after {timeout}s")

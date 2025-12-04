@@ -1,6 +1,7 @@
 """Order operations for ReyaTester."""
 
 from typing import TYPE_CHECKING, Optional
+
 import asyncio
 import logging
 import time
@@ -54,15 +55,11 @@ class OrderOperations:
 
     async def cancel(self, order_id: str, symbol: str, account_id: int) -> None:
         """Cancel a specific order."""
-        await self._t.client.cancel_order(
-            order_id=order_id,
-            symbol=symbol,
-            account_id=account_id
-        )
+        await self._t.client.cancel_order(order_id=order_id, symbol=symbol, account_id=account_id)
 
     async def close_all(self, fail_if_none: bool = True, wait_for_confirmation: bool = False) -> None:
         """Cancel all active orders.
-        
+
         Args:
             fail_if_none: If True, assert failure when no orders to close
             wait_for_confirmation: If True, wait for cancellation confirmation (slower but safer)
@@ -79,12 +76,10 @@ class OrderOperations:
         for order in active_orders:
             try:
                 await self._t.client.cancel_order(
-                    order_id=order.order_id,
-                    symbol=order.symbol,
-                    account_id=order.account_id
+                    order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
                 )
                 cancelled_count += 1
-                
+
                 if wait_for_confirmation:
                     await self._t.wait.for_order_state(
                         order_id=order.order_id, expected_status=OrderStatus.CANCELLED, timeout=3
@@ -95,7 +90,7 @@ class OrderOperations:
 
         if fail_if_none and cancelled_count == 0:
             assert False, "Failed to close any orders"
-        
+
         # Brief pause to let cancellations propagate (much faster than waiting for each)
         if cancelled_count > 0 and not wait_for_confirmation:
             await asyncio.sleep(0.2)

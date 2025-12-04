@@ -13,11 +13,11 @@ These tests verify:
 """
 
 import asyncio
-import pytest
 import logging
 
-from sdk.open_api.models import OrderStatus
+import pytest
 
+from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 
@@ -38,7 +38,7 @@ TEST_QTY = "0.01"
 async def test_rest_get_market_spot_executions_empty(reya_tester: ReyaTester):
     """
     Test REST API returns empty list for market with no recent executions.
-    
+
     This test verifies the basic endpoint functionality.
     """
     logger.info("=" * 80)
@@ -50,10 +50,10 @@ async def test_rest_get_market_spot_executions_empty(reya_tester: ReyaTester):
 
     # Should return a valid response (may be empty or have historical data)
     assert executions is not None, "Should receive a response"
-    assert hasattr(executions, 'data'), "Response should have 'data' attribute"
-    
+    assert hasattr(executions, "data"), "Response should have 'data' attribute"
+
     logger.info(f"✅ Market spot executions returned: {len(executions.data)} execution(s)")
-    
+
     # Log execution details if any exist
     for exec_item in executions.data[:5]:  # Log first 5
         logger.info(f"   - {exec_item.symbol}: qty={exec_item.qty}, price={exec_item.price}")
@@ -64,12 +64,10 @@ async def test_rest_get_market_spot_executions_empty(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_executions_after_trade(
-    maker_tester: ReyaTester, taker_tester: ReyaTester
-):
+async def test_rest_get_market_spot_executions_after_trade(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test REST API returns spot execution after a trade is executed.
-    
+
     Flow:
     1. Execute a spot trade between maker and taker
     2. Query market spot executions via REST
@@ -85,30 +83,14 @@ async def test_rest_get_market_spot_executions_after_trade(
     # Step 1: Execute a trade
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
 
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
 
     # Taker fills with IOC
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(maker_price)).qty(TEST_QTY).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_params)
     logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
@@ -122,7 +104,7 @@ async def test_rest_get_market_spot_executions_after_trade(
     executions = await maker_tester.client.get_market_spot_executions(SPOT_SYMBOL)
 
     assert executions is not None, "Should receive a response"
-    assert hasattr(executions, 'data'), "Response should have 'data' attribute"
+    assert hasattr(executions, "data"), "Response should have 'data' attribute"
     assert len(executions.data) > 0, "Should have at least one execution"
 
     logger.info(f"✅ Market spot executions returned: {len(executions.data)} execution(s)")
@@ -136,7 +118,9 @@ async def test_rest_get_market_spot_executions_after_trade(
             break
 
     assert found_execution is not None, f"Should find execution for {SPOT_SYMBOL}"
-    logger.info(f"✅ Found execution: symbol={found_execution.symbol}, qty={found_execution.qty}, price={found_execution.price}")
+    logger.info(
+        f"✅ Found execution: symbol={found_execution.symbol}, qty={found_execution.qty}, price={found_execution.price}"
+    )
 
     # Verify execution fields
     assert found_execution.symbol == SPOT_SYMBOL
@@ -175,12 +159,10 @@ async def test_rest_get_market_spot_executions_invalid_symbol(reya_tester: ReyaT
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_realtime(
-    maker_tester: ReyaTester, taker_tester: ReyaTester
-):
+async def test_ws_market_spot_executions_realtime(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test WebSocket delivers real-time spot execution updates for market channel.
-    
+
     Flow:
     1. Subscribe to market spot executions channel
     2. Execute a spot trade
@@ -203,29 +185,13 @@ async def test_ws_market_spot_executions_realtime(
     # Step 2: Execute a trade
     maker_price = round(REFERENCE_PRICE * 0.66, 2)
 
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
 
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(maker_price)).qty(TEST_QTY).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
     logger.info("✅ Taker IOC order sent")
@@ -237,12 +203,10 @@ async def test_ws_market_spot_executions_realtime(
 
     # Step 3: Verify execution received via WebSocket
     market_executions = maker_tester.ws_market_spot_executions.get(SPOT_SYMBOL, [])
-    
+
     logger.info(f"Market spot executions received via WS: {len(market_executions)}")
-    
-    assert len(market_executions) > 0, (
-        f"Should have received market spot execution via WebSocket for {SPOT_SYMBOL}"
-    )
+
+    assert len(market_executions) > 0, f"Should have received market spot execution via WebSocket for {SPOT_SYMBOL}"
 
     # Verify execution data
     ws_execution = market_executions[-1]  # Most recent
@@ -256,12 +220,10 @@ async def test_ws_market_spot_executions_realtime(
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_snapshot(
-    maker_tester: ReyaTester, taker_tester: ReyaTester
-):
+async def test_ws_market_spot_executions_snapshot(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test WebSocket snapshot contains historical executions when subscribing.
-    
+
     Flow:
     1. Execute a spot trade to create execution history
     2. Clear WebSocket state
@@ -278,28 +240,12 @@ async def test_ws_market_spot_executions_snapshot(
     # Step 1: Execute a trade to create execution history
     maker_price = round(REFERENCE_PRICE * 0.67, 2)
 
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(maker_price)).qty(TEST_QTY).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
 
@@ -318,7 +264,7 @@ async def test_ws_market_spot_executions_snapshot(
 
     # Step 4: Verify snapshot contains historical execution
     market_executions = maker_tester.ws_market_spot_executions.get(SPOT_SYMBOL, [])
-    
+
     logger.info(f"Market spot executions in snapshot: {len(market_executions)}")
 
     # Note: Snapshot may or may not include our specific execution depending on timing
@@ -332,12 +278,10 @@ async def test_ws_market_spot_executions_snapshot(
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_ws_and_rest_market_spot_executions_consistency(
-    maker_tester: ReyaTester, taker_tester: ReyaTester
-):
+async def test_ws_and_rest_market_spot_executions_consistency(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test that WebSocket and REST API return consistent data.
-    
+
     Flow:
     1. Subscribe to market spot executions channel
     2. Execute a spot trade
@@ -359,28 +303,12 @@ async def test_ws_and_rest_market_spot_executions_consistency(
     # Step 2: Execute a trade
     maker_price = round(REFERENCE_PRICE * 0.68, 2)
 
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(maker_price)).qty(TEST_QTY).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
 
@@ -390,7 +318,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(
 
     # Step 3: Query REST API
     rest_executions = await maker_tester.client.get_market_spot_executions(SPOT_SYMBOL)
-    
+
     # Step 4: Verify consistency
     ws_executions = maker_tester.ws_market_spot_executions.get(SPOT_SYMBOL, [])
 
@@ -421,7 +349,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(
 async def test_ws_market_spot_executions_multiple_symbols(reya_tester: ReyaTester):
     """
     Test subscribing to multiple market spot execution channels.
-    
+
     This test verifies that subscriptions to different symbols are independent.
     """
     logger.info("=" * 80)

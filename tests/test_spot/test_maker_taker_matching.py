@@ -13,11 +13,9 @@ import pytest
 from sdk.async_api.depth import Depth
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
-
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import limit_order_params_to_order, logger
-
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
@@ -65,15 +63,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     logger.info("\n📋 Step 1: Placing maker order (GTC buy)...")
     maker_price = REFERENCE_PRICE * 0.999  # Below reference to ensure it stays on the book
 
-    maker_order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    maker_order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_order_params)
     logger.info(f"Created maker order with ID: {maker_order_id} at price ${maker_price:.2f}")
@@ -118,15 +108,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     maker_tester.clear_balance_updates()
     taker_tester.clear_balance_updates()
 
-    taker_order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(taker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
     logger.info(f"Created taker order with ID: {taker_order_id} at price ${taker_price:.2f}")
@@ -182,20 +164,20 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     logger.info(f"Maker received {len(maker_balance_updates)} balance updates via WS")
     logger.info(f"Taker received {len(taker_balance_updates)} balance updates via WS")
 
-    assert len(maker_balance_updates) == 2, (
-        f"Maker should receive exactly 2 balance updates (ETH + RUSD), got {len(maker_balance_updates)}"
-    )
-    assert len(taker_balance_updates) == 2, (
-        f"Taker should receive exactly 2 balance updates (ETH + RUSD), got {len(taker_balance_updates)}"
-    )
+    assert (
+        len(maker_balance_updates) == 2
+    ), f"Maker should receive exactly 2 balance updates (ETH + RUSD), got {len(maker_balance_updates)}"
+    assert (
+        len(taker_balance_updates) == 2
+    ), f"Taker should receive exactly 2 balance updates (ETH + RUSD), got {len(taker_balance_updates)}"
 
     maker_assets = {b.asset for b in maker_balance_updates}
     taker_assets = {b.asset for b in taker_balance_updates}
     logger.info(f"✅ Maker balance updates received for: {maker_assets}")
     logger.info(f"✅ Taker balance updates received for: {taker_assets}")
 
-    assert maker_assets == {'ETH', 'RUSD'}, f"Maker should have both ETH and RUSD updates, got {maker_assets}"
-    assert taker_assets == {'ETH', 'RUSD'}, f"Taker should have both ETH and RUSD updates, got {taker_assets}"
+    assert maker_assets == {"ETH", "RUSD"}, f"Maker should have both ETH and RUSD updates, got {maker_assets}"
+    assert taker_assets == {"ETH", "RUSD"}, f"Taker should have both ETH and RUSD updates, got {taker_assets}"
 
     logger.info("✅ Balance updates verified via WebSocket for both accounts")
 

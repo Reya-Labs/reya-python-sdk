@@ -12,13 +12,14 @@ These tests verify both that events are received AND that the event
 content matches expectations using centralized assertion helpers.
 """
 
-import pytest
 import asyncio
 import logging
 
+import pytest
+
+from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
-from sdk.open_api.models import OrderStatus
 
 logger = logging.getLogger("reya.integration_tests")
 
@@ -33,7 +34,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
     """
     Test WebSocket orderChanges event received on order creation.
-    
+
     Flow:
     1. Clear order change tracking
     2. Place GTC order
@@ -51,16 +52,8 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
 
     # Place GTC order
     order_price = round(REFERENCE_PRICE * 0.50, 2)
-    
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(order_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy: {TEST_QTY} @ ${order_price:.2f}")
     order_id = await reya_tester.create_limit_order(order_params)
@@ -76,11 +69,7 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
     )
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=order_id,
-        symbol=SPOT_SYMBOL,
-        account_id=reya_tester.account_id
-    )
+    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
     await asyncio.sleep(0.05)
     await reya_tester.check_no_open_orders()
 
@@ -94,7 +83,7 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
 async def test_spot_ws_order_changes_on_fill(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test WebSocket orderChanges event received on order fill.
-    
+
     Flow:
     1. Maker places GTC order
     2. Taker fills the order
@@ -112,16 +101,8 @@ async def test_spot_ws_order_changes_on_fill(maker_tester: ReyaTester, taker_tes
 
     # Maker places GTC buy order
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
-    
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {TEST_QTY} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -130,16 +111,8 @@ async def test_spot_ws_order_changes_on_fill(maker_tester: ReyaTester, taker_tes
 
     # Taker fills the order
     taker_price = round(maker_price * 0.99, 2)
-    
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(taker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
 
     logger.info(f"Taker placing IOC sell to fill maker order...")
     await taker_tester.create_limit_order(taker_params)
@@ -169,7 +142,7 @@ async def test_spot_ws_order_changes_on_fill(maker_tester: ReyaTester, taker_tes
 async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
     """
     Test WebSocket orderChanges event received on order cancel.
-    
+
     Flow:
     1. Place GTC order
     2. Cancel the order
@@ -183,16 +156,8 @@ async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
 
     # Place GTC order
     order_price = round(REFERENCE_PRICE * 0.50, 2)
-    
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(order_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy: {TEST_QTY} @ ${order_price:.2f}")
     order_id = await reya_tester.create_limit_order(order_params)
@@ -204,11 +169,7 @@ async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await reya_tester.client.cancel_order(
-        order_id=order_id,
-        symbol=SPOT_SYMBOL,
-        account_id=reya_tester.account_id
-    )
+    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
 
     # Wait for cancellation
     await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED, timeout=5)
@@ -233,7 +194,7 @@ async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
 async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test WebSocket spotExecutions event received on trade.
-    
+
     Flow:
     1. Maker places GTC order
     2. Taker fills with IOC order
@@ -251,16 +212,8 @@ async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: R
 
     # Maker places GTC buy order
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
-    
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {TEST_QTY} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -269,22 +222,15 @@ async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: R
 
     # Taker fills with IOC sell
     taker_price = round(maker_price * 0.99, 2)
-    
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(taker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
 
     logger.info(f"Taker placing IOC sell: {TEST_QTY} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_params)
 
     # Wait for spot execution event via WebSocket (strict matching on order_id and all fields)
     from tests.helpers.reya_tester import limit_order_params_to_order
+
     expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
     execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_order, timeout=5)
 
@@ -310,7 +256,7 @@ async def test_spot_ws_spot_executions(maker_tester: ReyaTester, taker_tester: R
 async def test_spot_ws_balance_updates(maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test WebSocket accountBalances event received on trade.
-    
+
     Flow:
     1. Record initial balance update count
     2. Execute a trade between maker and taker
@@ -330,16 +276,8 @@ async def test_spot_ws_balance_updates(maker_tester: ReyaTester, taker_tester: R
 
     # Maker places GTC buy order (buying ETH with RUSD)
     maker_price = round(REFERENCE_PRICE * 0.65, 2)
-    
-    maker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(maker_price))
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+
+    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {TEST_QTY} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -348,16 +286,8 @@ async def test_spot_ws_balance_updates(maker_tester: ReyaTester, taker_tester: R
 
     # Taker fills with IOC sell (selling ETH for RUSD)
     taker_price = round(maker_price * 0.99, 2)
-    
-    taker_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(str(taker_price))
-        .qty(TEST_QTY)
-        .ioc()
-        .build()
-    )
+
+    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
 
     logger.info(f"Taker placing IOC sell: {TEST_QTY} @ ${taker_price:.2f}")
     await taker_tester.create_limit_order(taker_params)
@@ -372,7 +302,7 @@ async def test_spot_ws_balance_updates(maker_tester: ReyaTester, taker_tester: R
         min_updates=1,
         expected_assets=["ETH"],  # Maker bought ETH
     )
-    
+
     taker_tester.check_ws_balance_updates_received(
         initial_update_count=taker_initial_count,
         min_updates=1,

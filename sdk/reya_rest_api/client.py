@@ -7,11 +7,12 @@ This module provides a client for interacting with the Reya Trading REST API.
 from typing import Optional
 
 import logging
-import time
 import threading
+import time
 from decimal import Decimal
 
 from sdk._version import SDK_VERSION
+from sdk.async_api.depth import Depth
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.order_entry_api import OrderEntryApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
@@ -24,10 +25,9 @@ from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
-from sdk.async_api.depth import Depth
+from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse
-from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
@@ -63,7 +63,7 @@ class ReyaTradingClient:
     This class provides a high-level interface to the Reya Trading API,
     with resources for managing orders and accounts.
     """
-    
+
     # Class-level nonce tracking per wallet address (shared across all instances)
     _wallet_nonces: dict[str, int] = {}
     _wallet_nonce_lock = threading.Lock()
@@ -153,19 +153,19 @@ class ReyaTradingClient:
     def _get_next_nonce(self) -> int:
         """
         Generate a monotonically increasing nonce for spot market operations.
-        
+
         Uses microsecond timestamp as base, but ensures the nonce is always
         greater than the last used nonce to prevent race conditions when
         multiple orders are created in quick succession.
-        
+
         Nonces are tracked per-wallet at the class level, so multiple client
         instances sharing the same wallet will use the same nonce counter.
-        
+
         Returns:
             A unique nonce guaranteed to be greater than any previously returned nonce.
         """
         wallet_address = self._config.owner_wallet_address.lower()
-        
+
         with ReyaTradingClient._wallet_nonce_lock:
             current_time_nonce = int(time.time() * 1_000_000)
             last_nonce = ReyaTradingClient._wallet_nonces.get(wallet_address, 0)
@@ -324,10 +324,10 @@ class ReyaTradingClient:
         # Only include expiresAfter for IOC orders and spot markets
         # GTC perp orders don't support expiresAfter
         is_ioc_or_spot = params.time_in_force == TimeInForce.IOC or self._is_spot_market(params.symbol)
-        
+
         # reduceOnly is only supported for perp IOC orders
         is_perp_ioc = params.time_in_force == TimeInForce.IOC and not self._is_spot_market(params.symbol)
-        
+
         order_request = CreateOrderRequest(
             accountId=self.config.account_id,
             symbol=params.symbol,
@@ -461,15 +461,11 @@ class ReyaTradingClient:
             if symbol is None:
                 raise ValueError("symbol is required for spot market order cancellation")
             if account_id is None:
-                raise ValueError(
-                    f"account_id is required for spot market order cancellation (symbol: {symbol})"
-                )
+                raise ValueError(f"account_id is required for spot market order cancellation (symbol: {symbol})")
             # For spot markets: must provide at least one of order_id or client_order_id
             # If both are provided, the API will prefer order_id
             if not order_id and not client_order_id:
-                raise ValueError(
-                    "For spot orders, must provide either order_id or client_order_id"
-                )
+                raise ValueError("For spot orders, must provide either order_id or client_order_id")
         else:
             # For perp markets, order_id is required
             if not order_id:
@@ -543,8 +539,7 @@ class ReyaTradingClient:
         # Verify this is a spot market
         if not self._is_spot_market(symbol):
             raise ValueError(
-                f"Mass cancel is only supported for spot markets. "
-                f"Symbol '{symbol}' appears to be a perp market."
+                f"Mass cancel is only supported for spot markets. " f"Symbol '{symbol}' appears to be a perp market."
             )
 
         # Use config account_id if not provided
@@ -711,6 +706,7 @@ class ReyaTradingClient:
         """
         # Direct HTTP request to depth endpoint (not in generated API yet)
         import aiohttp
+
         url = f"{self._config.api_url}/market/{symbol}/depth"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
@@ -734,6 +730,7 @@ class ReyaTradingClient:
         """
         # Direct HTTP request to market spot executions endpoint
         import aiohttp
+
         url = f"{self._config.api_url}/market/{symbol}/spotExecutions"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:

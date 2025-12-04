@@ -1,6 +1,7 @@
 """Position operations for ReyaTester."""
 
 from typing import TYPE_CHECKING, Optional
+
 import asyncio
 import logging
 import time
@@ -32,7 +33,9 @@ class PositionOperations:
         except Exception as e:
             logger.warning(f"Failed to get positions (API may not have market trackers in Redis): {e}")
             if fail_if_none:
-                logger.warning("Ignoring positions error since fail_if_none=True means we don't require positions to exist")
+                logger.warning(
+                    "Ignoring positions error since fail_if_none=True means we don't require positions to exist"
+                )
             return None
 
         if len(positions) == 0:
@@ -83,7 +86,7 @@ class PositionOperations:
         is_buy: bool = True,
         qty: str = "0.01",
         price_multiplier: float = 1.01,
-        reduce_only: bool = False
+        reduce_only: bool = False,
     ) -> tuple[str, str]:
         """
         Set up a position by creating and executing a limit order.

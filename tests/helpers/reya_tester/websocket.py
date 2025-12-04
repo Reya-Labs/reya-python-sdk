@@ -5,6 +5,7 @@ These types match the AsyncAPI spec and are auto-generated.
 """
 
 from typing import TYPE_CHECKING, Optional
+
 import json
 import logging
 
@@ -23,7 +24,6 @@ from sdk.async_api.spot_execution import SpotExecution as AsyncSpotExecution
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
-
 from sdk.reya_websocket import WebSocketMessage
 
 if TYPE_CHECKING:
@@ -34,14 +34,14 @@ logger = logging.getLogger("reya.integration_tests")
 
 class WebSocketState:
     """WebSocket state tracking and management.
-    
+
     Uses async_api types directly from WebSocket messages.
     These types are auto-generated from the AsyncAPI spec.
     """
 
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
-        
+
         # State tracking - using async_api types directly
         self.last_trade: Optional[AsyncPerpExecution] = None
         self.last_spot_execution: Optional[AsyncSpotExecution] = None
@@ -119,47 +119,47 @@ class WebSocketState:
 
     def on_message(self, ws, message: WebSocketMessage) -> None:
         """Handle WebSocket messages using typed payloads from SDK.
-        
+
         The SDK parses all messages into typed Pydantic models automatically.
         This follows the same pattern as the REST API - no raw dict access.
         """
         logger.info(f"Received message: {type(message).__name__}")
-        
+
         # Handle subscribed messages with initial snapshots
         if isinstance(message, SubscribedMessagePayload):
             logger.info(f"✅ Subscribed to {message.channel}")
-            
+
             # Handle initial snapshot for depth channel
             if "depth" in message.channel and message.contents:
                 depth = Depth.model_validate(message.contents)
                 self.last_depth[depth.symbol] = depth
                 logger.info(f"Stored depth snapshot for {depth.symbol}: {len(depth.bids)} bids, {len(depth.asks)} asks")
-            
+
             # Handle initial snapshot for market spot executions channel
             if "/market/" in message.channel and "spotExecutions" in message.channel and message.contents:
                 symbol = message.channel.split("/")[3]  # /v2/market/{symbol}/spotExecutions
                 data = message.contents.get("data", [])
-                
+
                 if symbol not in self.market_spot_executions:
                     self.market_spot_executions[symbol] = []
-                
+
                 for e in data:
                     execution = AsyncSpotExecution.model_validate(e)
                     self.market_spot_executions[symbol].append(execution)
-                
+
                 logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
-        
+
         # Handle perp executions - store async_api type directly
         elif isinstance(message, WalletPerpExecutionUpdatePayload):
             for trade in message.data:
                 self.last_trade = trade
-        
+
         # Handle spot executions (market or wallet level) - store async_api type directly
         elif isinstance(message, (MarketSpotExecutionUpdatePayload, WalletSpotExecutionUpdatePayload)):
             is_market_channel = "/market/" in message.channel
             for exec_data in message.data:
                 self.last_spot_execution = exec_data
-                
+
                 if is_market_channel:
                     symbol = message.channel.split("/")[3]
                     if symbol not in self.market_spot_executions:
@@ -168,46 +168,46 @@ class WebSocketState:
                     logger.debug(f"Added market spot execution for {symbol}: {exec_data.order_id}")
                 else:
                     self.spot_executions.append(exec_data)
-        
+
         # Handle order changes - store async_api type directly
         elif isinstance(message, OrderChangeUpdatePayload):
             for order_data in message.data:
                 self.order_changes[order_data.order_id] = order_data
-        
+
         # Handle position updates - store async_api type directly
         elif isinstance(message, PositionUpdatePayload):
             for pos_data in message.data:
                 self.positions[pos_data.symbol] = pos_data
-        
+
         # Handle depth updates
         elif isinstance(message, MarketDepthUpdatePayload):
             depth = message.data
             symbol = depth.symbol
             existing = self.last_depth.get(symbol)
-            
+
             if existing is None:
                 self.last_depth[symbol] = depth
             else:
                 # Merge updates into existing depth
                 existing_bids = list(existing.bids) if existing.bids else []
                 existing_asks = list(existing.asks) if existing.asks else []
-                
+
                 # Process bid updates
                 for level in depth.bids:
                     existing_bids = [b for b in existing_bids if b.px != level.px]
                     if float(level.qty) > 0:
                         existing_bids.append(level)
-                
+
                 # Process ask updates
                 for level in depth.asks:
                     existing_asks = [a for a in existing_asks if a.px != level.px]
                     if float(level.qty) > 0:
                         existing_asks.append(level)
-                
+
                 # Sort bids descending, asks ascending
                 existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
                 existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
-                
+
                 self.last_depth[symbol] = Depth(
                     symbol=symbol,
                     type=existing.type,
@@ -215,7 +215,7 @@ class WebSocketState:
                     asks=existing_asks,
                     updatedAt=depth.updated_at,  # Use alias for input, access via snake_case
                 )
-        
+
         # Handle account balance updates - store async_api type directly
         elif isinstance(message, AccountBalanceUpdatePayload):
             for balance_data in message.data:
@@ -279,10 +279,18 @@ class WebSocketState:
         taker_base_change = Decimal(taker_final_base.real_balance) - Decimal(taker_initial_base.real_balance)
         taker_quote_change = Decimal(taker_final_quote.real_balance) - Decimal(taker_initial_quote.real_balance)
 
-        logger.info(f"Maker {base_asset} change: {maker_base_change} (expected: {'+' if is_maker_buyer else '-'}{qty_decimal})")
-        logger.info(f"Maker {quote_asset} change: {maker_quote_change} (expected: {'-' if is_maker_buyer else '+'}{notional})")
-        logger.info(f"Taker {base_asset} change: {taker_base_change} (expected: {'-' if is_maker_buyer else '+'}{qty_decimal})")
-        logger.info(f"Taker {quote_asset} change: {taker_quote_change} (expected: {'+' if is_maker_buyer else '-'}{notional})")
+        logger.info(
+            f"Maker {base_asset} change: {maker_base_change} (expected: {'+' if is_maker_buyer else '-'}{qty_decimal})"
+        )
+        logger.info(
+            f"Maker {quote_asset} change: {maker_quote_change} (expected: {'-' if is_maker_buyer else '+'}{notional})"
+        )
+        logger.info(
+            f"Taker {base_asset} change: {taker_base_change} (expected: {'-' if is_maker_buyer else '+'}{qty_decimal})"
+        )
+        logger.info(
+            f"Taker {quote_asset} change: {taker_quote_change} (expected: {'+' if is_maker_buyer else '-'}{notional})"
+        )
 
         # Calculate expected EXACT changes (zero fees)
         if is_maker_buyer:
@@ -297,20 +305,20 @@ class WebSocketState:
             expected_taker_quote_change = -notional
 
         # Verify EXACT match (spot has zero fees)
-        assert maker_base_change == expected_maker_base_change, (
-            f"Maker {base_asset} change {maker_base_change} does not exactly match expected {expected_maker_base_change}"
-        )
+        assert (
+            maker_base_change == expected_maker_base_change
+        ), f"Maker {base_asset} change {maker_base_change} does not exactly match expected {expected_maker_base_change}"
 
-        assert maker_quote_change == expected_maker_quote_change, (
-            f"Maker {quote_asset} change {maker_quote_change} does not exactly match expected {expected_maker_quote_change}"
-        )
+        assert (
+            maker_quote_change == expected_maker_quote_change
+        ), f"Maker {quote_asset} change {maker_quote_change} does not exactly match expected {expected_maker_quote_change}"
 
-        assert taker_base_change == expected_taker_base_change, (
-            f"Taker {base_asset} change {taker_base_change} does not exactly match expected {expected_taker_base_change}"
-        )
+        assert (
+            taker_base_change == expected_taker_base_change
+        ), f"Taker {base_asset} change {taker_base_change} does not exactly match expected {expected_taker_base_change}"
 
-        assert taker_quote_change == expected_taker_quote_change, (
-            f"Taker {quote_asset} change {taker_quote_change} does not exactly match expected {expected_taker_quote_change}"
-        )
+        assert (
+            taker_quote_change == expected_taker_quote_change
+        ), f"Taker {quote_asset} change {taker_quote_change} does not exactly match expected {expected_taker_quote_change}"
 
         logger.info("✅ All balance changes verified EXACTLY (zero fees confirmed)!")

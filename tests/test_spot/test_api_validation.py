@@ -18,18 +18,16 @@ from decimal import Decimal
 import aiohttp
 import pytest
 
-from sdk.open_api.models.time_in_force import TimeInForce
-from sdk.open_api.models.order_type import OrderType
-from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
+from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig
-
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import logger
-
 
 # Test configuration
 SPOT_SYMBOL = "WETHRUSD"
@@ -178,9 +176,8 @@ async def test_spot_order_wrong_signer(reya_tester: ReyaTester):
         # Expect either:
         # - CREATE_ORDER_OTHER_ERROR with 'Invalid signature' (signature validation fails), or
         # - CANCEL_ORDER_OTHER_ERROR with 'Unauthorized: signer does not have permission' (permission check fails)
-        has_valid_error = (
-            ("CREATE_ORDER_OTHER_ERROR" in error_msg and "Invalid signature" in error_msg) or
-            ("Unauthorized: signer does not have permission" in error_msg)
+        has_valid_error = ("CREATE_ORDER_OTHER_ERROR" in error_msg and "Invalid signature" in error_msg) or (
+            "Unauthorized: signer does not have permission" in error_msg
         )
         assert has_valid_error, f"Expected signature or permission error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
@@ -455,8 +452,9 @@ async def test_spot_order_reused_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # Expect: message='Invalid nonce: expected nonce > X, got Y'
-        assert "Invalid nonce: expected nonce >" in error_msg, \
-            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        assert (
+            "Invalid nonce: expected nonce >" in error_msg
+        ), f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -572,8 +570,9 @@ async def test_spot_order_old_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # Expect: message='Invalid nonce: expected nonce > X, got Y'
-        assert "Invalid nonce: expected nonce >" in error_msg, \
-            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        assert (
+            "Invalid nonce: expected nonce >" in error_msg
+        ), f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -622,15 +621,7 @@ async def test_spot_ioc_insufficient_balance_buy(reya_tester: ReyaTester):
     # Request 10% more than we can afford
     exceeding_qty = str((max_qty_at_price * Decimal("1.1")).quantize(Decimal("0.01")))
 
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(str(order_price))
-        .qty(exceeding_qty)
-        .ioc()
-        .build()
-    )
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(exceeding_qty).ioc().build()
 
     required_rusd = Decimal(exceeding_qty) * order_price
     logger.info(f"Sending IOC buy for {exceeding_qty} ETH @ ${order_price}")
@@ -684,15 +675,7 @@ async def test_spot_ioc_insufficient_balance_sell(reya_tester: ReyaTester):
     exceeding_qty = str((eth_balance * Decimal("1.1")).quantize(Decimal("0.01")))
     order_price = str(REFERENCE_PRICE)
 
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .sell()
-        .price(order_price)
-        .qty(exceeding_qty)
-        .ioc()
-        .build()
-    )
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(order_price).qty(exceeding_qty).ioc().build()
 
     logger.info(f"Sending IOC sell for {exceeding_qty} ETH @ ${order_price}")
     logger.info(f"Required ETH: {exceeding_qty}, Available: {eth_balance}")
@@ -736,15 +719,7 @@ async def test_spot_order_qty_below_minimum(reya_tester: ReyaTester):
     tiny_qty = "0.001"  # Below minimum
     order_price = str(round(REFERENCE_PRICE * 0.50, 2))
 
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(order_price)
-        .qty(tiny_qty)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(order_price).qty(tiny_qty).gtc().build()
 
     logger.info(f"Sending order with qty below minimum: {tiny_qty}")
 
@@ -791,15 +766,7 @@ async def test_spot_order_qty_not_step_multiple(reya_tester: ReyaTester):
     non_step_qty = "0.0123456789"
     order_price = str(round(REFERENCE_PRICE * 0.50, 2))
 
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(order_price)
-        .qty(non_step_qty)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(order_price).qty(non_step_qty).gtc().build()
 
     logger.info(f"Sending order with non-step-multiple qty: {non_step_qty}")
 
@@ -817,8 +784,9 @@ async def test_spot_order_qty_not_step_multiple(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order quantity X does not conform to base spacing Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
-        assert "does not conform to base spacing" in error_msg, \
-            f"Expected 'does not conform to base spacing' message, got: {e}"
+        assert (
+            "does not conform to base spacing" in error_msg
+        ), f"Expected 'does not conform to base spacing' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -845,15 +813,7 @@ async def test_spot_order_price_not_tick_multiple(reya_tester: ReyaTester):
     # Most markets have tick size like 0.01, so 0.001 precision would be invalid
     non_tick_price = "250.123456789"
 
-    order_params = (
-        OrderBuilder()
-        .symbol(SPOT_SYMBOL)
-        .buy()
-        .price(non_tick_price)
-        .qty(TEST_QTY)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(non_tick_price).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Sending order with non-tick-multiple price: {non_tick_price}")
 
@@ -871,7 +831,9 @@ async def test_spot_order_price_not_tick_multiple(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order price X does not conform to price spacing Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
-        assert "does not conform to price spacing" in error_msg, f"Expected 'does not conform to price spacing' message, got: {e}"
+        assert (
+            "does not conform to price spacing" in error_msg
+        ), f"Expected 'does not conform to price spacing' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -935,8 +897,9 @@ async def test_spot_cancel_invalid_signature(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid signature: unable to recover signer from signature'
         assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
-        assert "Invalid signature: unable to recover signer from signature" in error_msg, \
-            f"Expected 'Invalid signature: unable to recover signer from signature' message, got: {e}"
+        assert (
+            "Invalid signature: unable to recover signer from signature" in error_msg
+        ), f"Expected 'Invalid signature: unable to recover signer from signature' message, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1042,8 +1005,9 @@ async def test_spot_cancel_reused_nonce(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid nonce: expected nonce > X, got Y'
         assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
-        assert "Invalid nonce: expected nonce >" in error_msg, \
-            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        assert (
+            "Invalid nonce: expected nonce >" in error_msg
+        ), f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1150,8 +1114,9 @@ async def test_spot_cancel_old_nonce(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid nonce: expected nonce > X, got Y'
         assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
-        assert "Invalid nonce: expected nonce >" in error_msg, \
-            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        assert (
+            "Invalid nonce: expected nonce >" in error_msg
+        ), f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1205,8 +1170,7 @@ async def test_spot_mass_cancel_invalid_signature(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # Expect: Invalid signature error
-        assert "Invalid signature" in error_msg or "CANCEL" in error_msg, \
-            f"Expected signature error, got: {e}"
+        assert "Invalid signature" in error_msg or "CANCEL" in error_msg, f"Expected signature error, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1255,8 +1219,9 @@ async def test_spot_mass_cancel_expired_deadline(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # Expect: deadline passed error
-        assert "deadline" in error_msg.lower() or "expired" in error_msg.lower() or "CANCEL" in error_msg, \
-            f"Expected deadline error, got: {e}"
+        assert (
+            "deadline" in error_msg.lower() or "expired" in error_msg.lower() or "CANCEL" in error_msg
+        ), f"Expected deadline error, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1329,8 +1294,9 @@ async def test_spot_mass_cancel_reused_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # Expect: Invalid nonce error
-        assert "Invalid nonce: expected nonce >" in error_msg, \
-            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        assert (
+            "Invalid nonce: expected nonce >" in error_msg
+        ), f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1404,8 +1370,9 @@ async def test_spot_mass_cancel_old_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # Expect: Invalid nonce error
-        assert "Invalid nonce: expected nonce >" in error_msg, \
-            f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
+        assert (
+            "Invalid nonce: expected nonce >" in error_msg
+        ), f"Expected 'Invalid nonce: expected nonce > ...' message, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1486,8 +1453,9 @@ async def test_spot_cancel_wrong_signer(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: CANCEL_ORDER_OTHER_ERROR with 'Unauthorized: signer does not have permission'
         assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
-        assert "Unauthorized: signer does not have permission" in error_msg, \
-            f"Expected 'Unauthorized: signer does not have permission' message, got: {e}"
+        assert (
+            "Unauthorized: signer does not have permission" in error_msg
+        ), f"Expected 'Unauthorized: signer does not have permission' message, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1572,8 +1540,9 @@ async def test_spot_mass_cancel_wrong_signer(reya_tester: ReyaTester):
         error_msg = str(e)
         # Expect: CANCEL_ORDER_OTHER_ERROR with 'Unauthorized: signer does not have permission'
         assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
-        assert "Unauthorized: signer does not have permission" in error_msg, \
-            f"Expected 'Unauthorized: signer does not have permission' message, got: {e}"
+        assert (
+            "Unauthorized: signer does not have permission" in error_msg
+        ), f"Expected 'Unauthorized: signer does not have permission' message, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1656,8 +1625,9 @@ async def test_spot_order_invalid_exchange_id(reya_tester: ReyaTester):
         pytest.fail(f"Order with invalid exchangeId should have been rejected, got: {response}")
     except Exception as e:
         error_msg = str(e)
-        assert "exchangeId must be a positive number" in error_msg, \
-            f"Expected 'exchangeId must be a positive number' error, got: {e}"
+        assert (
+            "exchangeId must be a positive number" in error_msg
+        ), f"Expected 'exchangeId must be a positive number' error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1725,8 +1695,9 @@ async def test_spot_order_invalid_symbol(reya_tester: ReyaTester):
         pytest.fail(f"Order with invalid symbol should have been rejected, got: {response}")
     except Exception as e:
         error_msg = str(e).lower()
-        assert "symbol" in error_msg or "unrecognized" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(e), \
-            f"Expected symbol validation error, got: {e}"
+        assert (
+            "symbol" in error_msg or "unrecognized" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(e)
+        ), f"Expected symbol validation error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1777,8 +1748,9 @@ async def test_spot_order_missing_signature(reya_tester: ReyaTester):
         pytest.fail(f"Order without signature should have been rejected, got: {response}")
     except Exception as e:
         error_msg = str(e).lower()
-        assert "signature" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(e), \
-            f"Expected signature validation error, got: {e}"
+        assert "signature" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(
+            e
+        ), f"Expected signature validation error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1846,8 +1818,9 @@ async def test_spot_order_missing_nonce(reya_tester: ReyaTester):
         pytest.fail(f"Order without nonce should have been rejected, got: {response}")
     except Exception as e:
         error_msg = str(e).lower()
-        assert "nonce" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(e), \
-            f"Expected nonce validation error, got: {e}"
+        assert "nonce" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(
+            e
+        ), f"Expected nonce validation error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1918,8 +1891,9 @@ async def test_spot_order_invalid_time_in_force(reya_tester: ReyaTester):
                 if resp.status == 200:
                     pytest.fail(f"Order with invalid timeInForce should have been rejected")
                 response_text = await resp.text()
-                assert "timeInForce" in response_text.lower() or resp.status == 400, \
-                    f"Expected timeInForce validation error, got: {response_text}"
+                assert (
+                    "timeInForce" in response_text.lower() or resp.status == 400
+                ), f"Expected timeInForce validation error, got: {response_text}"
                 logger.info(f"✅ Order rejected as expected: HTTP {resp.status}")
                 logger.info(f"   Error: {response_text[:150]}")
     except Exception as e:
@@ -1993,8 +1967,9 @@ async def test_spot_order_missing_expiration(reya_tester: ReyaTester):
                 if resp.status == 200:
                     pytest.fail(f"Order without expiresAfter should have been rejected")
                 response_text = await resp.text()
-                assert "expiresAfter" in response_text.lower() or "expires" in response_text.lower() or resp.status == 400, \
-                    f"Expected expiresAfter validation error, got: {response_text}"
+                assert (
+                    "expiresAfter" in response_text.lower() or "expires" in response_text.lower() or resp.status == 400
+                ), f"Expected expiresAfter validation error, got: {response_text}"
                 logger.info(f"✅ Order rejected as expected: HTTP {resp.status}")
                 logger.info(f"   Error: {response_text[:150]}")
     except Exception as e:

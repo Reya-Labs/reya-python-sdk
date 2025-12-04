@@ -1,6 +1,7 @@
 """Assertion/check operations for ReyaTester."""
 
 from typing import TYPE_CHECKING, Optional
+
 import asyncio
 import logging
 
@@ -43,12 +44,12 @@ class Checks:
         assert open_order.order_id == order_id, "check_open_order_created: Wrong order id"
 
         if expected_order.order_type == OrderType.LIMIT:
-            assert float(open_order.limit_px) == float(expected_order.limit_px), (
-                f"check_open_order_created: Wrong limit price. Expected: {expected_order.limit_px}, Got: {open_order.limit_px}"
-            )
-            assert float(open_order.qty) == float(expected_order.qty), (
-                f"check_open_order_created: Wrong qty. Expected: {expected_order.qty}, Got: {open_order.qty}"
-            )
+            assert float(open_order.limit_px) == float(
+                expected_order.limit_px
+            ), f"check_open_order_created: Wrong limit price. Expected: {expected_order.limit_px}, Got: {open_order.limit_px}"
+            assert float(open_order.qty) == float(
+                expected_order.qty
+            ), f"check_open_order_created: Wrong qty. Expected: {expected_order.qty}, Got: {open_order.qty}"
         else:
             expected_trigger_px = expected_order.trigger_px if expected_order.trigger_px else expected_order.limit_px
             assert float(open_order.trigger_px) == pytest.approx(
@@ -66,16 +67,16 @@ class Checks:
         if len(open_orders) == 0:
             return
 
-        logger.warning(f"check_no_open_orders: Found {len(open_orders)} open orders from database, checking if they're stale:")
+        logger.warning(
+            f"check_no_open_orders: Found {len(open_orders)} open orders from database, checking if they're stale:"
+        )
 
         legitimate_orders = []
         for order in open_orders:
             logger.warning(f"  - Checking order ID: {order.order_id}, Symbol: {order.symbol}, Status: {order.status}")
             try:
                 await self._t.client.cancel_order(
-                    order_id=order.order_id,
-                    symbol=order.symbol,
-                    account_id=order.account_id
+                    order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
                 )
                 logger.warning(f"Order {order.order_id} exists in matching engine, waiting for cancellation...")
                 legitimate_orders.append(order)
@@ -98,9 +99,7 @@ class Checks:
         for order in remaining_orders:
             try:
                 await self._t.client.cancel_order(
-                    order_id=order.order_id,
-                    symbol=order.symbol,
-                    account_id=order.account_id
+                    order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
                 )
             except Exception as e:
                 if "Missing order" not in str(e):
@@ -205,19 +204,13 @@ class Checks:
         assert (
             spot_execution.exchange_id == self._t.client.config.dex_id
         ), "check_spot_execution: Exchange ID does not match"
-        assert (
-            spot_execution.symbol == expected_order.symbol
-        ), "check_spot_execution: Symbol does not match"
-        assert (
-            spot_execution.account_id == expected_order.account_id
-        ), "check_spot_execution: Account ID does not match"
-        assert (
-            spot_execution.qty == (expected_order.qty if expected_qty is None else expected_qty)
+        assert spot_execution.symbol == expected_order.symbol, "check_spot_execution: Symbol does not match"
+        assert spot_execution.account_id == expected_order.account_id, "check_spot_execution: Account ID does not match"
+        assert spot_execution.qty == (
+            expected_order.qty if expected_qty is None else expected_qty
         ), "check_spot_execution: Quantity does not match"
         assert spot_execution.side == expected_order.side, "check_spot_execution: Side does not match"
-        assert (
-            spot_execution.type == ExecutionType.ORDER_MATCH
-        ), "check_spot_execution: Execution type does not match"
+        assert spot_execution.type == ExecutionType.ORDER_MATCH, "check_spot_execution: Execution type does not match"
         if expected_order.order_type == OrderType.LIMIT and expected_order.limit_px is not None:
             if expected_order.side == Side.B:
                 assert float(spot_execution.price) <= float(
@@ -272,34 +265,30 @@ class Checks:
         logger.info(f"✅ Order change event received via WebSocket for {order_id}")
 
         if expected_symbol is not None:
-            assert ws_order.symbol == expected_symbol, (
-                f"Symbol mismatch: expected {expected_symbol}, got {ws_order.symbol}"
-            )
+            assert (
+                ws_order.symbol == expected_symbol
+            ), f"Symbol mismatch: expected {expected_symbol}, got {ws_order.symbol}"
             logger.info(f"   ✅ Symbol: {ws_order.symbol}")
 
         if expected_side is not None:
             # Compare enum value (string) since async_api uses enum types
-            ws_side_value = ws_order.side.value if hasattr(ws_order.side, 'value') else ws_order.side
-            assert ws_side_value == expected_side, (
-                f"Side mismatch: expected {expected_side}, got {ws_side_value}"
-            )
+            ws_side_value = ws_order.side.value if hasattr(ws_order.side, "value") else ws_order.side
+            assert ws_side_value == expected_side, f"Side mismatch: expected {expected_side}, got {ws_side_value}"
             side_name = "BUY" if expected_side == "B" else "SELL"
             logger.info(f"   ✅ Side: {ws_side_value} ({side_name})")
 
         if expected_status is not None:
             # Compare enum value (string) since async_api uses enum types
-            ws_status_value = ws_order.status.value if hasattr(ws_order.status, 'value') else ws_order.status
-            assert ws_status_value == expected_status, (
-                f"Status mismatch: expected {expected_status}, got {ws_status_value}"
-            )
+            ws_status_value = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
+            assert (
+                ws_status_value == expected_status
+            ), f"Status mismatch: expected {expected_status}, got {ws_status_value}"
             logger.info(f"   ✅ Status: {ws_status_value}")
 
         if expected_qty is not None:
             ws_qty = float(ws_order.qty)
             exp_qty = float(expected_qty)
-            assert abs(ws_qty - exp_qty) < 0.0001, (
-                f"Qty mismatch: expected {exp_qty}, got {ws_qty}"
-            )
+            assert abs(ws_qty - exp_qty) < 0.0001, f"Qty mismatch: expected {exp_qty}, got {ws_qty}"
             logger.info(f"   ✅ Qty: {ws_order.qty}")
 
         return ws_order
@@ -312,42 +301,34 @@ class Checks:
         expected_price: Optional[str] = None,
     ) -> SpotExecution:
         """Assert that a spot execution event was received via WebSocket."""
-        assert self._t.ws.last_spot_execution is not None, (
-            "No spot execution event received via WebSocket"
-        )
+        assert self._t.ws.last_spot_execution is not None, "No spot execution event received via WebSocket"
 
         execution = self._t.ws.last_spot_execution
         logger.info("✅ Spot execution event received via WebSocket")
 
         if expected_symbol is not None:
-            assert execution.symbol == expected_symbol, (
-                f"Symbol mismatch: expected {expected_symbol}, got {execution.symbol}"
-            )
+            assert (
+                execution.symbol == expected_symbol
+            ), f"Symbol mismatch: expected {expected_symbol}, got {execution.symbol}"
             logger.info(f"   ✅ Symbol: {execution.symbol}")
 
         if expected_side is not None:
             # Compare enum value (string) since async_api uses enum types
-            exec_side_value = execution.side.value if hasattr(execution.side, 'value') else execution.side
-            assert exec_side_value == expected_side, (
-                f"Side mismatch: expected {expected_side}, got {exec_side_value}"
-            )
+            exec_side_value = execution.side.value if hasattr(execution.side, "value") else execution.side
+            assert exec_side_value == expected_side, f"Side mismatch: expected {expected_side}, got {exec_side_value}"
             side_name = "BUY" if expected_side == "B" else "SELL"
             logger.info(f"   ✅ Side: {exec_side_value} ({side_name})")
 
         if expected_qty is not None:
             exec_qty = float(execution.qty)
             exp_qty = float(expected_qty)
-            assert abs(exec_qty - exp_qty) < 1e-9, (
-                f"Qty mismatch: expected {exp_qty}, got {exec_qty}"
-            )
+            assert abs(exec_qty - exp_qty) < 1e-9, f"Qty mismatch: expected {exp_qty}, got {exec_qty}"
             logger.info(f"   ✅ Qty: {execution.qty}")
 
-        if expected_price is not None and hasattr(execution, 'price') and execution.price:
+        if expected_price is not None and hasattr(execution, "price") and execution.price:
             exec_price = float(execution.price)
             exp_price = float(expected_price)
-            assert abs(exec_price - exp_price) < 1e-9, (
-                f"Price mismatch: expected {exp_price}, got {exec_price}"
-            )
+            assert abs(exec_price - exp_price) < 1e-9, f"Price mismatch: expected {exp_price}, got {exec_price}"
             logger.info(f"   ✅ Price: {execution.price}")
 
         return execution
@@ -361,15 +342,15 @@ class Checks:
         """Assert that balance update events were received via WebSocket."""
         new_update_count = len(self._t.ws.balance_updates) - initial_update_count
 
-        assert new_update_count >= min_updates, (
-            f"Expected at least {min_updates} balance update(s), got {new_update_count}"
-        )
+        assert (
+            new_update_count >= min_updates
+        ), f"Expected at least {min_updates} balance update(s), got {new_update_count}"
         logger.info(f"✅ Received {new_update_count} balance update(s) via WebSocket")
 
         new_updates = self._t.ws.balance_updates[initial_update_count:]
 
         account_updates = [u for u in new_updates if u.account_id == self._t.account_id]
-        assets_updated = set(u.asset for u in account_updates)
+        assets_updated = {u.asset for u in account_updates}
         logger.info(f"   Assets updated: {assets_updated}")
 
         if expected_assets is not None:

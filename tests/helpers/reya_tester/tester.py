@@ -1,20 +1,20 @@
 """Main ReyaTester class with composition-based architecture."""
 
 from typing import Optional
+
 import asyncio
 import logging
 import os
 
+from sdk.async_api.depth import Depth
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_websocket import ReyaSocket
 
-from sdk.async_api.depth import Depth
-
+from .checks import Checks
 from .data import DataOperations
 from .orders import OrderOperations
 from .positions import PositionOperations
 from .waiters import Waiters
-from .checks import Checks
 from .websocket import WebSocketState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -24,32 +24,32 @@ logger = logging.getLogger("reya.integration_tests")
 class ReyaTester:
     """
     Integration test helper with composition-based architecture.
-    
+
     Usage:
         tester = ReyaTester()
         await tester.setup()
-        
+
         # Data operations
         price = await tester.data.current_price("ETHRUSDPERP")
         positions = await tester.data.positions()
-        
+
         # Order operations
         order_id = await tester.orders.create_limit(params)
         await tester.orders.close_all()
-        
+
         # Position operations
         await tester.positions.setup(symbol="ETHRUSDPERP", is_buy=True)
         await tester.positions.close(symbol)
-        
+
         # Wait operations
         await tester.wait.for_order_state(order_id, OrderStatus.FILLED)
         await tester.wait.for_spot_execution(expected_order)
-        
+
         # Check/assertion operations
         await tester.check.no_open_orders()
         await tester.check.position(symbol, expected_side=Side.B, ...)
         tester.check.ws_order_change_received(order_id, ...)
-        
+
         # WebSocket state
         tester.ws.order_changes  # dict of order changes
         tester.ws.last_spot_execution  # last spot execution
