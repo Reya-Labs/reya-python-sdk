@@ -42,7 +42,7 @@ from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
 CONDITIONAL_ORDER_DEADLINE = 10**18
-DEFAULT_DEADLINE_MS = 5000
+DEFAULT_DEADLINE_S = 5
 BUY_TRIGGER_ORDER_PRICE_LIMIT = 100000000000000000000
 
 
@@ -277,11 +277,11 @@ class ReyaTradingClient:
         if params.time_in_force != TimeInForce.IOC:
             # For GTC orders: use real timestamp for spot markets, 10^18 for perp markets
             if self._is_spot_market(params.symbol):
-                deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+                deadline = int(time.time()) + DEFAULT_DEADLINE_S
             else:
                 deadline = CONDITIONAL_ORDER_DEADLINE
         elif params.expires_after is None:
-            deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+            deadline = int(time.time()) + DEFAULT_DEADLINE_S
         else:
             deadline = params.expires_after
 
