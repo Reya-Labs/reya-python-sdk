@@ -478,8 +478,8 @@ class ReyaTradingClient:
             # Generate monotonically increasing nonce
             nonce = self._get_next_nonce()
 
-            # Generate deadline (current time + 5 seconds)
-            deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+            # Generate deadline (current time + 5 seconds, in seconds)
+            deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
             # For EIP-712 signature, we need both orderId and clOrdId
             # If one is not provided, use 0 as placeholder
@@ -554,8 +554,8 @@ class ReyaTradingClient:
         # Generate monotonically increasing nonce
         nonce = self._get_next_nonce()
 
-        # Generate deadline (current time + 5 seconds)
-        deadline = int(time.time() * 1000) + DEFAULT_DEADLINE_MS
+        # Generate deadline (current time + 5 seconds, in seconds)
+        deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
         # Generate EIP-712 signature for mass cancel
         signature = self._signature_generator.sign_mass_cancel(
