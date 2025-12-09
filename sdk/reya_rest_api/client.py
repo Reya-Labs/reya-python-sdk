@@ -42,7 +42,9 @@ from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
 CONDITIONAL_ORDER_DEADLINE = 10**18
-DEFAULT_DEADLINE_S = 5
+DEFAULT_DEADLINE_S = 5  # For perp IOC orders and cancel operations
+SPOT_IOC_DEADLINE_S = 300  # 5 minutes for spot IOC orders (on-chain execution can take time)
+GTC_DEADLINE_S = 86400  # 24 hours for GTC spot orders
 BUY_TRIGGER_ORDER_PRICE_LIMIT = 100000000000000000000
 
 
@@ -277,11 +279,15 @@ class ReyaTradingClient:
         if params.time_in_force != TimeInForce.IOC:
             # For GTC orders: use real timestamp for spot markets, 10^18 for perp markets
             if self._is_spot_market(params.symbol):
-                deadline = int(time.time()) + DEFAULT_DEADLINE_S
+                deadline = int(time.time()) + GTC_DEADLINE_S  # 24 hours for GTC spot orders
             else:
                 deadline = CONDITIONAL_ORDER_DEADLINE
         elif params.expires_after is None:
-            deadline = int(time.time()) + DEFAULT_DEADLINE_S
+            # For IOC orders: spot needs longer deadline due to on-chain execution time
+            if self._is_spot_market(params.symbol):
+                deadline = int(time.time()) + SPOT_IOC_DEADLINE_S  # 5 minutes for spot IOC
+            else:
+                deadline = int(time.time()) + DEFAULT_DEADLINE_S  # 5 seconds for perp IOC
         else:
             deadline = params.expires_after
 
