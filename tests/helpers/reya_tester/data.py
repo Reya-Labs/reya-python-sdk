@@ -58,19 +58,29 @@ class DataOperations:
         positions = await self.positions()
         return positions.get(symbol)
 
-    async def last_perp_execution(self) -> PerpExecution:
-        """Get the most recent perp execution for this wallet."""
+    async def last_perp_execution(self) -> Optional[PerpExecution]:
+        """Get the most recent perp execution for this wallet.
+        
+        Returns None if no executions exist.
+        """
         trades_list: PerpExecutionList = await self._t.client.wallet.get_wallet_perp_executions(
             address=self._t.owner_wallet_address
         )
-        return trades_list.data[0]
+        if trades_list.data and len(trades_list.data) > 0:
+            return trades_list.data[0]
+        return None
 
-    async def last_spot_execution(self) -> SpotExecution:
-        """Get the most recent spot execution for this wallet."""
+    async def last_spot_execution(self) -> Optional[SpotExecution]:
+        """Get the most recent spot execution for this wallet.
+        
+        Returns None if no executions exist.
+        """
         executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(
             address=self._t.owner_wallet_address
         )
-        return executions_list.data[0]
+        if executions_list.data and len(executions_list.data) > 0:
+            return executions_list.data[0]
+        return None
 
     async def balances(self) -> dict[str, AccountBalance]:
         """Get current account balances for this tester's account only."""

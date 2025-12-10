@@ -351,11 +351,12 @@ async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
     """1 GTC order, long, close right after creation"""
     symbol = "ETHRUSDPERP"
 
-    # SETUP
+    # SETUP - capture sequence number BEFORE any actions
+    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
+
     market_price = await reya_tester.get_current_price()
     logger.info(f"Market price: {market_price}")
     test_qty = 0.01
-    start_timestamp = int(time.time() * 1000)
 
     order_params_buy = LimitOrderParameters(
         symbol=symbol,
@@ -388,7 +389,7 @@ async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
     assert cancelled_order_id == buy_order_id, "GTC order was not cancelled"
 
     await reya_tester.check_position_not_open(symbol)
-    await reya_tester.check_no_order_execution_since(start_timestamp)
+    await reya_tester.check_no_order_execution_since(last_sequence_before)
     await reya_tester.check_no_open_orders()
 
     logger.info("GTC order cancel test completed successfully")
@@ -435,8 +436,12 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
     """2 GTC orders, long and short, very close to market price and wait for execution"""
     symbol = "ETHRUSDPERP"
 
+    # Get the last execution BEFORE creating orders to compare later
+    last_execution_before = await reya_tester.get_last_wallet_perp_execution()
+    last_sequence_before = last_execution_before.sequence_number if last_execution_before else 0
+    logger.info(f"Last execution sequence before test: {last_sequence_before}")
+
     # Get current prices to determine order parameters
-    start_timestamp = int(time.time() * 1000)
     market_price = await reya_tester.get_current_price()
 
     order_params_buy = LimitOrderParameters(
@@ -466,11 +471,18 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
     assert sell_order_id is not None
 
     # Wait for trade confirmation on either order (whichever fills first)
+    # Check if there's a NEW execution (with higher sequence_number than before)
     order_execution_details = await reya_tester.get_last_wallet_perp_execution()
-    logger.info(f"Last execution sequence number: {order_execution_details}")
+    logger.info(f"Last execution after orders: {order_execution_details}")
 
-    if order_execution_details is not None and order_execution_details.timestamp > start_timestamp:
-        logger.info("Order was filled")
+    # Only consider it filled if there's a NEW execution (sequence_number increased)
+    is_new_execution = (
+        order_execution_details is not None
+        and order_execution_details.sequence_number > last_sequence_before
+    )
+
+    if is_new_execution:
+        logger.info(f"Order was filled (new sequence: {order_execution_details.sequence_number} > {last_sequence_before})")
         if order_execution_details.side == Side.B:
             await assert_position_changes(order_execution_details, reya_tester)
             expected_buy_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)
@@ -485,7 +497,7 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
         await reya_tester.wait_for_order_state(buy_order_id, OrderStatus.CANCELLED)
         await reya_tester.wait_for_order_state(sell_order_id, OrderStatus.CANCELLED)
     else:
-        logger.info("Order was not filled")
+        logger.info("Order was not filled (no new execution)")
         await reya_tester.wait_for_order_creation(buy_order_id)
         await reya_tester.wait_for_order_creation(sell_order_id)
         expected_buy_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)

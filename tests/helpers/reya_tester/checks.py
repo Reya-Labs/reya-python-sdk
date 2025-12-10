@@ -188,13 +188,19 @@ class Checks:
                 ), "check_order_execution: Order execution price does not match"
         return order_execution
 
-    async def no_order_execution_since(self, since_timestamp_ms: int) -> None:
-        """Assert no order execution occurred since timestamp."""
+    async def no_order_execution_since(self, since_sequence_number: int) -> None:
+        """Assert no order execution occurred since the given sequence number.
+        
+        Args:
+            since_sequence_number: The sequence number to compare against.
+                Only executions with sequence_number > since_sequence_number
+                are considered "new" executions.
+        """
         order_execution = await self._t.data.last_perp_execution()
         if order_execution is not None:
             assert (
-                order_execution.timestamp < since_timestamp_ms
-            ), "check_no_order_execution_since: Order execution should be empty"
+                order_execution.sequence_number <= since_sequence_number
+            ), f"check_no_order_execution_since: Found new execution with sequence_number {order_execution.sequence_number} > {since_sequence_number}"
 
     async def spot_execution(
         self, spot_execution: SpotExecution, expected_order: Order, expected_qty: Optional[str] = None

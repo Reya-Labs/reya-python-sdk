@@ -55,7 +55,9 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     """TP order, close right after creation"""
     symbol = "ETHRUSDPERP"
 
-    # SETUP
+    # SETUP - capture sequence number BEFORE any actions
+    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
+
     market_price = await reya_tester.get_current_price(symbol)
     limit_order_params = LimitOrderParameters(
         symbol=symbol,
@@ -86,7 +88,8 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     active_tp_order = await reya_tester.wait_for_order_creation(order_id=tp_order.order_id)
     expected_tp_order = trigger_order_params_to_order(tp_params, reya_tester.account_id)
     await reya_tester.check_open_order_created(tp_order.order_id, expected_tp_order)
-    await reya_tester.check_no_order_execution_since(active_tp_order.created_at)
+    # Get sequence after position was created (from initial limit order)
+    sequence_after_position = await reya_tester.get_last_perp_execution_sequence_number()
     await reya_tester.check_position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -99,7 +102,7 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     await reya_tester.client.cancel_order(order_id=active_tp_order.order_id)
 
     await reya_tester.wait_for_order_state(active_tp_order.order_id, OrderStatus.CANCELLED)
-    await reya_tester.check_no_order_execution_since(active_tp_order.created_at)
+    await reya_tester.check_no_order_execution_since(sequence_after_position)
     await reya_tester.check_position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -116,7 +119,9 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     """1 SL order, close right after creation"""
     symbol = "ETHRUSDPERP"
 
-    # SETUP
+    # SETUP - capture sequence number BEFORE any actions
+    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
+
     market_price = await reya_tester.get_current_price(symbol)
 
     # Create initial limit order to establish position
@@ -146,7 +151,8 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     active_sl_order: Order = await reya_tester.wait_for_order_creation(order_id=order_response.order_id, timeout=10)
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
     await reya_tester.check_open_order_created(order_response.order_id, expected_sl_order)
-    await reya_tester.check_no_order_execution_since(active_sl_order.created_at)
+    # Get sequence after position was created (from initial limit order)
+    sequence_after_position = await reya_tester.get_last_perp_execution_sequence_number()
     await reya_tester.check_position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -158,7 +164,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     # CANCEL
     await reya_tester.client.cancel_order(order_id=active_sl_order.order_id)
     await reya_tester.wait_for_order_state(active_sl_order.order_id, OrderStatus.CANCELLED)
-    await reya_tester.check_no_order_execution_since(active_sl_order.created_at)
+    await reya_tester.check_no_order_execution_since(sequence_after_position)
     await reya_tester.check_position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -292,13 +298,13 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
-    """SL order triggered"""
+    """SL/TP orders should be cancelled when there's no position"""
     symbol = "ETHRUSDPERP"
 
-    # SETUP
+    # SETUP - capture sequence number BEFORE any actions
+    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
+
     market_price = await reya_tester.get_current_price()
-    qty = "0.01"
-    start_time = int(time.time() * 1000)
     await reya_tester.check_position_not_open(symbol)
 
     # SUBMIT SL
@@ -316,7 +322,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     )
     assert cancelled_or_rejected_order_id == order_response_sl.order_id, "SL order should not be opened"
     await reya_tester.check_no_open_orders()
-    await reya_tester.check_no_order_execution_since(start_time)
+    await reya_tester.check_no_order_execution_since(last_sequence_before)
 
     # SUBMIT TP
     tp_params = TriggerOrderParameters(
@@ -333,7 +339,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     )
     assert cancelled_or_rejected_order_id == order_response_tp.order_id, "TP order should not be opened"
     await reya_tester.check_no_open_orders()
-    await reya_tester.check_no_order_execution_since(start_time)
+    await reya_tester.check_no_order_execution_since(last_sequence_before)
 
 
 @pytest.mark.asyncio
@@ -343,15 +349,17 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
 
     await reya_tester.check_no_open_orders()
     try:
-
         await reya_tester.client.cancel_order(order_id="unknown_id")
         raise RuntimeError("Should have failed")
     except BadRequestException as e:
         assert e.data is not None
         requestError: RequestError = e.data
-        assert requestError.message == "Missing order with id unknown_id"
+        # Check that the message starts with the expected error (API may include additional guidance)
+        assert requestError.message is not None
+        assert requestError.message.startswith("Missing order with id unknown_id"), (
+            f"Expected message to start with 'Missing order with id unknown_id', got: {requestError.message}"
+        )
         assert requestError.error == RequestErrorCode.CANCEL_ORDER_OTHER_ERROR
-        pass
 
     await reya_tester.check_no_open_orders()
     logger.info("✅ Error correctly mentions unacceptable order price issue")

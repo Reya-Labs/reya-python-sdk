@@ -181,6 +181,11 @@ class ReyaTester:
     async def get_last_wallet_perp_execution(self):
         return await self.data.last_perp_execution()
 
+    async def get_last_perp_execution_sequence_number(self) -> int:
+        """Get the sequence number of the last perp execution, or 0 if none exists."""
+        execution = await self.data.last_perp_execution()
+        return execution.sequence_number if execution else 0
+
     async def get_last_wallet_spot_execution(self):
         return await self.data.last_spot_execution()
 
@@ -270,8 +275,8 @@ class ReyaTester:
     async def check_order_execution(self, order_execution, expected_order, expected_qty=None):
         return await self.check.order_execution(order_execution, expected_order, expected_qty)
 
-    async def check_no_order_execution_since(self, since_timestamp_ms: int):
-        return await self.check.no_order_execution_since(since_timestamp_ms)
+    async def check_no_order_execution_since(self, since_sequence_number: int):
+        return await self.check.no_order_execution_since(since_sequence_number)
 
     async def check_spot_execution(self, spot_execution, expected_order, expected_qty=None):
         return await self.check.spot_execution(spot_execution, expected_order, expected_qty)
