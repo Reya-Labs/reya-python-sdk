@@ -23,7 +23,7 @@ logger = logging.getLogger("market_maker")
 SYMBOL = "WETHRUSD"
 BID_PRICES = ["498", "497", "496", "495", "494"]
 ASK_PRICES = ["502", "503", "504", "505", "506"]
-ORDER_QTY = "0.02"
+ORDER_QTY = "0.01"  # Minimum order size for WETHRUSD
 REFRESH_INTERVAL = 60  # seconds
 
 
