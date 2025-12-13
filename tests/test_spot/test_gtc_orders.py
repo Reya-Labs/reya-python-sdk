@@ -120,7 +120,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(maker_tester: ReyaTester,
 
     # Taker places larger GTC sell order
     taker_price = round(maker_price * 0.99, 2)
-    taker_qty = "0.02"  # Larger than maker
+    taker_qty = "0.015"  # Slightly larger than maker (0.01) to test partial fill
 
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(taker_qty).gtc().build()
 

@@ -346,8 +346,8 @@ async def test_self_match_partial_qty_taker_fully_cancelled(reya_tester: ReyaTes
     reya_tester.ws_last_spot_execution = None
 
     order_price = round(REFERENCE_PRICE * 0.60, 2)
-    maker_qty = "0.05"
-    taker_qty = "0.02"
+    maker_qty = "0.02"  # Use smaller qty to conserve funds
+    taker_qty = "0.01"  # Minimum order size
 
     # Place maker sell with large qty
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(order_price)).qty(maker_qty).gtc().build()
@@ -399,8 +399,8 @@ async def test_self_match_larger_taker_fully_cancelled(reya_tester: ReyaTester):
     reya_tester.ws_last_spot_execution = None
 
     order_price = round(REFERENCE_PRICE * 0.60, 2)
-    maker_qty = "0.02"
-    taker_qty = "0.05"
+    maker_qty = "0.01"  # Minimum order size
+    taker_qty = "0.02"  # Slightly larger to test larger taker scenario
 
     # Place maker sell with smaller qty
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(order_price)).qty(maker_qty).gtc().build()

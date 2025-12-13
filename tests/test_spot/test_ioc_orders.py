@@ -178,7 +178,7 @@ async def test_spot_ioc_partial_fill(maker_tester: ReyaTester, taker_tester: Rey
 
     # Taker sends larger IOC sell order at or below maker's price
     taker_price = round(maker_price * 0.99, 2)  # Below maker to ensure match
-    taker_qty = "0.02"  # Larger than maker - will partially fill
+    taker_qty = "0.015"  # Slightly larger than maker (0.01) - will partially fill
 
     taker_order_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(taker_qty).ioc().build()
 
@@ -309,7 +309,7 @@ async def test_spot_ioc_multiple_price_level_crossing(maker_tester: ReyaTester, 
 
     # Taker sends IOC sell order large enough to fill both
     taker_price = round(price_1 * 0.99, 2)  # Below both prices
-    taker_qty = "0.02"  # Enough to fill both orders
+    taker_qty = "0.02"  # Enough to fill both orders (2 x 0.01)
 
     taker_order_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(taker_qty).ioc().build()
 
