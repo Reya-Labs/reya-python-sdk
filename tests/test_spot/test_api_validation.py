@@ -256,9 +256,9 @@ async def test_spot_order_expired_deadline(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # API should reject with 400 error - check for deadline-related keywords
-        assert "400" in error_msg or "deadline" in error_msg.lower() or "expired" in error_msg.lower(), (
-            f"Expected deadline rejection error, got: {e}"
-        )
+        assert (
+            "400" in error_msg or "deadline" in error_msg.lower() or "expired" in error_msg.lower()
+        ), f"Expected deadline rejection error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -325,9 +325,9 @@ async def test_spot_cancel_expired_deadline(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e)
         # API should reject with 400 error - check for deadline-related keywords
-        assert "400" in error_msg or "deadline" in error_msg.lower() or "expired" in error_msg.lower(), (
-            f"Expected deadline rejection error, got: {e}"
-        )
+        assert (
+            "400" in error_msg or "deadline" in error_msg.lower() or "expired" in error_msg.lower()
+        ), f"Expected deadline rejection error, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -454,9 +454,9 @@ async def test_spot_order_reused_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
-        assert "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg, (
-            f"Expected nonce rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg
+        ), f"Expected nonce rejection error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -572,9 +572,9 @@ async def test_spot_order_old_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
-        assert "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg, (
-            f"Expected nonce rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg
+        ), f"Expected nonce rejection error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1006,9 +1006,9 @@ async def test_spot_cancel_reused_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
-        assert "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg, (
-            f"Expected nonce rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg
+        ), f"Expected nonce rejection error, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1114,9 +1114,9 @@ async def test_spot_cancel_old_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
-        assert "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg, (
-            f"Expected nonce rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg
+        ), f"Expected nonce rejection error, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1219,9 +1219,9 @@ async def test_spot_mass_cancel_expired_deadline(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for deadline-related keywords
-        assert "400" in str(e) or "deadline" in error_msg or "expired" in error_msg, (
-            f"Expected deadline rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "deadline" in error_msg or "expired" in error_msg
+        ), f"Expected deadline rejection error, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1295,9 +1295,9 @@ async def test_spot_mass_cancel_reused_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
-        assert "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg, (
-            f"Expected nonce rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg
+        ), f"Expected nonce rejection error, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1372,9 +1372,9 @@ async def test_spot_mass_cancel_old_nonce(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
-        assert "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg, (
-            f"Expected nonce rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "nonce" in error_msg or "invalid" in error_msg
+        ), f"Expected nonce rejection error, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1454,9 +1454,9 @@ async def test_spot_cancel_wrong_signer(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for unauthorized/signature-related keywords
-        assert "400" in str(e) or "unauthorized" in error_msg or "signature" in error_msg or "permission" in error_msg, (
-            f"Expected unauthorized signer rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "unauthorized" in error_msg or "signature" in error_msg or "permission" in error_msg
+        ), f"Expected unauthorized signer rejection error, got: {e}"
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
@@ -1540,9 +1540,9 @@ async def test_spot_mass_cancel_wrong_signer(reya_tester: ReyaTester):
     except Exception as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for unauthorized/signature-related keywords
-        assert "400" in str(e) or "unauthorized" in error_msg or "signature" in error_msg or "permission" in error_msg, (
-            f"Expected unauthorized signer rejection error, got: {e}"
-        )
+        assert (
+            "400" in str(e) or "unauthorized" in error_msg or "signature" in error_msg or "permission" in error_msg
+        ), f"Expected unauthorized signer rejection error, got: {e}"
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 

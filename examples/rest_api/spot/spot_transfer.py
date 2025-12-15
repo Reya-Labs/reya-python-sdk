@@ -72,12 +72,12 @@ async def log_account_balances(
     label: str,
 ) -> tuple[Decimal, Decimal]:
     """Log and return balances for both accounts.
-    
+
     Uses sender_client for from_account and receiver_client for to_account
     since each client can only see balances for accounts owned by its wallet.
     """
     from_balance = await get_account_balance(sender_client, from_account_id, asset)
-    
+
     # Use receiver client if available, otherwise try sender client
     if receiver_client:
         to_balance = await get_account_balance(receiver_client, to_account_id, asset)
@@ -172,9 +172,7 @@ async def execute_spot_transfer(
     # Check if sell order is still open
     order_fully_matched = False
     open_orders = await sender_client.get_open_orders()
-    sell_order_still_open = any(
-        order.order_id == sell_order_id for order in open_orders if hasattr(order, "order_id")
-    )
+    sell_order_still_open = any(order.order_id == sell_order_id for order in open_orders if hasattr(order, "order_id"))
 
     if sell_order_still_open:
         logger.warning(f"        ⚠️ Sell order {sell_order_id} partially filled, cancelling remainder...")
@@ -315,9 +313,7 @@ async def main():
             elif balances_match:
                 logger.info("🎉 Transfer complete - balances verified (order was partially filled by stale orders)")
             elif to_change > 0:
-                logger.warning(
-                    f"⚠️ Partial transfer. Expected: {expected_change} {asset}, Got: {to_change} {asset}"
-                )
+                logger.warning(f"⚠️ Partial transfer. Expected: {expected_change} {asset}, Got: {to_change} {asset}")
                 sys.exit(1)
             else:
                 logger.error(

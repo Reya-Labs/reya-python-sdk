@@ -356,9 +356,9 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
         requestError: RequestError = e.data
         # Check that the message starts with the expected error (API may include additional guidance)
         assert requestError.message is not None
-        assert requestError.message.startswith("Missing order with id unknown_id"), (
-            f"Expected message to start with 'Missing order with id unknown_id', got: {requestError.message}"
-        )
+        assert requestError.message.startswith(
+            "Missing order with id unknown_id"
+        ), f"Expected message to start with 'Missing order with id unknown_id', got: {requestError.message}"
         assert requestError.error == RequestErrorCode.CANCEL_ORDER_OTHER_ERROR
 
     await reya_tester.check_no_open_orders()

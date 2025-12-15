@@ -128,6 +128,7 @@ def main():
 
     # Step 3b: Deposit into margin account
     from eth_abi import encode
+
     from sdk.reya_rpc.types import CommandType
 
     inputs_encoded = encode(["(address,uint256)"], [[rusd_b.address, amount_e6]])

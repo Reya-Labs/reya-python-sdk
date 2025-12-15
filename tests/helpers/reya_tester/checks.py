@@ -190,7 +190,7 @@ class Checks:
 
     async def no_order_execution_since(self, since_sequence_number: int) -> None:
         """Assert no order execution occurred since the given sequence number.
-        
+
         Args:
             since_sequence_number: The sequence number to compare against.
                 Only executions with sequence_number > since_sequence_number

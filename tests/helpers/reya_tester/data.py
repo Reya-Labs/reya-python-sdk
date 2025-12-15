@@ -60,7 +60,7 @@ class DataOperations:
 
     async def last_perp_execution(self) -> Optional[PerpExecution]:
         """Get the most recent perp execution for this wallet.
-        
+
         Returns None if no executions exist.
         """
         trades_list: PerpExecutionList = await self._t.client.wallet.get_wallet_perp_executions(
@@ -72,7 +72,7 @@ class DataOperations:
 
     async def last_spot_execution(self) -> Optional[SpotExecution]:
         """Get the most recent spot execution for this wallet.
-        
+
         Returns None if no executions exist.
         """
         executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(

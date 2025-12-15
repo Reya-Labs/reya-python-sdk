@@ -32,14 +32,18 @@ async def place_orders(client: ReyaTradingClient, symbol: str):
     # Place bids
     for price in BID_PRICES:
         resp = await client.create_limit_order(
-            LimitOrderParameters(symbol=symbol, is_buy=True, limit_px=price, qty=ORDER_QTY, time_in_force=TimeInForce.GTC)
+            LimitOrderParameters(
+                symbol=symbol, is_buy=True, limit_px=price, qty=ORDER_QTY, time_in_force=TimeInForce.GTC
+            )
         )
         logger.info(f"BID @ {price}: {resp.status}")
 
     # Place asks
     for price in ASK_PRICES:
         resp = await client.create_limit_order(
-            LimitOrderParameters(symbol=symbol, is_buy=False, limit_px=price, qty=ORDER_QTY, time_in_force=TimeInForce.GTC)
+            LimitOrderParameters(
+                symbol=symbol, is_buy=False, limit_px=price, qty=ORDER_QTY, time_in_force=TimeInForce.GTC
+            )
         )
         logger.info(f"ASK @ {price}: {resp.status}")
 

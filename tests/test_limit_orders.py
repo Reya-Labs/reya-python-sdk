@@ -477,12 +477,13 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
 
     # Only consider it filled if there's a NEW execution (sequence_number increased)
     is_new_execution = (
-        order_execution_details is not None
-        and order_execution_details.sequence_number > last_sequence_before
+        order_execution_details is not None and order_execution_details.sequence_number > last_sequence_before
     )
 
     if is_new_execution:
-        logger.info(f"Order was filled (new sequence: {order_execution_details.sequence_number} > {last_sequence_before})")
+        logger.info(
+            f"Order was filled (new sequence: {order_execution_details.sequence_number} > {last_sequence_before})"
+        )
         if order_execution_details.side == Side.B:
             await assert_position_changes(order_execution_details, reya_tester)
             expected_buy_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)

@@ -1,5 +1,5 @@
 """
-Configuration settings for the Reya Trading API.
+Configuration settings for the Reya Trading API.x
 """
 
 from typing import Optional
