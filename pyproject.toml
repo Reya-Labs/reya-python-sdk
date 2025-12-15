@@ -124,6 +124,7 @@ ignore-paths = ["sdk/async_api"]
 disable = """
     consider-using-in,
     duplicate-code,
+    f-string-without-interpolation,
     fixme,
     import-error,
     inconsistent-return-statements,
