@@ -31,7 +31,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
+async def test_spot_ws_order_changes_on_create(spot_tester: ReyaTester):
     """
     Test WebSocket orderChanges event received on order creation.
 
@@ -45,10 +45,10 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
     logger.info(f"SPOT WS ORDER CHANGES ON CREATE TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Clear WebSocket tracking
-    reya_tester.ws_order_changes.clear()
+    spot_tester.ws_order_changes.clear()
 
     # Place GTC order
     order_price = round(REFERENCE_PRICE * 0.50, 2)
@@ -56,12 +56,12 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy: {TEST_QTY} @ ${order_price:.2f}")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify order change event using ReyaTester method (wait_for_order_creation already waits for WS)
-    reya_tester.check_ws_order_change_received(
+    spot_tester.check_ws_order_change_received(
         order_id=order_id,
         expected_symbol=SPOT_SYMBOL,
         expected_side="B",
@@ -69,9 +69,9 @@ async def test_spot_ws_order_changes_on_create(reya_tester: ReyaTester):
     )
 
     # Cleanup
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT WS ORDER CHANGES ON CREATE TEST COMPLETED")
 
@@ -139,7 +139,7 @@ async def test_spot_ws_order_changes_on_fill(maker_tester: ReyaTester, taker_tes
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
+async def test_spot_ws_order_changes_on_cancel(spot_tester: ReyaTester):
     """
     Test WebSocket orderChanges event received on order cancel.
 
@@ -152,7 +152,7 @@ async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
     logger.info(f"SPOT WS ORDER CHANGES ON CANCEL TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Place GTC order
     order_price = round(REFERENCE_PRICE * 0.50, 2)
@@ -160,29 +160,29 @@ async def test_spot_ws_order_changes_on_cancel(reya_tester: ReyaTester):
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy: {TEST_QTY} @ ${order_price:.2f}")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Clear WebSocket tracking before cancel to capture the cancel event
-    reya_tester.ws_order_changes.clear()
+    spot_tester.ws_order_changes.clear()
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     # Wait for cancellation
-    await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED, timeout=5)
+    await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED, timeout=5)
     logger.info("✅ Order cancelled")
 
     # Verify order change event using ReyaTester method
-    reya_tester.check_ws_order_change_received(
+    spot_tester.check_ws_order_change_received(
         order_id=order_id,
         expected_symbol=SPOT_SYMBOL,
         expected_status=OrderStatus.CANCELLED,
     )
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT WS ORDER CHANGES ON CANCEL TEST COMPLETED")
 

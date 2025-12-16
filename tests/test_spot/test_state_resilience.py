@@ -29,7 +29,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_order_survives_ws_reconnect(reya_tester: ReyaTester):
+async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
     """
     Test that open orders are correctly reflected after WebSocket reconnection.
 
@@ -51,7 +51,7 @@ async def test_spot_order_survives_ws_reconnect(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Step 1: Place GTC order
     order_price = round(REFERENCE_PRICE * 0.45, 2)  # Far from market
@@ -59,28 +59,28 @@ async def test_spot_order_survives_ws_reconnect(reya_tester: ReyaTester):
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Step 2: Verify order exists via REST and WS
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     order_ids_before = {o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL}
     assert order_id in order_ids_before, f"Order {order_id} should be in REST open orders"
-    assert order_id in reya_tester.ws_order_changes, f"Order {order_id} should be in WS order changes"
+    assert order_id in spot_tester.ws_order_changes, f"Order {order_id} should be in WS order changes"
     logger.info(f"✅ Order confirmed in both REST and WS: {order_id}")
 
     # Step 3: Disconnect WebSocket (real disconnect)
     logger.info("Disconnecting WebSocket...")
-    if reya_tester._websocket:
-        reya_tester._websocket.close()
+    if spot_tester._websocket:
+        spot_tester._websocket.close()
 
     # Wait for disconnect to complete
     await asyncio.sleep(0.5)
     logger.info("✅ WebSocket disconnected")
 
     # Step 4: Verify order still exists via REST (backend state should be intact)
-    open_orders_after = await reya_tester.client.get_open_orders()
+    open_orders_after = await spot_tester.client.get_open_orders()
     order_ids_after = {o.order_id for o in open_orders_after if o.symbol == SPOT_SYMBOL}
     assert order_id in order_ids_after, (
         f"Order {order_id} should still exist in REST after WS disconnect. "
@@ -92,7 +92,7 @@ async def test_spot_order_survives_ws_reconnect(reya_tester: ReyaTester):
     logger.info("Reconnecting WebSocket...")
 
     # Clear old state before reconnect
-    reya_tester.ws.clear()
+    spot_tester.ws.clear()
 
     # Create new WebSocket connection
     import os
@@ -100,12 +100,12 @@ async def test_spot_order_survives_ws_reconnect(reya_tester: ReyaTester):
     from sdk.reya_websocket import ReyaSocket
 
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
-    reya_tester._websocket = ReyaSocket(
+    spot_tester._websocket = ReyaSocket(
         url=ws_url,
-        on_open=reya_tester.ws.on_open,
-        on_message=reya_tester.ws.on_message,
+        on_open=spot_tester.ws.on_open,
+        on_message=spot_tester.ws.on_message,
     )
-    reya_tester._websocket.connect()
+    spot_tester._websocket.connect()
 
     # Wait for connection and subscriptions to be established
     await asyncio.sleep(0.5)
@@ -117,21 +117,21 @@ async def test_spot_order_survives_ws_reconnect(reya_tester: ReyaTester):
     order_params_2 = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price_2)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing second order to verify WS receives updates after reconnect...")
-    order_id_2 = await reya_tester.create_limit_order(order_params_2)
-    await reya_tester.wait_for_order_creation(order_id_2)
+    order_id_2 = await spot_tester.create_limit_order(order_params_2)
+    await spot_tester.wait_for_order_creation(order_id_2)
 
     # Verify new order appears in WebSocket state
     assert (
-        order_id_2 in reya_tester.ws_order_changes
+        order_id_2 in spot_tester.ws_order_changes
     ), f"New order {order_id_2} should appear in WS order changes after reconnect"
     logger.info(f"✅ WebSocket receiving updates after reconnect: {order_id_2}")
 
     # Step 7: Cleanup - cancel both orders
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
-    await reya_tester.client.cancel_order(order_id=order_id_2, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id_2, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     await asyncio.sleep(0.1)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT ORDER SURVIVES WS RECONNECT TEST COMPLETED")
 
@@ -262,7 +262,7 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
+async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
     """
     Test rapid order creation and cancellation.
 
@@ -280,10 +280,10 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     logger.info(f"SPOT RAPID ORDER OPERATIONS TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Clear WebSocket tracking
-    reya_tester.ws_order_changes.clear()
+    spot_tester.ws_order_changes.clear()
 
     # Step 1: Rapidly create 10 orders at different prices
     num_orders = 10
@@ -297,7 +297,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
 
         order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         order_ids.append(order_id)
         logger.debug(f"  Created order {i+1}/{num_orders}: {order_id} @ ${order_price}")
 
@@ -310,7 +310,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     await asyncio.sleep(0.5)
 
     # Verify all orders appear in REST
-    rest_orders = await reya_tester.client.get_open_orders()
+    rest_orders = await spot_tester.client.get_open_orders()
     rest_order_ids = {o.order_id for o in rest_orders if o.symbol == SPOT_SYMBOL}
 
     missing_in_rest = [oid for oid in order_ids if oid not in rest_order_ids]
@@ -318,7 +318,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     logger.info(f"✅ All {num_orders} orders confirmed in REST")
 
     # Verify all orders appear in WebSocket
-    ws_order_ids = set(reya_tester.ws_order_changes.keys())
+    ws_order_ids = set(spot_tester.ws_order_changes.keys())
     missing_in_ws = [oid for oid in order_ids if oid not in ws_order_ids]
     assert len(missing_in_ws) == 0, f"All orders should appear in WS. Missing: {missing_in_ws}"
     logger.info(f"✅ All {num_orders} orders confirmed in WS")
@@ -327,7 +327,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     logger.info(f"Cancelling {num_orders} orders rapidly...")
 
     for i, order_id in enumerate(order_ids):
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
         logger.debug(f"  Cancelled order {i+1}/{num_orders}: {order_id}")
 
         # Small delay to avoid overwhelming the system
@@ -339,7 +339,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     await asyncio.sleep(0.5)
 
     # Verify all orders are cancelled in REST
-    final_rest_orders = await reya_tester.client.get_open_orders()
+    final_rest_orders = await spot_tester.client.get_open_orders()
     final_rest_ids = {o.order_id for o in final_rest_orders if o.symbol == SPOT_SYMBOL}
 
     still_open_in_rest = [oid for oid in order_ids if oid in final_rest_ids]
@@ -349,7 +349,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     # Verify all orders show CANCELLED in WebSocket
     not_cancelled_in_ws = []
     for order_id in order_ids:
-        ws_order = reya_tester.ws_order_changes.get(order_id)
+        ws_order = spot_tester.ws_order_changes.get(order_id)
         if ws_order:
             ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
             if ws_status != "CANCELLED":
@@ -361,7 +361,7 @@ async def test_spot_rapid_order_operations(reya_tester: ReyaTester):
     logger.info(f"✅ All {num_orders} orders show CANCELLED in WS")
 
     # Step 5: Final verification - no orphaned state
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ No orphaned state detected")
     logger.info("✅ SPOT RAPID ORDER OPERATIONS TEST COMPLETED")

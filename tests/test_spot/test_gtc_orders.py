@@ -155,7 +155,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(maker_tester: ReyaTester,
 @pytest.mark.spot
 @pytest.mark.gtc
 @pytest.mark.asyncio
-async def test_spot_gtc_no_match_added_to_book(reya_tester: ReyaTester):
+async def test_spot_gtc_no_match_added_to_book(spot_tester: ReyaTester):
     """
     Test GTC order added to book when no match exists.
 
@@ -169,7 +169,7 @@ async def test_spot_gtc_no_match_added_to_book(reya_tester: ReyaTester):
     logger.info(f"SPOT GTC NO MATCH (ADDED TO BOOK) TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Place GTC buy order at price far below market (won't match)
     order_price = round(REFERENCE_PRICE * 0.50, 2)  # 50% below reference
@@ -177,19 +177,19 @@ async def test_spot_gtc_no_match_added_to_book(reya_tester: ReyaTester):
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy: {TEST_QTY} @ ${order_price:.2f}")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify order is on book (open orders)
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     order_on_book = any(o.order_id == order_id for o in open_orders)
     assert order_on_book, f"Order {order_id} should be on book"
     logger.info("✅ Order is on book (open orders)")
 
     # Verify order appears in L2 depth
     await asyncio.sleep(0.1)
-    depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -204,9 +204,9 @@ async def test_spot_gtc_no_match_added_to_book(reya_tester: ReyaTester):
     assert found_in_depth, f"Order at ${order_price:.2f} not found in L2 depth"
 
     # Cleanup
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT GTC NO MATCH TEST COMPLETED")
 
@@ -373,7 +373,7 @@ async def test_spot_gtc_best_price_first(maker_tester: ReyaTester, taker_tester:
 @pytest.mark.spot
 @pytest.mark.gtc
 @pytest.mark.asyncio
-async def test_spot_gtc_with_client_order_id(reya_tester: ReyaTester):
+async def test_spot_gtc_with_client_order_id(spot_tester: ReyaTester):
     """
     Test GTC order with clientOrderId tracked correctly.
 
@@ -389,7 +389,7 @@ async def test_spot_gtc_with_client_order_id(reya_tester: ReyaTester):
     logger.info(f"SPOT GTC WITH CLIENT ORDER ID TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Generate unique client order ID (positive integer, fits in uint64)
     test_client_order_id = random.randint(1, 2**32 - 1)
@@ -408,12 +408,12 @@ async def test_spot_gtc_with_client_order_id(reya_tester: ReyaTester):
     )
 
     logger.info(f"Placing GTC buy with clientOrderId={test_client_order_id}...")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify the order has the clientOrderId
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     our_order = next((o for o in open_orders if o.order_id == order_id), None)
     assert our_order is not None, f"Order {order_id} not found in open orders"
 
@@ -430,14 +430,14 @@ async def test_spot_gtc_with_client_order_id(reya_tester: ReyaTester):
     # Cancel using both order_id and client_order_id
     # The API should prefer order_id when both are provided
     logger.info(f"Cancelling order using both order_id={order_id} and clientOrderId={test_client_order_id}...")
-    await reya_tester.client.cancel_order(
+    await spot_tester.client.cancel_order(
         order_id=order_id,
         client_order_id=test_client_order_id,
         symbol=SPOT_SYMBOL,
-        account_id=reya_tester.account_id,
+        account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
     logger.info("✅ Order cancelled (API prefers order_id when both provided)")
 
     logger.info("✅ SPOT GTC WITH CLIENT ORDER ID TEST COMPLETED")

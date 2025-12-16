@@ -156,10 +156,10 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     )
 
     # Verify balance updates via WebSocket
+    # Each tester has its own WebSocket connection subscribed to its own wallet
     logger.info("\n💰 Verifying balance updates via WebSocket...")
-    all_balance_updates = maker_tester.ws_balance_updates
-    maker_balance_updates = [b for b in all_balance_updates if b.account_id == maker_tester.account_id]
-    taker_balance_updates = [b for b in all_balance_updates if b.account_id == taker_tester.account_id]
+    maker_balance_updates = [b for b in maker_tester.ws_balance_updates if b.account_id == maker_tester.account_id]
+    taker_balance_updates = [b for b in taker_tester.ws_balance_updates if b.account_id == taker_tester.account_id]
 
     logger.info(f"Maker received {len(maker_balance_updates)} balance updates via WS")
     logger.info(f"Taker received {len(taker_balance_updates)} balance updates via WS")

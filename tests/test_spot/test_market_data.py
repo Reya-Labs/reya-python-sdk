@@ -27,7 +27,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 @pytest.mark.spot
 @pytest.mark.market_data
 @pytest.mark.asyncio
-async def test_spot_market_definitions(reya_tester: ReyaTester):
+async def test_spot_market_definitions(spot_tester: ReyaTester):
     """
     Test getting spot market definitions.
 
@@ -41,7 +41,7 @@ async def test_spot_market_definitions(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Get spot market definitions via REST API
-    spot_markets = await reya_tester.client.reference.get_spot_market_definitions()
+    spot_markets = await spot_tester.client.reference.get_spot_market_definitions()
 
     logger.info(f"Spot markets found: {len(spot_markets)}")
 
@@ -135,7 +135,7 @@ async def test_spot_executions_rest(maker_tester: ReyaTester, taker_tester: Reya
 @pytest.mark.spot
 @pytest.mark.market_data
 @pytest.mark.asyncio
-async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
+async def test_spot_depth_price_ordering(spot_tester: ReyaTester):
     """
     Test L2 depth shows correct price ordering.
 
@@ -151,7 +151,7 @@ async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
     logger.info("SPOT DEPTH PRICE ORDERING TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Place multiple buy orders at different prices
     prices = [
@@ -164,8 +164,8 @@ async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
     for price in prices:
         order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
 
-        order_id = await reya_tester.create_limit_order(order_params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(order_params)
+        await spot_tester.wait_for_order_creation(order_id)
         order_ids.append(order_id)
         logger.info(f"✅ Order created at ${price:.2f}")
 
@@ -173,7 +173,7 @@ async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
     await asyncio.sleep(0.1)
 
     # Get depth
-    depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -193,14 +193,14 @@ async def test_spot_depth_price_ordering(reya_tester: ReyaTester):
     # Cleanup
     for order_id in order_ids:
         try:
-            await reya_tester.client.cancel_order(
-                order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+            await spot_tester.client.cancel_order(
+                order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
             )
         except Exception:
             pass
 
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT DEPTH PRICE ORDERING TEST COMPLETED")
 

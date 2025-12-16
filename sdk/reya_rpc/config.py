@@ -81,7 +81,7 @@ def get_config() -> dict:
     load_dotenv()
 
     chain_id = int(os.environ["CHAIN_ID"])
-    private_key = os.environ["PRIVATE_KEY"]
+    private_key = os.environ["PERP_PRIVATE_KEY_1"]
 
     # Get network-specific addresses
     network_config = get_network_addresses(chain_id)

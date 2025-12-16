@@ -5,6 +5,7 @@ Uses pytest-asyncio's loop_scope feature (v0.24+) to share a single event loop
 across all tests in a session, enabling session-scoped async fixtures.
 """
 
+import asyncio
 import logging
 import os
 
@@ -12,8 +13,30 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+# Delay between tests to avoid WAF rate limiting (in seconds)
+TEST_DELAY_SECONDS = 0.1
+
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import logger
+
+# ============================================================================
+# Rate Limiting Protection
+# ============================================================================
+# Add a small delay between tests to avoid WAF rate limiting on staging
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)
+async def rate_limit_delay():
+    """
+    Add a small delay after each test to avoid WAF rate limiting.
+    
+    The staging environment uses AWS WAF which can block requests if too many
+    come from the same IP in a short time window. This delay helps prevent
+    403 Forbidden errors during test runs.
+    """
+    yield
+    await asyncio.sleep(TEST_DELAY_SECONDS)
+
 
 # ============================================================================
 # Session-Scoped Fixtures (Single connection for entire test suite)
@@ -95,15 +118,16 @@ async def reya_tester(reya_tester_session):
 async def maker_tester_session():
     """
     Session-scoped maker account - ONE connection for entire test suite.
+    
+    Uses SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1 as the maker.
     """
     load_dotenv()
 
-    # Get maker account ID
-    account_id = os.environ.get("MAKER_ACCOUNT_ID", "8017")
-    original_account_id = os.environ.get("ACCOUNT_ID")
-    os.environ["ACCOUNT_ID"] = account_id
+    # Maker uses Spot Account 1
+    tester = ReyaTester(spot_account_number=1)
 
-    tester = ReyaTester()
+    if not tester.owner_wallet_address or not tester.account_id:
+        pytest.skip("Missing Spot Account 1 configuration (SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1) for spot tests")
 
     logger.info(f"🔧 SESSION: Maker account initialized: {tester.account_id}")
 
@@ -122,24 +146,21 @@ async def maker_tester_session():
     except Exception as e:
         logger.warning(f"Error during maker cleanup: {e}")
 
-    # Restore original env
-    if original_account_id:
-        os.environ["ACCOUNT_ID"] = original_account_id
-
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
 async def taker_tester_session():
     """
     Session-scoped taker account - ONE connection for entire test suite.
+    
+    Uses SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2 as the taker.
     """
     load_dotenv()
 
-    # Get taker account ID
-    account_id = os.environ.get("TAKER_ACCOUNT_ID", "8044")
-    original_account_id = os.environ.get("ACCOUNT_ID")
-    os.environ["ACCOUNT_ID"] = account_id
+    # Taker uses Spot Account 2
+    tester = ReyaTester(spot_account_number=2)
 
-    tester = ReyaTester()
+    if not tester.owner_wallet_address or not tester.account_id:
+        pytest.skip("Missing Spot Account 2 configuration (SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2) for spot tests")
 
     logger.info(f"🔧 SESSION: Taker account initialized: {tester.account_id}")
 
@@ -158,10 +179,6 @@ async def taker_tester_session():
     except Exception as e:
         logger.warning(f"Error during taker cleanup: {e}")
 
-    # Restore original env
-    if original_account_id:
-        os.environ["ACCOUNT_ID"] = original_account_id
-
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
 async def maker_tester(maker_tester_session):
@@ -172,6 +189,23 @@ async def maker_tester(maker_tester_session):
     maker_tester_session.ws_order_changes.clear()
     maker_tester_session.ws_balance_updates.clear()
     maker_tester_session.ws.clear_spot_executions()  # Clear all spot executions
+    maker_tester_session.ws_last_trade = None
+
+    yield maker_tester_session
+
+    await maker_tester_session.close_active_orders(fail_if_none=False)
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="function")
+async def spot_tester(maker_tester_session):
+    """
+    Function-scoped wrapper for single-account spot tests.
+    Uses SPOT account 1 (same as maker_tester).
+    """
+    await maker_tester_session.close_active_orders(fail_if_none=False)
+    maker_tester_session.ws_order_changes.clear()
+    maker_tester_session.ws_balance_updates.clear()
+    maker_tester_session.ws.clear_spot_executions()
     maker_tester_session.ws_last_trade = None
 
     yield maker_tester_session

@@ -6,8 +6,12 @@ import asyncio
 import logging
 import os
 
+from dotenv import load_dotenv
+
 from sdk.async_api.depth import Depth
 from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.config import TradingConfig
+from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_websocket import ReyaSocket
 
 from .checks import Checks
@@ -56,16 +60,31 @@ class ReyaTester:
         tester.ws.get_balance_update_count()
     """
 
-    def __init__(self):
-        # Initialize the REST API client
-        self.client = ReyaTradingClient()
-        assert self.client.owner_wallet_address is not None
-        assert self.client.config.account_id is not None
-        assert self.client.config.chain_id is not None
-
-        self.owner_wallet_address: str = self.client.owner_wallet_address
-        self.account_id: int = self.client.config.account_id
-        self.chain_id: int = self.client.config.chain_id
+    def __init__(self, spot_account_number: Optional[int] = None):
+        """
+        Initialize ReyaTester with specified account configuration.
+        
+        Args:
+            spot_account_number: Optional spot account to use (1 or 2) for spot tests.
+                                If None, uses default PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1.
+                                If 1, uses SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1.
+                                If 2, uses SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2.
+        """
+        load_dotenv()
+        
+        if spot_account_number is None:
+            # Default - use standard config (PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1)
+            self.client = ReyaTradingClient()
+        elif spot_account_number in (1, 2):
+            # Spot account - create client with explicit spot account config
+            self.client = self._create_client_for_spot_account(spot_account_number)
+        else:
+            raise ValueError(f"Invalid spot_account_number: {spot_account_number}. Must be None, 1, or 2.")
+        
+        # Store account properties (may be None if spot account not configured)
+        self.owner_wallet_address: Optional[str] = self.client.owner_wallet_address if self.client else None
+        self.account_id: Optional[int] = self.client.config.account_id if self.client else None
+        self.chain_id: Optional[int] = self.client.config.chain_id if self.client else None
 
         # Internal WebSocket reference
         self._websocket: Optional[ReyaSocket] = None
@@ -77,6 +96,38 @@ class ReyaTester:
         self.positions = PositionOperations(self)
         self.wait = Waiters(self)
         self.check = Checks(self)
+    
+    def _create_client_for_spot_account(self, spot_account_number: int) -> ReyaTradingClient:
+        """Create a ReyaTradingClient configured for a spot account."""
+        account_id = os.environ.get(f"SPOT_ACCOUNT_ID_{spot_account_number}")
+        private_key = os.environ.get(f"SPOT_PRIVATE_KEY_{spot_account_number}")
+        wallet_address = os.environ.get(f"SPOT_WALLET_ADDRESS_{spot_account_number}")
+        
+        if not all([account_id, private_key, wallet_address]):
+            logger.warning(f"Spot Account {spot_account_number} not fully configured. Missing one of: SPOT_ACCOUNT_ID_{spot_account_number}, SPOT_PRIVATE_KEY_{spot_account_number}, SPOT_WALLET_ADDRESS_{spot_account_number}")
+            # Return a client with None values - tests will skip if needed
+            return ReyaTradingClient()
+        
+        # Create client and override its config for the spot account
+        client = ReyaTradingClient()
+        
+        # Get base config values
+        base_config = client._config
+        
+        # Create new config with spot account values
+        spot_config = TradingConfig(
+            api_url=base_config.api_url,
+            chain_id=base_config.chain_id,
+            owner_wallet_address=wallet_address,
+            private_key=private_key,
+            account_id=int(account_id),
+        )
+        
+        # Replace client config and signature generator
+        client._config = spot_config
+        client._signature_generator = SignatureGenerator(spot_config)
+        
+        return client
 
     async def setup(self) -> None:
         """Set up WebSocket connection for trade monitoring."""

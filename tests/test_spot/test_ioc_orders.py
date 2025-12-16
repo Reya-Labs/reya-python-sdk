@@ -83,7 +83,7 @@ async def test_spot_ioc_full_fill(maker_tester: ReyaTester, taker_tester: ReyaTe
 @pytest.mark.spot
 @pytest.mark.ioc
 @pytest.mark.asyncio
-async def test_spot_ioc_no_match_cancels(reya_tester: ReyaTester):
+async def test_spot_ioc_no_match_cancels(spot_tester: ReyaTester):
     """
     Test IOC order that finds no matching liquidity and cancels.
 
@@ -101,10 +101,10 @@ async def test_spot_ioc_no_match_cancels(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     # Clear execution tracking
-    reya_tester.ws_last_spot_execution = None
+    spot_tester.ws_last_spot_execution = None
     start_timestamp = int(time.time() * 1000)
 
     # Send IOC buy order at very low price (won't match any asks)
@@ -116,14 +116,14 @@ async def test_spot_ioc_no_match_cancels(reya_tester: ReyaTester):
 
     # IOC orders without matching liquidity may raise an error or return None
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"IOC order response: {order_id}")
 
         # If we get here, wait and verify no execution
         await asyncio.sleep(0.1)
 
-        if reya_tester.ws_last_spot_execution is not None:
-            exec_time = reya_tester.ws_last_spot_execution.timestamp
+        if spot_tester.ws_last_spot_execution is not None:
+            exec_time = spot_tester.ws_last_spot_execution.timestamp
             if exec_time and exec_time > start_timestamp:
                 pytest.fail("IOC order should not have executed")
 
@@ -134,7 +134,7 @@ async def test_spot_ioc_no_match_cancels(reya_tester: ReyaTester):
         logger.info(f"✅ IOC order rejected as expected: {type(e).__name__}")
 
     # Verify no open orders (IOC should be cancelled/rejected)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT IOC NO MATCH TEST COMPLETED")
 
@@ -337,7 +337,7 @@ async def test_spot_ioc_multiple_price_level_crossing(maker_tester: ReyaTester, 
 @pytest.mark.spot
 @pytest.mark.ioc
 @pytest.mark.asyncio
-async def test_spot_ioc_price_qty_validation(reya_tester: ReyaTester):
+async def test_spot_ioc_price_qty_validation(spot_tester: ReyaTester):
     """
     Test IOC order rejected for invalid price/qty.
 
@@ -351,14 +351,14 @@ async def test_spot_ioc_price_qty_validation(reya_tester: ReyaTester):
     logger.info(f"SPOT IOC PRICE/QTY VALIDATION TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Test 1: Zero quantity
     zero_qty_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(REFERENCE_PRICE)).qty("0").ioc().build()
 
     logger.info("Sending IOC order with zero quantity...")
     try:
-        order_id = await reya_tester.create_limit_order(zero_qty_params)
+        order_id = await spot_tester.create_limit_order(zero_qty_params)
         # If we get here without error, the API might accept it but not execute
         logger.info(f"Order accepted (may be rejected later): {order_id}")
     except Exception as e:
@@ -369,12 +369,12 @@ async def test_spot_ioc_price_qty_validation(reya_tester: ReyaTester):
         negative_price_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price("-100").qty(TEST_QTY).ioc().build()
 
         logger.info("Sending IOC order with negative price...")
-        order_id = await reya_tester.create_limit_order(negative_price_params)
+        order_id = await spot_tester.create_limit_order(negative_price_params)
         logger.info(f"Order accepted (may be rejected later): {order_id}")
     except Exception as e:
         logger.info(f"✅ Negative price order rejected: {type(e).__name__}")
 
     # Verify no open orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT IOC PRICE/QTY VALIDATION TEST COMPLETED")

@@ -9,9 +9,9 @@ accomplished by matching orders:
 2. Receiver places an IOC buy order at the same price to match
 
 Requirements:
-- PRIVATE_KEY: Private key for the sender wallet
-- PRIVATE_KEY_2: Private key for the receiver wallet (defaults to PRIVATE_KEY if same wallet)
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- SPOT_PRIVATE_KEY_1: Private key for the sender wallet
+- SPOT_PRIVATE_KEY_2: Private key for the receiver wallet (defaults to SPOT_PRIVATE_KEY_1 if same wallet)
 - Sender account must be whitelisted in ME_GTC_PERMISSIONS_WHITELIST on the API server
 - Receiver account must have sufficient rUSD balance to pay for the asset
 
@@ -241,11 +241,38 @@ async def main():
         logger.error(f"❌ Unknown asset: {asset}. Supported: {list(ASSET_TO_SYMBOL.keys())}")
         sys.exit(1)
 
-    private_key = os.getenv("PRIVATE_KEY")
-    private_key_2 = os.getenv("PRIVATE_KEY_2", private_key)
+    # Map account IDs to their private keys
+    spot_account_1 = int(os.getenv("SPOT_ACCOUNT_ID_1", "0"))
+    spot_account_2 = int(os.getenv("SPOT_ACCOUNT_ID_2", "0"))
+    spot_key_1 = os.getenv("SPOT_PRIVATE_KEY_1")
+    spot_key_2 = os.getenv("SPOT_PRIVATE_KEY_2")
 
-    if not private_key:
-        logger.error("❌ PRIVATE_KEY environment variable is required")
+    if not spot_key_1:
+        logger.error("❌ SPOT_PRIVATE_KEY_1 environment variable is required")
+        sys.exit(1)
+
+    # Determine which key to use for sender and receiver based on account ownership
+    if from_account_id == spot_account_1:
+        sender_key = spot_key_1
+    elif from_account_id == spot_account_2:
+        sender_key = spot_key_2
+    else:
+        logger.error(f"❌ Unknown from_account {from_account_id}. Must be {spot_account_1} or {spot_account_2}")
+        sys.exit(1)
+
+    if to_account_id == spot_account_1:
+        receiver_key = spot_key_1
+    elif to_account_id == spot_account_2:
+        receiver_key = spot_key_2
+    else:
+        logger.error(f"❌ Unknown to_account {to_account_id}. Must be {spot_account_1} or {spot_account_2}")
+        sys.exit(1)
+
+    if not sender_key:
+        logger.error(f"❌ Private key not configured for sender account {from_account_id}")
+        sys.exit(1)
+    if not receiver_key:
+        logger.error(f"❌ Private key not configured for receiver account {to_account_id}")
         sys.exit(1)
 
     logger.info("🚀 SPOT ASSET TRANSFER")
@@ -259,7 +286,7 @@ async def main():
         base_config = sender_client._config
 
         # Configure sender client
-        sender_client._config = create_trading_client_config(private_key, from_account_id, base_config)
+        sender_client._config = create_trading_client_config(sender_key, from_account_id, base_config)
         sender_client._signature_generator = SignatureGenerator(sender_client._config)
         await sender_client.start()
 
@@ -270,7 +297,7 @@ async def main():
 
         # Configure and start receiver client
         async with ReyaTradingClient() as receiver_client:
-            receiver_client._config = create_trading_client_config(private_key_2, to_account_id, base_config)
+            receiver_client._config = create_trading_client_config(receiver_key, to_account_id, base_config)
             receiver_client._signature_generator = SignatureGenerator(receiver_client._config)
             await receiver_client.start()
 

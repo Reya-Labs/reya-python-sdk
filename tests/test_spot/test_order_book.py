@@ -25,7 +25,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
+async def test_spot_order_appears_in_depth(spot_tester: ReyaTester):
     """
     Test that a GTC order appears in the L2 order book depth.
 
@@ -41,14 +41,14 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     # Subscribe to market depth
-    reya_tester.subscribe_to_market_depth(SPOT_SYMBOL)
+    spot_tester.subscribe_to_market_depth(SPOT_SYMBOL)
     await asyncio.sleep(0.05)
 
     # Get initial depth
-    initial_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
+    initial_depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
     assert isinstance(initial_depth, Depth), f"Expected Depth type, got {type(initial_depth)}"
     initial_bid_count = len(initial_depth.bids)
     logger.info(f"Initial depth: {initial_bid_count} bids")
@@ -59,15 +59,15 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
 
     # Get updated depth
-    updated_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
+    updated_depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
     assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
     bids = updated_depth.bids
 
@@ -86,14 +86,14 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
-    await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+    await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
 
     # Verify order removed from depth
-    final_depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
+    final_depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
     final_bids = final_depth.bids
 
     order_still_present = False
@@ -111,7 +111,7 @@ async def test_spot_order_appears_in_depth(reya_tester: ReyaTester):
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
+async def test_spot_multiple_orders_aggregate_in_depth(spot_tester: ReyaTester):
     """
     Test that multiple orders at the same price aggregate in depth.
 
@@ -125,7 +125,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     # Place two orders at the same price
     order_price = round(REFERENCE_PRICE * 0.80, 2)  # 20% below reference
@@ -135,8 +135,8 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
     for i in range(2):
         order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(qty_per_order).gtc().build()
 
-        order_id = await reya_tester.create_limit_order(order_params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(order_params)
+        await spot_tester.wait_for_order_creation(order_id)
         order_ids.append(order_id)
         logger.info(f"✅ Order {i+1} created: {order_id}")
 
@@ -144,7 +144,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
     await asyncio.sleep(0.1)
 
     # Get depth and verify aggregation
-    depth = await reya_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -164,10 +164,10 @@ async def test_spot_multiple_orders_aggregate_in_depth(reya_tester: ReyaTester):
 
     # Cleanup - cancel all orders
     for order_id in order_ids:
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT DEPTH AGGREGATION TEST COMPLETED")
 

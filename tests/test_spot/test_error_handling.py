@@ -28,7 +28,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_invalid_symbol(reya_tester: ReyaTester):
+async def test_spot_invalid_symbol(spot_tester: ReyaTester):
     """
     Test order with invalid symbol is rejected.
 
@@ -40,7 +40,7 @@ async def test_spot_invalid_symbol(reya_tester: ReyaTester):
     logger.info("SPOT INVALID SYMBOL TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Use an invalid symbol
     invalid_symbol = "INVALIDRUSD"
@@ -50,11 +50,11 @@ async def test_spot_invalid_symbol(reya_tester: ReyaTester):
     logger.info(f"Attempting to place order with invalid symbol: {invalid_symbol}")
 
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
         # If accepted, clean up
-        await reya_tester.client.cancel_order(
-            order_id=order_id, symbol=invalid_symbol, account_id=reya_tester.account_id
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=invalid_symbol, account_id=spot_tester.account_id
         )
     except Exception as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
@@ -66,7 +66,7 @@ async def test_spot_invalid_symbol(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_zero_quantity(reya_tester: ReyaTester):
+async def test_spot_zero_quantity(spot_tester: ReyaTester):
     """
     Test order with zero quantity is rejected.
 
@@ -78,20 +78,20 @@ async def test_spot_zero_quantity(reya_tester: ReyaTester):
     logger.info("SPOT ZERO QUANTITY TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(REFERENCE_PRICE)).qty("0").gtc().build()
 
     logger.info("Attempting to place order with zero quantity")
 
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
     except Exception as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT ZERO QUANTITY TEST COMPLETED")
 
@@ -99,7 +99,7 @@ async def test_spot_zero_quantity(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_negative_price(reya_tester: ReyaTester):
+async def test_spot_negative_price(spot_tester: ReyaTester):
     """
     Test order with negative price is rejected.
 
@@ -111,20 +111,20 @@ async def test_spot_negative_price(reya_tester: ReyaTester):
     logger.info("SPOT NEGATIVE PRICE TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price("-100").qty(TEST_QTY).gtc().build()
 
     logger.info("Attempting to place order with negative price")
 
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
     except Exception as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT NEGATIVE PRICE TEST COMPLETED")
 
@@ -132,7 +132,7 @@ async def test_spot_negative_price(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_very_small_quantity(reya_tester: ReyaTester):
+async def test_spot_very_small_quantity(spot_tester: ReyaTester):
     """
     Test order with very small quantity (below minimum).
 
@@ -144,7 +144,7 @@ async def test_spot_very_small_quantity(reya_tester: ReyaTester):
     logger.info("SPOT VERY SMALL QUANTITY TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Very small quantity - may be below minimum
     small_qty = "0.0000001"
@@ -162,16 +162,16 @@ async def test_spot_very_small_quantity(reya_tester: ReyaTester):
     logger.info(f"Attempting to place order with very small quantity: {small_qty}")
 
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
         await asyncio.sleep(0.05)
     except Exception as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT VERY SMALL QUANTITY TEST COMPLETED")
 
@@ -179,7 +179,7 @@ async def test_spot_very_small_quantity(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_very_large_quantity(reya_tester: ReyaTester):
+async def test_spot_very_large_quantity(spot_tester: ReyaTester):
     """
     Test order with very large quantity (may exceed balance).
 
@@ -191,7 +191,7 @@ async def test_spot_very_large_quantity(reya_tester: ReyaTester):
     logger.info("SPOT VERY LARGE QUANTITY TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Very large quantity - likely exceeds balance
     large_qty = "1000000"
@@ -209,16 +209,16 @@ async def test_spot_very_large_quantity(reya_tester: ReyaTester):
     logger.info(f"Attempting to place order with very large quantity: {large_qty}")
 
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
         await asyncio.sleep(0.05)
     except Exception as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT VERY LARGE QUANTITY TEST COMPLETED")
 
@@ -226,7 +226,7 @@ async def test_spot_very_large_quantity(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_extreme_price(reya_tester: ReyaTester):
+async def test_spot_extreme_price(spot_tester: ReyaTester):
     """
     Test order with extreme price values.
 
@@ -238,7 +238,7 @@ async def test_spot_extreme_price(reya_tester: ReyaTester):
     logger.info("SPOT EXTREME PRICE TEST")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Extremely high price
     extreme_price = "999999999999"
@@ -248,15 +248,15 @@ async def test_spot_extreme_price(reya_tester: ReyaTester):
     logger.info(f"Attempting to place order with extreme price: {extreme_price}")
 
     try:
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
         await asyncio.sleep(0.05)
     except Exception as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT EXTREME PRICE TEST COMPLETED")

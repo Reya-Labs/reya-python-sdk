@@ -59,11 +59,11 @@ class TradingConfig:
         else:
             default_api_url = "https://api-cronos.reya.xyz/v2"
 
-        # Require OWNER_WALLET_ADDRESS
-        owner_wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
+        # Require PERP_WALLET_ADDRESS_1
+        owner_wallet_address = os.environ.get("PERP_WALLET_ADDRESS_1")
         if not owner_wallet_address:
             raise ValueError(
-                "OWNER_WALLET_ADDRESS environment variable is required. "
+                "PERP_WALLET_ADDRESS_1 environment variable is required. "
                 "This should be the wallet address whose data you want to query."
             )
 
@@ -71,8 +71,8 @@ class TradingConfig:
             api_url=os.environ.get("REYA_API_URL", default_api_url),
             chain_id=chain_id,
             owner_wallet_address=owner_wallet_address,
-            private_key=os.environ.get("PRIVATE_KEY"),
-            account_id=(int(os.environ["ACCOUNT_ID"]) if "ACCOUNT_ID" in os.environ else None),
+            private_key=os.environ.get("PERP_PRIVATE_KEY_1"),
+            account_id=(int(os.environ["PERP_ACCOUNT_ID_1"]) if "PERP_ACCOUNT_ID_1" in os.environ else None),
         )
 
 

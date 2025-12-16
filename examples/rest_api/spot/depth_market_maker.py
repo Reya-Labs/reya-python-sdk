@@ -2,8 +2,14 @@
 """
 Persistent Market Maker - Maintains depth in the order book.
 
-Runs continuously, replenishing depth every 10 seconds.
+Runs continuously, replenishing depth every 60 seconds.
 Press Ctrl+C to stop (will cancel all orders on exit).
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_ACCOUNT_ID_1: Your Reya account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+- PERP_WALLET_ADDRESS_1: Your wallet address
 """
 
 import asyncio
@@ -60,7 +66,7 @@ async def main():
 
     async with ReyaTradingClient() as client:
         await client.start()
-        account_id = int(os.environ.get("ACCOUNT_ID", "0"))
+        account_id = int(os.environ.get("PERP_ACCOUNT_ID_1", "0"))
 
         try:
             cycle = 0

@@ -1,5 +1,5 @@
 """
-Cross-wallet rUSD transfer script.
+Cross-wallet rUSD Transfer - Transfer rUSD between wallets.
 
 Transfers rUSD from one margin account to another owned by a DIFFERENT wallet.
 
@@ -9,8 +9,9 @@ Flow:
 3. Deposit rUSD from Wallet B into destination account
 
 Requirements:
-- PRIVATE_KEY in .env must be for Wallet A (source wallet)
-- PRIVATE_KEY_2 in .env must be for Wallet B (destination wallet)
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_PRIVATE_KEY_1: Private key for Wallet A (source wallet)
+- PERP_PRIVATE_KEY_2: Private key for Wallet B (destination wallet)
 """
 
 import os
@@ -95,15 +96,15 @@ def main():
     print("\n[Step 3/3] Depositing rUSD from Wallet B into margin account...")
 
     # Get Wallet B's private key
-    private_key_2 = os.environ.get("PRIVATE_KEY_2")
+    private_key_2 = os.environ.get("PERP_PRIVATE_KEY_2")
     if not private_key_2:
-        print("  ❌ PRIVATE_KEY_2 not set in .env!")
-        print(f"  Please add: PRIVATE_KEY_2=<wallet_b_private_key>")
+        print("  ❌ PERP_PRIVATE_KEY_2 not set in .env!")
+        print(f"  Please add: PERP_PRIVATE_KEY_2=<wallet_b_private_key>")
         print(f"  Then run the deposit manually or re-run this script.")
         return
 
     # Create config for Wallet B
-    os.environ["PRIVATE_KEY"] = private_key_2
+    os.environ["PERP_PRIVATE_KEY_1"] = private_key_2
     config_b = get_config()
     account_b = config_b["w3account"]
     w3_b = config_b["w3"]

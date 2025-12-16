@@ -24,7 +24,7 @@ TEST_QTY = "0.01"  # Minimum order base for market ID 5
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
-async def test_spot_order_cancellation(reya_tester: ReyaTester):
+async def test_spot_order_cancellation(spot_tester: ReyaTester):
     """
     Test placing and cancelling a spot GTC order before it gets filled.
     """
@@ -34,7 +34,7 @@ async def test_spot_order_cancellation(reya_tester: ReyaTester):
     logger.info(f"Using reference price for orders: ${REFERENCE_PRICE}")
 
     # Clear any existing orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     # Place GTC order far from reference (won't fill)
     buy_price = REFERENCE_PRICE * 0.5  # Far below reference
@@ -42,26 +42,26 @@ async def test_spot_order_cancellation(reya_tester: ReyaTester):
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(buy_price)).qty(TEST_QTY).gtc().build()
 
     logger.info(f"Placing GTC buy order at ${buy_price:.2f} (far from market)...")
-    order_id = await reya_tester.create_limit_order(order_params)
+    order_id = await spot_tester.create_limit_order(order_params)
     logger.info(f"Created order with ID: {order_id}")
 
     # Wait for order creation
-    await reya_tester.wait_for_order_creation(order_id)
-    expected_order = limit_order_params_to_order(order_params, reya_tester.account_id)
-    await reya_tester.check_open_order_created(order_id, expected_order)
+    await spot_tester.wait_for_order_creation(order_id)
+    expected_order = limit_order_params_to_order(order_params, spot_tester.account_id)
+    await spot_tester.check_open_order_created(order_id, expected_order)
     logger.info("✅ Order confirmed on the book")
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     # Wait for cancellation confirmation
-    cancelled_order_id = await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    cancelled_order_id = await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
     assert cancelled_order_id == order_id, "Order was not cancelled"
     logger.info("✅ Order cancelled successfully")
 
     # Verify no open orders remain
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT ORDER CANCELLATION TEST COMPLETED SUCCESSFULLY")
 
@@ -69,7 +69,7 @@ async def test_spot_order_cancellation(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
-async def test_spot_mass_cancel(reya_tester: ReyaTester):
+async def test_spot_mass_cancel(spot_tester: ReyaTester):
     """
     Test placing multiple spot GTC orders and then cancelling them all via mass cancel.
     """
@@ -81,7 +81,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
     logger.info(f"Using reference price for orders: ${REFERENCE_PRICE}")
 
     # Clear any existing orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     # Place multiple GTC orders at different prices (far from market, won't fill)
     order_ids = []
@@ -95,18 +95,18 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
         order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(buy_price)).qty(TEST_QTY).gtc().build()
 
         logger.info(f"Creating order {i+1}/{num_orders} at ${buy_price:.2f}")
-        order_id = await reya_tester.create_limit_order(order_params)
+        order_id = await spot_tester.create_limit_order(order_params)
         order_ids.append(order_id)
 
         # Wait for order creation
-        await reya_tester.wait_for_order_creation(order_id)
+        await spot_tester.wait_for_order_creation(order_id)
         logger.info(f"✅ Order {i+1} created: {order_id}")
 
     logger.info(f"\n✅ All {num_orders} orders created successfully")
 
     # Verify all orders are on the book
     logger.info("\n📊 Step 2: Verifying all orders are on the book...")
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     for order_id in order_ids:
@@ -116,7 +116,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
 
     # Mass cancel all orders for this symbol
     logger.info("\n🧹 Step 3: Mass cancelling all orders...")
-    response = await reya_tester.client.mass_cancel(symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    response = await spot_tester.client.mass_cancel(symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     logger.info(f"Mass cancel response: {response}")
 
     # Wait a moment for cancellations to propagate
@@ -124,7 +124,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
 
     # Verify all orders are cancelled
     logger.info("\n📊 Step 4: Verifying all orders are cancelled...")
-    open_orders_after = await reya_tester.client.get_open_orders()
+    open_orders_after = await spot_tester.client.get_open_orders()
     open_order_ids_after = [o.order_id for o in open_orders_after if o.symbol == SPOT_SYMBOL]
 
     for order_id in order_ids:
@@ -133,7 +133,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
     logger.info(f"✅ All {num_orders} orders successfully cancelled via mass cancel")
 
     # Final verification - no open orders remain
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("\n" + "=" * 80)
     logger.info("✅ SPOT MASS CANCEL TEST COMPLETED SUCCESSFULLY")
@@ -143,7 +143,7 @@ async def test_spot_mass_cancel(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
-async def test_spot_cancel_nonexistent_order(reya_tester: ReyaTester):
+async def test_spot_cancel_nonexistent_order(spot_tester: ReyaTester):
     """
     Test cancelling an order that doesn't exist.
 
@@ -155,7 +155,7 @@ async def test_spot_cancel_nonexistent_order(reya_tester: ReyaTester):
     logger.info(f"SPOT CANCEL NONEXISTENT ORDER TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Use a fake order ID that doesn't exist
     fake_order_id = "999999999999999999"
@@ -163,8 +163,8 @@ async def test_spot_cancel_nonexistent_order(reya_tester: ReyaTester):
     logger.info(f"Attempting to cancel non-existent order: {fake_order_id}")
 
     try:
-        await reya_tester.client.cancel_order(
-            order_id=fake_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+        await spot_tester.client.cancel_order(
+            order_id=fake_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
         )
         # If we get here, the API might accept the request but do nothing
         logger.info("Cancel request accepted (order may not exist)")
@@ -239,7 +239,7 @@ async def test_spot_cancel_already_filled_order(maker_tester: ReyaTester, taker_
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
-async def test_spot_mass_cancel_empty_book(reya_tester: ReyaTester):
+async def test_spot_mass_cancel_empty_book(spot_tester: ReyaTester):
     """
     Test mass cancel when no orders exist.
 
@@ -253,20 +253,20 @@ async def test_spot_mass_cancel_empty_book(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Ensure no orders exist
-    await reya_tester.close_active_orders(fail_if_none=False)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.check_no_open_orders()
 
     logger.info("Calling mass cancel on empty book...")
 
     try:
-        response = await reya_tester.client.mass_cancel(symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        response = await spot_tester.client.mass_cancel(symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
         logger.info(f"✅ Mass cancel succeeded: {response}")
     except Exception as e:
         # Some APIs might return an error for empty cancel
         logger.info(f"Mass cancel response: {type(e).__name__}")
 
     # Verify still no orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT MASS CANCEL EMPTY BOOK TEST COMPLETED")
 
@@ -274,7 +274,7 @@ async def test_spot_mass_cancel_empty_book(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
-async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
+async def test_spot_cancel_by_client_order_id(spot_tester: ReyaTester):
     """
     Test cancelling an order using client order ID instead of order ID.
 
@@ -287,7 +287,7 @@ async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
     logger.info(f"SPOT CANCEL BY CLIENT ORDER ID TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Generate a unique client order ID (must be an integer)
     client_order_id = int(time.time() * 1000) % (2**31 - 1)  # Keep within int32 range
@@ -307,12 +307,12 @@ async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
     )
 
     logger.info(f"Placing GTC order with clientOrderId: {client_order_id}")
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify order is on the book
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     order_found = False
     for o in open_orders:
         if o.order_id == order_id:
@@ -327,24 +327,24 @@ async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
     logger.info(f"Cancelling order using clientOrderId: {client_order_id}")
 
     try:
-        await reya_tester.client.cancel_order(
+        await spot_tester.client.cancel_order(
             order_id=order_id,  # Some APIs require order_id even with client_order_id
             symbol=SPOT_SYMBOL,
-            account_id=reya_tester.account_id,
+            account_id=spot_tester.account_id,
             client_order_id=client_order_id,
         )
         logger.info("✅ Cancel request sent with clientOrderId")
     except TypeError:
         # If client_order_id is not supported, fall back to order_id
         logger.info("clientOrderId not supported in cancel, using order_id")
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     # Wait for cancellation
-    await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
     logger.info("✅ Order cancelled successfully")
 
     # Verify no open orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT CANCEL BY CLIENT ORDER ID TEST COMPLETED")
 
@@ -352,7 +352,7 @@ async def test_spot_cancel_by_client_order_id(reya_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
-async def test_spot_mass_cancel_no_orders(reya_tester: ReyaTester):
+async def test_spot_mass_cancel_no_orders(spot_tester: ReyaTester):
     """
     Test mass cancel when no orders exist for the account/market.
 
@@ -367,13 +367,13 @@ async def test_spot_mass_cancel_no_orders(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Ensure no open orders exist
-    await reya_tester.close_active_orders(fail_if_none=False)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.check_no_open_orders()
     logger.info("✅ Confirmed no open orders exist")
 
     # Execute mass cancel on empty order book (for this account)
     logger.info("Executing mass cancel with no orders...")
-    response = await reya_tester.client.mass_cancel(symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    response = await spot_tester.client.mass_cancel(symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     # Verify response
     logger.info(f"Mass cancel response: {response}")
@@ -390,6 +390,6 @@ async def test_spot_mass_cancel_no_orders(reya_tester: ReyaTester):
         logger.info("✅ Mass cancel succeeded without error (no count in response)")
 
     # Verify still no open orders
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT MASS CANCEL NO ORDERS TEST COMPLETED")

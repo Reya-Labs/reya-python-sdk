@@ -37,7 +37,7 @@ TEST_QTY = "0.01"
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
+async def test_spot_depth_ws_initial_snapshot(spot_tester: ReyaTester):
     """
     Test that subscribing to /depth channel returns correct initial snapshot.
 
@@ -52,7 +52,7 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Step 1: Place multiple GTC orders at different prices
     prices = [
@@ -65,8 +65,8 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
     for price in prices:
         order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
 
-        order_id = await reya_tester.create_limit_order(order_params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(order_params)
+        await spot_tester.wait_for_order_creation(order_id)
         order_ids.append(order_id)
         logger.info(f"✅ Order created at ${price:.2f}: {order_id}")
 
@@ -74,14 +74,14 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
     await asyncio.sleep(0.2)
 
     # Step 2: Clear depth state and subscribe to depth channel
-    reya_tester.ws_last_depth.clear()
-    reya_tester.subscribe_to_market_depth(SPOT_SYMBOL)
+    spot_tester.ws_last_depth.clear()
+    spot_tester.subscribe_to_market_depth(SPOT_SYMBOL)
 
     # Wait for snapshot to arrive
     await asyncio.sleep(0.5)
 
     # Step 3: Verify initial snapshot contains our orders
-    depth_snapshot = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
+    depth_snapshot = spot_tester.ws_last_depth.get(SPOT_SYMBOL)
     assert depth_snapshot is not None, "Should have received depth snapshot via WebSocket"
     assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
 
@@ -112,10 +112,10 @@ async def test_spot_depth_ws_initial_snapshot(reya_tester: ReyaTester):
 
     # Cleanup
     for order_id in order_ids:
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     await asyncio.sleep(0.1)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT DEPTH WS INITIAL SNAPSHOT TEST COMPLETED")
 
@@ -210,7 +210,7 @@ async def test_spot_depth_ws_snapshot_with_asks(maker_tester: ReyaTester, taker_
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester):
+async def test_spot_depth_ws_incremental_after_snapshot(spot_tester: ReyaTester):
     """
     Test incremental updates are received after initial snapshot.
 
@@ -225,15 +225,15 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
     logger.info(f"SPOT DEPTH WS INCREMENTAL AFTER SNAPSHOT TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Step 1: Subscribe to depth and get initial snapshot
-    reya_tester.ws_last_depth.clear()
-    reya_tester.subscribe_to_market_depth(SPOT_SYMBOL)
+    spot_tester.ws_last_depth.clear()
+    spot_tester.subscribe_to_market_depth(SPOT_SYMBOL)
 
     await asyncio.sleep(0.3)
 
-    initial_snapshot = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
+    initial_snapshot = spot_tester.ws_last_depth.get(SPOT_SYMBOL)
     initial_bid_count = len(initial_snapshot.bids) if initial_snapshot else 0
     logger.info(f"Initial snapshot: {initial_bid_count} bids")
 
@@ -242,15 +242,15 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
 
     order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
 
-    order_id = await reya_tester.create_limit_order(order_params)
-    await reya_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.create_limit_order(order_params)
+    await spot_tester.wait_for_order_creation(order_id)
     logger.info(f"✅ New order created at ${order_price:.2f}")
 
     # Wait for incremental update
     await asyncio.sleep(0.3)
 
     # Step 3: Verify incremental update contains new order
-    updated_depth = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
+    updated_depth = spot_tester.ws_last_depth.get(SPOT_SYMBOL)
     assert updated_depth is not None, "Should have received depth update"
     assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
 
@@ -260,23 +260,23 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
     logger.info("✅ New order appears in depth after incremental update")
 
     # Step 4: Cancel the order
-    await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
-    await reya_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
     logger.info("Order cancelled")
 
     # Wait for incremental update
     await asyncio.sleep(0.3)
 
     # Step 5: Verify order removed from depth
-    final_depth = reya_tester.ws_last_depth.get(SPOT_SYMBOL)
+    final_depth = spot_tester.ws_last_depth.get(SPOT_SYMBOL)
     final_bids = final_depth.bids if final_depth else []
 
     order_still_present = any(abs(float(b.px) - order_price) < 0.01 for b in final_bids)
     assert not order_still_present, f"Cancelled order at ${order_price:.2f} should be removed from depth"
     logger.info("✅ Cancelled order removed from depth after incremental update")
 
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT DEPTH WS INCREMENTAL AFTER SNAPSHOT TEST COMPLETED")
 
@@ -289,7 +289,7 @@ async def test_spot_depth_ws_incremental_after_snapshot(reya_tester: ReyaTester)
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
+async def test_spot_order_changes_ws_initial_snapshot(spot_tester: ReyaTester):
     """
     Test that subscribing to orderChanges returns correct initial snapshot.
 
@@ -306,10 +306,10 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
     logger.info(f"SPOT ORDER CHANGES WS INITIAL SNAPSHOT TEST: {SPOT_SYMBOL}")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Clear order changes tracking
-    reya_tester.ws_order_changes.clear()
+    spot_tester.ws_order_changes.clear()
 
     # Place multiple orders
     prices = [
@@ -321,8 +321,8 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
     for price in prices:
         order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
 
-        order_id = await reya_tester.create_limit_order(order_params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(order_params)
+        await spot_tester.wait_for_order_creation(order_id)
         order_ids.append(order_id)
         logger.info(f"✅ Order created: {order_id}")
 
@@ -331,15 +331,15 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
 
     # Verify order changes were received for each order
     for order_id in order_ids:
-        assert order_id in reya_tester.ws_order_changes, f"Order {order_id} should be in orderChanges"
-        order = reya_tester.ws_order_changes[order_id]
+        assert order_id in spot_tester.ws_order_changes, f"Order {order_id} should be in orderChanges"
+        order = spot_tester.ws_order_changes[order_id]
         assert order.symbol == SPOT_SYMBOL
         logger.info(f"✅ Order change received for {order_id}: status={order.status}")
 
     logger.info(f"✅ All {len(order_ids)} order changes received via WebSocket")
 
     # Verify REST matches WebSocket
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = {o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL}
 
     for order_id in order_ids:
@@ -349,10 +349,10 @@ async def test_spot_order_changes_ws_initial_snapshot(reya_tester: ReyaTester):
 
     # Cleanup
     for order_id in order_ids:
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
 
     await asyncio.sleep(0.1)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
     logger.info("✅ SPOT ORDER CHANGES WS INITIAL SNAPSHOT TEST COMPLETED")
 
@@ -446,7 +446,7 @@ async def test_spot_executions_ws_initial_snapshot(maker_tester: ReyaTester, tak
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_balances_ws_initial_snapshot(reya_tester: ReyaTester):
+async def test_spot_balances_ws_initial_snapshot(spot_tester: ReyaTester):
     """
     Test that subscribing to balances channel returns balance data.
 
@@ -463,11 +463,11 @@ async def test_spot_balances_ws_initial_snapshot(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Get balances via REST for this specific account
-    rest_balances = await reya_tester.get_balances()
-    logger.info(f"REST balances for account {reya_tester.account_id}: {list(rest_balances.keys())}")
+    rest_balances = await spot_tester.get_balances()
+    logger.info(f"REST balances for account {spot_tester.account_id}: {list(rest_balances.keys())}")
 
     # WebSocket balances - may include data from multiple accounts under same wallet
-    ws_balances = reya_tester.ws_balances
+    ws_balances = spot_tester.ws_balances
     logger.info(f"WebSocket balances (wallet-level): {list(ws_balances.keys())}")
 
     # Verify we have balances via WebSocket
@@ -486,7 +486,7 @@ async def test_spot_balances_ws_initial_snapshot(reya_tester: ReyaTester):
         if asset in rest_balances and asset in ws_balances:
             rest_val = rest_balances[asset].real_balance
             ws_val = ws_balances[asset].real_balance
-            logger.info(f"{asset}: REST (account {reya_tester.account_id})={rest_val}, WS={ws_val}")
+            logger.info(f"{asset}: REST (account {spot_tester.account_id})={rest_val}, WS={ws_val}")
 
     logger.info("✅ SPOT BALANCES WS INITIAL SNAPSHOT TEST COMPLETED")
 

@@ -35,7 +35,7 @@ TEST_QTY = "0.01"
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_self_match_gtc_taker_sell_cancelled(reya_tester: ReyaTester):
+async def test_self_match_gtc_taker_sell_cancelled(spot_tester: ReyaTester):
     """
     GTC buy maker + GTC sell taker (crossing) → taker cancelled.
 
@@ -48,24 +48,24 @@ async def test_self_match_gtc_taker_sell_cancelled(reya_tester: ReyaTester):
     logger.info("TEST: GTC taker sell cancelled on self-match")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     maker_price = round(REFERENCE_PRICE * 0.60, 2)
     taker_price = round(maker_price * 0.99, 2)  # Below maker - would cross
 
     # Place maker buy
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
-    maker_order_id = await reya_tester.create_limit_order(maker_params)
-    await reya_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await spot_tester.create_limit_order(maker_params)
+    await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker buy: {maker_order_id} at ${maker_price:.2f}")
 
     # Place taker sell (same account, crossing)
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).gtc().build()
-    taker_order_id = await reya_tester.create_limit_order(taker_params)
+    taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
     # Verify
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert taker_order_id not in open_order_ids, "Taker should be CANCELLED"
@@ -73,16 +73,16 @@ async def test_self_match_gtc_taker_sell_cancelled(reya_tester: ReyaTester):
     logger.info("✅ Taker cancelled, maker remains open")
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+    await spot_tester.client.cancel_order(
+        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_self_match_gtc_taker_buy_cancelled(reya_tester: ReyaTester):
+async def test_self_match_gtc_taker_buy_cancelled(spot_tester: ReyaTester):
     """
     GTC sell maker + GTC buy taker (crossing) → taker cancelled.
 
@@ -95,24 +95,24 @@ async def test_self_match_gtc_taker_buy_cancelled(reya_tester: ReyaTester):
     logger.info("TEST: GTC taker buy cancelled on self-match")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     maker_price = round(REFERENCE_PRICE * 0.60, 2)
     taker_price = round(maker_price * 1.01, 2)  # Above maker - would cross
 
     # Place maker sell
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(maker_price)).qty(TEST_QTY).gtc().build()
-    maker_order_id = await reya_tester.create_limit_order(maker_params)
-    await reya_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await spot_tester.create_limit_order(maker_params)
+    await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: {maker_order_id} at ${maker_price:.2f}")
 
     # Place taker buy (same account, crossing)
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(taker_price)).qty(TEST_QTY).gtc().build()
-    taker_order_id = await reya_tester.create_limit_order(taker_params)
+    taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
     # Verify
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert taker_order_id not in open_order_ids, "Taker should be CANCELLED"
@@ -120,16 +120,16 @@ async def test_self_match_gtc_taker_buy_cancelled(reya_tester: ReyaTester):
     logger.info("✅ Taker cancelled, maker remains open")
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+    await spot_tester.client.cancel_order(
+        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_self_match_ioc_taker_cancelled(reya_tester: ReyaTester):
+async def test_self_match_ioc_taker_cancelled(spot_tester: ReyaTester):
     """
     GTC buy maker + IOC sell taker (crossing) → IOC taker cancelled, no execution.
 
@@ -143,41 +143,41 @@ async def test_self_match_ioc_taker_cancelled(reya_tester: ReyaTester):
     logger.info("TEST: IOC taker cancelled on self-match")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
-    reya_tester.ws_last_spot_execution = None
+    await spot_tester.close_active_orders(fail_if_none=False)
+    spot_tester.ws_last_spot_execution = None
 
     maker_price = round(REFERENCE_PRICE * 0.60, 2)
     taker_price = round(maker_price * 0.99, 2)
 
     # Place GTC maker buy
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
-    maker_order_id = await reya_tester.create_limit_order(maker_params)
-    await reya_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await spot_tester.create_limit_order(maker_params)
+    await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ GTC maker buy: {maker_order_id}")
 
     # Send IOC taker sell (same account, crossing)
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
 
     try:
-        await reya_tester.create_limit_order(taker_params)
+        await spot_tester.create_limit_order(taker_params)
         await asyncio.sleep(0.1)
-        assert reya_tester.ws_last_spot_execution is None, "No execution should occur"
+        assert spot_tester.ws_last_spot_execution is None, "No execution should occur"
         logger.info("✅ No execution - IOC cancelled")
     except Exception as e:
         logger.info(f"✅ IOC rejected (self-match prevented): {type(e).__name__}")
 
     # Verify maker remains
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
     assert maker_order_id in open_order_ids, "Maker should remain open"
     logger.info("✅ GTC maker remains open")
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+    await spot_tester.client.cancel_order(
+        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 # =============================================================================
@@ -187,7 +187,7 @@ async def test_self_match_ioc_taker_cancelled(reya_tester: ReyaTester):
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_self_match_exact_price_boundary(reya_tester: ReyaTester):
+async def test_self_match_exact_price_boundary(spot_tester: ReyaTester):
     """
     Exact same price from same account triggers self-match prevention.
 
@@ -198,26 +198,26 @@ async def test_self_match_exact_price_boundary(reya_tester: ReyaTester):
     logger.info("TEST: Exact price boundary triggers self-match")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
-    reya_tester.ws_last_spot_execution = None
+    await spot_tester.close_active_orders(fail_if_none=False)
+    spot_tester.ws_last_spot_execution = None
 
     exact_price = round(REFERENCE_PRICE * 0.60, 2)
 
     # Place maker sell
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(exact_price)).qty(TEST_QTY).gtc().build()
-    maker_order_id = await reya_tester.create_limit_order(maker_params)
-    await reya_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await spot_tester.create_limit_order(maker_params)
+    await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell at ${exact_price:.2f}")
 
     # Place taker buy at EXACT same price
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(exact_price)).qty(TEST_QTY).gtc().build()
-    taker_order_id = await reya_tester.create_limit_order(taker_params)
+    taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
     # Verify
-    assert reya_tester.ws_last_spot_execution is None, "No execution at exact price"
+    assert spot_tester.ws_last_spot_execution is None, "No execution at exact price"
 
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert taker_order_id not in open_order_ids, "Taker should be cancelled"
@@ -225,16 +225,16 @@ async def test_self_match_exact_price_boundary(reya_tester: ReyaTester):
     logger.info("✅ Self-match prevented at exact price boundary")
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+    await spot_tester.client.cancel_order(
+        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_non_crossing_orders_no_self_match(reya_tester: ReyaTester):
+async def test_non_crossing_orders_no_self_match(spot_tester: ReyaTester):
     """
     Non-crossing orders from same account are NOT self-match.
 
@@ -245,25 +245,25 @@ async def test_non_crossing_orders_no_self_match(reya_tester: ReyaTester):
     logger.info("TEST: Non-crossing orders are not self-match")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     sell_price = round(REFERENCE_PRICE * 1.10, 2)  # 10% above
     buy_price = round(REFERENCE_PRICE * 0.90, 2)  # 10% below
 
     # Place sell
     sell_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(sell_price)).qty(TEST_QTY).gtc().build()
-    sell_order_id = await reya_tester.create_limit_order(sell_params)
-    await reya_tester.wait_for_order_creation(sell_order_id)
+    sell_order_id = await spot_tester.create_limit_order(sell_params)
+    await spot_tester.wait_for_order_creation(sell_order_id)
     logger.info(f"✅ Sell at ${sell_price:.2f}")
 
     # Place buy (non-crossing)
     buy_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(buy_price)).qty(TEST_QTY).gtc().build()
-    buy_order_id = await reya_tester.create_limit_order(buy_params)
-    await reya_tester.wait_for_order_creation(buy_order_id)
+    buy_order_id = await spot_tester.create_limit_order(buy_params)
+    await spot_tester.wait_for_order_creation(buy_order_id)
     logger.info(f"✅ Buy at ${buy_price:.2f}")
 
     # Verify both are on book
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert sell_order_id in open_order_ids, "Sell should be on book"
@@ -272,14 +272,14 @@ async def test_non_crossing_orders_no_self_match(reya_tester: ReyaTester):
 
     # Cleanup
     for order_id in [sell_order_id, buy_order_id]:
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_non_crossing_ioc_cancelled_no_match(reya_tester: ReyaTester):
+async def test_non_crossing_ioc_cancelled_no_match(spot_tester: ReyaTester):
     """
     Non-crossing IOC is cancelled due to no match, NOT self-match.
 
@@ -290,38 +290,38 @@ async def test_non_crossing_ioc_cancelled_no_match(reya_tester: ReyaTester):
     logger.info("TEST: Non-crossing IOC cancelled (no match)")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
-    reya_tester.ws_last_spot_execution = None
+    await spot_tester.close_active_orders(fail_if_none=False)
+    spot_tester.ws_last_spot_execution = None
 
     sell_price = round(REFERENCE_PRICE * 1.50, 2)
     buy_price = round(REFERENCE_PRICE * 0.50, 2)
 
     # Place GTC sell
     sell_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(sell_price)).qty(TEST_QTY).gtc().build()
-    sell_order_id = await reya_tester.create_limit_order(sell_params)
-    await reya_tester.wait_for_order_creation(sell_order_id)
+    sell_order_id = await spot_tester.create_limit_order(sell_params)
+    await spot_tester.wait_for_order_creation(sell_order_id)
     logger.info(f"✅ GTC sell at ${sell_price:.2f}")
 
     # Place IOC buy (non-crossing)
     buy_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(buy_price)).qty(TEST_QTY).ioc().build()
 
     try:
-        await reya_tester.create_limit_order(buy_params)
+        await spot_tester.create_limit_order(buy_params)
         await asyncio.sleep(0.1)
-        assert reya_tester.ws_last_spot_execution is None, "No execution"
+        assert spot_tester.ws_last_spot_execution is None, "No execution"
         logger.info("✅ IOC cancelled - no match available")
     except Exception as e:
         logger.info(f"✅ IOC rejected (no match): {type(e).__name__}")
 
     # Verify GTC sell remains
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
     assert sell_order_id in open_order_ids, "GTC sell should remain"
 
     # Cleanup
-    await reya_tester.client.cancel_order(order_id=sell_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=sell_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 # =============================================================================
@@ -331,7 +331,7 @@ async def test_non_crossing_ioc_cancelled_no_match(reya_tester: ReyaTester):
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_self_match_partial_qty_taker_fully_cancelled(reya_tester: ReyaTester):
+async def test_self_match_partial_qty_taker_fully_cancelled(spot_tester: ReyaTester):
     """
     Self-match with different quantities: taker is FULLY cancelled.
 
@@ -342,8 +342,8 @@ async def test_self_match_partial_qty_taker_fully_cancelled(reya_tester: ReyaTes
     logger.info("TEST: Partial qty self-match - taker fully cancelled")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
-    reya_tester.ws_last_spot_execution = None
+    await spot_tester.close_active_orders(fail_if_none=False)
+    spot_tester.ws_last_spot_execution = None
 
     order_price = round(REFERENCE_PRICE * 0.60, 2)
     maker_qty = "0.02"  # Use smaller qty to conserve funds
@@ -351,20 +351,20 @@ async def test_self_match_partial_qty_taker_fully_cancelled(reya_tester: ReyaTes
 
     # Place maker sell with large qty
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(order_price)).qty(maker_qty).gtc().build()
-    maker_order_id = await reya_tester.create_limit_order(maker_params)
-    await reya_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await spot_tester.create_limit_order(maker_params)
+    await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: qty={maker_qty}")
 
     # Place taker buy with smaller qty
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price * 1.01)).qty(taker_qty).gtc().build()
-    taker_order_id = await reya_tester.create_limit_order(taker_params)
+    taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
     # Verify no execution
-    assert reya_tester.ws_last_spot_execution is None, "No execution"
+    assert spot_tester.ws_last_spot_execution is None, "No execution"
 
     # Verify taker cancelled, maker unchanged
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert taker_order_id not in open_order_ids, "Taker should be cancelled"
@@ -376,16 +376,16 @@ async def test_self_match_partial_qty_taker_fully_cancelled(reya_tester: ReyaTes
     logger.info(f"✅ Taker fully cancelled, maker unchanged (qty={maker_order.qty})")
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+    await spot_tester.client.cancel_order(
+        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_self_match_larger_taker_fully_cancelled(reya_tester: ReyaTester):
+async def test_self_match_larger_taker_fully_cancelled(spot_tester: ReyaTester):
     """
     Self-match with larger taker: taker is FULLY cancelled.
 
@@ -395,8 +395,8 @@ async def test_self_match_larger_taker_fully_cancelled(reya_tester: ReyaTester):
     logger.info("TEST: Larger taker self-match - fully cancelled")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
-    reya_tester.ws_last_spot_execution = None
+    await spot_tester.close_active_orders(fail_if_none=False)
+    spot_tester.ws_last_spot_execution = None
 
     order_price = round(REFERENCE_PRICE * 0.60, 2)
     maker_qty = "0.01"  # Minimum order size
@@ -404,20 +404,20 @@ async def test_self_match_larger_taker_fully_cancelled(reya_tester: ReyaTester):
 
     # Place maker sell with smaller qty
     maker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(order_price)).qty(maker_qty).gtc().build()
-    maker_order_id = await reya_tester.create_limit_order(maker_params)
-    await reya_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await spot_tester.create_limit_order(maker_params)
+    await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: qty={maker_qty}")
 
     # Place taker buy with larger qty
     taker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price * 1.01)).qty(taker_qty).gtc().build()
-    taker_order_id = await reya_tester.create_limit_order(taker_params)
+    taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
     # Verify no execution
-    assert reya_tester.ws_last_spot_execution is None, "No execution"
+    assert spot_tester.ws_last_spot_execution is None, "No execution"
 
     # Verify taker cancelled, maker unchanged
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert taker_order_id not in open_order_ids, "Taker should be cancelled"
@@ -425,11 +425,11 @@ async def test_self_match_larger_taker_fully_cancelled(reya_tester: ReyaTester):
     logger.info("✅ Larger taker fully cancelled")
 
     # Cleanup
-    await reya_tester.client.cancel_order(
-        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id
+    await spot_tester.client.cancel_order(
+        order_id=maker_order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 # =============================================================================
@@ -439,7 +439,7 @@ async def test_self_match_larger_taker_fully_cancelled(reya_tester: ReyaTester):
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_market_maker_multiple_non_crossing_levels(reya_tester: ReyaTester):
+async def test_market_maker_multiple_non_crossing_levels(spot_tester: ReyaTester):
     """
     Market maker scenario: same account has multiple price levels on both sides.
 
@@ -451,7 +451,7 @@ async def test_market_maker_multiple_non_crossing_levels(reya_tester: ReyaTester
     logger.info("TEST: Market maker multiple non-crossing levels")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.close_active_orders(fail_if_none=False)
 
     # Sells: 102%, 104%, 106% of reference
     # Buys: 98%, 96%, 94% of reference
@@ -465,8 +465,8 @@ async def test_market_maker_multiple_non_crossing_levels(reya_tester: ReyaTester
     logger.info("Placing 3 sell orders at increasing prices...")
     for i, price in enumerate(sell_prices):
         params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(price)).qty(TEST_QTY).gtc().build()
-        order_id = await reya_tester.create_limit_order(params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(params)
+        await spot_tester.wait_for_order_creation(order_id)
         sell_order_ids.append(order_id)
         logger.info(f"  Sell {i+1}: ${price:.2f}")
 
@@ -474,14 +474,14 @@ async def test_market_maker_multiple_non_crossing_levels(reya_tester: ReyaTester
     logger.info("Placing 3 buy orders at decreasing prices...")
     for i, price in enumerate(buy_prices):
         params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
-        order_id = await reya_tester.create_limit_order(params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(params)
+        await spot_tester.wait_for_order_creation(order_id)
         buy_order_ids.append(order_id)
         logger.info(f"  Buy {i+1}: ${price:.2f}")
 
     # Verify all 6 orders on book
     await asyncio.sleep(0.1)
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     for order_id in sell_order_ids:
@@ -492,14 +492,14 @@ async def test_market_maker_multiple_non_crossing_levels(reya_tester: ReyaTester
 
     # Cleanup
     for order_id in sell_order_ids + buy_order_ids:
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     await asyncio.sleep(0.1)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_multiple_self_matches_in_sequence(reya_tester: ReyaTester):
+async def test_multiple_self_matches_in_sequence(spot_tester: ReyaTester):
     """
     Multiple potential self-matches in sequence.
 
@@ -511,8 +511,8 @@ async def test_multiple_self_matches_in_sequence(reya_tester: ReyaTester):
     logger.info("TEST: Multiple self-matches in sequence")
     logger.info("=" * 80)
 
-    await reya_tester.close_active_orders(fail_if_none=False)
-    reya_tester.ws_last_spot_execution = None
+    await spot_tester.close_active_orders(fail_if_none=False)
+    spot_tester.ws_last_spot_execution = None
 
     base_price = round(REFERENCE_PRICE * 0.60, 2)
     maker_order_ids = []
@@ -521,8 +521,8 @@ async def test_multiple_self_matches_in_sequence(reya_tester: ReyaTester):
     for i in range(3):
         price = round(base_price * (1 + i * 0.01), 2)
         params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(price)).qty(TEST_QTY).gtc().build()
-        order_id = await reya_tester.create_limit_order(params)
-        await reya_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.create_limit_order(params)
+        await spot_tester.wait_for_order_creation(order_id)
         maker_order_ids.append(order_id)
         logger.info(f"  Maker sell {i+1}: ${price:.2f}")
 
@@ -537,14 +537,14 @@ async def test_multiple_self_matches_in_sequence(reya_tester: ReyaTester):
         .gtc()
         .build()
     )
-    taker_order_id = await reya_tester.create_limit_order(taker_params)
+    taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
     # Verify no execution
-    assert reya_tester.ws_last_spot_execution is None, "No execution"
+    assert spot_tester.ws_last_spot_execution is None, "No execution"
 
     # Verify taker cancelled, all makers remain
-    open_orders = await reya_tester.client.get_open_orders()
+    open_orders = await spot_tester.client.get_open_orders()
     open_order_ids = [o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL]
 
     assert taker_order_id not in open_order_ids, "Taker should be cancelled"
@@ -554,9 +554,9 @@ async def test_multiple_self_matches_in_sequence(reya_tester: ReyaTester):
 
     # Cleanup
     for order_id in maker_order_ids:
-        await reya_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=reya_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
     await asyncio.sleep(0.1)
-    await reya_tester.check_no_open_orders()
+    await spot_tester.check_no_open_orders()
 
 
 # =============================================================================

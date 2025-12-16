@@ -35,7 +35,7 @@ TEST_QTY = "0.01"
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_executions_empty(reya_tester: ReyaTester):
+async def test_rest_get_market_spot_executions_empty(spot_tester: ReyaTester):
     """
     Test REST API returns empty list for market with no recent executions.
 
@@ -46,7 +46,7 @@ async def test_rest_get_market_spot_executions_empty(reya_tester: ReyaTester):
     logger.info("=" * 80)
 
     # Query market spot executions
-    executions = await reya_tester.client.get_market_spot_executions(SPOT_SYMBOL)
+    executions = await spot_tester.client.get_market_spot_executions(SPOT_SYMBOL)
 
     # Should return a valid response (may be empty or have historical data)
     assert executions is not None, "Should receive a response"
@@ -133,7 +133,7 @@ async def test_rest_get_market_spot_executions_after_trade(maker_tester: ReyaTes
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_executions_invalid_symbol(reya_tester: ReyaTester):
+async def test_rest_get_market_spot_executions_invalid_symbol(spot_tester: ReyaTester):
     """
     Test REST API returns error for invalid symbol.
     """
@@ -142,7 +142,7 @@ async def test_rest_get_market_spot_executions_invalid_symbol(reya_tester: ReyaT
     logger.info("=" * 80)
 
     try:
-        await reya_tester.client.get_market_spot_executions("INVALID_SYMBOL")
+        await spot_tester.client.get_market_spot_executions("INVALID_SYMBOL")
         pytest.fail("Should have raised an error for invalid symbol")
     except ValueError as e:
         logger.info(f"✅ Correctly rejected invalid symbol: {e}")
@@ -346,7 +346,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(maker_tester: Reya
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_multiple_symbols(reya_tester: ReyaTester):
+async def test_ws_market_spot_executions_multiple_symbols(spot_tester: ReyaTester):
     """
     Test subscribing to multiple market spot execution channels.
 
@@ -360,15 +360,15 @@ async def test_ws_market_spot_executions_multiple_symbols(reya_tester: ReyaTeste
 
     # Subscribe to multiple symbols
     for symbol in symbols:
-        reya_tester.clear_market_spot_executions(symbol)
-        reya_tester.subscribe_to_market_spot_executions(symbol)
+        spot_tester.clear_market_spot_executions(symbol)
+        spot_tester.subscribe_to_market_spot_executions(symbol)
         logger.info(f"✅ Subscribed to {symbol}")
 
     await asyncio.sleep(0.3)
 
     # Verify subscriptions are independent
     for symbol in symbols:
-        executions = reya_tester.ws_market_spot_executions.get(symbol, [])
+        executions = spot_tester.ws_market_spot_executions.get(symbol, [])
         logger.info(f"{symbol}: {len(executions)} execution(s)")
 
     logger.info("✅ WS MARKET SPOT EXECUTIONS MULTIPLE SYMBOLS TEST COMPLETED")
