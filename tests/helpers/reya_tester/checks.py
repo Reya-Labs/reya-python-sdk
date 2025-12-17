@@ -146,7 +146,7 @@ class Checks:
             ), "check_position: Last trade sequence number does not match"
 
     async def position_not_open(self, symbol: str) -> None:
-        """Assert position is closed."""
+        """Assert position is closed via both REST and WebSocket."""
         pos = await self._t.data.position(symbol)
         assert pos is None, "check_position_not_open: Position should be empty"
 

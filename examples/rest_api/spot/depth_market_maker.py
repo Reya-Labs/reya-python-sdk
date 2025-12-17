@@ -7,19 +7,20 @@ Press Ctrl+C to stop (will cancel all orders on exit).
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- PERP_ACCOUNT_ID_1: Your Reya account ID
-- PERP_PRIVATE_KEY_1: Your Ethereum private key
-- PERP_WALLET_ADDRESS_1: Your wallet address
+- SPOT_ACCOUNT_ID_1: Your Reya SPOT account ID
+- SPOT_PRIVATE_KEY_1: Your Ethereum private key
+- SPOT_WALLET_ADDRESS_1: Your wallet address
 """
 
 import asyncio
 import logging
-import os
 
 from dotenv import load_dotenv
 
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.auth.signatures import SignatureGenerator
+from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -65,8 +66,18 @@ async def main():
     logger.info("   Press Ctrl+C to stop\n")
 
     async with ReyaTradingClient() as client:
+        # Configure client for SPOT account
+        spot_config = TradingConfig.from_env_spot(account_number=1)
+        client._config = spot_config
+        client._signature_generator = SignatureGenerator(spot_config)
+        
         await client.start()
-        account_id = int(os.environ.get("PERP_ACCOUNT_ID_1", "0"))
+        account_id = spot_config.account_id
+        
+        if not account_id:
+            raise ValueError("SPOT_ACCOUNT_ID_1 environment variable is required")
+        
+        logger.info(f"   Using SPOT Account: {account_id}")
 
         try:
             cycle = 0

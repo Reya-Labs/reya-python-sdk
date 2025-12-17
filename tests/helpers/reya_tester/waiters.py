@@ -44,19 +44,22 @@ class Waiters:
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
 
-            if ws_trade is None and self._t.ws.last_trade is not None:
-                if match_order(expected_order, self._t.ws.last_trade):
-                    elapsed_time = time.time() - start_time
-                    logger.info(
-                        f" ✅ Trade confirmed via WS: {self._t.ws.last_trade.sequence_number} (took {elapsed_time:.2f}s)"
-                    )
-                    ws_trade = self._t.ws.last_trade
-                    trade_seq_num = self._t.ws.last_trade.sequence_number
-                    assert ws_trade is not None
+            # Search through all perp executions (like spot does) instead of just last_trade
+            if ws_trade is None:
+                for execution in self._t.ws.perp_executions:
+                    if match_order(expected_order, execution):
+                        elapsed_time = time.time() - start_time
+                        logger.info(
+                            f" ✅ Trade confirmed via WS: {execution.sequence_number} (took {elapsed_time:.2f}s)"
+                        )
+                        ws_trade = execution
+                        trade_seq_num = execution.sequence_number
+                        break
 
             if (
                 ws_position is None
                 and expected_order.symbol in self._t.ws.positions
+                and trade_seq_num is not None
                 and trade_seq_num == self._t.ws.positions[expected_order.symbol].last_trade_sequence_number
             ):
                 ws_position = self._t.ws.positions[expected_order.symbol]
@@ -76,11 +79,9 @@ class Waiters:
                 rest_position = position
 
             if rest_trade and ws_trade and rest_position and ws_position:
-                # Compare trades by sequence_number (most reliable identifier for perp executions)
                 assert (
                     rest_trade.sequence_number == ws_trade.sequence_number
                 ), f"Trade sequence mismatch: REST={rest_trade.sequence_number}, WS={ws_trade.sequence_number}"
-                # Compare positions by symbol
                 assert (
                     rest_position.symbol == ws_position.symbol
                 ), f"Position symbol mismatch: REST={rest_position.symbol}, WS={ws_position.symbol}"
@@ -96,7 +97,7 @@ class Waiters:
     async def for_closing_order_execution(
         self, expected_order: Order, expected_qty: Optional[str] = None, timeout: int = 10
     ) -> PerpExecution:
-        """Wait for position-closing trade confirmation."""
+        """Wait for position-closing trade confirmation via both REST and WebSocket."""
         logger.info("⏳ Waiting for position-closing trade confirmation...")
 
         start_time = time.time()
@@ -109,19 +110,22 @@ class Waiters:
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
 
-            if ws_trade is None and self._t.ws.last_trade is not None:
-                if match_order(expected_order, self._t.ws.last_trade, expected_qty):
-                    elapsed_time = time.time() - start_time
-                    logger.info(
-                        f" ✅ Trade confirmed via WS: {self._t.ws.last_trade.sequence_number} (took {elapsed_time:.2f}s)"
-                    )
-                    ws_trade = self._t.ws.last_trade
-                    trade_seq_num = self._t.ws.last_trade.sequence_number
-                    assert ws_trade is not None
+            # Search through all perp executions (like spot does) instead of just last_trade
+            if ws_trade is None:
+                for execution in self._t.ws.perp_executions:
+                    if match_order(expected_order, execution, expected_qty):
+                        elapsed_time = time.time() - start_time
+                        logger.info(
+                            f" ✅ Trade confirmed via WS: {execution.sequence_number} (took {elapsed_time:.2f}s)"
+                        )
+                        ws_trade = execution
+                        trade_seq_num = execution.sequence_number
+                        break
 
             if (
                 ws_position is None
                 and expected_order.symbol in self._t.ws.positions
+                and trade_seq_num is not None
                 and trade_seq_num == self._t.ws.positions[expected_order.symbol].last_trade_sequence_number
             ):
                 ws_position = self._t.ws.positions[expected_order.symbol]
@@ -137,11 +141,10 @@ class Waiters:
             position = await self._t.data.position(expected_order.symbol)
             if not rest_closed and position is None:
                 elapsed_time = time.time() - start_time
-                logger.info(f" ✅ Position confirmed via REST: {expected_order.symbol} (took {elapsed_time:.2f}s)")
+                logger.info(f" ✅ Position closed via REST: {expected_order.symbol} (took {elapsed_time:.2f}s)")
                 rest_closed = True
 
             if rest_trade and ws_trade and rest_closed and ws_position:
-                # Compare trades by sequence_number (most reliable identifier for perp executions)
                 assert (
                     rest_trade.sequence_number == ws_trade.sequence_number
                 ), f"Trade sequence mismatch: REST={rest_trade.sequence_number}, WS={ws_trade.sequence_number}"
@@ -221,7 +224,7 @@ class Waiters:
         )
 
     async def for_order_state(self, order_id: str, expected_status: OrderStatus, timeout: int = 10) -> str:
-        """Wait for order to reach a specific state."""
+        """Wait for order to reach a specific state via both REST and WebSocket."""
         logger.debug(f"⏳ Waiting for order to reach state: {expected_status.value}...")
         assert expected_status != OrderStatus.OPEN, "use for_order_creation instead"
 
@@ -241,7 +244,6 @@ class Waiters:
                 rest_match = True
 
             ws_order = self._t.ws.order_changes.get(order_id)
-            # Compare enum values (strings) since async_api and open_api have different enum classes
             ws_status_value = ws_order.status.value if ws_order else None
             if not ws_match and ws_order and ws_status_value == expected_status.value:
                 elapsed_time = time.time() - start_time

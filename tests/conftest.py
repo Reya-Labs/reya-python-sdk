@@ -96,10 +96,10 @@ async def reya_tester(reya_tester_session):
     await reya_tester_session.close_exposures(fail_if_none=False)
     await reya_tester_session.close_active_orders(fail_if_none=False)
 
-    # Clear WebSocket tracking state for fresh test
+    # Clear ALL WebSocket tracking state for fresh test
+    reya_tester_session.ws.clear()  # Clear all WebSocket state including positions
     reya_tester_session.ws_order_changes.clear()
     reya_tester_session.ws_balance_updates.clear()
-    reya_tester_session.ws.clear_spot_executions()  # Clear all spot executions
     reya_tester_session.ws_last_trade = None
 
     yield reya_tester_session

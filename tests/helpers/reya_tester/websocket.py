@@ -44,6 +44,7 @@ class WebSocketState:
 
         # State tracking - using async_api types directly
         self.last_trade: Optional[AsyncPerpExecution] = None
+        self.perp_executions: list[AsyncPerpExecution] = []  # All perp executions received (wallet-level)
         self.last_spot_execution: Optional[AsyncSpotExecution] = None
         self.spot_executions: list[AsyncSpotExecution] = []  # All spot executions received (wallet-level)
         self.market_spot_executions: dict[str, list[AsyncSpotExecution]] = {}  # Market-level spot executions by symbol
@@ -56,6 +57,7 @@ class WebSocketState:
     def clear(self) -> None:
         """Clear all WebSocket state."""
         self.last_trade = None
+        self.perp_executions.clear()
         self.last_spot_execution = None
         self.spot_executions.clear()
         self.market_spot_executions.clear()
@@ -75,6 +77,12 @@ class WebSocketState:
         self.spot_executions.clear()
         self.last_spot_execution = None
         logger.debug("Cleared WebSocket spot executions")
+
+    def clear_perp_executions(self) -> None:
+        """Clear the list of perp executions."""
+        self.perp_executions.clear()
+        self.last_trade = None
+        logger.debug("Cleared WebSocket perp executions")
 
     def get_balance_updates_for_account(self, account_id: int) -> list[AsyncAccountBalance]:
         """Get all balance updates for a specific account."""
@@ -153,6 +161,7 @@ class WebSocketState:
         elif isinstance(message, WalletPerpExecutionUpdatePayload):
             for trade in message.data:
                 self.last_trade = trade
+                self.perp_executions.append(trade)
 
         # Handle spot executions (market or wallet level) - store async_api type directly
         elif isinstance(message, (MarketSpotExecutionUpdatePayload, WalletSpotExecutionUpdatePayload)):

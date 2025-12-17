@@ -49,7 +49,7 @@ logger.addHandler(handler)
 logger.propagate = False
 
 ASSET_TO_SYMBOL = {"ETH": "WETHRUSD", "WETH": "WETHRUSD"}
-TRANSFER_PRICE = "0.01"  # Low price to avoid external matches
+DEFAULT_TRANSFER_PRICE = "0.01"  # Low price to avoid external matches
 ORDER_SETTLEMENT_RETRIES = 3
 ORDER_SETTLEMENT_DELAY = 1.0
 
@@ -118,6 +118,7 @@ async def execute_spot_transfer(
     to_account_id: int,
     symbol: str,
     qty: str,
+    transfer_price: str,
 ) -> tuple[bool, str | None]:
     """
     Execute a spot transfer by matching orders between sender and receiver.
@@ -133,7 +134,7 @@ async def execute_spot_transfer(
     sell_params = LimitOrderParameters(
         symbol=symbol,
         is_buy=False,
-        limit_px=TRANSFER_PRICE,
+        limit_px=transfer_price,
         qty=qty,
         time_in_force=TimeInForce.GTC,
     )
@@ -155,7 +156,7 @@ async def execute_spot_transfer(
     buy_params = LimitOrderParameters(
         symbol=symbol,
         is_buy=True,
-        limit_px=TRANSFER_PRICE,
+        limit_px=transfer_price,
         qty=qty,
         time_in_force=TimeInForce.IOC,
     )
@@ -227,6 +228,7 @@ async def main():
     parser.add_argument("--to-account", type=int, required=True, help="Account ID to transfer TO (receiver)")
     parser.add_argument("--asset", type=str, required=True, choices=["ETH", "WETH"], help="Asset to transfer")
     parser.add_argument("--qty", type=str, required=True, help="Quantity to transfer (e.g., 5)")
+    parser.add_argument("--price", type=str, default=None, help="Custom price for transfer (default: 0.01)")
 
     args = parser.parse_args()
     load_dotenv()
@@ -235,6 +237,7 @@ async def main():
     to_account_id = args.to_account
     asset = args.asset.upper()
     qty = args.qty
+    transfer_price = args.price if args.price else DEFAULT_TRANSFER_PRICE
 
     symbol = ASSET_TO_SYMBOL.get(asset)
     if not symbol:
@@ -281,6 +284,7 @@ async def main():
     logger.info(f"  Asset:        {asset}")
     logger.info(f"  Quantity:     {qty}")
     logger.info(f"  Symbol:       {symbol}")
+    logger.info(f"  Price:        ${transfer_price}")
 
     async with ReyaTradingClient() as sender_client:
         base_config = sender_client._config
@@ -308,7 +312,7 @@ async def main():
 
             # Execute the transfer
             order_fully_matched, tx_hash = await execute_spot_transfer(
-                sender_client, receiver_client, from_account_id, to_account_id, symbol, qty
+                sender_client, receiver_client, from_account_id, to_account_id, symbol, qty, transfer_price
             )
 
             if tx_hash:
