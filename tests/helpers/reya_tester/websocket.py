@@ -2,14 +2,14 @@
 
 This module uses async_api types directly from the WebSocket SDK.
 These types match the AsyncAPI spec and are auto-generated.
+
+Uses EventStore for unified state tracking across all event types.
 """
 
 from typing import TYPE_CHECKING, Optional
 
-import json
 import logging
 
-# Import async_api types (auto-generated from AsyncAPI spec)
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.depth import Depth
@@ -26,6 +26,8 @@ from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecuti
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
 from sdk.reya_websocket import WebSocketMessage
 
+from .store import EventStore
+
 if TYPE_CHECKING:
     from .tester import ReyaTester
 
@@ -35,37 +37,85 @@ logger = logging.getLogger("reya.integration_tests")
 class WebSocketState:
     """WebSocket state tracking and management.
 
-    Uses async_api types directly from WebSocket messages.
-    These types are auto-generated from the AsyncAPI spec.
+    Uses EventStore for unified state tracking across all event types.
+    All stores use the same pattern for consistency between perp/spot.
     """
 
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
 
-        # State tracking - using async_api types directly
-        self.last_trade: Optional[AsyncPerpExecution] = None
-        self.perp_executions: list[AsyncPerpExecution] = []  # All perp executions received (wallet-level)
-        self.last_spot_execution: Optional[AsyncSpotExecution] = None
-        self.spot_executions: list[AsyncSpotExecution] = []  # All spot executions received (wallet-level)
-        self.market_spot_executions: dict[str, list[AsyncSpotExecution]] = {}  # Market-level spot executions by symbol
-        self.order_changes: dict[str, AsyncOrder] = {}
-        self.positions: dict[str, AsyncPosition] = {}
-        self.balances: dict[str, AsyncAccountBalance] = {}  # async_api AccountBalance
-        self.balance_updates: list[AsyncAccountBalance] = []
-        self.last_depth: dict[str, Depth] = {}
+        # Unified state tracking using EventStore
+        # Executions: list-based (search by predicate)
+        self.perp_executions: EventStore[AsyncPerpExecution] = EventStore()
+        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(
+            key_fn=lambda x: str(x.order_id)
+        )
+        self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
+
+        # Keyed stores: direct lookup by key
+        self.positions: EventStore[AsyncPosition] = EventStore(key_fn=lambda x: x.symbol)
+        self.orders: EventStore[AsyncOrder] = EventStore(key_fn=lambda x: str(x.order_id))
+        self.balances: EventStore[AsyncAccountBalance] = EventStore(key_fn=lambda x: x.asset)
+
+        # Market-level stores (by symbol)
+        self.market_spot_executions: dict[str, EventStore[AsyncSpotExecution]] = {}
+        self.depth: dict[str, Depth] = {}
+
+    # =========================================================================
+    # Backward compatibility properties
+    # =========================================================================
+
+    @property
+    def order_changes(self) -> EventStore[AsyncOrder]:
+        """Backward compatibility: alias for orders store."""
+        return self.orders
+
+    @property
+    def last_trade(self) -> Optional[AsyncPerpExecution]:
+        """Backward compatibility: get last perp execution."""
+        return self.perp_executions.last
+
+    @last_trade.setter
+    def last_trade(self, value: Optional[AsyncPerpExecution]) -> None:
+        """Backward compatibility: setting last_trade clears and adds."""
+        if value is None:
+            self.perp_executions.clear()
+        else:
+            self.perp_executions.add(value)
+
+    @property
+    def last_spot_execution(self) -> Optional[AsyncSpotExecution]:
+        """Backward compatibility: get last spot execution."""
+        return self.spot_executions.last
+
+    @last_spot_execution.setter
+    def last_spot_execution(self, value: Optional[AsyncSpotExecution]) -> None:
+        """Backward compatibility: setting last_spot_execution clears and adds."""
+        if value is None:
+            self.spot_executions.clear()
+        else:
+            self.spot_executions.add(value)
+
+    @property
+    def last_depth(self) -> dict[str, Depth]:
+        """Backward compatibility: alias for depth."""
+        return self.depth
+
+    @property
+    def current_prices(self) -> dict:
+        """Backward compatibility: placeholder for current prices."""
+        return {}
 
     def clear(self) -> None:
         """Clear all WebSocket state."""
-        self.last_trade = None
         self.perp_executions.clear()
-        self.last_spot_execution = None
         self.spot_executions.clear()
-        self.market_spot_executions.clear()
-        self.order_changes.clear()
-        self.positions.clear()
-        self.balances.clear()
         self.balance_updates.clear()
-        self.last_depth.clear()
+        self.positions.clear()
+        self.orders.clear()
+        self.balances.clear()
+        self.market_spot_executions.clear()
+        self.depth.clear()
 
     def clear_balance_updates(self) -> None:
         """Clear the list of balance updates."""
@@ -75,18 +125,16 @@ class WebSocketState:
     def clear_spot_executions(self) -> None:
         """Clear the list of spot executions."""
         self.spot_executions.clear()
-        self.last_spot_execution = None
         logger.debug("Cleared WebSocket spot executions")
 
     def clear_perp_executions(self) -> None:
         """Clear the list of perp executions."""
         self.perp_executions.clear()
-        self.last_trade = None
         logger.debug("Cleared WebSocket perp executions")
 
     def get_balance_updates_for_account(self, account_id: int) -> list[AsyncAccountBalance]:
         """Get all balance updates for a specific account."""
-        return [b for b in self.balance_updates if b.account_id == account_id]
+        return self.balance_updates.find_all(lambda b: b.account_id == account_id)
 
     def get_balance_update_count(self) -> int:
         """Get the current count of balance updates."""
@@ -109,7 +157,8 @@ class WebSocketState:
     def clear_market_spot_executions(self, symbol: Optional[str] = None) -> None:
         """Clear market spot executions. If symbol provided, clear only that symbol."""
         if symbol:
-            self.market_spot_executions.pop(symbol, None)
+            if symbol in self.market_spot_executions:
+                self.market_spot_executions[symbol].clear()
             logger.debug(f"Cleared market spot executions for {symbol}")
         else:
             self.market_spot_executions.clear()
@@ -129,108 +178,137 @@ class WebSocketState:
         """Handle WebSocket messages using typed payloads from SDK.
 
         The SDK parses all messages into typed Pydantic models automatically.
-        This follows the same pattern as the REST API - no raw dict access.
+        Uses EventStore for unified state tracking.
         """
         logger.info(f"Received message: {type(message).__name__}")
 
         # Handle subscribed messages with initial snapshots
         if isinstance(message, SubscribedMessagePayload):
-            logger.info(f"✅ Subscribed to {message.channel}")
+            self._handle_subscribed(message)
 
-            # Handle initial snapshot for depth channel
-            if "depth" in message.channel and message.contents:
-                depth = Depth.model_validate(message.contents)
-                self.last_depth[depth.symbol] = depth
-                logger.info(f"Stored depth snapshot for {depth.symbol}: {len(depth.bids)} bids, {len(depth.asks)} asks")
-
-            # Handle initial snapshot for market spot executions channel
-            if "/market/" in message.channel and "spotExecutions" in message.channel and message.contents:
-                symbol = message.channel.split("/")[3]  # /v2/market/{symbol}/spotExecutions
-                data = message.contents.get("data", [])
-
-                if symbol not in self.market_spot_executions:
-                    self.market_spot_executions[symbol] = []
-
-                for e in data:
-                    execution = AsyncSpotExecution.model_validate(e)
-                    self.market_spot_executions[symbol].append(execution)
-
-                logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
-
-        # Handle perp executions - store async_api type directly
+        # Handle perp executions
         elif isinstance(message, WalletPerpExecutionUpdatePayload):
-            for trade in message.data:
-                self.last_trade = trade
-                self.perp_executions.append(trade)
+            self._handle_perp_executions(message)
 
-        # Handle spot executions (market or wallet level) - store async_api type directly
+        # Handle spot executions (market or wallet level)
         elif isinstance(message, (MarketSpotExecutionUpdatePayload, WalletSpotExecutionUpdatePayload)):
-            is_market_channel = "/market/" in message.channel
-            for exec_data in message.data:
-                self.last_spot_execution = exec_data
+            self._handle_spot_executions(message)
 
-                if is_market_channel:
-                    symbol = message.channel.split("/")[3]
-                    if symbol not in self.market_spot_executions:
-                        self.market_spot_executions[symbol] = []
-                    self.market_spot_executions[symbol].append(exec_data)
-                    logger.debug(f"Added market spot execution for {symbol}: {exec_data.order_id}")
-                else:
-                    self.spot_executions.append(exec_data)
-
-        # Handle order changes - store async_api type directly
+        # Handle order changes
         elif isinstance(message, OrderChangeUpdatePayload):
-            for order_data in message.data:
-                self.order_changes[order_data.order_id] = order_data
+            self._handle_order_changes(message)
 
-        # Handle position updates - store async_api type directly
+        # Handle position updates
         elif isinstance(message, PositionUpdatePayload):
-            for pos_data in message.data:
-                self.positions[pos_data.symbol] = pos_data
+            self._handle_position_updates(message)
 
         # Handle depth updates
         elif isinstance(message, MarketDepthUpdatePayload):
-            depth = message.data
-            symbol = depth.symbol
-            existing = self.last_depth.get(symbol)
+            self._handle_depth_update(message)
 
-            if existing is None:
-                self.last_depth[symbol] = depth
-            else:
-                # Merge updates into existing depth
-                existing_bids = list(existing.bids) if existing.bids else []
-                existing_asks = list(existing.asks) if existing.asks else []
-
-                # Process bid updates
-                for level in depth.bids:
-                    existing_bids = [b for b in existing_bids if b.px != level.px]
-                    if float(level.qty) > 0:
-                        existing_bids.append(level)
-
-                # Process ask updates
-                for level in depth.asks:
-                    existing_asks = [a for a in existing_asks if a.px != level.px]
-                    if float(level.qty) > 0:
-                        existing_asks.append(level)
-
-                # Sort bids descending, asks ascending
-                existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
-                existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
-
-                self.last_depth[symbol] = Depth(
-                    symbol=symbol,
-                    type=existing.type,
-                    bids=existing_bids,
-                    asks=existing_asks,
-                    updatedAt=depth.updated_at,  # Use alias for input, access via snake_case
-                )
-
-        # Handle account balance updates - store async_api type directly
+        # Handle account balance updates
         elif isinstance(message, AccountBalanceUpdatePayload):
-            for balance_data in message.data:
-                self.balances[balance_data.asset] = balance_data
-                self.balance_updates.append(balance_data)
-                logger.debug(f"Added balance update: account_id={balance_data.account_id}, asset={balance_data.asset}")
+            self._handle_balance_updates(message)
+
+    def _handle_subscribed(self, message: SubscribedMessagePayload) -> None:
+        """Handle subscription confirmation with initial snapshot."""
+        logger.info(f"✅ Subscribed to {message.channel}")
+
+        # Handle initial snapshot for depth channel
+        if "depth" in message.channel and message.contents:
+            depth_data = Depth.model_validate(message.contents)
+            self.depth[depth_data.symbol] = depth_data
+            logger.info(f"Stored depth snapshot for {depth_data.symbol}: {len(depth_data.bids)} bids, {len(depth_data.asks)} asks")
+
+        # Handle initial snapshot for market spot executions channel
+        if "/market/" in message.channel and "spotExecutions" in message.channel and message.contents:
+            symbol = message.channel.split("/")[3]  # /v2/market/{symbol}/spotExecutions
+            data = message.contents.get("data", [])
+
+            if symbol not in self.market_spot_executions:
+                self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+
+            for e in data:
+                execution = AsyncSpotExecution.model_validate(e)
+                self.market_spot_executions[symbol].add(execution)
+
+            logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
+
+    def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
+        """Handle perp execution updates."""
+        for trade in message.data:
+            self.perp_executions.add(trade)
+
+    def _handle_spot_executions(
+        self, message: MarketSpotExecutionUpdatePayload | WalletSpotExecutionUpdatePayload
+    ) -> None:
+        """Handle spot execution updates (market or wallet level)."""
+        is_market_channel = "/market/" in message.channel
+
+        for exec_data in message.data:
+            if is_market_channel:
+                symbol = message.channel.split("/")[3]
+                if symbol not in self.market_spot_executions:
+                    self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                self.market_spot_executions[symbol].add(exec_data)
+                logger.debug(f"Added market spot execution for {symbol}: {exec_data.order_id}")
+            else:
+                self.spot_executions.add(exec_data)
+
+    def _handle_order_changes(self, message: OrderChangeUpdatePayload) -> None:
+        """Handle order change updates."""
+        for order_data in message.data:
+            self.orders.add(order_data)
+
+    def _handle_position_updates(self, message: PositionUpdatePayload) -> None:
+        """Handle position updates."""
+        for pos_data in message.data:
+            self.positions.add(pos_data)
+
+    def _handle_depth_update(self, message: MarketDepthUpdatePayload) -> None:
+        """Handle depth updates with incremental merge."""
+        new_depth = message.data
+        symbol = new_depth.symbol
+        existing = self.depth.get(symbol)
+
+        if existing is None:
+            self.depth[symbol] = new_depth
+            return
+
+        # Merge updates into existing depth
+        existing_bids = list(existing.bids) if existing.bids else []
+        existing_asks = list(existing.asks) if existing.asks else []
+
+        # Process bid updates
+        for level in new_depth.bids:
+            existing_bids = [b for b in existing_bids if b.px != level.px]
+            if float(level.qty) > 0:
+                existing_bids.append(level)
+
+        # Process ask updates
+        for level in new_depth.asks:
+            existing_asks = [a for a in existing_asks if a.px != level.px]
+            if float(level.qty) > 0:
+                existing_asks.append(level)
+
+        # Sort bids descending, asks ascending
+        existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
+        existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
+
+        self.depth[symbol] = Depth(
+            symbol=symbol,
+            type=existing.type,
+            bids=existing_bids,
+            asks=existing_asks,
+            updatedAt=new_depth.updated_at,
+        )
+
+    def _handle_balance_updates(self, message: AccountBalanceUpdatePayload) -> None:
+        """Handle account balance updates."""
+        for balance_data in message.data:
+            self.balances.add(balance_data)
+            self.balance_updates.add(balance_data)
+            logger.debug(f"Added balance update: account_id={balance_data.account_id}, asset={balance_data.asset}")
 
     def verify_spot_trade_balance_changes(
         self,

@@ -1,4 +1,7 @@
-"""Wait operations for ReyaTester."""
+"""Wait operations for ReyaTester.
+
+Uses unified EventStore and ExecutionMatcher for consistent state tracking.
+"""
 
 from typing import TYPE_CHECKING, Optional
 
@@ -11,12 +14,8 @@ from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
-from tests.helpers.utils import (
-    match_order,
-    match_spot_order,
-    validate_order_change_fields,
-    validate_spot_execution_fields,
-)
+
+from .matchers import ExecutionMatcher, FieldValidator
 
 if TYPE_CHECKING:
     from .tester import ReyaTester
@@ -44,29 +43,29 @@ class Waiters:
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
 
-            # Search through all perp executions (like spot does) instead of just last_trade
+            # Search through all perp executions using EventStore.find()
             if ws_trade is None:
-                for execution in self._t.ws.perp_executions:
-                    if match_order(expected_order, execution):
-                        elapsed_time = time.time() - start_time
-                        logger.info(
-                            f" ✅ Trade confirmed via WS: {execution.sequence_number} (took {elapsed_time:.2f}s)"
-                        )
-                        ws_trade = execution
-                        trade_seq_num = execution.sequence_number
-                        break
+                ws_trade = self._t.ws.perp_executions.find(
+                    lambda e: ExecutionMatcher.match_perp(e, expected_order)
+                )
+                if ws_trade:
+                    elapsed_time = time.time() - start_time
+                    logger.info(f" ✅ Trade confirmed via WS: {ws_trade.sequence_number} (took {elapsed_time:.2f}s)")
+                    trade_seq_num = ws_trade.sequence_number
 
+            # Check WS position using EventStore.get()
+            ws_pos = self._t.ws.positions.get(expected_order.symbol)
             if (
                 ws_position is None
-                and expected_order.symbol in self._t.ws.positions
+                and ws_pos is not None
                 and trade_seq_num is not None
-                and trade_seq_num == self._t.ws.positions[expected_order.symbol].last_trade_sequence_number
+                and trade_seq_num == ws_pos.last_trade_sequence_number
             ):
-                ws_position = self._t.ws.positions[expected_order.symbol]
+                ws_position = ws_pos
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Position confirmed via WS: {expected_order.symbol} (took {elapsed_time:.2f}s)")
 
-            if rest_trade is None and match_order(expected_order, last_trade):
+            if rest_trade is None and ExecutionMatcher.match_perp(last_trade, expected_order):
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
                 rest_trade = last_trade
@@ -110,29 +109,29 @@ class Waiters:
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
 
-            # Search through all perp executions (like spot does) instead of just last_trade
+            # Search through all perp executions using EventStore.find()
             if ws_trade is None:
-                for execution in self._t.ws.perp_executions:
-                    if match_order(expected_order, execution, expected_qty):
-                        elapsed_time = time.time() - start_time
-                        logger.info(
-                            f" ✅ Trade confirmed via WS: {execution.sequence_number} (took {elapsed_time:.2f}s)"
-                        )
-                        ws_trade = execution
-                        trade_seq_num = execution.sequence_number
-                        break
+                ws_trade = self._t.ws.perp_executions.find(
+                    lambda e: ExecutionMatcher.match_perp(e, expected_order, expected_qty)
+                )
+                if ws_trade:
+                    elapsed_time = time.time() - start_time
+                    logger.info(f" ✅ Trade confirmed via WS: {ws_trade.sequence_number} (took {elapsed_time:.2f}s)")
+                    trade_seq_num = ws_trade.sequence_number
 
+            # Check WS position using EventStore.get()
+            ws_pos = self._t.ws.positions.get(expected_order.symbol)
             if (
                 ws_position is None
-                and expected_order.symbol in self._t.ws.positions
+                and ws_pos is not None
                 and trade_seq_num is not None
-                and trade_seq_num == self._t.ws.positions[expected_order.symbol].last_trade_sequence_number
+                and trade_seq_num == ws_pos.last_trade_sequence_number
             ):
-                ws_position = self._t.ws.positions[expected_order.symbol]
+                ws_position = ws_pos
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Position confirmed via WS: {expected_order.symbol} (took {elapsed_time:.2f}s)")
 
-            if rest_trade is None and match_order(expected_order, last_trade, expected_qty):
+            if rest_trade is None and ExecutionMatcher.match_perp(last_trade, expected_order, expected_qty):
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
                 rest_trade = last_trade
@@ -180,25 +179,24 @@ class Waiters:
         expected_order.order_id = order_id
 
         while time.time() - start_time < timeout:
-            # Search through spot executions by order_id
+            # Search through spot executions using EventStore.get() (keyed by order_id)
             if ws_execution is None:
-                for execution in self._t.ws.spot_executions:
-                    if str(execution.order_id) == str(order_id):
-                        elapsed_time = time.time() - start_time
+                ws_exec = self._t.ws.spot_executions.get(str(order_id))
+                if ws_exec:
+                    elapsed_time = time.time() - start_time
 
-                        # Validate all fields match expected order
-                        if match_spot_order(execution, expected_order):
-                            logger.info(
-                                f" ✅ Spot execution confirmed via WS: order_id={order_id} (took {elapsed_time:.2f}s)"
-                            )
-                            ws_execution = execution
-                        else:
-                            # Log validation errors
-                            validation_errors = validate_spot_execution_fields(execution, expected_order)
-                            for error in validation_errors:
-                                logger.warning(f"   ⚠️ Validation: {error}")
-                            ws_execution = execution  # Still use it, but warn
-                        break
+                    # Validate all fields match expected order
+                    if ExecutionMatcher.match_spot(ws_exec, expected_order):
+                        logger.info(
+                            f" ✅ Spot execution confirmed via WS: order_id={order_id} (took {elapsed_time:.2f}s)"
+                        )
+                        ws_execution = ws_exec
+                    else:
+                        # Log validation errors
+                        validation_result = FieldValidator.validate_spot_execution(ws_exec, expected_order)
+                        for error in validation_result.errors:
+                            logger.warning(f"   ⚠️ Validation: {error}")
+                        ws_execution = ws_exec  # Still use it, but warn
 
             if rest_execution is None and ws_execution is not None:
                 executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(
@@ -236,14 +234,15 @@ class Waiters:
             orders: list[Order] = await self._t.client.get_open_orders()
             orders_ids = [order.order_id for order in orders]
 
-            if rest_match == False and order_id not in orders_ids:
+            if rest_match is False and order_id not in orders_ids:
                 elapsed_time = time.time() - start_time
                 logger.info(
                     f" ✅ Order reached {expected_status.value} state via REST: {order_id} (took {elapsed_time:.2f}s)"
                 )
                 rest_match = True
 
-            ws_order = self._t.ws.order_changes.get(order_id)
+            # Use EventStore.get() for keyed lookup
+            ws_order = self._t.ws.orders.get(str(order_id))
             ws_status_value = ws_order.status.value if ws_order else None
             if not ws_match and ws_order and ws_status_value == expected_status.value:
                 elapsed_time = time.time() - start_time
@@ -288,22 +287,25 @@ class Waiters:
                     rest_order = order
                     break
 
-            if ws_order is None and order_id in self._t.ws.order_changes:
-                ws_order = self._t.ws.order_changes[order_id]
-                ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
-                if ws_status in ["OPEN", "PARTIALLY_FILLED"]:
-                    elapsed_time = time.time() - start_time
-                    logger.info(
-                        f" ✅ Order created via WS: order_id={order_id}, status={ws_status} (took {elapsed_time:.2f}s)"
-                    )
+            # Use EventStore.get() for keyed lookup
+            if ws_order is None:
+                ws_ord = self._t.ws.orders.get(str(order_id))
+                if ws_ord:
+                    ws_status = ws_ord.status.value if hasattr(ws_ord.status, "value") else ws_ord.status
+                    if ws_status in ["OPEN", "PARTIALLY_FILLED"]:
+                        elapsed_time = time.time() - start_time
+                        logger.info(
+                            f" ✅ Order created via WS: order_id={order_id}, status={ws_status} (took {elapsed_time:.2f}s)"
+                        )
+                        ws_order = ws_ord
 
-                    # Validate fields if expected_order provided
-                    if expected_order:
-                        expected_order.order_id = order_id
-                        validation_errors = validate_order_change_fields(ws_order, expected_order)
-                        if validation_errors:
-                            for error in validation_errors:
-                                logger.warning(f"   ⚠️ Validation: {error}")
+                        # Validate fields if expected_order provided
+                        if expected_order:
+                            expected_order.order_id = order_id
+                            validation_result = FieldValidator.validate_order_change(ws_order, expected_order)
+                            if not validation_result.is_valid:
+                                for error in validation_result.errors:
+                                    logger.warning(f"   ⚠️ Validation: {error}")
 
             if rest_order and ws_order:
                 assert (

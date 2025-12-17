@@ -221,16 +221,141 @@ def create_trading_client_config(
     )
 
 
+async def balance_accounts_mode() -> None:
+    """Balance ETH and RUSD between SPOT_ACCOUNT_1 and SPOT_ACCOUNT_2."""
+    load_dotenv()
+
+    spot_account_1 = int(os.getenv("SPOT_ACCOUNT_ID_1", "0"))
+    spot_account_2 = int(os.getenv("SPOT_ACCOUNT_ID_2", "0"))
+    spot_key_1 = os.getenv("SPOT_PRIVATE_KEY_1")
+    spot_key_2 = os.getenv("SPOT_PRIVATE_KEY_2")
+
+    if not all([spot_account_1, spot_account_2, spot_key_1, spot_key_2]):
+        logger.error("❌ SPOT_ACCOUNT_ID_1, SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_1, SPOT_PRIVATE_KEY_2 must all be set")
+        sys.exit(1)
+
+    logger.info("⚖️  BALANCE ACCOUNTS MODE")
+    logger.info(f"  Account 1: {spot_account_1}")
+    logger.info(f"  Account 2: {spot_account_2}")
+
+    async with ReyaTradingClient() as client_1:
+        base_config = client_1._config
+        client_1._config = create_trading_client_config(spot_key_1, spot_account_1, base_config)
+        client_1._signature_generator = SignatureGenerator(client_1._config)
+        await client_1.start()
+
+        async with ReyaTradingClient() as client_2:
+            client_2._config = create_trading_client_config(spot_key_2, spot_account_2, base_config)
+            client_2._signature_generator = SignatureGenerator(client_2._config)
+            await client_2.start()
+
+            # Get current balances
+            eth_1 = await get_account_balance(client_1, spot_account_1, "ETH")
+            eth_2 = await get_account_balance(client_2, spot_account_2, "ETH")
+            rusd_1 = await get_account_balance(client_1, spot_account_1, "RUSD")
+            rusd_2 = await get_account_balance(client_2, spot_account_2, "RUSD")
+
+            logger.info("📊 CURRENT BALANCES")
+            logger.info(f"  Account {spot_account_1}: {eth_1} ETH, {rusd_1} RUSD")
+            logger.info(f"  Account {spot_account_2}: {eth_2} ETH, {rusd_2} RUSD")
+
+            # Calculate targets
+            total_eth = eth_1 + eth_2
+            total_rusd = rusd_1 + rusd_2
+            target_eth = total_eth / 2
+            target_rusd = total_rusd / 2
+
+            logger.info("🎯 TARGET BALANCES")
+            logger.info(f"  Each account: {target_eth} ETH, {target_rusd} RUSD")
+
+            # Determine transfer direction and amounts
+            eth_diff_1 = eth_1 - target_eth  # Positive = account 1 has excess
+            rusd_diff_1 = rusd_1 - target_rusd  # Positive = account 1 has excess
+
+            # We transfer ETH from the account with excess
+            # The RUSD flows automatically as payment
+            if abs(eth_diff_1) < Decimal("0.001"):
+                logger.info("✅ Accounts already balanced (ETH difference < 0.001)")
+                return
+
+            if eth_diff_1 > 0:
+                # Account 1 has excess ETH, transfer to Account 2
+                from_account = spot_account_1
+                to_account = spot_account_2
+                sender_client = client_1
+                receiver_client = client_2
+                eth_to_transfer = eth_diff_1
+            else:
+                # Account 2 has excess ETH, transfer to Account 1
+                from_account = spot_account_2
+                to_account = spot_account_1
+                sender_client = client_2
+                receiver_client = client_1
+                eth_to_transfer = -eth_diff_1
+
+            # Calculate price to balance RUSD
+            # The receiver pays RUSD for ETH, so:
+            # rusd_to_transfer = eth_to_transfer * price
+            rusd_to_transfer = abs(rusd_diff_1)
+            if eth_to_transfer > 0:
+                transfer_price = rusd_to_transfer / eth_to_transfer
+            else:
+                logger.error("❌ Cannot calculate transfer price (ETH transfer is 0)")
+                sys.exit(1)
+
+            # Round to reasonable precision
+            eth_qty = str(eth_to_transfer.quantize(Decimal("0.001")))
+            price_str = str(transfer_price.quantize(Decimal("0.01")))
+
+            logger.info("📤 TRANSFER PLAN")
+            logger.info(f"  From: {from_account} → To: {to_account}")
+            logger.info(f"  ETH:  {eth_qty}")
+            logger.info(f"  Price: ${price_str} (RUSD per ETH)")
+
+            # Execute transfer
+            symbol = "WETHRUSD"
+            order_fully_matched, tx_hash = await execute_spot_transfer(
+                sender_client, receiver_client, from_account, to_account, symbol, eth_qty, price_str
+            )
+
+            if tx_hash:
+                logger.info(f"🔗 Transaction: {tx_hash}")
+
+            # Wait and show final balances
+            logger.info("⏳ Waiting for balance updates...")
+            await asyncio.sleep(2.0)
+
+            eth_1_final = await get_account_balance(client_1, spot_account_1, "ETH")
+            eth_2_final = await get_account_balance(client_2, spot_account_2, "ETH")
+            rusd_1_final = await get_account_balance(client_1, spot_account_1, "RUSD")
+            rusd_2_final = await get_account_balance(client_2, spot_account_2, "RUSD")
+
+            logger.info("📊 FINAL BALANCES")
+            logger.info(f"  Account {spot_account_1}: {eth_1_final} ETH, {rusd_1_final} RUSD")
+            logger.info(f"  Account {spot_account_2}: {eth_2_final} ETH, {rusd_2_final} RUSD")
+            logger.info("🎉 Accounts balanced!")
+
+
 async def main():
     """Main entry point for the spot transfer script."""
     parser = argparse.ArgumentParser(description="Transfer spot assets between accounts via order matching")
-    parser.add_argument("--from-account", type=int, required=True, help="Account ID to transfer FROM (sender)")
-    parser.add_argument("--to-account", type=int, required=True, help="Account ID to transfer TO (receiver)")
-    parser.add_argument("--asset", type=str, required=True, choices=["ETH", "WETH"], help="Asset to transfer")
-    parser.add_argument("--qty", type=str, required=True, help="Quantity to transfer (e.g., 5)")
+    parser.add_argument("--balance-accounts", action="store_true", help="Balance ETH and RUSD between SPOT_1 and SPOT_2 accounts")
+    parser.add_argument("--from-account", type=int, help="Account ID to transfer FROM (sender)")
+    parser.add_argument("--to-account", type=int, help="Account ID to transfer TO (receiver)")
+    parser.add_argument("--asset", type=str, choices=["ETH", "WETH"], help="Asset to transfer")
+    parser.add_argument("--qty", type=str, help="Quantity to transfer (e.g., 5)")
     parser.add_argument("--price", type=str, default=None, help="Custom price for transfer (default: 0.01)")
 
     args = parser.parse_args()
+
+    if args.balance_accounts:
+        await balance_accounts_mode()
+        return
+
+    # Validate required args for manual transfer mode
+    if not all([args.from_account, args.to_account, args.asset, args.qty]):
+        parser.error("--from-account, --to-account, --asset, and --qty are required for manual transfer")
+
     load_dotenv()
 
     from_account_id = args.from_account

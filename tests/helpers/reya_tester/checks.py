@@ -34,8 +34,9 @@ class Checks:
 
         # For trigger orders (SL/TP), if not found in open orders, check WebSocket
         if open_order is None and expected_order.order_type in [OrderType.SL, OrderType.TP]:
-            if order_id in self._t.ws.order_changes:
-                open_order = self._t.ws.order_changes[order_id]
+            ws_order = self._t.ws.orders.get(str(order_id))
+            if ws_order:
+                open_order = ws_order
                 logger.info(f"✅ Trigger order found via WebSocket: {open_order}")
 
         assert (
