@@ -17,18 +17,16 @@ import pytest
 
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
+from tests.test_spot.spot_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
 
-SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 500.0
-TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_invalid_symbol(spot_tester: ReyaTester):
+async def test_spot_invalid_symbol(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test order with invalid symbol is rejected.
 
@@ -45,7 +43,15 @@ async def test_spot_invalid_symbol(spot_tester: ReyaTester):
     # Use an invalid symbol
     invalid_symbol = "INVALIDRUSD"
 
-    order_params = OrderBuilder().symbol(invalid_symbol).buy().price(str(REFERENCE_PRICE)).qty(TEST_QTY).gtc().build()
+    order_params = (
+        OrderBuilder()
+        .symbol(invalid_symbol)
+        .buy()
+        .price(str(spot_config.oracle_price))
+        .qty(spot_config.min_qty)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Attempting to place order with invalid symbol: {invalid_symbol}")
 
@@ -66,7 +72,7 @@ async def test_spot_invalid_symbol(spot_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_zero_quantity(spot_tester: ReyaTester):
+async def test_spot_zero_quantity(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test order with zero quantity is rejected.
 
@@ -80,7 +86,14 @@ async def test_spot_zero_quantity(spot_tester: ReyaTester):
 
     await spot_tester.close_active_orders(fail_if_none=False)
 
-    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(REFERENCE_PRICE)).qty("0").gtc().build()
+    order_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .price(str(spot_config.oracle_price))
+        .qty("0")
+        .gtc()
+        .build()
+    )
 
     logger.info("Attempting to place order with zero quantity")
 
@@ -99,7 +112,7 @@ async def test_spot_zero_quantity(spot_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_negative_price(spot_tester: ReyaTester):
+async def test_spot_negative_price(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test order with negative price is rejected.
 
@@ -113,7 +126,13 @@ async def test_spot_negative_price(spot_tester: ReyaTester):
 
     await spot_tester.close_active_orders(fail_if_none=False)
 
-    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price("-100").qty(TEST_QTY).gtc().build()
+    order_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .price("-100")
+        .gtc()
+        .build()
+    )
 
     logger.info("Attempting to place order with negative price")
 
@@ -132,7 +151,7 @@ async def test_spot_negative_price(spot_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_very_small_quantity(spot_tester: ReyaTester):
+async def test_spot_very_small_quantity(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test order with very small quantity (below minimum).
 
@@ -151,9 +170,9 @@ async def test_spot_very_small_quantity(spot_tester: ReyaTester):
 
     order_params = (
         OrderBuilder()
-        .symbol(SPOT_SYMBOL)
+        .symbol(spot_config.symbol)
         .buy()
-        .price(str(round(REFERENCE_PRICE * 0.50, 2)))
+        .price(str(spot_config.price(0.96)))
         .qty(small_qty)
         .gtc()
         .build()
@@ -165,7 +184,7 @@ async def test_spot_very_small_quantity(spot_tester: ReyaTester):
         order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
         await asyncio.sleep(0.05)
     except Exception as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
@@ -179,7 +198,7 @@ async def test_spot_very_small_quantity(spot_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_very_large_quantity(spot_tester: ReyaTester):
+async def test_spot_very_large_quantity(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test order with very large quantity (may exceed balance).
 
@@ -198,9 +217,9 @@ async def test_spot_very_large_quantity(spot_tester: ReyaTester):
 
     order_params = (
         OrderBuilder()
-        .symbol(SPOT_SYMBOL)
+        .symbol(spot_config.symbol)
         .buy()
-        .price(str(round(REFERENCE_PRICE * 0.50, 2)))
+        .price(str(spot_config.price(0.96)))
         .qty(large_qty)
         .gtc()
         .build()
@@ -212,7 +231,7 @@ async def test_spot_very_large_quantity(spot_tester: ReyaTester):
         order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
         await asyncio.sleep(0.05)
     except Exception as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
@@ -226,7 +245,7 @@ async def test_spot_very_large_quantity(spot_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.error
 @pytest.mark.asyncio
-async def test_spot_extreme_price(spot_tester: ReyaTester):
+async def test_spot_extreme_price(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test order with extreme price values.
 
@@ -243,7 +262,13 @@ async def test_spot_extreme_price(spot_tester: ReyaTester):
     # Extremely high price
     extreme_price = "999999999999"
 
-    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(extreme_price).qty(TEST_QTY).gtc().build()
+    order_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .price(extreme_price)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Attempting to place order with extreme price: {extreme_price}")
 
@@ -251,7 +276,7 @@ async def test_spot_extreme_price(spot_tester: ReyaTester):
         order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
         await asyncio.sleep(0.05)
     except Exception as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")

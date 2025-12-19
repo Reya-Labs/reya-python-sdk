@@ -16,18 +16,16 @@ from sdk.async_api.depth import Depth
 from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
+from tests.test_spot.spot_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
 
-SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 500.0
-TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
 @pytest.mark.market_data
 @pytest.mark.asyncio
-async def test_spot_market_definitions(spot_tester: ReyaTester):
+async def test_spot_market_definitions(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test getting spot market definitions.
 
@@ -48,12 +46,12 @@ async def test_spot_market_definitions(spot_tester: ReyaTester):
     # Verify WETHRUSD exists
     weth_market = None
     for m in spot_markets:
-        if hasattr(m, "symbol") and m.symbol == SPOT_SYMBOL:
+        if hasattr(m, "symbol") and m.symbol == spot_config.symbol:
             weth_market = m
             break
 
-    assert weth_market is not None, f"Spot market {SPOT_SYMBOL} not found in definitions"
-    logger.info(f"✅ Found {SPOT_SYMBOL} market")
+    assert weth_market is not None, f"Spot market {spot_config.symbol} not found in definitions"
+    logger.info(f"✅ Found {spot_config.symbol} market")
 
     # Log some market details
     if hasattr(weth_market, "market_id"):
@@ -70,7 +68,7 @@ async def test_spot_market_definitions(spot_tester: ReyaTester):
 @pytest.mark.market_data
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_executions_rest(maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test getting spot executions via REST API.
 
@@ -87,16 +85,26 @@ async def test_spot_executions_rest(maker_tester: ReyaTester, taker_tester: Reya
     await taker_tester.close_active_orders(fail_if_none=False)
 
     # Execute a trade
-    maker_price = round(REFERENCE_PRICE * 0.65, 2)
+    maker_price = spot_config.price(0.97)
 
-    maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
+    maker_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .at_price(0.97)
+        .gtc()
+        .build()
+    )
 
-    logger.info(f"Maker placing GTC buy: {TEST_QTY} @ ${maker_price:.2f}")
+    logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
     taker_params = (
-        OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(round(maker_price * 0.99, 2))).qty(TEST_QTY).ioc().build()
+        OrderBuilder.from_config(spot_config)
+        .sell()
+        .at_price(0.97)
+        .ioc()
+        .build()
     )
 
     logger.info("Taker placing IOC sell...")
@@ -135,7 +143,7 @@ async def test_spot_executions_rest(maker_tester: ReyaTester, taker_tester: Reya
 @pytest.mark.spot
 @pytest.mark.market_data
 @pytest.mark.asyncio
-async def test_spot_depth_price_ordering(spot_tester: ReyaTester):
+async def test_spot_depth_price_ordering(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test L2 depth shows correct price ordering.
 
@@ -155,14 +163,20 @@ async def test_spot_depth_price_ordering(spot_tester: ReyaTester):
 
     # Place multiple buy orders at different prices
     prices = [
-        round(REFERENCE_PRICE * 0.50, 2),
-        round(REFERENCE_PRICE * 0.52, 2),
-        round(REFERENCE_PRICE * 0.54, 2),
+        spot_config.price(0.96),
+        spot_config.price(0.96),
+        spot_config.price(0.96),
     ]
 
     order_ids = []
     for price in prices:
-        order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
+        order_params = (
+            OrderBuilder.from_config(spot_config)
+            .buy()
+            .at_price(0.96)
+            .gtc()
+            .build()
+        )
 
         order_id = await spot_tester.create_limit_order(order_params)
         await spot_tester.wait_for_order_creation(order_id)
@@ -173,7 +187,7 @@ async def test_spot_depth_price_ordering(spot_tester: ReyaTester):
     await asyncio.sleep(0.1)
 
     # Get depth
-    depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await spot_tester.get_market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -194,7 +208,7 @@ async def test_spot_depth_price_ordering(spot_tester: ReyaTester):
     for order_id in order_ids:
         try:
             await spot_tester.client.cancel_order(
-                order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id
+                order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
             )
         except Exception:
             pass
@@ -209,7 +223,7 @@ async def test_spot_depth_price_ordering(spot_tester: ReyaTester):
 @pytest.mark.market_data
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_executions_multiple_trades(maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_executions_multiple_trades(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test spot executions are correctly recorded for multiple trades.
 
@@ -231,19 +245,24 @@ async def test_spot_executions_multiple_trades(maker_tester: ReyaTester, taker_t
     executed_order_ids = []
 
     for i in range(num_trades):
-        maker_price = round(REFERENCE_PRICE * (0.60 + i * 0.01), 2)
+        # Use prices within 5% of oracle (0.96, 0.97, 0.98)
+        maker_price = round(spot_config.oracle_price * (0.96 + i * 0.01), 2)
 
-        maker_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
+        maker_params = (
+            OrderBuilder.from_config(spot_config)
+            .buy()
+            .price(str(maker_price))
+            .gtc()
+            .build()
+        )
 
         maker_order_id = await maker_tester.create_limit_order(maker_params)
         await maker_tester.wait_for_order_creation(maker_order_id)
 
         taker_params = (
-            OrderBuilder()
-            .symbol(SPOT_SYMBOL)
+            OrderBuilder.from_config(spot_config)
             .sell()
-            .price(str(round(maker_price * 0.99, 2)))
-            .qty(TEST_QTY)
+            .price(str(maker_price))
             .ioc()
             .build()
         )
@@ -274,7 +293,7 @@ async def test_spot_executions_multiple_trades(maker_tester: ReyaTester, taker_t
     logger.info(f"Latest execution:")
     if hasattr(latest, "symbol"):
         logger.info(f"  Symbol: {latest.symbol}")
-        assert latest.symbol == SPOT_SYMBOL, f"Expected {SPOT_SYMBOL}, got {latest.symbol}"
+        assert latest.symbol == spot_config.symbol, f"Expected {spot_config.symbol}, got {latest.symbol}"
     if hasattr(latest, "qty"):
         logger.info(f"  Qty: {latest.qty}")
     if hasattr(latest, "price"):

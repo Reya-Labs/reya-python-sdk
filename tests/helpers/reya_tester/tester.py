@@ -355,3 +355,15 @@ class ReyaTester:
 
     def get_balance_update_count(self):
         return self.ws.get_balance_update_count()
+
+    def get_next_nonce(self) -> int:
+        """
+        Get the next nonce from the SDK's nonce tracking mechanism.
+        
+        This is useful for validation tests that need to manually construct
+        API requests while keeping the nonce counter in sync.
+        
+        Returns:
+            The next nonce value to use for API requests.
+        """
+        return self.client._get_next_nonce()

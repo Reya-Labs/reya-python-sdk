@@ -18,18 +18,16 @@ import pytest
 from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
+from tests.test_spot.spot_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
 
-SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 500.0
-TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
+async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test that open orders are correctly reflected after WebSocket reconnection.
 
@@ -47,16 +45,22 @@ async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
     7. Cancel order and verify cleanup
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT ORDER SURVIVES WS RECONNECT TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT ORDER SURVIVES WS RECONNECT TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     # Clear any existing orders
     await spot_tester.close_active_orders(fail_if_none=False)
 
     # Step 1: Place GTC order
-    order_price = round(REFERENCE_PRICE * 0.45, 2)  # Far from market
+    order_price = spot_config.price(0.96)  # Far from market
 
-    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
+    order_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .at_price(0.96)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -65,7 +69,7 @@ async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
 
     # Step 2: Verify order exists via REST and WS
     open_orders = await spot_tester.client.get_open_orders()
-    order_ids_before = {o.order_id for o in open_orders if o.symbol == SPOT_SYMBOL}
+    order_ids_before = {o.order_id for o in open_orders if o.symbol == spot_config.symbol}
     assert order_id in order_ids_before, f"Order {order_id} should be in REST open orders"
     assert order_id in spot_tester.ws_order_changes, f"Order {order_id} should be in WS order changes"
     logger.info(f"✅ Order confirmed in both REST and WS: {order_id}")
@@ -81,7 +85,7 @@ async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
 
     # Step 4: Verify order still exists via REST (backend state should be intact)
     open_orders_after = await spot_tester.client.get_open_orders()
-    order_ids_after = {o.order_id for o in open_orders_after if o.symbol == SPOT_SYMBOL}
+    order_ids_after = {o.order_id for o in open_orders_after if o.symbol == spot_config.symbol}
     assert order_id in order_ids_after, (
         f"Order {order_id} should still exist in REST after WS disconnect. "
         f"This validates backend state persistence."
@@ -108,13 +112,20 @@ async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
     spot_tester._websocket.connect()
 
     # Wait for connection and subscriptions to be established
-    await asyncio.sleep(0.5)
+    # WebSocket needs time to connect and subscribe to all channels
+    await asyncio.sleep(2.0)
     logger.info("✅ WebSocket reconnected")
 
     # Step 6: Verify WebSocket receives updates for new activity
     # Place another order to trigger WebSocket activity
-    order_price_2 = round(REFERENCE_PRICE * 0.44, 2)
-    order_params_2 = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price_2)).qty(TEST_QTY).gtc().build()
+    order_price_2 = spot_config.price(0.96)
+    order_params_2 = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .at_price(0.96)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Placing second order to verify WS receives updates after reconnect...")
     order_id_2 = await spot_tester.create_limit_order(order_params_2)
@@ -127,8 +138,8 @@ async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
     logger.info(f"✅ WebSocket receiving updates after reconnect: {order_id_2}")
 
     # Step 7: Cleanup - cancel both orders
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
-    await spot_tester.client.cancel_order(order_id=order_id_2, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id_2, symbol=spot_config.symbol, account_id=spot_tester.account_id)
 
     await asyncio.sleep(0.1)
     await spot_tester.check_no_open_orders()
@@ -140,7 +151,7 @@ async def test_spot_order_survives_ws_reconnect(spot_tester: ReyaTester):
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_ws_rest_consistency_after_activity(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test that WebSocket and REST API remain consistent after multiple operations.
 
@@ -155,25 +166,35 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
     5. Verify complete consistency
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT WS/REST CONSISTENCY TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT WS/REST CONSISTENCY TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     await maker_tester.close_active_orders(fail_if_none=False)
     await taker_tester.close_active_orders(fail_if_none=False)
+
+    # Wait for WebSocket subscriptions to be fully established
+    # This is needed because the previous test may have reconnected the WebSocket
+    await asyncio.sleep(1.0)
 
     # Clear WebSocket tracking
     maker_tester.ws_order_changes.clear()
 
     # Step 1: Place multiple maker orders at different prices
     maker_prices = [
-        round(REFERENCE_PRICE * 0.60, 2),
-        round(REFERENCE_PRICE * 0.61, 2),
-        round(REFERENCE_PRICE * 0.62, 2),
+        spot_config.price(0.97),
+        spot_config.price(0.97),
+        spot_config.price(0.97),
     ]
 
     maker_order_ids = []
     for price in maker_prices:
-        order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(price)).qty(TEST_QTY).gtc().build()
+        order_params = (
+            OrderBuilder.from_config(spot_config)
+            .buy()
+            .at_price(0.97)
+            .gtc()
+            .build()
+        )
 
         order_id = await maker_tester.create_limit_order(order_params)
         await maker_tester.wait_for_order_creation(order_id)
@@ -185,7 +206,7 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
 
     # Step 2: Verify all orders appear in both REST and WS
     rest_orders = await maker_tester.client.get_open_orders()
-    rest_order_ids = {o.order_id for o in rest_orders if o.symbol == SPOT_SYMBOL}
+    rest_order_ids = {o.order_id for o in rest_orders if o.symbol == spot_config.symbol}
     ws_order_ids = set(maker_tester.ws_order_changes.keys())
 
     for order_id in maker_order_ids:
@@ -195,9 +216,15 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
     logger.info(f"✅ All {len(maker_order_ids)} orders confirmed in both REST and WS")
 
     # Step 3: Execute a fill on the best price order (highest price = first to match)
-    taker_price = round(maker_prices[-1] * 0.99, 2)  # Below best maker price
+    taker_price = maker_prices[-1]  # Below best maker price
 
-    taker_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
+    taker_params = (
+        OrderBuilder.from_config(spot_config)
+        .sell()
+        .at_price(0.97)
+        .ioc()
+        .build()
+    )
 
     logger.info(f"Taker placing IOC sell to fill one maker order...")
     await taker_tester.create_limit_order(taker_params)
@@ -207,7 +234,7 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
 
     # Step 4: Verify one order was filled
     rest_orders_after_fill = await maker_tester.client.get_open_orders()
-    rest_order_ids_after = {o.order_id for o in rest_orders_after_fill if o.symbol == SPOT_SYMBOL}
+    rest_order_ids_after = {o.order_id for o in rest_orders_after_fill if o.symbol == spot_config.symbol}
 
     filled_count = len(maker_order_ids) - len(rest_order_ids_after)
     assert filled_count == 1, f"Expected 1 order filled, got {filled_count}"
@@ -232,14 +259,14 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
     remaining_order_ids = [oid for oid in maker_order_ids if oid in rest_order_ids_after]
     for order_id in remaining_order_ids:
         await maker_tester.client.cancel_order(
-            order_id=order_id, symbol=SPOT_SYMBOL, account_id=maker_tester.account_id
+            order_id=order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
         )
 
     await asyncio.sleep(0.2)
 
     # Step 7: Final consistency check
     final_rest_orders = await maker_tester.client.get_open_orders()
-    final_rest_ids = {o.order_id for o in final_rest_orders if o.symbol == SPOT_SYMBOL}
+    final_rest_ids = {o.order_id for o in final_rest_orders if o.symbol == spot_config.symbol}
 
     # All our orders should be gone from REST
     for order_id in maker_order_ids:
@@ -262,7 +289,7 @@ async def test_spot_ws_rest_consistency_after_activity(maker_tester: ReyaTester,
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
+async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test rapid order creation and cancellation.
 
@@ -277,7 +304,7 @@ async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
     5. Verify no orphaned state
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT RAPID ORDER OPERATIONS TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT RAPID ORDER OPERATIONS TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     await spot_tester.close_active_orders(fail_if_none=False)
@@ -287,7 +314,7 @@ async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
 
     # Step 1: Rapidly create 10 orders at different prices
     num_orders = 10
-    base_price = round(REFERENCE_PRICE * 0.40, 2)
+    base_price = spot_config.price(0.96)
 
     order_ids = []
     logger.info(f"Creating {num_orders} orders rapidly...")
@@ -295,7 +322,13 @@ async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
     for i in range(num_orders):
         order_price = round(base_price + (i * 0.5), 2)  # 0.5 increments
 
-        order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
+        order_params = (
+            OrderBuilder.from_config(spot_config)
+            .buy()
+            .price(str(order_price))
+            .gtc()
+            .build()
+        )
 
         order_id = await spot_tester.create_limit_order(order_params)
         order_ids.append(order_id)
@@ -311,7 +344,7 @@ async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
 
     # Verify all orders appear in REST
     rest_orders = await spot_tester.client.get_open_orders()
-    rest_order_ids = {o.order_id for o in rest_orders if o.symbol == SPOT_SYMBOL}
+    rest_order_ids = {o.order_id for o in rest_orders if o.symbol == spot_config.symbol}
 
     missing_in_rest = [oid for oid in order_ids if oid not in rest_order_ids]
     assert len(missing_in_rest) == 0, f"All orders should appear in REST. Missing: {missing_in_rest}"
@@ -327,7 +360,7 @@ async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
     logger.info(f"Cancelling {num_orders} orders rapidly...")
 
     for i, order_id in enumerate(order_ids):
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
         logger.debug(f"  Cancelled order {i+1}/{num_orders}: {order_id}")
 
         # Small delay to avoid overwhelming the system
@@ -340,7 +373,7 @@ async def test_spot_rapid_order_operations(spot_tester: ReyaTester):
 
     # Verify all orders are cancelled in REST
     final_rest_orders = await spot_tester.client.get_open_orders()
-    final_rest_ids = {o.order_id for o in final_rest_orders if o.symbol == SPOT_SYMBOL}
+    final_rest_ids = {o.order_id for o in final_rest_orders if o.symbol == spot_config.symbol}
 
     still_open_in_rest = [oid for oid in order_ids if oid in final_rest_ids]
     assert len(still_open_in_rest) == 0, f"All orders should be cancelled in REST. Still open: {still_open_in_rest}"

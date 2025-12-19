@@ -5,18 +5,15 @@ This module provides a builder pattern for constructing order parameters,
 inspired by the Rust OrderBuilder in reya-chain/crates/matching-engine/tests/helpers.rs.
 
 Example usage:
-    # Create a simple GTC buy order
+    # Create a simple GTC buy order with SpotTestConfig
     params = (
-        OrderBuilder()
-        .symbol("ETHRUSD")
+        OrderBuilder(spot_config)
         .buy()
-        .qty("0.01")
-        .price("4000.0")
-        .gtc()
+        .at_price(0.99)  # 99% of oracle price
         .build()
     )
 
-    # Create an IOC sell order with reduce_only
+    # Create an IOC sell order with explicit values
     params = (
         OrderBuilder()
         .symbol("ETHRUSDPERP")
@@ -29,14 +26,17 @@ Example usage:
     )
 """
 
-from typing import Optional
+from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal
+from typing import TYPE_CHECKING, Optional, Union
 
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
+
+if TYPE_CHECKING:
+    from tests.test_spot.spot_config import SpotTestConfig
 
 
 @dataclass
@@ -47,10 +47,13 @@ class OrderBuilder:
     Provides a chainable API for constructing order parameters with sensible defaults.
     All setter methods return self to enable method chaining.
 
+    Can optionally accept a SpotTestConfig for convenient price/qty/symbol defaults.
+
     Note: LimitOrderParameters only contains order-specific fields.
     Account/exchange IDs are handled by the SDK client.
     """
 
+    _config: Optional["SpotTestConfig"] = None
     _symbol: str = "ETHRUSD"
     _is_buy: bool = True
     _qty: str = "0.01"
@@ -59,6 +62,21 @@ class OrderBuilder:
     _reduce_only: Optional[bool] = None
     _expires_after: Optional[int] = None
     _client_order_id: Optional[int] = None
+
+    def __post_init__(self):
+        """Apply config defaults if provided."""
+        if self._config is not None:
+            self._symbol = self._config.symbol
+            self._qty = self._config.min_qty
+
+    @classmethod
+    def from_config(cls, config: "SpotTestConfig") -> "OrderBuilder":
+        """Create an OrderBuilder pre-configured with SpotTestConfig defaults."""
+        builder = cls()
+        builder._config = config
+        builder._symbol = config.symbol
+        builder._qty = config.min_qty
+        return builder
 
     def symbol(self, symbol: str) -> "OrderBuilder":
         """Set the trading symbol (e.g., 'ETHRUSD', 'ETHRUSDPERP')."""
@@ -103,6 +121,26 @@ class OrderBuilder:
     def limit_px(self, price: str) -> "OrderBuilder":
         """Alias for price() - set the limit price."""
         self._limit_px = price
+        return self
+
+    def at_price(self, multiplier: float) -> "OrderBuilder":
+        """
+        Set price as a multiplier of the oracle price from config.
+        
+        Requires OrderBuilder to be created with a SpotTestConfig.
+        
+        Args:
+            multiplier: Price multiplier (e.g., 0.99 for 99% of oracle)
+            
+        Returns:
+            self for method chaining
+            
+        Raises:
+            ValueError: If no config was provided to the builder
+        """
+        if self._config is None:
+            raise ValueError("at_price() requires OrderBuilder to be created with a SpotTestConfig")
+        self._limit_px = str(self._config.price(multiplier))
         return self
 
     def gtc(self) -> "OrderBuilder":
@@ -156,6 +194,7 @@ class OrderBuilder:
     def copy(self) -> "OrderBuilder":
         """Create a copy of this builder with the same settings."""
         builder = OrderBuilder()
+        builder._config = self._config
         builder._symbol = self._symbol
         builder._is_buy = self._is_buy
         builder._qty = self._qty

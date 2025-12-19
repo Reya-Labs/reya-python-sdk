@@ -15,17 +15,14 @@ from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import logger
+from tests.test_spot.spot_config import SpotTestConfig
 
-# Test configuration
-SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 500.0
-TEST_QTY = "0.01"  # Minimum order base for market ID 5
 
 
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_order_appears_in_depth(spot_tester: ReyaTester):
+async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test that a GTC order appears in the L2 order book depth.
 
@@ -37,26 +34,32 @@ async def test_spot_order_appears_in_depth(spot_tester: ReyaTester):
     5. Verify order removed from depth
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT ORDER BOOK TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT ORDER BOOK TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     # Clear any existing orders
     await spot_tester.check_no_open_orders()
 
     # Subscribe to market depth
-    spot_tester.subscribe_to_market_depth(SPOT_SYMBOL)
+    spot_tester.subscribe_to_market_depth(spot_config.symbol)
     await asyncio.sleep(0.05)
 
     # Get initial depth
-    initial_depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
+    initial_depth = await spot_tester.get_market_depth(spot_config.symbol)
     assert isinstance(initial_depth, Depth), f"Expected Depth type, got {type(initial_depth)}"
     initial_bid_count = len(initial_depth.bids)
     logger.info(f"Initial depth: {initial_bid_count} bids")
 
     # Place GTC buy order at specific price
-    order_price = round(REFERENCE_PRICE * 0.85, 2)  # 15% below reference
+    order_price = spot_config.price(0.98)  # 15% below reference
 
-    order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(TEST_QTY).gtc().build()
+    order_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .at_price(0.98)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -67,7 +70,7 @@ async def test_spot_order_appears_in_depth(spot_tester: ReyaTester):
     await asyncio.sleep(0.1)
 
     # Get updated depth
-    updated_depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
+    updated_depth = await spot_tester.get_market_depth(spot_config.symbol)
     assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
     bids = updated_depth.bids
 
@@ -86,14 +89,14 @@ async def test_spot_order_appears_in_depth(spot_tester: ReyaTester):
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
     await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
 
     # Verify order removed from depth
-    final_depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
+    final_depth = await spot_tester.get_market_depth(spot_config.symbol)
     final_bids = final_depth.bids
 
     order_still_present = False
@@ -111,7 +114,7 @@ async def test_spot_order_appears_in_depth(spot_tester: ReyaTester):
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_spot_multiple_orders_aggregate_in_depth(spot_tester: ReyaTester):
+async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test that multiple orders at the same price aggregate in depth.
 
@@ -121,19 +124,25 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_tester: ReyaTester):
     3. Cancel both orders
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT DEPTH AGGREGATION TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT DEPTH AGGREGATION TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     # Clear any existing orders
     await spot_tester.check_no_open_orders()
 
     # Place two orders at the same price
-    order_price = round(REFERENCE_PRICE * 0.80, 2)  # 20% below reference
-    qty_per_order = TEST_QTY
+    order_price = spot_config.price(0.98)  # 20% below reference
+    qty_per_order = spot_config.min_qty
 
     order_ids = []
     for i in range(2):
-        order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(order_price)).qty(qty_per_order).gtc().build()
+        order_params = (
+            OrderBuilder.from_config(spot_config)
+            .buy()
+            .at_price(0.98)
+            .gtc()
+            .build()
+        )
 
         order_id = await spot_tester.create_limit_order(order_params)
         await spot_tester.wait_for_order_creation(order_id)
@@ -144,7 +153,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_tester: ReyaTester):
     await asyncio.sleep(0.1)
 
     # Get depth and verify aggregation
-    depth = await spot_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await spot_tester.get_market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -164,7 +173,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_tester: ReyaTester):
 
     # Cleanup - cancel all orders
     for order_id in order_ids:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
 
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()
@@ -175,7 +184,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_tester: ReyaTester):
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     Test placing both bid and ask orders to create a spread.
 
@@ -189,7 +198,7 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
     Uses prices far from market to avoid matching existing liquidity.
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT BID/ASK SPREAD TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT BID/ASK SPREAD TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     # Clear any existing orders (fail_if_none=False since we're just cleaning up)
@@ -197,9 +206,15 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
     await taker_tester.close_active_orders(fail_if_none=False)
 
     # Use prices far from market to avoid matching existing liquidity
-    bid_price = round(REFERENCE_PRICE * 0.50, 2)  # 50% below reference
+    bid_price = spot_config.price(0.96)  # 50% below reference
 
-    bid_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(bid_price)).qty(TEST_QTY).gtc().build()
+    bid_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .at_price(0.96)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Maker placing bid at ${bid_price:.2f}...")
     bid_order_id = await maker_tester.create_limit_order(bid_params)
@@ -207,9 +222,15 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
     logger.info(f"✅ Bid order created: {bid_order_id}")
 
     # Taker places ask (sell) order at high price (taker has more ETH balance)
-    ask_price = round(REFERENCE_PRICE * 1.50, 2)  # 50% above reference
+    ask_price = spot_config.price(1.04)  # 50% above reference
 
-    ask_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(ask_price)).qty(TEST_QTY).gtc().build()
+    ask_params = (
+        OrderBuilder.from_config(spot_config)
+        .sell()
+        .at_price(1.04)
+        .gtc()
+        .build()
+    )
 
     logger.info(f"Taker placing ask at ${ask_price:.2f}...")
     ask_order_id = await taker_tester.create_limit_order(ask_params)
@@ -220,7 +241,7 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
     await asyncio.sleep(0.1)
 
     # Get depth
-    depth = await maker_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await maker_tester.get_market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
     asks = depth.asks
@@ -254,10 +275,10 @@ async def test_spot_bid_ask_spread(maker_tester: ReyaTester, taker_tester: ReyaT
 
     # Cleanup
     await maker_tester.client.cancel_order(
-        order_id=bid_order_id, symbol=SPOT_SYMBOL, account_id=maker_tester.account_id
+        order_id=bid_order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
     )
     await taker_tester.client.cancel_order(
-        order_id=ask_order_id, symbol=SPOT_SYMBOL, account_id=taker_tester.account_id
+        order_id=ask_order_id, symbol=spot_config.symbol, account_id=taker_tester.account_id
     )
 
     await asyncio.sleep(0.05)

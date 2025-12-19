@@ -16,18 +16,14 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import limit_order_params_to_order, logger
-
-# Test configuration
-SPOT_SYMBOL = "WETHRUSD"
-REFERENCE_PRICE = 500.0
-TEST_QTY = "0.01"  # Minimum order base for market ID 5
+from tests.test_spot.spot_config import SpotTestConfig
 
 
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_maker_taker_matching(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
     End-to-end test for spot trading using TWO separate accounts.
 
@@ -42,11 +38,11 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
        - L2 depth
     """
     logger.info("=" * 80)
-    logger.info(f"SPOT TRADING E2E TEST: {SPOT_SYMBOL}")
+    logger.info(f"SPOT TRADING E2E TEST: {spot_config.symbol}")
     logger.info("=" * 80)
     logger.info(f"🏭 Maker Account: {maker_tester.account_id}")
     logger.info(f"🎯 Taker Account: {taker_tester.account_id}")
-    logger.info(f"Using reference price for orders: ${REFERENCE_PRICE}")
+    logger.info(f"Using oracle price for orders: ${spot_config.oracle_price:.2f}")
 
     # Clear any existing orders for BOTH accounts
     await maker_tester.check_no_open_orders()
@@ -59,11 +55,17 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     logger.info(f"Maker initial balances: {[(b.asset, b.real_balance) for b in maker_initial_balances.values()]}")
     logger.info(f"Taker initial balances: {[(b.asset, b.real_balance) for b in taker_initial_balances.values()]}")
 
-    # Step 1: Place maker order (GTC buy below reference price)
+    # Step 1: Place maker order (GTC buy within oracle deviation)
     logger.info("\n📋 Step 1: Placing maker order (GTC buy)...")
-    maker_price = REFERENCE_PRICE * 0.999  # Below reference to ensure it stays on the book
+    maker_price = spot_config.price(0.99)
 
-    maker_order_params = OrderBuilder().symbol(SPOT_SYMBOL).buy().price(str(maker_price)).qty(TEST_QTY).gtc().build()
+    maker_order_params = (
+        OrderBuilder.from_config(spot_config)
+        .buy()
+        .at_price(0.99)
+        .gtc()
+        .build()
+    )
 
     maker_order_id = await maker_tester.create_limit_order(maker_order_params)
     logger.info(f"Created maker order with ID: {maker_order_id} at price ${maker_price:.2f}")
@@ -78,7 +80,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     logger.info("\n📊 Step 2: Checking L2 depth...")
     await asyncio.sleep(0.05)
 
-    depth = await maker_tester.get_market_depth(SPOT_SYMBOL)
+    depth = await maker_tester.get_market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     logger.info(f"Market depth type: {depth.type}")
     logger.info(f"Bids: {len(depth.bids)} levels")
@@ -100,15 +102,21 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     else:
         logger.info("✅ Maker order visible in L2 depth")
 
-    # Step 3: Place taker order (IOC sell at or below maker price to guarantee match)
+    # Step 3: Place taker order (IOC sell at maker price to guarantee match)
     logger.info("\n📋 Step 3: Placing taker order (IOC sell to match maker)...")
-    taker_price = REFERENCE_PRICE * 0.998  # Below maker price to ensure match
+    taker_price = maker_price  # Same price ensures within oracle deviation
 
     # Clear balance updates before placing order
     maker_tester.clear_balance_updates()
     taker_tester.clear_balance_updates()
 
-    taker_order_params = OrderBuilder().symbol(SPOT_SYMBOL).sell().price(str(taker_price)).qty(TEST_QTY).ioc().build()
+    taker_order_params = (
+        OrderBuilder.from_config(spot_config)
+        .sell()
+        .at_price(0.99)
+        .ioc()
+        .build()
+    )
 
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
     logger.info(f"Created taker order with ID: {taker_order_id} at price ${taker_price:.2f}")
@@ -140,7 +148,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     taker_final_balances = await taker_tester.get_balances()
 
     # For WETHRUSD: base=ETH, quote=RUSD
-    base_asset = SPOT_SYMBOL.replace("W", "").replace("RUSD", "")  # "WETHRUSD" -> "ETH"
+    base_asset = spot_config.symbol.replace("W", "").replace("RUSD", "")  # "WETHRUSD" -> "ETH"
     quote_asset = "RUSD"
 
     maker_tester.verify_spot_trade_balance_changes(
@@ -150,7 +158,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
         taker_final_balances=taker_final_balances,
         base_asset=base_asset,
         quote_asset=quote_asset,
-        qty=TEST_QTY,
+        qty=spot_config.min_qty,
         price=str(maker_price),
         is_maker_buyer=True,
     )
@@ -191,7 +199,7 @@ async def test_spot_maker_taker_matching(maker_tester: ReyaTester, taker_tester:
     # Step 8: Verify spot execution via WebSocket
     logger.info("\n📊 Step 8: Verifying spot execution via WebSocket...")
     assert taker_tester.ws_last_spot_execution is not None, "Should have received spot execution via WS"
-    assert taker_tester.ws_last_spot_execution.symbol == SPOT_SYMBOL
+    assert taker_tester.ws_last_spot_execution.symbol == spot_config.symbol
     logger.info("✅ Spot execution received via WebSocket")
 
     # Cleanup

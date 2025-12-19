@@ -49,7 +49,7 @@ logger.addHandler(handler)
 logger.propagate = False
 
 ASSET_TO_SYMBOL = {"ETH": "WETHRUSD", "WETH": "WETHRUSD"}
-DEFAULT_TRANSFER_PRICE = "0.01"  # Low price to avoid external matches
+DEFAULT_TRANSFER_PRICE = "2855"  # Realistic ETH price for transfers
 ORDER_SETTLEMENT_RETRIES = 3
 ORDER_SETTLEMENT_DELAY = 1.0
 
@@ -265,15 +265,18 @@ async def balance_accounts_mode() -> None:
             target_eth = total_eth / 2
             target_rusd = total_rusd / 2
 
-            logger.info("🎯 TARGET BALANCES")
-            logger.info(f"  Each account: {target_eth} ETH, {target_rusd} RUSD")
+            logger.info("🎯 TARGET ETH BALANCE")
+            logger.info(f"  Each account: {target_eth} ETH")
+            logger.info(f"  (RUSD will flow at market price ${DEFAULT_TRANSFER_PRICE})")
 
             # Determine transfer direction and amounts
             eth_diff_1 = eth_1 - target_eth  # Positive = account 1 has excess
-            rusd_diff_1 = rusd_1 - target_rusd  # Positive = account 1 has excess
 
             # We transfer ETH from the account with excess
-            # The RUSD flows automatically as payment
+            # Note: We use the market price (DEFAULT_TRANSFER_PRICE) for the transfer.
+            # This balances ETH between accounts but RUSD will flow at market price,
+            # not at an arbitrary price to balance both assets simultaneously.
+            # On-chain price validation enforces orders must be within ~5% of oracle price.
             if abs(eth_diff_1) < Decimal("0.001"):
                 logger.info("✅ Accounts already balanced (ETH difference < 0.001)")
                 return
@@ -293,15 +296,8 @@ async def balance_accounts_mode() -> None:
                 receiver_client = client_1
                 eth_to_transfer = -eth_diff_1
 
-            # Calculate price to balance RUSD
-            # The receiver pays RUSD for ETH, so:
-            # rusd_to_transfer = eth_to_transfer * price
-            rusd_to_transfer = abs(rusd_diff_1)
-            if eth_to_transfer > 0:
-                transfer_price = rusd_to_transfer / eth_to_transfer
-            else:
-                logger.error("❌ Cannot calculate transfer price (ETH transfer is 0)")
-                sys.exit(1)
+            # Use market price for transfer (on-chain enforces price limits)
+            transfer_price = Decimal(DEFAULT_TRANSFER_PRICE)
 
             # Round to reasonable precision
             eth_qty = str(eth_to_transfer.quantize(Decimal("0.001")))
