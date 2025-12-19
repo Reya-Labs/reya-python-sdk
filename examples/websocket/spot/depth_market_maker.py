@@ -52,6 +52,7 @@ MAX_DEVIATION_PCT = Decimal("0.02")   # ±2% from reference price
 MAX_ORDER_QTY = Decimal("0.01")       # Maximum order quantity
 NUM_LEVELS = 10                       # Number of price levels on each side
 REFRESH_INTERVAL = 1                  # Seconds between quote adjustments
+STATE_REFRESH_CYCLES = 30             # Refresh state from REST every N cycles to handle WS disconnects
 
 
 @dataclass
@@ -135,6 +136,22 @@ class MarketMakerState:
         """Log a spot execution."""
         side_str = "BOUGHT" if side == "B" else "SOLD"
         logger.info(f"🔔 FILL: {side_str} {qty} @ ${price} (order {order_id}, counterparty: {maker_account_id})")
+    
+    def remove_order(self, order_id: str) -> None:
+        """Remove an order from local state (thread-safe). Used when cancel fails with 'Order not found'."""
+        with self._lock:
+            if order_id in self.open_orders:
+                del self.open_orders[order_id]
+                logger.debug(f"📋 Order {order_id} removed from local state (stale)")
+    
+    def sync_orders(self, fresh_orders: dict[str, OpenOrder]) -> None:
+        """Replace local orders with fresh data from REST API (thread-safe)."""
+        with self._lock:
+            old_count = len(self.open_orders)
+            self.open_orders = fresh_orders
+            new_count = len(self.open_orders)
+            if old_count != new_count:
+                logger.info(f"🔄 State synced: {old_count} → {new_count} orders")
     
     def get_snapshot(self) -> tuple[Decimal, Decimal, Decimal, list[OpenOrder], list[OpenOrder]]:
         """Get a consistent snapshot of current state (thread-safe)."""
@@ -426,6 +443,36 @@ async def fetch_initial_state(
         )
 
 
+async def refresh_state_from_rest(
+    client: ReyaTradingClient,
+    state: MarketMakerState,
+) -> None:
+    """Refresh order state from REST API to handle WebSocket disconnections or stale state."""
+    try:
+        open_orders = await client.get_open_orders()
+        fresh_orders: dict[str, OpenOrder] = {}
+        
+        for order in open_orders:
+            if order.symbol != SYMBOL:
+                continue
+            
+            qty = Decimal(order.qty) if order.qty else Decimal("0")
+            cum_qty = Decimal(order.cum_qty) if order.cum_qty else Decimal("0")
+            remaining_qty = qty - cum_qty
+            is_buy = order.side.value == "B"
+            
+            fresh_orders[order.order_id] = OpenOrder(
+                order_id=order.order_id,
+                price=Decimal(order.limit_px),
+                qty=remaining_qty,
+                is_buy=is_buy,
+            )
+        
+        state.sync_orders(fresh_orders)
+    except Exception as e:
+        logger.warning(f"Failed to refresh state from REST: {e}")
+
+
 async def place_orders(
     client: ReyaTradingClient,
     symbol: str,
@@ -523,6 +570,7 @@ async def cancel_and_replace_order(
     remaining_bids: list[OpenOrder],
     remaining_asks: list[OpenOrder],
     cycle: int,
+    state: MarketMakerState,
     reason: str = "",
 ) -> bool:
     """Cancel a specific order and replace it with a new one at a valid price."""
@@ -557,7 +605,13 @@ async def cancel_and_replace_order(
             await client.cancel_order(order_id=order.order_id, symbol=symbol, account_id=account_id)
             logger.info(f"[{cycle:04d}] Cancelled {side} @ ${order.price} (no replacement - low balance)")
         except Exception as e:
-            logger.warning(f"[{cycle:04d}] Failed to cancel {side} @ ${order.price}: {e}")
+            error_str = str(e)
+            # If order not found, remove from local state (stale order)
+            if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
+                state.remove_order(order.order_id)
+                logger.info(f"[{cycle:04d}] Removed stale {side} @ ${order.price} from local state")
+            else:
+                logger.warning(f"[{cycle:04d}] Failed to cancel {side} @ ${order.price}: {e}")
         return False
     
     new_qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
@@ -571,7 +625,13 @@ async def cancel_and_replace_order(
         reason_str = f" ({reason})" if reason else ""
         logger.info(f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} → Adding new {side} @ ${new_price} qty={new_qty}")
     except Exception as e:
-        logger.warning(f"[{cycle:04d}] Failed to cancel {side} @ ${order.price}: {e}")
+        error_str = str(e)
+        # If order not found, remove from local state (stale order)
+        if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
+            state.remove_order(order.order_id)
+            logger.info(f"[{cycle:04d}] Removed stale {side} @ ${order.price} from local state")
+        else:
+            logger.warning(f"[{cycle:04d}] Failed to cancel {side} @ ${order.price}: {e}")
         return False
     
     await asyncio.sleep(0.1)
@@ -641,6 +701,7 @@ async def adjust_orders(
                 remaining_bids=remaining_bids,
                 remaining_asks=remaining_asks,
                 cycle=cycle,
+                state=state,
                 reason="out of range",
             )
             
@@ -686,6 +747,7 @@ async def adjust_orders(
         remaining_bids=remaining_bids,
         remaining_asks=remaining_asks,
         cycle=cycle,
+        state=state,
     )
 
 
@@ -795,6 +857,11 @@ async def main():
             while True:
                 await asyncio.sleep(REFRESH_INTERVAL)
                 cycle += 1
+                
+                # Periodically refresh state from REST to handle WS disconnections
+                if cycle % STATE_REFRESH_CYCLES == 0:
+                    logger.info(f"[{cycle:04d}] 🔄 Refreshing state from REST API...")
+                    await refresh_state_from_rest(client, state)
                 
                 # State is automatically updated via WebSocket
                 # Just run the adjustment logic
