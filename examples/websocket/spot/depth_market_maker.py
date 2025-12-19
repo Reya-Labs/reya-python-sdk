@@ -50,7 +50,7 @@ SYMBOL = "WETHRUSD"                   # Spot trading pair symbol
 ORACLE_SYMBOL = "ETHRUSD"             # Oracle price symbol for reference pricing
 MAX_DEVIATION_PCT = Decimal("0.02")   # ±2% from reference price
 MAX_ORDER_QTY = Decimal("0.01")       # Maximum order quantity
-NUM_LEVELS = 10                        # Number of price levels on each side
+NUM_LEVELS = 10                       # Number of price levels on each side
 REFRESH_INTERVAL = 1                  # Seconds between quote adjustments
 
 
@@ -131,10 +131,10 @@ class MarketMakerState:
                 )
                 logger.debug(f"📋 Order {order_id} updated: {status}, remaining={remaining_qty}")
     
-    def log_execution(self, order_id: str, qty: str, price: str, side: str) -> None:
+    def log_execution(self, order_id: str, qty: str, price: str, side: str, maker_account_id: int) -> None:
         """Log a spot execution."""
         side_str = "BOUGHT" if side == "B" else "SOLD"
-        logger.info(f"🔔 FILL: {side_str} {qty} @ ${price} (order {order_id})")
+        logger.info(f"🔔 FILL: {side_str} {qty} @ ${price} (order {order_id}, counterparty: {maker_account_id})")
     
     def get_snapshot(self) -> tuple[Decimal, Decimal, Decimal, list[OpenOrder], list[OpenOrder]]:
         """Get a consistent snapshot of current state (thread-safe)."""
@@ -345,8 +345,9 @@ class WebSocketHandler:
                 self.state.log_execution(
                     order_id=execution.order_id,
                     qty=execution.qty,
-                    price=execution.px,
+                    price=execution.price,
                     side=execution.side.value,
+                    maker_account_id=execution.maker_account_id,
                 )
             return
     
