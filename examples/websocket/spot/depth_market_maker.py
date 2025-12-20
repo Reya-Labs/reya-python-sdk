@@ -19,6 +19,7 @@ Requirements:
 Press Ctrl+C to stop (will cancel all orders on exit).
 """
 
+import argparse
 import asyncio
 import logging
 import os
@@ -45,14 +46,15 @@ from sdk.reya_websocket import ReyaSocket, WebSocketMessage
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("market_maker_ws")
 
-# Market configuration
-SYMBOL = "WETHRUSD"                   # Spot trading pair symbol
-ORACLE_SYMBOL = "ETHRUSD"             # Oracle price symbol for reference pricing
+# Market configuration (defaults, can be overridden via command line)
+DEFAULT_SYMBOL = "WETHRUSD"           # Default spot trading pair symbol
+DEFAULT_ORACLE_SYMBOL = "ETHRUSD"     # Default oracle price symbol for reference pricing
 MAX_DEVIATION_PCT = Decimal("0.02")   # ±2% from reference price
 MAX_ORDER_QTY = Decimal("0.01")       # Maximum order quantity
 NUM_LEVELS = 10                       # Number of price levels on each side
 REFRESH_INTERVAL = 1                  # Seconds between quote adjustments
 STATE_REFRESH_CYCLES = 30             # Refresh state from REST every N cycles to handle WS disconnects
+MIN_BASE_BALANCE = Decimal("0.1")     # Minimum ETH balance - stop MM if below this
 
 
 @dataclass
@@ -78,6 +80,10 @@ class MarketParams:
 @dataclass
 class MarketMakerState:
     """Thread-safe state container for the market maker."""
+    # Symbol configuration (set once on startup)
+    symbol: str = DEFAULT_SYMBOL
+    oracle_symbol: str = DEFAULT_ORACLE_SYMBOL
+    
     # Market parameters (set once on startup)
     market_params: Optional[MarketParams] = None
     account_id: Optional[int] = None
@@ -296,14 +302,14 @@ class WebSocketHandler:
             return
         
         # Subscribe to price updates for oracle symbol
-        ws.prices.price(ORACLE_SYMBOL).subscribe()
+        ws.prices.price(self.state.oracle_symbol).subscribe()
         
         # Subscribe to wallet channels
         ws.wallet.balances(wallet).subscribe()
         ws.wallet.order_changes(wallet).subscribe()
         ws.wallet.spot_executions(wallet).subscribe()
         
-        logger.info(f"   ✅ Subscribed to /v2/prices/{ORACLE_SYMBOL}")
+        logger.info(f"   ✅ Subscribed to /v2/prices/{self.state.oracle_symbol}")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/accountBalances")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/openOrders")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/spotExecutions")
@@ -337,7 +343,7 @@ class WebSocketHandler:
         # Handle order changes
         if isinstance(message, OrderChangeUpdatePayload):
             for order in message.data:
-                if order.symbol != SYMBOL:
+                if order.symbol != self.state.symbol:
                     continue
                 
                 qty = Decimal(order.qty) if order.qty else Decimal("0")
@@ -357,7 +363,7 @@ class WebSocketHandler:
         # Handle spot executions
         if isinstance(message, WalletSpotExecutionUpdatePayload):
             for execution in message.data:
-                if execution.symbol != SYMBOL:
+                if execution.symbol != self.state.symbol:
                     continue
                 self.state.log_execution(
                     order_id=execution.order_id,
@@ -408,8 +414,8 @@ async def fetch_initial_state(
         raise RuntimeError("Market params and account_id must be set before fetching initial state")
     
     # Fetch oracle price
-    logger.info(f"   Fetching oracle price for {ORACLE_SYMBOL}...")
-    price_info = await client.markets.get_price(ORACLE_SYMBOL)
+    logger.info(f"   Fetching oracle price for {state.oracle_symbol}...")
+    price_info = await client.markets.get_price(state.oracle_symbol)
     if price_info and price_info.oracle_price:
         state.reference_price = round_to_tick(Decimal(price_info.oracle_price), market_params.tick_size)
     
@@ -427,7 +433,7 @@ async def fetch_initial_state(
     logger.info(f"   Fetching open orders...")
     open_orders = await client.get_open_orders()
     for order in open_orders:
-        if order.symbol != SYMBOL:
+        if order.symbol != state.symbol:
             continue
         
         qty = Decimal(order.qty) if order.qty else Decimal("0")
@@ -453,7 +459,7 @@ async def refresh_state_from_rest(
         fresh_orders: dict[str, OpenOrder] = {}
         
         for order in open_orders:
-            if order.symbol != SYMBOL:
+            if order.symbol != state.symbol:
                 continue
             
             qty = Decimal(order.qty) if order.qty else Decimal("0")
@@ -473,6 +479,66 @@ async def refresh_state_from_rest(
         logger.warning(f"Failed to refresh state from REST: {e}")
 
 
+async def place_single_order(
+    client: ReyaTradingClient,
+    symbol: str,
+    price: str,
+    is_buy: bool,
+    market_params: MarketParams,
+    available_balance: Decimal,
+    max_retries: int = 3,
+) -> tuple[bool, Decimal]:
+    """
+    Place a single order, retrying with minimum quantity if initial attempt fails.
+    Returns (success, qty_used).
+    """
+    price_decimal = Decimal(price)
+    side = "bid" if is_buy else "ask"
+    
+    # Calculate max affordable quantity
+    if is_buy:
+        max_affordable_qty = available_balance / price_decimal if price_decimal > 0 else Decimal("0")
+    else:
+        max_affordable_qty = available_balance
+    
+    max_qty = min(MAX_ORDER_QTY, max_affordable_qty)
+    
+    if max_qty < market_params.min_order_qty:
+        logger.warning(f"   Skipping {side} @ ${price} - insufficient balance")
+        return False, Decimal("0")
+    
+    # First try with random quantity
+    qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
+    
+    for attempt in range(max_retries):
+        try:
+            await client.create_limit_order(
+                LimitOrderParameters(
+                    symbol=symbol,
+                    is_buy=is_buy,
+                    limit_px=price,
+                    qty=qty,
+                    time_in_force=TimeInForce.GTC,
+                )
+            )
+            logger.info(f"   Adding {side} @ ${price} qty={qty}")
+            qty_used = price_decimal * Decimal(qty) if is_buy else Decimal(qty)
+            return True, qty_used
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check if it's a balance-related error
+            if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
+                if attempt < max_retries - 1:
+                    # Retry with minimum quantity
+                    qty = str(market_params.min_order_qty)
+                    logger.debug(f"   Retrying {side} @ ${price} with min qty={qty}")
+                    continue
+            logger.warning(f"Failed to place {side} @ ${price}: {e}")
+            return False, Decimal("0")
+    
+    return False, Decimal("0")
+
+
 async def place_orders(
     client: ReyaTradingClient,
     symbol: str,
@@ -488,54 +554,22 @@ async def place_orders(
     remaining_base = available_base
     
     for price in bids:
-        price_decimal = Decimal(price)
-        max_affordable_qty = remaining_quote / price_decimal if price_decimal > 0 else Decimal("0")
-        max_qty = min(MAX_ORDER_QTY, max_affordable_qty)
-        
-        if max_qty < market_params.min_order_qty:
-            logger.warning(f"   Skipping bid @ ${price} - insufficient RUSD balance")
-            continue
-        
-        qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
-        try:
-            await client.create_limit_order(
-                LimitOrderParameters(
-                    symbol=symbol,
-                    is_buy=True,
-                    limit_px=price,
-                    qty=qty,
-                    time_in_force=TimeInForce.GTC,
-                )
-            )
-            logger.info(f"   Adding bid @ ${price} qty={qty}")
+        success, qty_used = await place_single_order(
+            client, symbol, price, is_buy=True, market_params=market_params,
+            available_balance=remaining_quote,
+        )
+        if success:
             order_count += 1
-            remaining_quote -= price_decimal * Decimal(qty)
-        except Exception as e:
-            logger.warning(f"Failed to place bid @ ${price}: {e}")
+            remaining_quote -= qty_used
 
     for price in asks:
-        max_qty = min(MAX_ORDER_QTY, remaining_base)
-        
-        if max_qty < market_params.min_order_qty:
-            logger.warning(f"   Skipping ask @ ${price} - insufficient ETH balance")
-            continue
-        
-        qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
-        try:
-            await client.create_limit_order(
-                LimitOrderParameters(
-                    symbol=symbol,
-                    is_buy=False,
-                    limit_px=price,
-                    qty=qty,
-                    time_in_force=TimeInForce.GTC,
-                )
-            )
-            logger.info(f"   Adding ask @ ${price} qty={qty}")
+        success, qty_used = await place_single_order(
+            client, symbol, price, is_buy=False, market_params=market_params,
+            available_balance=remaining_base,
+        )
+        if success:
             order_count += 1
-            remaining_base -= Decimal(qty)
-        except Exception as e:
-            logger.warning(f"Failed to place ask @ ${price}: {e}")
+            remaining_base -= qty_used
     
     return order_count
 
@@ -572,8 +606,12 @@ async def cancel_and_replace_order(
     cycle: int,
     state: MarketMakerState,
     reason: str = "",
+    max_retries: int = 3,
 ) -> bool:
-    """Cancel a specific order and replace it with a new one at a valid price."""
+    """Cancel a specific order and replace it with a new one at a valid price.
+    
+    If order placement fails due to insufficient balance, retries with minimum quantity.
+    """
     side = "bid" if order.is_buy else "ask"
     
     best_bid = remaining_bids[0].price if remaining_bids else None
@@ -606,7 +644,6 @@ async def cancel_and_replace_order(
             logger.info(f"[{cycle:04d}] Cancelled {side} @ ${order.price} (no replacement - low balance)")
         except Exception as e:
             error_str = str(e)
-            # If order not found, remove from local state (stale order)
             if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
                 state.remove_order(order.order_id)
                 logger.info(f"[{cycle:04d}] Removed stale {side} @ ${order.price} from local state")
@@ -616,6 +653,7 @@ async def cancel_and_replace_order(
     
     new_qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
     
+    # Cancel the existing order first
     try:
         await client.cancel_order(
             order_id=order.order_id,
@@ -626,7 +664,6 @@ async def cancel_and_replace_order(
         logger.info(f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} → Adding new {side} @ ${new_price} qty={new_qty}")
     except Exception as e:
         error_str = str(e)
-        # If order not found, remove from local state (stale order)
         if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
             state.remove_order(order.order_id)
             logger.info(f"[{cycle:04d}] Removed stale {side} @ ${order.price} from local state")
@@ -636,21 +673,32 @@ async def cancel_and_replace_order(
     
     await asyncio.sleep(0.1)
     
-    try:
-        await client.create_limit_order(
-            LimitOrderParameters(
-                symbol=symbol,
-                is_buy=order.is_buy,
-                limit_px=str(new_price),
-                qty=new_qty,
-                time_in_force=TimeInForce.GTC,
+    # Try to place the new order, retrying with min qty if balance issues
+    qty_to_use = new_qty
+    for attempt in range(max_retries):
+        try:
+            await client.create_limit_order(
+                LimitOrderParameters(
+                    symbol=symbol,
+                    is_buy=order.is_buy,
+                    limit_px=str(new_price),
+                    qty=qty_to_use,
+                    time_in_force=TimeInForce.GTC,
+                )
             )
-        )
-    except Exception as e:
-        logger.warning(f"[{cycle:04d}] Failed to place new {side} @ ${new_price}: {e}")
-        return False
+            return True
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check if it's a balance-related error - retry with min qty
+            if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
+                if attempt < max_retries - 1:
+                    qty_to_use = str(market_params.min_order_qty)
+                    logger.debug(f"[{cycle:04d}] Retrying {side} @ ${new_price} with min qty={qty_to_use}")
+                    continue
+            logger.warning(f"[{cycle:04d}] Failed to place new {side} @ ${new_price}: {e}")
+            return False
     
-    return True
+    return False
 
 
 async def adjust_orders(
@@ -691,7 +739,7 @@ async def adjust_orders(
             
             await cancel_and_replace_order(
                 client=client,
-                symbol=SYMBOL,
+                symbol=state.symbol,
                 account_id=account_id,
                 order=order,
                 reference_price=reference_price,
@@ -737,7 +785,7 @@ async def adjust_orders(
     
     await cancel_and_replace_order(
         client=client,
-        symbol=SYMBOL,
+        symbol=state.symbol,
         account_id=account_id,
         order=order_to_cancel,
         reference_price=reference_price,
@@ -751,15 +799,15 @@ async def adjust_orders(
     )
 
 
-async def main():
+async def main(symbol: str, oracle_symbol: str):
     load_dotenv()
 
     logger.info("=" * 60)
-    logger.info(f"🚀 SPOT Market Maker (WebSocket) for {SYMBOL}")
+    logger.info(f"🚀 SPOT Market Maker (WebSocket) for {symbol}")
     logger.info("=" * 60)
 
-    # Initialize state
-    state = MarketMakerState()
+    # Initialize state with symbol configuration
+    state = MarketMakerState(symbol=symbol, oracle_symbol=oracle_symbol)
     
     async with ReyaTradingClient() as client:
         spot_config = TradingConfig.from_env_spot(account_number=1)
@@ -781,8 +829,8 @@ async def main():
         state.wallet_address = wallet_address
 
         # Fetch market definition (REST - one time)
-        logger.info(f"   Fetching market definition for {SYMBOL}...")
-        state.market_params = await fetch_market_definition(client, SYMBOL)
+        logger.info(f"   Fetching market definition for {symbol}...")
+        state.market_params = await fetch_market_definition(client, symbol)
         market_params = state.market_params
 
         # Fetch initial state via REST
@@ -791,7 +839,7 @@ async def main():
         min_price = state.reference_price * (1 - MAX_DEVIATION_PCT)
         max_price = state.reference_price * (1 + MAX_DEVIATION_PCT)
 
-        logger.info(f"   Reference Price: ${state.reference_price} (from {ORACLE_SYMBOL} oracle)")
+        logger.info(f"   Reference Price: ${state.reference_price} (from {oracle_symbol} oracle)")
         logger.info(f"   Price Range:     ${min_price:.2f} - ${max_price:.2f} (±{MAX_DEVIATION_PCT * 100}%)")
         logger.info(f"   Tick Size:       {market_params.tick_size}")
         logger.info(f"   Min Order Qty:   {market_params.min_order_qty}")
@@ -828,7 +876,7 @@ async def main():
 
         # Clean up any existing orders from previous runs
         logger.info("Cleaning up existing orders...")
-        await client.mass_cancel(symbol=SYMBOL, account_id=account_id)
+        await client.mass_cancel(symbol=symbol, account_id=account_id)
         await asyncio.sleep(0.2)
         state.open_orders.clear()
         logger.info("✅ Order book cleaned\n")
@@ -843,7 +891,7 @@ async def main():
                 state.reference_price, MAX_DEVIATION_PCT, NUM_LEVELS, market_params.tick_size
             )
             order_count = await place_orders(
-                client, SYMBOL, bid_prices, ask_prices, market_params, available_base, available_quote
+                client, symbol, bid_prices, ask_prices, market_params, available_base, available_quote
             )
             
             bid_str = ", ".join(f"${b}" for b in bid_prices)
@@ -857,6 +905,12 @@ async def main():
             while True:
                 await asyncio.sleep(REFRESH_INTERVAL)
                 cycle += 1
+                
+                # Check for low balance - stop MM if ETH balance is too low
+                if state.base_balance < MIN_BASE_BALANCE:
+                    logger.warning(f"[{cycle:04d}] ⚠️  ETH balance ({state.base_balance}) below minimum ({MIN_BASE_BALANCE})")
+                    logger.warning(f"[{cycle:04d}] 🛑 Stopping market maker due to low balance...")
+                    break
                 
                 # Periodically refresh state from REST to handle WS disconnections
                 if cycle % STATE_REFRESH_CYCLES == 0:
@@ -878,14 +932,35 @@ async def main():
             
             logger.info("Cancelling all orders...")
             try:
-                await client.mass_cancel(symbol=SYMBOL, account_id=account_id)
+                await client.mass_cancel(symbol=symbol, account_id=account_id)
                 logger.info("✅ Market maker stopped")
             except Exception as e:
                 logger.warning(f"Cleanup failed: {e}")
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Spot Market Maker - Maintains realistic depth around current price"
+    )
+    parser.add_argument(
+        "--symbol",
+        type=str,
+        default=DEFAULT_SYMBOL,
+        help=f"Spot trading pair symbol (default: {DEFAULT_SYMBOL})"
+    )
+    parser.add_argument(
+        "--oracle-symbol",
+        type=str,
+        default=DEFAULT_ORACLE_SYMBOL,
+        help=f"Oracle price symbol for reference pricing (default: {DEFAULT_ORACLE_SYMBOL})"
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        args = parse_args()
+        asyncio.run(main(symbol=args.symbol, oracle_symbol=args.oracle_symbol))
     except KeyboardInterrupt:
         pass
