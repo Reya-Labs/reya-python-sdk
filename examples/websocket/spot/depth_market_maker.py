@@ -38,7 +38,6 @@ from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecuti
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from sdk.reya_websocket import ReyaSocket, WebSocketMessage
@@ -809,10 +808,10 @@ async def main(symbol: str, oracle_symbol: str):
     # Initialize state with symbol configuration
     state = MarketMakerState(symbol=symbol, oracle_symbol=oracle_symbol)
     
-    async with ReyaTradingClient() as client:
-        spot_config = TradingConfig.from_env_spot(account_number=1)
-        client._config = spot_config
-        client._signature_generator = SignatureGenerator(spot_config)
+    # Create config for SPOT account (uses SPOT_* env vars instead of PERP_*)
+    spot_config = TradingConfig.from_env_spot(account_number=1)
+    
+    async with ReyaTradingClient(config=spot_config) as client:
 
         await client.start()
         

@@ -70,21 +70,14 @@ class ReyaTradingClient:
     _wallet_nonces: dict[str, int] = {}
     _wallet_nonce_lock = threading.Lock()
 
-    def __init__(self):
+    def __init__(self, config: Optional[TradingConfig] = None):
         """
         Initialize the Reya Trading client.
 
         Args:
-            config: Optional trading configuration object
-            private_key: Optional private key for signing requests
-            api_url: Optional API URL override
-            chain_id: Optional chain ID override
-            account_id: Optional default account ID
-
-        If config is provided, it will be used as-is.
-        If config is not provided, it will be loaded from environment variables.
-        If any of private_key, api_url, or chain_id are provided, they will override
-        the corresponding values in the config.
+            config: Optional trading configuration object. If provided, it will be used
+                    directly. If not provided, config will be loaded from environment
+                    variables using get_config().
         """
         # Initialize symbol to market_id mapping
         self._symbol_to_market_id: dict[str, int] = {}
@@ -93,8 +86,8 @@ class ReyaTradingClient:
         # Setup logging
         self.logger = logging.getLogger("reya_trading.client")
 
-        # Get config from environment if not provided
-        self._config = get_config()
+        # Use provided config or load from environment
+        self._config = config if config is not None else get_config()
 
         # Create signature generator
         self._signature_generator = SignatureGenerator(self._config)
