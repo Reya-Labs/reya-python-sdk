@@ -51,7 +51,7 @@ DEFAULT_ORACLE_SYMBOL = "ETHRUSD"     # Default oracle price symbol for referenc
 MAX_DEVIATION_PCT = Decimal("0.02")   # ±2% from reference price
 MAX_ORDER_QTY = Decimal("0.01")       # Maximum order quantity
 NUM_LEVELS = 10                       # Number of price levels on each side
-REFRESH_INTERVAL = 1                  # Seconds between quote adjustments
+REFRESH_INTERVAL = 5                  # Seconds between quote adjustments
 STATE_REFRESH_CYCLES = 30             # Refresh state from REST every N cycles to handle WS disconnects
 MIN_BASE_BALANCE = Decimal("0.1")     # Minimum ETH balance - stop MM if below this
 
@@ -489,12 +489,13 @@ async def place_single_order(
 ) -> tuple[bool, Decimal]:
     """
     Place a single order, retrying with minimum quantity if initial attempt fails.
+    Always attempts to place at least with min qty - let the API decide if balance is truly insufficient.
     Returns (success, qty_used).
     """
     price_decimal = Decimal(price)
     side = "bid" if is_buy else "ask"
     
-    # Calculate max affordable quantity
+    # Calculate max affordable quantity based on local tracking
     if is_buy:
         max_affordable_qty = available_balance / price_decimal if price_decimal > 0 else Decimal("0")
     else:
@@ -502,12 +503,15 @@ async def place_single_order(
     
     max_qty = min(MAX_ORDER_QTY, max_affordable_qty)
     
-    if max_qty < market_params.min_order_qty:
-        logger.warning(f"   Skipping {side} @ ${price} - insufficient balance")
-        return False, Decimal("0")
-    
-    # First try with random quantity
-    qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
+    # Determine initial quantity to try
+    if max_qty >= market_params.min_order_qty:
+        # Normal case: use random qty within affordable range
+        qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
+    else:
+        # Local balance tracking says insufficient, but still try with min qty
+        # The actual on-chain balance might have more available
+        qty = str(market_params.min_order_qty)
+        logger.debug(f"   Local balance low, trying {side} @ ${price} with min qty={qty}")
     
     for attempt in range(max_retries):
         try:
@@ -532,7 +536,10 @@ async def place_single_order(
                     qty = str(market_params.min_order_qty)
                     logger.debug(f"   Retrying {side} @ ${price} with min qty={qty}")
                     continue
-            logger.warning(f"Failed to place {side} @ ${price}: {e}")
+                # All retries exhausted with balance errors - truly insufficient
+                logger.warning(f"   Skipping {side} @ ${price} - insufficient balance (confirmed by API)")
+            else:
+                logger.warning(f"Failed to place {side} @ ${price}: {e}")
             return False, Decimal("0")
     
     return False, Decimal("0")
