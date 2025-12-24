@@ -338,7 +338,7 @@ async def _execute_spot_transfer(
                     account_id=sender.account_id,
                 )
                 break
-    except Exception:
+    except Exception:  # nosec B110
         pass  # Order may have been fully filled
 
     return True

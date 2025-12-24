@@ -319,7 +319,7 @@ async def test_spot_order_changes_ws_initial_snapshot(spot_config: SpotTestConfi
     ]
 
     order_ids = []
-    for price in prices:
+    for _ in prices:
         order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
         order_id = await spot_tester.create_limit_order(order_params)

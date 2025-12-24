@@ -191,8 +191,8 @@ async def test_spot_depth_price_ordering(spot_config: SpotTestConfig, spot_teste
             await spot_tester.client.cancel_order(
                 order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
             )
-        except Exception:
-            pass
+        except Exception:  # nosec B110
+            pass  # Order may have been filled
 
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()

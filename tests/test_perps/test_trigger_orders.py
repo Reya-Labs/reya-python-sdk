@@ -198,13 +198,6 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
     await reya_tester.wait_for_order_execution(expected_order)
     await reya_tester.check_no_open_orders()
 
-    """for i in range(1, 100):
-        position = await reya_tester.get_position(symbol)
-        if position is not None:
-            print(position.to_str())
-        else:
-            print("Position not found")"""
-
     # Verify position exists (short position)
     await reya_tester.check_position(
         symbol=symbol,

@@ -81,10 +81,14 @@ class ReyaTester:
         else:
             raise ValueError(f"Invalid spot_account_number: {spot_account_number}. Must be None, 1, or 2.")
 
-        # Store account properties (may be None if spot account not configured)
-        self.owner_wallet_address: Optional[str] = self.client.owner_wallet_address if self.client else None
-        self.account_id: Optional[int] = self.client.config.account_id if self.client else None
-        self.chain_id: Optional[int] = self.client.config.chain_id if self.client else None
+        # Store account properties - these must be set for tests to work
+        assert self.client is not None, "Client must be initialized"
+        assert self.client.config.account_id is not None, "account_id must be configured"
+        assert self.client.config.chain_id is not None, "chain_id must be configured"
+
+        self.owner_wallet_address: Optional[str] = self.client.owner_wallet_address
+        self.account_id: int = self.client.config.account_id
+        self.chain_id: int = self.client.config.chain_id
 
         # Internal WebSocket reference
         self._websocket: Optional[ReyaSocket] = None

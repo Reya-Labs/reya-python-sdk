@@ -396,7 +396,7 @@ async def test_spot_gtc_with_client_order_id(spot_config: SpotTestConfig, spot_t
     await spot_tester.close_active_orders(fail_if_none=False)
 
     # Generate unique client order ID (positive integer, fits in uint64)
-    test_client_order_id = random.randint(1, 2**32 - 1)
+    test_client_order_id = random.randint(1, 2**32 - 1)  # nosec B311
 
     order_price = spot_config.price(0.96)
 

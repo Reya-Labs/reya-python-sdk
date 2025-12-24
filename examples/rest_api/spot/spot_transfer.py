@@ -183,7 +183,7 @@ async def execute_spot_transfer(
                 symbol=symbol,
                 account_id=from_account_id,
             )
-        except Exception:  # noqa: B110
+        except Exception:  # nosec B110
             pass  # Order may have been filled in the meantime
     else:
         order_fully_matched = True
@@ -199,7 +199,7 @@ async def execute_spot_transfer(
                 if not tx_hash:
                     tx_hash = execution.additional_properties.get("txHash")
                 break
-    except Exception:  # noqa: B110
+    except Exception:  # nosec B110
         pass  # Execution lookup may fail, but transfer still succeeded
 
     return order_fully_matched, tx_hash
@@ -310,7 +310,7 @@ async def balance_accounts_mode() -> None:
 
             # Execute transfer
             symbol = "WETHRUSD"
-            order_fully_matched, tx_hash = await execute_spot_transfer(
+            _, tx_hash = await execute_spot_transfer(
                 sender_client, receiver_client, from_account, to_account, symbol, eth_qty, price_str
             )
 

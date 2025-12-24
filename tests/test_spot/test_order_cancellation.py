@@ -133,7 +133,7 @@ async def test_spot_mass_cancel(spot_config: SpotTestConfig, spot_tester: ReyaTe
     # Final verification - no open orders remain
     await spot_tester.check_no_open_orders()
 
-    logger.info("\n" + "=" * 80)
+    logger.info("\n%s", "=" * 80)
     logger.info("✅ SPOT MASS CANCEL TEST COMPLETED SUCCESSFULLY")
     logger.info("=" * 80)
 

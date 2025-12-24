@@ -64,7 +64,9 @@ async def test_all_prices(reya_tester: ReyaTester):
         assert 0 <= float(sample_price.oracle_price) < 10**18, "Oracle price should be a valid positive number"
         if "PERP" in sample_price.symbol:
             assert (
-                0 <= float(sample_price.pool_price) < 10**18 if "PERP" in sample_price.symbol else True
+                0 <= float(sample_price.pool_price) < 10**18
+                if sample_price.pool_price and "PERP" in sample_price.symbol
+                else True
             ), "Pool price should be a valid positive number"
         current_time = int(time.time() * 1000)
         assert sample_price.updated_at > current_time - (60 * 60 * 1000), "Updated timestamp should be within last hour"

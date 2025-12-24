@@ -131,7 +131,6 @@ async def test_failure_ioc_with_reduce_only_on_empty_position(reya_tester: ReyaT
         # API returns human-readable error message
         assert "Reduce-Only" in requestError.message or "ReduceOnly" in requestError.message
         assert requestError.error == RequestErrorCode.CREATE_ORDER_OTHER_ERROR
-        pass
 
 
 @pytest.mark.asyncio
@@ -315,12 +314,12 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
         await reya_tester.check_position_not_open(symbol)
         try:
             # Build params dict - use values from test case, no defaults for required fields
-            params = test_case["params"]
+            params: dict = test_case["params"]  # type: ignore[assignment]
             order_params_test = LimitOrderParameters(
-                symbol=params["symbol"],
-                is_buy=params["is_buy"],
-                limit_px=params["limit_px"],
-                qty=params["qty"],
+                symbol=str(params["symbol"]),
+                is_buy=bool(params["is_buy"]),
+                limit_px=str(params["limit_px"]),
+                qty=str(params["qty"]),
                 time_in_force=params["time_in_force"],
                 reduce_only=params.get("reduce_only"),  # Optional field, can have default
             )

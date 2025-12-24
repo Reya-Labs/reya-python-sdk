@@ -196,7 +196,7 @@ def generate_random_qty(min_qty: Decimal, max_qty: Decimal, qty_step_size: Decim
         return str(min_qty)
 
     qty_range = max_qty - min_qty
-    random_offset = qty_range * Decimal(random.uniform(0.0, 1.0))  # noqa: S311
+    random_offset = qty_range * Decimal(random.uniform(0.0, 1.0))  # nosec B311
     qty = round_to_qty_step(min_qty + random_offset, qty_step_size)
 
     if qty < min_qty:
@@ -234,7 +234,7 @@ def generate_quote_prices(
     bid_range = reference - min_price
     bids = []
     for i in range(num_levels):
-        offset = bid_range * Decimal(random.uniform(0.1, 1.0)) * Decimal(i + 1) / Decimal(num_levels)  # noqa: S311
+        offset = bid_range * Decimal(random.uniform(0.1, 1.0)) * Decimal(i + 1) / Decimal(num_levels)  # nosec B311
         price = round_to_tick(reference - offset, tick_size)
         if price >= min_price:
             bids.append(str(price))
@@ -243,7 +243,7 @@ def generate_quote_prices(
     ask_range = max_price - reference
     asks = []
     for i in range(num_levels):
-        offset = ask_range * Decimal(random.uniform(0.1, 1.0)) * Decimal(i + 1) / Decimal(num_levels)  # noqa: S311
+        offset = ask_range * Decimal(random.uniform(0.1, 1.0)) * Decimal(i + 1) / Decimal(num_levels)  # nosec B311
         price = round_to_tick(reference + offset, tick_size)
         if price <= max_price:
             asks.append(str(price))
@@ -282,7 +282,7 @@ def generate_single_price(
             return round_to_tick(max_price, tick_size)
 
     price_range = upper_bound - lower_bound
-    random_offset = price_range * Decimal(random.uniform(0.0, 1.0))
+    random_offset = price_range * Decimal(random.uniform(0.0, 1.0))  # nosec B311
     return round_to_tick(lower_bound + random_offset, tick_size)
 
 
@@ -791,16 +791,16 @@ async def adjust_orders(
 
     # Determine which side to adjust (50-50 if both sides have orders)
     if bids and asks:
-        adjust_bid_side = random.choice([True, False])
+        adjust_bid_side = random.choice([True, False])  # nosec B311
     elif bids:
         adjust_bid_side = True
     else:
         adjust_bid_side = False
 
     if adjust_bid_side:
-        order_to_cancel = random.choice(bids)
+        order_to_cancel = random.choice(bids)  # nosec B311
     else:
-        order_to_cancel = random.choice(asks)
+        order_to_cancel = random.choice(asks)  # nosec B311
 
     remaining_bids = [o for o in bids if o.order_id != order_to_cancel.order_id]
     remaining_asks = [o for o in asks if o.order_id != order_to_cancel.order_id]
@@ -874,7 +874,7 @@ async def main(symbol: str, oracle_symbol: str):
         logger.info(f"   Refresh:         Every {REFRESH_INTERVAL}s")
         logger.info(f"   Account ID:      {account_id}")
         logger.info("   Press Ctrl+C to stop")
-        logger.info("=" * 60 + "\n")
+        logger.info("%s\n", "=" * 60)
 
         # Set up WebSocket
         ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")

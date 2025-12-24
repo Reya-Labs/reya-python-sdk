@@ -196,6 +196,6 @@ async def test_spot_maker_taker_matching(
     await maker_tester.close_active_orders(fail_if_none=False)
     await taker_tester.close_active_orders(fail_if_none=False)
 
-    logger.info("\n" + "=" * 80)
+    logger.info("\n%s", "=" * 80)
     logger.info("✅ SPOT TRADING E2E TEST COMPLETED SUCCESSFULLY")
     logger.info("=" * 80)
