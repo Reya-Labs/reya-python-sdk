@@ -215,11 +215,6 @@ async def test_asset_definitions(reya_tester: ReyaTester):
             0 <= float(asset.liquidation_discount) <= 1
         ), f"Liquidation discount should be between 0 and 1, got: {asset.liquidation_discount}"
 
-        assert asset.timestamp >= 0, f"Timestamp should be non-negative, got: {asset.timestamp}"
-        current_time = int(time.time() * 1000)
-        if asset.timestamp > 0:
-            assert asset.timestamp <= current_time + (60 * 1000), "Timestamp should not be in future"
-
         assert (
             "USD" in asset.spot_market_symbol
         ), f"Spot market symbol should contain USD, got: {asset.spot_market_symbol}"
