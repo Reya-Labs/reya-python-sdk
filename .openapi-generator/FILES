@@ -13,6 +13,7 @@ sdk/open_api/exceptions.py
 sdk/open_api/models/__init__.py
 sdk/open_api/models/account.py
 sdk/open_api/models/account_balance.py
+sdk/open_api/models/account_type.py
 sdk/open_api/models/asset_definition.py
 sdk/open_api/models/cancel_order_request.py
 sdk/open_api/models/cancel_order_response.py

@@ -4,12 +4,12 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
 from sdk.async_api.execution_type import ExecutionType
 class SpotExecution(BaseModel): 
-  exchange_id: int = Field(alias='''exchangeId''')
+  exchange_id: Optional[int] = Field(default=None, alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   maker_account_id: int = Field(alias='''makerAccountId''')
-  order_id: str = Field(description='''Order ID for the taker''', alias='''orderId''')
-  maker_order_id: str = Field(description='''Order ID for the maker''', alias='''makerOrderId''')
+  order_id: Optional[str] = Field(description='''Order ID for the taker''', default=None, alias='''orderId''')
+  maker_order_id: Optional[str] = Field(description='''Order ID for the maker''', default=None, alias='''makerOrderId''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   qty: str = Field()
   price: str = Field()

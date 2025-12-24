@@ -18,20 +18,21 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class DepthType(str, Enum):
+class AccountType(str, Enum):
     """
-    Depth message type (SNAPSHOT = full book, UPDATE = single level change)
+    SPOT = account that can only trade spot, MAINPERP = main perp account, SUBPERP = sub perp account
     """
 
     """
     allowed enum values
     """
-    SNAPSHOT = 'SNAPSHOT'
-    UPDATE = 'UPDATE'
+    MAINPERP = 'MAINPERP'
+    SUBPERP = 'SUBPERP'
+    SPOT = 'SPOT'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of DepthType from a JSON string"""
+        """Create an instance of AccountType from a JSON string"""
         return cls(json.loads(json_str))
 
 

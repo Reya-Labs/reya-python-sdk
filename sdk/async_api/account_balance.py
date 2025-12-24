@@ -6,6 +6,7 @@ class AccountBalance(BaseModel):
   account_id: int = Field(alias='''accountId''')
   asset: str = Field()
   real_balance: str = Field(alias='''realBalance''')
+  balance_deprecated: str = Field(alias='''balance_DEPRECATED''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -26,13 +27,13 @@ class AccountBalance(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['account_id', 'asset', 'real_balance', 'additional_properties']
+    known_object_properties = ['account_id', 'asset', 'real_balance', 'balance_deprecated', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['accountId', 'asset', 'realBalance', 'additionalProperties']
+    known_json_properties = ['accountId', 'asset', 'realBalance', 'balance_DEPRECATED', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
