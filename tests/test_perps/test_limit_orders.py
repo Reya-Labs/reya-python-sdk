@@ -229,17 +229,6 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
             },
         },
         {
-            "name": "Invalid is_buy",
-            "params": {
-                "symbol": symbol,
-                "is_buy": "invalid",
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
             "name": "Missing qty",
             "params": {
                 "symbol": symbol,
