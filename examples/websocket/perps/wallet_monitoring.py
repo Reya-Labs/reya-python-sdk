@@ -1,12 +1,13 @@
-"""Example of monitoring wallet positions, orders, and balances.
+"""
+Wallet Monitoring - Monitor wallet positions, orders, and balances via WebSocket.
 
 This example connects to the Reya WebSocket API and subscribes to wallet data streams for a specific address.
 
-Before running this example, ensure you have a .env file with the following variables:
-- PRIVATE_KEY: Your Ethereum private key
-- ACCOUNT_ID: Your Reya account ID
+Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- OWNER_WALLET_ADDRESS: The owner wallet address to monitor (required)
+- PERP_ACCOUNT_ID_1: Your Reya account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+- PERP_WALLET_ADDRESS_1: The wallet address to monitor
 """
 
 from typing import Any
@@ -38,10 +39,10 @@ def on_open(ws):
     """Handle WebSocket connection open event."""
     logger.info("Connection established, subscribing to wallet data")
 
-    # Get owner wallet address from environment
-    wallet_address = os.environ.get("OWNER_WALLET_ADDRESS")
+    # Get wallet address from environment
+    wallet_address = os.environ.get("PERP_WALLET_ADDRESS_1")
     if not wallet_address:
-        logger.error("OWNER_WALLET_ADDRESS environment variable is required")
+        logger.error("PERP_WALLET_ADDRESS_1 environment variable is required")
         return
 
     logger.info(f"Monitoring wallet: {wallet_address}")
@@ -203,10 +204,10 @@ async def main():
     load_dotenv()
 
     # Check if wallet address is set
-    wallet_address = os.environ.get("WALLET_ADDRESS")
+    wallet_address = os.environ.get("PERP_WALLET_ADDRESS_1")
     if not wallet_address:
-        logger.error("Please set the WALLET_ADDRESS environment variable")
-        logger.error("Add WALLET_ADDRESS=0x... to your .env file")
+        logger.error("Please set the PERP_WALLET_ADDRESS_1 environment variable")
+        logger.error("Add PERP_WALLET_ADDRESS_1=0x... to your .env file")
         return
 
     # Get WebSocket URL from environment

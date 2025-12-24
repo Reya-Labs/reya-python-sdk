@@ -27,14 +27,14 @@ def get_network_addresses(chain_id: int) -> dict:
         }
     elif chain_id == 89346162:
         return {
-            "rpc_url": "https://bartio.rpc.berachain.com/",
+            "rpc_url": "https://rpc.reya-cronos.gelato.digital",
             "passive_pool_account_id": 2,
             "exchange_id": 1,
-            "core_address": "0x77C9F40938db89E78e2071d007Dca31f07C59e2C",
-            "multicall_address": "0x90C9c8047fE5CF0e59E9D0e80a2D46A2AD45b14B",
-            "oracle_adapter_address": "0x2E3Dd3DA71c31E2C6ae87b20A6e4Ae85a01c30b1",
-            "passive_perp_address": "0xE2d0E8a9E2B8E7F4cE5BBfF0a96b9e8B66b72AF8",
-            "passive_pool_address": "0x0A97C52C1bE9Cff2c84f9dFeCd8e4c6f6FabAb2f",
+            "core_address": "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72",
+            "multicall_address": "0x5abde4F0aF8Eaf3c9967f7fA126E59A103357b5C",
+            "oracle_adapter_address": "0xc501A2356703CD351703D68963c6F4136120f7CF",
+            "passive_perp_address": "0x9EC177fed042eF2307928BE2F5CDbf663B20244B",
+            "passive_pool_address": "0x9A3A664987b88790A6FDC1632e3b607813fd94fF",
             "rusd_address": "0x9DE724e7b3facF87Ce39465D3D712717182e3e55",
             "periphery_address": "0x94ccAe812f1647696754412082dd6684C2366A7f",
             "usdc_address": "0xfA27c7c6051344263533cc365274d9569b0272A8",
@@ -81,7 +81,7 @@ def get_config() -> dict:
     load_dotenv()
 
     chain_id = int(os.environ["CHAIN_ID"])
-    private_key = os.environ["PRIVATE_KEY"]
+    private_key = os.environ["PERP_PRIVATE_KEY_1"]
 
     # Get network-specific addresses
     network_config = get_network_addresses(chain_id)

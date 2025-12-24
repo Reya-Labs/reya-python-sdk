@@ -7,11 +7,12 @@ from sdk.async_api.time_in_force import TimeInForce
 from sdk.async_api.order_status import OrderStatus
 class Order(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   order_id: str = Field(alias='''orderId''')
   qty: Optional[str] = Field(default=None)
   exec_qty: Optional[str] = Field(default=None, alias='''execQty''')
+  cum_qty: Optional[str] = Field(default=None, alias='''cumQty''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   limit_px: str = Field(alias='''limitPx''')
   order_type: OrderType = Field(description='''Order type, (LIMIT = Limit, TP = Take Profit, SL = Stop Loss)''', alias='''orderType''')
@@ -41,13 +42,13 @@ class Order(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'qty', 'exec_qty', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'reduce_only', 'status', 'created_at', 'last_update_at', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'qty', 'exec_qty', 'cum_qty', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'reduce_only', 'status', 'created_at', 'last_update_at', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'qty', 'execQty', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'reduceOnly', 'status', 'createdAt', 'lastUpdateAt', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'qty', 'execQty', 'cumQty', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'reduceOnly', 'status', 'createdAt', 'lastUpdateAt', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):

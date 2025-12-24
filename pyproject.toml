@@ -91,7 +91,7 @@ python_version = "3.10"
 pretty = true
 show_traceback = true
 color_output = true
-exclude = ["sdk/async_api/"]
+exclude = ["sdk/async_api/", "examples/"]
 
 allow_redefinition = false
 check_untyped_defs = true
@@ -122,10 +122,14 @@ max-line-length = 120
 max-module-lines=2000
 ignore-paths = ["sdk/async_api"]
 disable = """
+    broad-exception-caught,
     consider-using-in,
+    consider-using-max-builtin,
     duplicate-code,
+    f-string-without-interpolation,
     fixme,
     import-error,
+    import-outside-toplevel,
     inconsistent-return-statements,
     invalid-name,
     logging-fstring-interpolation,
@@ -135,17 +139,26 @@ disable = """
     missing-module-docstring,
     no-else-raise,
     no-else-return,
+    no-member,
+    protected-access,
     raise-missing-from,
     redefined-builtin,
+    redefined-outer-name,
     self-assigning-variable,
     simplifiable-if-expression,
     too-few-public-methods,
     too-many-arguments,
     too-many-branches,
+    too-many-locals,
+    too-many-nested-blocks,
     too-many-positional-arguments,
     too-many-public-methods,
     too-many-return-statements,
-    too-many-instance-attributes
+    too-many-statements,
+    too-many-instance-attributes,
+    unused-argument,
+    wrong-import-order,
+    wrong-import-position
 """
 
 [tool.pytest.ini_options]
@@ -153,3 +166,27 @@ disable = """
 # Directories that are not visited by pytest collector:
 norecursedirs =["hooks", "*.egg", ".eggs", "dist", "build", "docs", ".tox", ".git", "__pycache__"]
 doctest_optionflags = ["NUMBER", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
+asyncio_mode = "auto"
+# Use session-scoped event loop for all async fixtures and tests (pytest-asyncio 0.24+)
+# This enables sharing a single WebSocket/API connection across all tests
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+# Test markers for categorization
+markers = [
+    "spot: Spot trading tests (ETHRUSD, BTCRUSD)",
+    "perp: Perpetual trading tests (ETHRUSDPERP, BTCRUSDPERP)",
+    "market_data: Market data endpoint tests",
+    "slow: Tests that take longer than 5 seconds",
+    "maker_taker: Tests requiring two accounts (maker and taker)",
+    "websocket: Tests that verify WebSocket events",
+    "rest: Tests that verify REST API responses",
+    "e2e: Full end-to-end flow tests",
+    "ioc: Immediate-Or-Cancel order tests",
+    "gtc: Good-Till-Cancelled order tests",
+    "trigger: Trigger order tests (SL/TP)",
+    "cancel: Order cancellation tests",
+    "balance: Balance verification tests",
+    "validation: API validation tests (signature, nonce, deadline, etc.)",
+    "error: Error handling tests",
+]

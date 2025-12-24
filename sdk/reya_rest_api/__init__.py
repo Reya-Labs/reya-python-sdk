@@ -6,6 +6,6 @@ allowing users to create and manage trading orders.
 """
 
 from sdk.reya_rest_api.client import ReyaTradingClient
-from sdk.reya_rest_api.config import TradingConfig
+from sdk.reya_rest_api.config import TradingConfig, get_spot_config
 
-__all__ = ["ReyaTradingClient", "TradingConfig"]
+__all__ = ["ReyaTradingClient", "TradingConfig", "get_spot_config"]

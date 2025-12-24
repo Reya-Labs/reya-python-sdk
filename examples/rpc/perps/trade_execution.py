@@ -1,3 +1,15 @@
+"""
+Trade Execution - Execute long and short trades on perpetual markets.
+
+This script demonstrates how to execute long and short trades on the SOL market
+using the RPC layer.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_ACCOUNT_ID_1: Your Reya margin account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+"""
+
 import os
 
 from dotenv import load_dotenv
@@ -7,15 +19,13 @@ from sdk.reya_rpc import MarketIds, TradeParams, get_config, trade
 
 
 def main():
-    """
-    Example script demonstrating how to execute long and short trades on SOL market.
-    """
+    """Execute long and short trades on SOL market."""
 
     # Load environment variables from .env file
     load_dotenv()
 
     # Retrieve the margin account ID from environment variables
-    account_id = int(os.environ["ACCOUNT_ID"])
+    account_id = int(os.environ["PERP_ACCOUNT_ID_1"])
 
     # Load configuration
     config = get_config()

@@ -4,7 +4,7 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
 class Position(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
-  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, ETHRUSD)''')
+  symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')

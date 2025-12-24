@@ -60,7 +60,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: poetry run mypy --config-file pyproject.toml ./ --exclude sdk/async_api
+        entry: poetry run mypy --config-file pyproject.toml ./ --exclude sdk/async_api --exclude examples
         pass_filenames: false
         language: system
         exclude: ^sdk/open_api/

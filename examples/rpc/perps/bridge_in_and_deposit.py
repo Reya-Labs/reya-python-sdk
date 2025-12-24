@@ -1,3 +1,15 @@
+"""
+Bridge In and Deposit - Bridge USDC from Arbitrum and deposit to margin account.
+
+This script demonstrates how to bridge USDC into Reya Network from Arbitrum
+and optionally deposit it into a margin account once transfer is completed.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_ACCOUNT_ID_1: Your Reya margin account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+"""
+
 import os
 
 from dotenv import load_dotenv
@@ -6,16 +18,13 @@ from sdk.reya_rpc import BridgeInParams, DepositParams, bridge_in_from_arbitrum,
 
 
 def main():
-    """
-    Example script demonstrating how to bridge USDC into Reya Network from Arbitrum
-    and optionally deposit it into a margin account once transfer is completed.
-    """
+    """Execute bridge in and deposit operation."""
 
     # Load environment variables from a .env file
     load_dotenv()
 
     # Retrieve the margin account ID from environment variables
-    account_id = int(os.environ["ACCOUNT_ID"])
+    account_id = int(os.environ["PERP_ACCOUNT_ID_1"])
 
     # Load configuration
     config = get_config()

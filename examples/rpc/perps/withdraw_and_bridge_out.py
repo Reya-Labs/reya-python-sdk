@@ -1,3 +1,15 @@
+"""
+Withdraw and Bridge Out - Withdraw rUSD and bridge to Arbitrum.
+
+This script demonstrates how to withdraw rUSD from a margin account
+and bridge it out from Reya Network to Arbitrum.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_ACCOUNT_ID_1: Your Reya margin account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+"""
+
 import os
 
 from dotenv import load_dotenv
@@ -7,16 +19,13 @@ from sdk.reya_rpc.actions import BridgeOutParams, WithdrawParams
 
 
 def main():
-    """
-    Example script demonstrating how to withdraw rUSD from a margin account
-    and bridge it out from Reya Network to Arbitrum.
-    """
+    """Execute withdraw and bridge out operation."""
 
     # Load environment variables from .env file
     load_dotenv()
 
     # Retrieve the margin account ID from environment variables
-    account_id = int(os.environ["ACCOUNT_ID"])
+    account_id = int(os.environ["PERP_ACCOUNT_ID_1"])
 
     # Load configuration
     config = get_config()
