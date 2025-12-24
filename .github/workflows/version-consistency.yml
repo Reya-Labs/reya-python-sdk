@@ -111,11 +111,29 @@ jobs:
           BASE_SHA=$(git merge-base HEAD origin/${{ github.base_ref }})
 
           if git diff $BASE_SHA HEAD -- pyproject.toml | grep -q '^\+.*version = '; then
-            echo "VERSION_MANUALLY_MODIFIED=true" >> $GITHUB_ENV
-            echo "Version was manually modified in this PR"
+            echo "Version change detected in pyproject.toml"
+            
+            # Check if the version change was made by the CI bot (auto-commit)
+            # Get the commit that last modified the version line in pyproject.toml
+            LAST_VERSION_COMMIT=$(git log --oneline -1 --format="%H" -- pyproject.toml)
+            LAST_VERSION_AUTHOR=$(git log --oneline -1 --format="%an" -- pyproject.toml)
+            LAST_VERSION_MESSAGE=$(git log --oneline -1 --format="%s" -- pyproject.toml)
+            
+            echo "Last version commit: $LAST_VERSION_COMMIT"
+            echo "Last version author: $LAST_VERSION_AUTHOR"
+            echo "Last version message: $LAST_VERSION_MESSAGE"
+            
+            # Check if it was an auto-commit by the CI bot
+            if [[ "$LAST_VERSION_MESSAGE" == "chore: bump SDK version to"* ]] && [[ "$LAST_VERSION_AUTHOR" == *"Reya Bot"* ]]; then
+              echo "VERSION_MANUALLY_MODIFIED=false" >> $GITHUB_ENV
+              echo "Version was modified by CI bot (auto-commit), not manually"
+            else
+              echo "VERSION_MANUALLY_MODIFIED=true" >> $GITHUB_ENV
+              echo "Version was manually modified in this PR"
+            fi
           else
             echo "VERSION_MANUALLY_MODIFIED=false" >> $GITHUB_ENV
-            echo "Version was not manually modified in this PR"
+            echo "Version was not modified in this PR"
           fi
 
       - name: Extract version components
