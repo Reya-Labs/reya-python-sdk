@@ -4,12 +4,9 @@ from typing import TYPE_CHECKING, Optional
 
 import asyncio
 import logging
-import time
 
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.order import Order
-from sdk.open_api.models.order_status import OrderStatus
-from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 

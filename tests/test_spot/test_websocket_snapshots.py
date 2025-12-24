@@ -58,13 +58,7 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
 
     order_ids = []
     for price in prices:
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .price(str(price))
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().price(str(price)).gtc().build()
 
         order_id = await spot_tester.create_limit_order(order_params)
         await spot_tester.wait_for_order_creation(order_id)
@@ -113,7 +107,9 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
 
     # Cleanup
     for order_id in order_ids:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
 
     await asyncio.sleep(0.1)
     await spot_tester.check_no_open_orders()
@@ -125,7 +121,9 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_depth_ws_snapshot_with_asks(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_depth_ws_snapshot_with_asks(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test depth snapshot includes both bids and asks.
 
@@ -144,13 +142,7 @@ async def test_spot_depth_ws_snapshot_with_asks(spot_config: SpotTestConfig, mak
 
     # Place bid (maker buys with RUSD)
     bid_price = spot_config.price(0.96)
-    bid_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    bid_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     bid_order_id = await maker_tester.create_limit_order(bid_params)
     await maker_tester.wait_for_order_creation(bid_order_id)
@@ -158,13 +150,7 @@ async def test_spot_depth_ws_snapshot_with_asks(spot_config: SpotTestConfig, mak
 
     # Place ask (taker sells ETH)
     ask_price = spot_config.price(1.04)
-    ask_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    ask_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     ask_order_id = await taker_tester.create_limit_order(ask_params)
     await taker_tester.wait_for_order_creation(ask_order_id)
@@ -253,13 +239,7 @@ async def test_spot_depth_ws_incremental_after_snapshot(spot_config: SpotTestCon
     # Step 2: Place a new order
     order_price = spot_config.price(0.96)  # Very low price to be unique
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     order_id = await spot_tester.create_limit_order(order_params)
     await spot_tester.wait_for_order_creation(order_id)
@@ -279,7 +259,9 @@ async def test_spot_depth_ws_incremental_after_snapshot(spot_config: SpotTestCon
     logger.info("✅ New order appears in depth after incremental update")
 
     # Step 4: Cancel the order
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
 
     await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
     logger.info("Order cancelled")
@@ -338,13 +320,7 @@ async def test_spot_order_changes_ws_initial_snapshot(spot_config: SpotTestConfi
 
     order_ids = []
     for price in prices:
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .at_price(0.96)
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
         order_id = await spot_tester.create_limit_order(order_params)
         await spot_tester.wait_for_order_creation(order_id)
@@ -374,7 +350,9 @@ async def test_spot_order_changes_ws_initial_snapshot(spot_config: SpotTestConfi
 
     # Cleanup
     for order_id in order_ids:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
 
     await asyncio.sleep(0.1)
     await spot_tester.check_no_open_orders()
@@ -391,7 +369,9 @@ async def test_spot_order_changes_ws_initial_snapshot(spot_config: SpotTestConfi
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_executions_ws_initial_snapshot(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_executions_ws_initial_snapshot(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test that subscribing to spotExecutions returns historical executions as snapshot.
 
@@ -411,26 +391,14 @@ async def test_spot_executions_ws_initial_snapshot(spot_config: SpotTestConfig, 
     # Step 1: Execute a trade to create execution history
     maker_price = spot_config.price(0.97)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
 
     # Taker fills with IOC
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_params)
     logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
@@ -532,7 +500,9 @@ async def test_spot_balances_ws_initial_snapshot(spot_config: SpotTestConfig, sp
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_balances_ws_update_after_trade(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_balances_ws_update_after_trade(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test that balance updates are received via WebSocket after a trade.
 
@@ -554,26 +524,14 @@ async def test_spot_balances_ws_update_after_trade(spot_config: SpotTestConfig, 
     taker_tester.clear_balance_updates()
 
     # Execute a trade
-    maker_price = spot_config.price(0.97)
+    _ = spot_config.price(0.97)  # maker_price - calculated for reference
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
 

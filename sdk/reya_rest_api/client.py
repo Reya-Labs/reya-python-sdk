@@ -471,6 +471,10 @@ class ReyaTradingClient:
                 raise ValueError("order_id is required for perp market order cancellation")
 
         if is_spot_order:
+            # Type assertions after validation (symbol and account_id are validated above)
+            assert symbol is not None
+            assert account_id is not None
+
             # Get market_id from symbol
             market_id = self._get_market_id_from_symbol(symbol)
 
@@ -495,6 +499,8 @@ class ReyaTradingClient:
                 deadline=deadline,
             )
         else:
+            # Type assertion after validation (order_id is validated above for perp)
+            assert order_id is not None
             signature = self._signature_generator.sign_cancel_order_perps(order_id)
             nonce = None
             deadline = None
@@ -736,7 +742,10 @@ class ReyaTradingClient:
                 if response.status != 200:
                     raise ValueError(f"Failed to get market spot executions: {response.status}")
                 data = await response.json()
-                return SpotExecutionList.from_dict(data)
+                result = SpotExecutionList.from_dict(data)
+                if result is None:
+                    raise ValueError("Failed to parse spot executions response")
+                return result
 
     async def close(self) -> None:
         """

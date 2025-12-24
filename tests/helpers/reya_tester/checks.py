@@ -1,12 +1,13 @@
 """Assertion/check operations for ReyaTester."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 import asyncio
 import logging
 
 import pytest
 
+from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.execution_type import ExecutionType
 from sdk.open_api.models.order import Order
@@ -30,7 +31,7 @@ class Checks:
 
     async def open_order_created(self, order_id: str, expected_order: Order) -> None:
         """Verify an open order was created with expected values."""
-        open_order = await self._t.data.open_order(order_id)
+        open_order: Optional[Union[Order, AsyncOrder]] = await self._t.data.open_order(order_id)
 
         # For trigger orders (SL/TP), if not found in open orders, check WebSocket
         if open_order is None and expected_order.order_type in [OrderType.SL, OrderType.TP]:
@@ -48,11 +49,13 @@ class Checks:
             assert float(open_order.limit_px) == float(
                 expected_order.limit_px
             ), f"check_open_order_created: Wrong limit price. Expected: {expected_order.limit_px}, Got: {open_order.limit_px}"
+            assert open_order.qty is not None and expected_order.qty is not None
             assert float(open_order.qty) == float(
                 expected_order.qty
             ), f"check_open_order_created: Wrong qty. Expected: {expected_order.qty}, Got: {open_order.qty}"
         else:
             expected_trigger_px = expected_order.trigger_px if expected_order.trigger_px else expected_order.limit_px
+            assert open_order.trigger_px is not None
             assert float(open_order.trigger_px) == pytest.approx(
                 float(expected_trigger_px), rel=1e-6
             ), f"check_open_order_created: Wrong trigger price. Expected: {expected_trigger_px}, Got: {open_order.trigger_px}"
@@ -293,12 +296,13 @@ class Checks:
             logger.info(f"   ✅ Status: {ws_status_value}")
 
         if expected_qty is not None:
+            assert ws_order.qty is not None, "ws_order.qty is None"
             ws_qty = float(ws_order.qty)
             exp_qty = float(expected_qty)
             assert abs(ws_qty - exp_qty) < 0.0001, f"Qty mismatch: expected {exp_qty}, got {ws_qty}"
             logger.info(f"   ✅ Qty: {ws_order.qty}")
 
-        return ws_order
+        return ws_order  # type: ignore[return-value]
 
     def ws_spot_execution_received(
         self,
@@ -338,7 +342,7 @@ class Checks:
             assert abs(exec_price - exp_price) < 1e-9, f"Price mismatch: expected {exp_price}, got {exec_price}"
             logger.info(f"   ✅ Price: {execution.price}")
 
-        return execution
+        return execution  # type: ignore[return-value]
 
     def ws_balance_updates_received(
         self,
@@ -367,4 +371,4 @@ class Checks:
                 else:
                     logger.warning(f"   ⚠️ {asset} balance update not found (may be delayed)")
 
-        return new_updates
+        return new_updates  # type: ignore[return-value]

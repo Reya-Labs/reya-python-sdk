@@ -18,7 +18,6 @@ from tests.helpers.reya_tester import logger
 from tests.test_spot.spot_config import SpotTestConfig
 
 
-
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
@@ -53,13 +52,7 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     # Place GTC buy order at specific price
     order_price = spot_config.price(0.98)  # 15% below reference
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.98)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -89,7 +82,9 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
     await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
 
     # Wait for depth to update
@@ -136,18 +131,12 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
 
     order_ids = []
     for i in range(2):
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .at_price(0.98)
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
         order_id = await spot_tester.create_limit_order(order_params)
         await spot_tester.wait_for_order_creation(order_id)
         order_ids.append(order_id)
-        logger.info(f"✅ Order {i+1} created: {order_id}")
+        logger.info(f"✅ Order {i + 1} created: {order_id}")
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
@@ -173,7 +162,9 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
 
     # Cleanup - cancel all orders
     for order_id in order_ids:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
 
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()
@@ -208,13 +199,7 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
     # Use prices far from market to avoid matching existing liquidity
     bid_price = spot_config.price(0.96)  # 50% below reference
 
-    bid_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    bid_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Maker placing bid at ${bid_price:.2f}...")
     bid_order_id = await maker_tester.create_limit_order(bid_params)
@@ -224,13 +209,7 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
     # Taker places ask (sell) order at high price (taker has more ETH balance)
     ask_price = spot_config.price(1.04)  # 50% above reference
 
-    ask_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    ask_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Taker placing ask at ${ask_price:.2f}...")
     ask_order_id = await taker_tester.create_limit_order(ask_params)

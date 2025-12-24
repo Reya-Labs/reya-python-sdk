@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 
-import asyncio
-import time
-
 import pytest
 
 from sdk.open_api import OrderStatus, RequestError, RequestErrorCode
 from sdk.open_api.exceptions import BadRequestException
-from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
-from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
+from tests.helpers.reya_tester import limit_order_params_to_order, logger
 
 
 async def assert_position_changes(

@@ -63,9 +63,10 @@ class DataOperations:
 
         Returns None if no executions exist.
         """
-        trades_list: PerpExecutionList = await self._t.client.wallet.get_wallet_perp_executions(
-            address=self._t.owner_wallet_address
-        )
+        wallet_address = self._t.owner_wallet_address
+        if wallet_address is None:
+            raise ValueError("owner_wallet_address is required for perp execution lookup")
+        trades_list: PerpExecutionList = await self._t.client.wallet.get_wallet_perp_executions(address=wallet_address)
         if trades_list.data and len(trades_list.data) > 0:
             return trades_list.data[0]
         return None
@@ -75,8 +76,11 @@ class DataOperations:
 
         Returns None if no executions exist.
         """
+        wallet_address = self._t.owner_wallet_address
+        if wallet_address is None:
+            raise ValueError("owner_wallet_address is required for spot execution lookup")
         executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(
-            address=self._t.owner_wallet_address
+            address=wallet_address
         )
         if executions_list.data and len(executions_list.data) > 0:
             return executions_list.data[0]

@@ -59,7 +59,9 @@ async def test_rest_get_market_spot_executions_empty(spot_config: SpotTestConfig
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_executions_after_trade(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_rest_get_market_spot_executions_after_trade(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test REST API returns spot execution after a trade is executed.
 
@@ -78,26 +80,14 @@ async def test_rest_get_market_spot_executions_after_trade(spot_config: SpotTest
     # Step 1: Execute a trade
     maker_price = spot_config.price(0.97)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
 
     # Taker fills with IOC
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_params)
     logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
@@ -166,7 +156,9 @@ async def test_rest_get_market_spot_executions_invalid_symbol(spot_config: SpotT
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_realtime(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_ws_market_spot_executions_realtime(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test WebSocket delivers real-time spot execution updates for market channel.
 
@@ -192,25 +184,13 @@ async def test_ws_market_spot_executions_realtime(spot_config: SpotTestConfig, m
     # Step 2: Execute a trade
     maker_price = spot_config.price(0.98)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.98)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.98)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
     logger.info("✅ Taker IOC order sent")
@@ -225,7 +205,9 @@ async def test_ws_market_spot_executions_realtime(spot_config: SpotTestConfig, m
 
     logger.info(f"Market spot executions received via WS: {len(market_executions)}")
 
-    assert len(market_executions) > 0, f"Should have received market spot execution via WebSocket for {spot_config.symbol}"
+    assert (
+        len(market_executions) > 0
+    ), f"Should have received market spot execution via WebSocket for {spot_config.symbol}"
 
     # Verify execution data
     ws_execution = market_executions[-1]  # Most recent
@@ -239,7 +221,9 @@ async def test_ws_market_spot_executions_realtime(spot_config: SpotTestConfig, m
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_snapshot(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_ws_market_spot_executions_snapshot(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test WebSocket snapshot contains historical executions when subscribing.
 
@@ -257,26 +241,14 @@ async def test_ws_market_spot_executions_snapshot(spot_config: SpotTestConfig, m
     await taker_tester.close_active_orders(fail_if_none=False)
 
     # Step 1: Execute a trade to create execution history
-    maker_price = spot_config.price(0.98)
+    _ = spot_config.price(0.98)  # maker_price - calculated for reference
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.98)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.98)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
 
@@ -309,7 +281,9 @@ async def test_ws_market_spot_executions_snapshot(spot_config: SpotTestConfig, m
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_ws_and_rest_market_spot_executions_consistency(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_ws_and_rest_market_spot_executions_consistency(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test that WebSocket and REST API return consistent data.
 
@@ -332,26 +306,14 @@ async def test_ws_and_rest_market_spot_executions_consistency(spot_config: SpotT
     await asyncio.sleep(0.3)
 
     # Step 2: Execute a trade
-    maker_price = spot_config.price(0.98)
+    _ = spot_config.price(0.98)  # maker_price - calculated for reference
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.98)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.98)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
 

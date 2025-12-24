@@ -21,7 +21,6 @@ from tests.test_spot.spot_config import SpotTestConfig
 logger = logging.getLogger("reya.integration_tests")
 
 
-
 @pytest.mark.spot
 @pytest.mark.market_data
 @pytest.mark.asyncio
@@ -87,25 +86,13 @@ async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: R
     # Execute a trade
     maker_price = spot_config.price(0.97)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     logger.info("Taker placing IOC sell...")
     await taker_tester.create_limit_order(taker_params)
@@ -123,7 +110,7 @@ async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: R
     # Verify we have executions
     if hasattr(executions, "data") and len(executions.data) > 0:
         latest = executions.data[0]
-        logger.info(f"✅ Latest execution:")
+        logger.info("✅ Latest execution:")
         if hasattr(latest, "symbol"):
             logger.info(f"   Symbol: {latest.symbol}")
         if hasattr(latest, "qty"):
@@ -170,13 +157,7 @@ async def test_spot_depth_price_ordering(spot_config: SpotTestConfig, spot_teste
 
     order_ids = []
     for price in prices:
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .at_price(0.96)
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
         order_id = await spot_tester.create_limit_order(order_params)
         await spot_tester.wait_for_order_creation(order_id)
@@ -223,7 +204,9 @@ async def test_spot_depth_price_ordering(spot_config: SpotTestConfig, spot_teste
 @pytest.mark.market_data
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_executions_multiple_trades(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_executions_multiple_trades(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test spot executions are correctly recorded for multiple trades.
 
@@ -248,24 +231,12 @@ async def test_spot_executions_multiple_trades(spot_config: SpotTestConfig, make
         # Use prices within 5% of oracle (0.96, 0.97, 0.98)
         maker_price = round(spot_config.oracle_price * (0.96 + i * 0.01), 2)
 
-        maker_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .price(str(maker_price))
-            .gtc()
-            .build()
-        )
+        maker_params = OrderBuilder.from_config(spot_config).buy().price(str(maker_price)).gtc().build()
 
         maker_order_id = await maker_tester.create_limit_order(maker_params)
         await maker_tester.wait_for_order_creation(maker_order_id)
 
-        taker_params = (
-            OrderBuilder.from_config(spot_config)
-            .sell()
-            .price(str(maker_price))
-            .ioc()
-            .build()
-        )
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).ioc().build()
 
         await taker_tester.create_limit_order(taker_params)
         await asyncio.sleep(0.1)
@@ -290,7 +261,7 @@ async def test_spot_executions_multiple_trades(spot_config: SpotTestConfig, make
 
     # Verify execution data structure
     latest = execution_data[0]
-    logger.info(f"Latest execution:")
+    logger.info("Latest execution:")
     if hasattr(latest, "symbol"):
         logger.info(f"  Symbol: {latest.symbol}")
         assert latest.symbol == spot_config.symbol, f"Expected {spot_config.symbol}, got {latest.symbol}"

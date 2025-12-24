@@ -78,13 +78,13 @@ class TradingConfig:
     @classmethod
     def from_env_spot(cls, account_number: int = 1) -> "TradingConfig":
         """Create a config instance from SPOT environment variables.
-        
+
         Args:
             account_number: Which spot account to use (1 or 2)
-        
+
         Returns:
             TradingConfig configured for the specified SPOT account
-        
+
         Raises:
             ValueError: If required environment variables are not set
         """
@@ -129,10 +129,10 @@ def get_config() -> TradingConfig:
 
 def get_spot_config(account_number: int = 1) -> TradingConfig:
     """Get SPOT account configuration from environment.
-    
+
     Args:
         account_number: Which spot account to use (1 or 2)
-    
+
     Returns:
         TradingConfig configured for the specified SPOT account
     """

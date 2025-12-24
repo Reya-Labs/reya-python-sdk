@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Optional
-
 import asyncio
-import time
 
 import pytest
 
@@ -13,7 +10,6 @@ from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
-from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.config import REYA_DEX_ID
@@ -56,7 +52,7 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     symbol = "ETHRUSDPERP"
 
     # SETUP - capture sequence number BEFORE any actions
-    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
+    _ = await reya_tester.get_last_perp_execution_sequence_number()
 
     market_price = await reya_tester.get_current_price(symbol)
     limit_order_params = LimitOrderParameters(
@@ -120,7 +116,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     symbol = "ETHRUSDPERP"
 
     # SETUP - capture sequence number BEFORE any actions
-    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
+    _ = await reya_tester.get_last_perp_execution_sequence_number()
 
     market_price = await reya_tester.get_current_price(symbol)
 
@@ -345,8 +341,6 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
 @pytest.mark.asyncio
 async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """SL order triggered"""
-    symbol = "ETHRUSDPERP"
-
     await reya_tester.check_no_open_orders()
     try:
         await reya_tester.client.cancel_order(order_id="unknown_id")

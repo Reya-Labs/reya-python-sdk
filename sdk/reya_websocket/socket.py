@@ -6,7 +6,7 @@ This module provides a WebSocket client that follows the same patterns as the RE
 - Parsing failures raise exceptions (fail-fast, like REST)
 """
 
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, cast
 
 import json
 import logging
@@ -255,7 +255,7 @@ class ReyaSocket(websocket.WebSocketApp):
                 payload_type = self._get_payload_type(channel)
                 if payload_type is None:
                     raise WebSocketDataError(f"Unknown channel: {channel}")
-                return payload_type.model_validate(message)
+                return cast(WebSocketMessage, payload_type.model_validate(message))
 
             else:
                 raise WebSocketDataError(f"Unknown message type: {message_type}")

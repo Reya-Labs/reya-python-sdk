@@ -11,7 +11,6 @@ import time
 import pytest
 
 from sdk.open_api.models.order_status import OrderStatus
-from sdk.open_api.models.side import Side
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import limit_order_params_to_order, logger
@@ -43,28 +42,16 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     # Step 1: Maker places GTC buy order
     maker_price = spot_config.price(0.99)
 
-    maker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_order_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker GTC order created: {maker_order_id}")
 
     # Step 2: Taker sends IOC sell order to match
-    taker_price = maker_price  # Same price ensures within oracle deviation
+    _ = maker_price  # Same price ensures within oracle deviation
 
-    taker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.99)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
     logger.info(f"Taker IOC order sent: {taker_order_id}")
@@ -118,13 +105,7 @@ async def test_spot_ioc_no_match_cancels(spot_config: SpotTestConfig, spot_teste
     # Send IOC buy order at low price within oracle deviation (won't match any asks)
     low_price = spot_config.price(0.96)
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .ioc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).ioc().build()
 
     logger.info(f"Sending IOC buy at ${low_price:.2f} (expecting no match)...")
 
@@ -183,13 +164,7 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
     maker_price = spot_config.price(0.99)
     maker_qty = spot_config.min_qty
 
-    maker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Step 1: Maker placing GTC buy: {maker_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_order_params)
@@ -200,14 +175,7 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
     taker_price = maker_price  # Same price ensures within oracle deviation
     taker_qty = "0.002"  # Larger than maker (0.001) - will partially fill
 
-    taker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.99)
-        .qty(taker_qty)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).qty(taker_qty).ioc().build()
 
     logger.info(f"Step 2: Taker sending IOC sell: {taker_qty} @ ${taker_price:.2f}")
     taker_tester.ws_last_spot_execution = None
@@ -221,7 +189,7 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
     try:
         await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
         logger.info("✅ Maker order fully filled - execution confirmed")
-    except Exception as e:
+    except Exception:
         # Check if order is still open or was filled
         open_orders = await maker_tester.client.get_open_orders()
         maker_still_open = any(o.order_id == maker_order_id for o in open_orders)
@@ -262,13 +230,7 @@ async def test_spot_ioc_sell_full_fill(spot_config: SpotTestConfig, maker_tester
     # Maker places GTC sell order at price within oracle deviation
     maker_price = spot_config.price(1.01)
 
-    maker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.01)
-        .gtc()
-        .build()
-    )
+    maker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(1.01).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_order_params)
@@ -278,13 +240,7 @@ async def test_spot_ioc_sell_full_fill(spot_config: SpotTestConfig, maker_tester
     # Taker sends IOC buy order at same price
     taker_price = maker_price  # Same price ensures within oracle deviation
 
-    taker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(1.01)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(1.01).ioc().build()
 
     logger.info(f"Taker sending IOC buy: {spot_config.min_qty} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
@@ -308,7 +264,9 @@ async def test_spot_ioc_sell_full_fill(spot_config: SpotTestConfig, maker_tester
 @pytest.mark.ioc
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_ioc_multiple_price_level_crossing(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_ioc_multiple_price_level_crossing(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test IOC order that crosses multiple price levels.
 
@@ -331,13 +289,7 @@ async def test_spot_ioc_multiple_price_level_crossing(spot_config: SpotTestConfi
     qty_per_order = spot_config.min_qty
 
     # First order at lower price
-    order_1_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    order_1_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     logger.info(f"Maker placing GTC buy #1: {qty_per_order} @ ${price_1:.2f}")
     order_1_id = await maker_tester.create_limit_order(order_1_params)
@@ -345,13 +297,7 @@ async def test_spot_ioc_multiple_price_level_crossing(spot_config: SpotTestConfi
     logger.info(f"✅ Order #1 created: {order_1_id}")
 
     # Second order at higher price
-    order_2_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    order_2_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy #2: {qty_per_order} @ ${price_2:.2f}")
     order_2_id = await maker_tester.create_limit_order(order_2_params)
@@ -362,14 +308,7 @@ async def test_spot_ioc_multiple_price_level_crossing(spot_config: SpotTestConfi
     taker_price = price_1  # Same as lower price ensures within oracle deviation
     taker_qty = "0.002"  # Enough to fill both orders (2 x 0.001)
 
-    taker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .qty(taker_qty)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).qty(taker_qty).ioc().build()
 
     logger.info(f"Taker sending IOC sell: {taker_qty} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
@@ -412,14 +351,7 @@ async def test_spot_ioc_price_qty_validation(spot_config: SpotTestConfig, spot_t
     await spot_tester.close_active_orders(fail_if_none=False)
 
     # Test 1: Zero quantity
-    zero_qty_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .qty("0")
-        .ioc()
-        .build()
-    )
+    zero_qty_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).qty("0").ioc().build()
 
     logger.info("Sending IOC order with zero quantity...")
     try:
@@ -431,13 +363,7 @@ async def test_spot_ioc_price_qty_validation(spot_config: SpotTestConfig, spot_t
 
     # Test 2: Negative price (if supported by builder)
     try:
-        negative_price_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .price("-100")
-            .ioc()
-            .build()
-        )
+        negative_price_params = OrderBuilder.from_config(spot_config).buy().price("-100").ioc().build()
 
         logger.info("Sending IOC order with negative price...")
         order_id = await spot_tester.create_limit_order(negative_price_params)

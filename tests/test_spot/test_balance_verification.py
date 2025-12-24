@@ -26,7 +26,6 @@ from tests.test_spot.spot_config import SpotTestConfig
 logger = logging.getLogger("reya.integration_tests")
 
 
-
 async def get_account_balances(tester: ReyaTester) -> dict:
     """Get current balances for a specific account."""
     balances = await tester.client.get_account_balances()
@@ -39,7 +38,9 @@ async def get_account_balances(tester: ReyaTester) -> dict:
 @pytest.mark.balance
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_balance_update_after_buy(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_balance_update_after_buy(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test balance changes correctly after spot buy.
 
@@ -74,13 +75,7 @@ async def test_spot_balance_update_after_buy(spot_config: SpotTestConfig, maker_
     # Maker places GTC sell order
     maker_price = spot_config.price(1.04)  # High price to avoid other matches
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -90,13 +85,7 @@ async def test_spot_balance_update_after_buy(spot_config: SpotTestConfig, maker_
     # Taker buys with IOC
     taker_price = maker_price
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(1.04)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
 
     logger.info(f"Taker placing IOC buy: {spot_config.min_qty} @ ${taker_price:.2f}")
     await taker_tester.create_limit_order(taker_params)
@@ -153,7 +142,9 @@ async def test_spot_balance_update_after_buy(spot_config: SpotTestConfig, maker_
 @pytest.mark.balance
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_balance_update_after_sell(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_balance_update_after_sell(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test balance changes correctly after spot sell.
 
@@ -188,13 +179,7 @@ async def test_spot_balance_update_after_sell(spot_config: SpotTestConfig, maker
     # Maker places GTC sell order (maker has more ETH)
     maker_price = spot_config.price(1.04)  # High price to avoid other matches
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -204,13 +189,7 @@ async def test_spot_balance_update_after_sell(spot_config: SpotTestConfig, maker
     # Taker buys with IOC (taker has more RUSD)
     taker_price = maker_price
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(1.04)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
 
     logger.info(f"Taker placing IOC buy: {spot_config.min_qty} @ ${taker_price:.2f}")
     await taker_tester.create_limit_order(taker_params)
@@ -267,7 +246,9 @@ async def test_spot_balance_update_after_sell(spot_config: SpotTestConfig, maker
 @pytest.mark.balance
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_balance_maker_taker_consistency(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_balance_maker_taker_consistency(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test that maker and taker balances sum correctly (conservation of value).
 
@@ -296,26 +277,14 @@ async def test_spot_balance_maker_taker_consistency(spot_config: SpotTestConfig,
     logger.info(f"Total before: ETH={total_eth_before}, RUSD={total_rusd_before}")
 
     # Execute a trade
-    maker_price = spot_config.price(0.97)
+    _ = spot_config.price(0.97)  # maker_price - calculated for reference
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     await taker_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.05)

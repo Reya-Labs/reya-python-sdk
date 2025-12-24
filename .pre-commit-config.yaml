@@ -34,7 +34,7 @@ repos:
     hooks:
       - id: bandit
         exclude: ^sdk/async_api/|^sdk/open_api/
-        args: [--skip=B101]
+        args: ['--skip=B101,B110,B311']
   - repo: https://github.com/pylint-dev/pylint
     rev: v3.3.4
     hooks:
@@ -60,7 +60,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: poetry run mypy --config-file pyproject.toml ./ --exclude sdk/async_api
+        entry: poetry run mypy --config-file pyproject.toml ./ --exclude sdk/async_api --exclude examples
         pass_filenames: false
         language: system
         exclude: ^sdk/open_api/

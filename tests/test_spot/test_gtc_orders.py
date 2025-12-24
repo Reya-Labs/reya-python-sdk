@@ -12,7 +12,6 @@ Tests for GTC order behavior including:
 
 import asyncio
 import logging
-import uuid
 
 import pytest
 
@@ -49,13 +48,7 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     # Maker places GTC buy order at price within oracle deviation limit
     maker_price = spot_config.price(0.99)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -65,13 +58,7 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     # Taker places GTC sell order at same price (ensures within oracle deviation)
     taker_price = maker_price
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).gtc().build()
 
     logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_params)
@@ -98,7 +85,9 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
 @pytest.mark.gtc
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_gtc_partial_fill_remainder_on_book(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_gtc_partial_fill_remainder_on_book(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test GTC order partially fills, remainder added to book.
 
@@ -120,13 +109,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(spot_config: SpotTestConf
     maker_price = spot_config.price(0.99)
     maker_qty = spot_config.min_qty
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {maker_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -137,14 +120,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(spot_config: SpotTestConf
     taker_price = maker_price
     taker_qty = "0.002"  # Larger than maker (0.001) to test partial fill
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.99)
-        .qty(taker_qty)
-        .gtc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).qty(taker_qty).gtc().build()
 
     logger.info(f"Taker placing GTC sell: {taker_qty} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_params)
@@ -162,7 +138,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(spot_config: SpotTestConf
     taker_open = [o for o in open_orders if o.order_id == taker_order_id]
 
     assert len(taker_open) == 1, f"Taker order {taker_order_id} should still be on book with remainder"
-    logger.info(f"✅ Taker order partially filled, remainder on book")
+    logger.info("✅ Taker order partially filled, remainder on book")
 
     # Cleanup - cancel taker's remaining order
     await taker_tester.client.cancel_order(
@@ -196,13 +172,7 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
     # Place GTC buy order at price within oracle deviation (won't match without seller)
     order_price = spot_config.price(0.96)
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy: {spot_config.min_qty} @ ${order_price:.2f}")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -232,7 +202,9 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
     assert found_in_depth, f"Order at ${order_price:.2f} not found in L2 depth"
 
     # Cleanup
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()
 
@@ -243,7 +215,9 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
 @pytest.mark.gtc
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_gtc_price_time_priority_fifo(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_gtc_price_time_priority_fifo(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test multiple GTC orders at same price filled in FIFO order.
 
@@ -265,13 +239,7 @@ async def test_spot_gtc_price_time_priority_fifo(spot_config: SpotTestConfig, ma
     maker_price = spot_config.price(0.99)
 
     # First maker order
-    first_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    first_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing FIRST GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     first_order_id = await maker_tester.create_limit_order(first_params)
@@ -282,13 +250,7 @@ async def test_spot_gtc_price_time_priority_fifo(spot_config: SpotTestConfig, ma
     await asyncio.sleep(0.05)
 
     # Second maker order at same price
-    second_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    second_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing SECOND GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     second_order_id = await maker_tester.create_limit_order(second_params)
@@ -340,7 +302,9 @@ async def test_spot_gtc_price_time_priority_fifo(spot_config: SpotTestConfig, ma
 @pytest.mark.gtc
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_gtc_best_price_first(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_gtc_best_price_first(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test GTC order matches best prices first.
 
@@ -360,13 +324,7 @@ async def test_spot_gtc_best_price_first(spot_config: SpotTestConfig, maker_test
     # First order at lower price (within oracle deviation)
     lower_price = spot_config.price(0.96)
 
-    lower_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    lower_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Maker placing GTC buy at LOWER price: {spot_config.min_qty} @ ${lower_price:.2f}")
     lower_order_id = await maker_tester.create_limit_order(lower_params)
@@ -376,13 +334,7 @@ async def test_spot_gtc_best_price_first(spot_config: SpotTestConfig, maker_test
     # Second order at higher (better for seller) price
     higher_price = spot_config.price(0.99)
 
-    higher_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    higher_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy at HIGHER price: {spot_config.min_qty} @ ${higher_price:.2f}")
     higher_order_id = await maker_tester.create_limit_order(higher_params)
@@ -392,13 +344,7 @@ async def test_spot_gtc_best_price_first(spot_config: SpotTestConfig, maker_test
     # Taker places sell order that fills exactly one order
     taker_price = lower_price  # Same as lower price ensures within oracle deviation
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.96).gtc().build()
 
     logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_params)
@@ -483,7 +429,7 @@ async def test_spot_gtc_with_client_order_id(spot_config: SpotTestConfig, spot_t
             our_order.client_order_id == test_client_order_id
         ), f"Expected clientOrderId {test_client_order_id}, got {our_order.client_order_id}"
     else:
-        logger.info(f"Note: clientOrderId not returned in get_open_orders response")
+        logger.info("Note: clientOrderId not returned in get_open_orders response")
 
     # Cancel using both order_id and client_order_id
     # The API should prefer order_id when both are provided

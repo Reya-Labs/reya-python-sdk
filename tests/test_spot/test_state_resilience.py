@@ -15,13 +15,11 @@ import logging
 
 import pytest
 
-from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.test_spot.spot_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
-
 
 
 @pytest.mark.spot
@@ -54,13 +52,7 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     # Step 1: Place GTC order
     order_price = spot_config.price(0.96)  # Far from market
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -118,16 +110,10 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     # Step 6: Verify WebSocket receives updates for new activity
     # Place another order to trigger WebSocket activity
-    order_price_2 = spot_config.price(0.96)
-    order_params_2 = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    _ = spot_config.price(0.96)  # order_price_2 - calculated for reference
+    order_params_2 = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
-    logger.info(f"Placing second order to verify WS receives updates after reconnect...")
+    logger.info("Placing second order to verify WS receives updates after reconnect...")
     order_id_2 = await spot_tester.create_limit_order(order_params_2)
     await spot_tester.wait_for_order_creation(order_id_2)
 
@@ -138,8 +124,12 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     logger.info(f"✅ WebSocket receiving updates after reconnect: {order_id_2}")
 
     # Step 7: Cleanup - cancel both orders
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
-    await spot_tester.client.cancel_order(order_id=order_id_2, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
+    await spot_tester.client.cancel_order(
+        order_id=order_id_2, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
 
     await asyncio.sleep(0.1)
     await spot_tester.check_no_open_orders()
@@ -151,7 +141,9 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_ws_rest_consistency_after_activity(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_ws_rest_consistency_after_activity(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test that WebSocket and REST API remain consistent after multiple operations.
 
@@ -188,13 +180,7 @@ async def test_spot_ws_rest_consistency_after_activity(spot_config: SpotTestConf
 
     maker_order_ids = []
     for price in maker_prices:
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .at_price(0.97)
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
         order_id = await maker_tester.create_limit_order(order_params)
         await maker_tester.wait_for_order_creation(order_id)
@@ -216,17 +202,11 @@ async def test_spot_ws_rest_consistency_after_activity(spot_config: SpotTestConf
     logger.info(f"✅ All {len(maker_order_ids)} orders confirmed in both REST and WS")
 
     # Step 3: Execute a fill on the best price order (highest price = first to match)
-    taker_price = maker_prices[-1]  # Below best maker price
+    _ = maker_prices[-1]  # taker_price - below best maker price
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
-    logger.info(f"Taker placing IOC sell to fill one maker order...")
+    logger.info("Taker placing IOC sell to fill one maker order...")
     await taker_tester.create_limit_order(taker_params)
 
     # Wait for fill to propagate
@@ -322,17 +302,11 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     for i in range(num_orders):
         order_price = round(base_price + (i * 0.5), 2)  # 0.5 increments
 
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .price(str(order_price))
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
         order_id = await spot_tester.create_limit_order(order_params)
         order_ids.append(order_id)
-        logger.debug(f"  Created order {i+1}/{num_orders}: {order_id} @ ${order_price}")
+        logger.debug(f"  Created order {i + 1}/{num_orders}: {order_id} @ ${order_price}")
 
         # Small delay to avoid overwhelming the system
         await asyncio.sleep(0.02)
@@ -360,8 +334,10 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     logger.info(f"Cancelling {num_orders} orders rapidly...")
 
     for i, order_id in enumerate(order_ids):
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
-        logger.debug(f"  Cancelled order {i+1}/{num_orders}: {order_id}")
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
+        logger.debug(f"  Cancelled order {i + 1}/{num_orders}: {order_id}")
 
         # Small delay to avoid overwhelming the system
         await asyncio.sleep(0.02)

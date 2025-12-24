@@ -45,28 +45,16 @@ async def test_self_match_gtc_taker_sell_cancelled(spot_config: SpotTestConfig, 
     await spot_tester.close_active_orders(fail_if_none=False)
 
     maker_price = spot_config.price(0.97)
-    taker_price = maker_price  # Below maker - would cross
+    _ = maker_price  # taker_price - would cross
 
     # Place maker buy
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
     maker_order_id = await spot_tester.create_limit_order(maker_params)
     await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker buy: {maker_order_id} at ${maker_price:.2f}")
 
     # Place taker sell (same account, crossing)
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).gtc().build()
     taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
@@ -104,28 +92,16 @@ async def test_self_match_gtc_taker_buy_cancelled(spot_config: SpotTestConfig, s
     await spot_tester.close_active_orders(fail_if_none=False)
 
     maker_price = spot_config.price(0.97)
-    taker_price = maker_price  # Above maker - would cross
+    _ = maker_price  # taker_price - would cross
 
     # Place maker sell
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).gtc().build()
     maker_order_id = await spot_tester.create_limit_order(maker_params)
     await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: {maker_order_id} at ${maker_price:.2f}")
 
     # Place taker buy (same account, crossing)
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
     taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
@@ -165,28 +141,16 @@ async def test_self_match_ioc_taker_cancelled(spot_config: SpotTestConfig, spot_
     spot_tester.ws_last_spot_execution = None
 
     maker_price = spot_config.price(0.97)
-    taker_price = maker_price
+    _ = maker_price  # taker_price - calculated for reference
 
     # Place GTC maker buy
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
     maker_order_id = await spot_tester.create_limit_order(maker_params)
     await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ GTC maker buy: {maker_order_id}")
 
     # Send IOC taker sell (same account, crossing)
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     try:
         await spot_tester.create_limit_order(taker_params)
@@ -234,25 +198,13 @@ async def test_self_match_exact_price_boundary(spot_config: SpotTestConfig, spot
     exact_price = spot_config.price(0.97)
 
     # Place maker sell
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).gtc().build()
     maker_order_id = await spot_tester.create_limit_order(maker_params)
     await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell at ${exact_price:.2f}")
 
     # Place taker buy at EXACT same price
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
     taker_order_id = await spot_tester.create_limit_order(taker_params)
     await asyncio.sleep(0.1)
 
@@ -293,25 +245,13 @@ async def test_non_crossing_orders_no_self_match(spot_config: SpotTestConfig, sp
     buy_price = spot_config.price(0.99)  # 10% below
 
     # Place sell
-    sell_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.02)
-        .gtc()
-        .build()
-    )
+    sell_params = OrderBuilder.from_config(spot_config).sell().at_price(1.02).gtc().build()
     sell_order_id = await spot_tester.create_limit_order(sell_params)
     await spot_tester.wait_for_order_creation(sell_order_id)
     logger.info(f"✅ Sell at ${sell_price:.2f}")
 
     # Place buy (non-crossing)
-    buy_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    buy_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
     buy_order_id = await spot_tester.create_limit_order(buy_params)
     await spot_tester.wait_for_order_creation(buy_order_id)
     logger.info(f"✅ Buy at ${buy_price:.2f}")
@@ -326,7 +266,9 @@ async def test_non_crossing_orders_no_self_match(spot_config: SpotTestConfig, sp
 
     # Cleanup
     for order_id in [sell_order_id, buy_order_id]:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()
 
@@ -348,28 +290,16 @@ async def test_non_crossing_ioc_cancelled_no_match(spot_config: SpotTestConfig, 
     spot_tester.ws_last_spot_execution = None
 
     sell_price = spot_config.price(1.04)
-    buy_price = spot_config.price(0.96)
+    _ = spot_config.price(0.96)  # buy_price - calculated for reference
 
     # Place GTC sell
-    sell_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    sell_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
     sell_order_id = await spot_tester.create_limit_order(sell_params)
     await spot_tester.wait_for_order_creation(sell_order_id)
     logger.info(f"✅ GTC sell at ${sell_price:.2f}")
 
     # Place IOC buy (non-crossing)
-    buy_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .ioc()
-        .build()
-    )
+    buy_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).ioc().build()
 
     try:
         await spot_tester.create_limit_order(buy_params)
@@ -385,7 +315,9 @@ async def test_non_crossing_ioc_cancelled_no_match(spot_config: SpotTestConfig, 
     assert sell_order_id in open_order_ids, "GTC sell should remain"
 
     # Cleanup
-    await spot_tester.client.cancel_order(order_id=sell_order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=sell_order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()
 
@@ -416,14 +348,7 @@ async def test_self_match_partial_qty_taker_fully_cancelled(spot_config: SpotTes
     taker_qty = "0.01"  # Minimum order size
 
     # Place maker sell with large qty
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .qty(maker_qty)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).qty(maker_qty).gtc().build()
     maker_order_id = await spot_tester.create_limit_order(maker_params)
     await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: qty={maker_qty}")
@@ -483,14 +408,7 @@ async def test_self_match_larger_taker_fully_cancelled(spot_config: SpotTestConf
     taker_qty = "0.02"  # Slightly larger to test larger taker scenario
 
     # Place maker sell with smaller qty
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .qty(maker_qty)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).qty(maker_qty).gtc().build()
     maker_order_id = await spot_tester.create_limit_order(maker_params)
     await spot_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: qty={maker_qty}")
@@ -558,32 +476,20 @@ async def test_market_maker_multiple_non_crossing_levels(spot_config: SpotTestCo
     # Place 3 sell orders
     logger.info("Placing 3 sell orders at increasing prices...")
     for i, price in enumerate(sell_prices):
-        params = (
-            OrderBuilder.from_config(spot_config)
-            .sell()
-            .price(str(price))
-            .gtc()
-            .build()
-        )
+        params = OrderBuilder.from_config(spot_config).sell().price(str(price)).gtc().build()
         order_id = await spot_tester.create_limit_order(params)
         await spot_tester.wait_for_order_creation(order_id)
         sell_order_ids.append(order_id)
-        logger.info(f"  Sell {i+1}: ${price:.2f}")
+        logger.info(f"  Sell {i + 1}: ${price:.2f}")
 
     # Place 3 buy orders
     logger.info("Placing 3 buy orders at decreasing prices...")
     for i, price in enumerate(buy_prices):
-        params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .price(str(price))
-            .gtc()
-            .build()
-        )
+        params = OrderBuilder.from_config(spot_config).buy().price(str(price)).gtc().build()
         order_id = await spot_tester.create_limit_order(params)
         await spot_tester.wait_for_order_creation(order_id)
         buy_order_ids.append(order_id)
-        logger.info(f"  Buy {i+1}: ${price:.2f}")
+        logger.info(f"  Buy {i + 1}: ${price:.2f}")
 
     # Verify all 6 orders on book
     await asyncio.sleep(0.1)
@@ -598,7 +504,9 @@ async def test_market_maker_multiple_non_crossing_levels(spot_config: SpotTestCo
 
     # Cleanup
     for order_id in sell_order_ids + buy_order_ids:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
     await asyncio.sleep(0.1)
     await spot_tester.check_no_open_orders()
 
@@ -626,17 +534,11 @@ async def test_multiple_self_matches_in_sequence(spot_config: SpotTestConfig, sp
     # Place 3 maker sells at increasing prices
     for i in range(3):
         price = round(base_price * (1 + i * 0.01), 2)
-        params = (
-            OrderBuilder.from_config(spot_config)
-            .sell()
-            .price(str(price))
-            .gtc()
-            .build()
-        )
+        params = OrderBuilder.from_config(spot_config).sell().price(str(price)).gtc().build()
         order_id = await spot_tester.create_limit_order(params)
         await spot_tester.wait_for_order_creation(order_id)
         maker_order_ids.append(order_id)
-        logger.info(f"  Maker sell {i+1}: ${price:.2f}")
+        logger.info(f"  Maker sell {i + 1}: ${price:.2f}")
 
     # Place taker buy that would cross all makers
     taker_price = round(base_price * 1.10, 2)  # Above all makers
@@ -666,7 +568,9 @@ async def test_multiple_self_matches_in_sequence(spot_config: SpotTestConfig, sp
 
     # Cleanup
     for order_id in maker_order_ids:
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
     await asyncio.sleep(0.1)
     await spot_tester.check_no_open_orders()
 
@@ -679,7 +583,9 @@ async def test_multiple_self_matches_in_sequence(spot_config: SpotTestConfig, sp
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_partial_fill_then_self_match_cancels_remainder(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_partial_fill_then_self_match_cancels_remainder(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Taker partially fills against another account, then hits self-match.
 
@@ -712,27 +618,13 @@ async def test_partial_fill_then_self_match_cancels_remainder(spot_config: SpotT
     taker_qty = str(float(spot_config.min_qty) * 2)  # 2x to ensure partial fill + remainder (must be valid qty step)
 
     # Step 1: Account 1 (maker_tester) places BUY @ 100 (best bid)
-    account1_buy_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .qty(fill_qty)
-        .gtc()
-        .build()
-    )
+    account1_buy_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).qty(fill_qty).gtc().build()
     account1_buy_id = await maker_tester.create_limit_order(account1_buy_params)
     await maker_tester.wait_for_order_creation(account1_buy_id)
     logger.info(f"✅ Account 1 BUY: {account1_buy_id} @ ${account1_buy_price:.2f}")
 
     # Step 2: Account 2 (taker_tester) places BUY @ 99 (second best bid)
-    account2_buy_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .qty(fill_qty)
-        .gtc()
-        .build()
-    )
+    account2_buy_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).qty(fill_qty).gtc().build()
     account2_buy_id = await taker_tester.create_limit_order(account2_buy_params)
     await taker_tester.wait_for_order_creation(account2_buy_id)
     logger.info(f"✅ Account 2 BUY: {account2_buy_id} @ ${account2_buy_price:.2f}")
@@ -745,14 +637,7 @@ async def test_partial_fill_then_self_match_cancels_remainder(spot_config: SpotT
     logger.info("✅ Both BUY orders on book")
 
     # Step 3: Account 2 sends SELL @ 99 with qty = 1.5x (will partially fill then self-match)
-    account2_sell_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .qty(taker_qty)
-        .gtc()
-        .build()
-    )
+    account2_sell_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).qty(taker_qty).gtc().build()
     logger.info(f"Account 2 sending SELL @ ${account2_sell_price:.2f}, qty={taker_qty}...")
     account2_sell_id = await taker_tester.create_limit_order(account2_sell_params)
 
@@ -774,7 +659,7 @@ async def test_partial_fill_then_self_match_cancels_remainder(spot_config: SpotT
     assert (
         account2_sell_id not in taker_order_ids
     ), f"Account 2's SELL {account2_sell_id} should be CANCELLED after self-match, not on book"
-    logger.info(f"✅ Account 2's SELL cancelled after partial fill (self-match prevention)")
+    logger.info("✅ Account 2's SELL cancelled after partial fill (self-match prevention)")
 
     # Step 6: Verify Account 2's BUY @ 99 is STILL on book (untouched by self-match)
     assert (
@@ -807,7 +692,9 @@ async def test_partial_fill_then_self_match_cancels_remainder(spot_config: SpotT
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_cross_account_match_works(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_cross_account_match_works(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Sanity check: matching DOES work between different accounts.
 
@@ -824,25 +711,13 @@ async def test_cross_account_match_works(spot_config: SpotTestConfig, maker_test
     order_price = spot_config.price(1.04)
 
     # Maker places GTC sell
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
     maker_order_id = await maker_tester.create_limit_order(maker_params)
     await maker_tester.wait_for_order_creation(maker_order_id)
     logger.info(f"✅ Maker sell: {maker_order_id}")
 
     # Taker sends IOC buy (different account)
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .price(str(round(order_price * 1.01, 2)))
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).buy().price(str(round(order_price * 1.01, 2))).ioc().build()
     taker_order_id = await taker_tester.create_limit_order(taker_params)
 
     # Wait for execution (strict matching on order_id and all fields)
@@ -861,7 +736,9 @@ async def test_cross_account_match_works(spot_config: SpotTestConfig, maker_test
 @pytest.mark.spot
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_non_crossing_orders_can_match_other_accounts(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_non_crossing_orders_can_match_other_accounts(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Non-crossing orders from same account can still match with other accounts.
 
@@ -878,28 +755,16 @@ async def test_non_crossing_orders_can_match_other_accounts(spot_config: SpotTes
 
     account1_sell_price = spot_config.price(1.04)
     account1_buy_price = spot_config.price(0.97)
-    account2_sell_price = spot_config.price(0.96)
+    _ = spot_config.price(0.96)  # account2_sell_price - calculated for reference
 
     # Account 1 places sell at high price
-    sell_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    sell_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
     account1_sell_id = await maker_tester.create_limit_order(sell_params)
     await maker_tester.wait_for_order_creation(account1_sell_id)
     logger.info(f"✅ Account 1 sell: ${account1_sell_price:.2f}")
 
     # Account 1 places buy at low price (non-crossing)
-    buy_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    buy_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
     account1_buy_id = await maker_tester.create_limit_order(buy_params)
     await maker_tester.wait_for_order_creation(account1_buy_id)
     logger.info(f"✅ Account 1 buy: ${account1_buy_price:.2f}")
@@ -912,13 +777,7 @@ async def test_non_crossing_orders_can_match_other_accounts(spot_config: SpotTes
     logger.info("✅ Both Account 1 orders on book")
 
     # Account 2 places sell that crosses Account 1's buy
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.96)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.96).ioc().build()
     taker_order_id = await taker_tester.create_limit_order(taker_params)
 
     # Wait for execution (strict matching on order_id and all fields)

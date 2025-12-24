@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 
 from sdk.async_api.depth import Depth
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
+from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_websocket import ReyaSocket
 
 from .checks import Checks
@@ -63,7 +63,7 @@ class ReyaTester:
     def __init__(self, spot_account_number: Optional[int] = None):
         """
         Initialize ReyaTester with specified account configuration.
-        
+
         Args:
             spot_account_number: Optional spot account to use (1 or 2) for spot tests.
                                 If None, uses default PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1.
@@ -71,7 +71,7 @@ class ReyaTester:
                                 If 2, uses SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2.
         """
         load_dotenv()
-        
+
         if spot_account_number is None:
             # Default - use standard config (PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1)
             self.client = ReyaTradingClient()
@@ -80,7 +80,7 @@ class ReyaTester:
             self.client = self._create_client_for_spot_account(spot_account_number)
         else:
             raise ValueError(f"Invalid spot_account_number: {spot_account_number}. Must be None, 1, or 2.")
-        
+
         # Store account properties (may be None if spot account not configured)
         self.owner_wallet_address: Optional[str] = self.client.owner_wallet_address if self.client else None
         self.account_id: Optional[int] = self.client.config.account_id if self.client else None
@@ -96,25 +96,31 @@ class ReyaTester:
         self.positions = PositionOperations(self)
         self.wait = Waiters(self)
         self.check = Checks(self)
-    
+
     def _create_client_for_spot_account(self, spot_account_number: int) -> ReyaTradingClient:
         """Create a ReyaTradingClient configured for a spot account."""
         account_id = os.environ.get(f"SPOT_ACCOUNT_ID_{spot_account_number}")
         private_key = os.environ.get(f"SPOT_PRIVATE_KEY_{spot_account_number}")
         wallet_address = os.environ.get(f"SPOT_WALLET_ADDRESS_{spot_account_number}")
-        
+
         if not all([account_id, private_key, wallet_address]):
-            logger.warning(f"Spot Account {spot_account_number} not fully configured. Missing one of: SPOT_ACCOUNT_ID_{spot_account_number}, SPOT_PRIVATE_KEY_{spot_account_number}, SPOT_WALLET_ADDRESS_{spot_account_number}")
+            logger.warning(
+                f"Spot Account {spot_account_number} not fully configured. Missing one of: SPOT_ACCOUNT_ID_{spot_account_number}, SPOT_PRIVATE_KEY_{spot_account_number}, SPOT_WALLET_ADDRESS_{spot_account_number}"
+            )
             # Return a client with None values - tests will skip if needed
             return ReyaTradingClient()
-        
+
         # Create client and override its config for the spot account
         client = ReyaTradingClient()
-        
+
         # Get base config values
         base_config = client._config
-        
+
         # Create new config with spot account values
+        if wallet_address is None:
+            raise ValueError("wallet_address is required for spot account")
+        if account_id is None:
+            raise ValueError("account_id is required for spot account")
         spot_config = TradingConfig(
             api_url=base_config.api_url,
             chain_id=base_config.chain_id,
@@ -122,11 +128,11 @@ class ReyaTester:
             private_key=private_key,
             account_id=int(account_id),
         )
-        
+
         # Replace client config and signature generator
         client._config = spot_config
         client._signature_generator = SignatureGenerator(spot_config)
-        
+
         return client
 
     async def setup(self) -> None:
@@ -272,7 +278,7 @@ class ReyaTester:
         """Backward compatibility."""
         return self.ws.market_spot_executions
 
-    def clear_market_spot_executions(self, symbol: str = None):
+    def clear_market_spot_executions(self, symbol: Optional[str] = None):
         self.ws.clear_market_spot_executions(symbol)
 
     async def get_market_definition(self, symbol: str):
@@ -359,10 +365,10 @@ class ReyaTester:
     def get_next_nonce(self) -> int:
         """
         Get the next nonce from the SDK's nonce tracking mechanism.
-        
+
         This is useful for validation tests that need to manually construct
         API requests while keeping the nonce counter in sync.
-        
+
         Returns:
             The next nonce value to use for API requests.
         """

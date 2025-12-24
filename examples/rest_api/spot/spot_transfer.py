@@ -183,7 +183,7 @@ async def execute_spot_transfer(
                 symbol=symbol,
                 account_id=from_account_id,
             )
-        except Exception:
+        except Exception:  # noqa: B110
             pass  # Order may have been filled in the meantime
     else:
         order_fully_matched = True
@@ -199,8 +199,8 @@ async def execute_spot_transfer(
                 if not tx_hash:
                     tx_hash = execution.additional_properties.get("txHash")
                 break
-    except Exception:
-        pass
+    except Exception:  # noqa: B110
+        pass  # Execution lookup may fail, but transfer still succeeded
 
     return order_fully_matched, tx_hash
 
@@ -263,7 +263,7 @@ async def balance_accounts_mode() -> None:
             total_eth = eth_1 + eth_2
             total_rusd = rusd_1 + rusd_2
             target_eth = total_eth / 2
-            target_rusd = total_rusd / 2
+            _ = total_rusd / 2  # target_rusd - calculated but not used directly
 
             logger.info("🎯 TARGET ETH BALANCE")
             logger.info(f"  Each account: {target_eth} ETH")
@@ -335,7 +335,9 @@ async def balance_accounts_mode() -> None:
 async def main():
     """Main entry point for the spot transfer script."""
     parser = argparse.ArgumentParser(description="Transfer spot assets between accounts via order matching")
-    parser.add_argument("--balance-accounts", action="store_true", help="Balance ETH and RUSD between SPOT_1 and SPOT_2 accounts")
+    parser.add_argument(
+        "--balance-accounts", action="store_true", help="Balance ETH and RUSD between SPOT_1 and SPOT_2 accounts"
+    )
     parser.add_argument("--from-account", type=int, help="Account ID to transfer FROM (sender)")
     parser.add_argument("--to-account", type=int, help="Account ID to transfer TO (receiver)")
     parser.add_argument("--asset", type=str, choices=["ETH", "WETH"], help="Asset to transfer")

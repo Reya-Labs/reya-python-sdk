@@ -91,7 +91,7 @@ python_version = "3.10"
 pretty = true
 show_traceback = true
 color_output = true
-exclude = ["sdk/async_api/"]
+exclude = ["sdk/async_api/", "examples/"]
 
 allow_redefinition = false
 check_untyped_defs = true
@@ -115,6 +115,10 @@ warn_unused_ignores = true
 # Ignore specific modules with type issues
 [[tool.mypy.overrides]]
 module = "sdk.open_api.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
 ignore_errors = true
 
 [tool.pylint.'MESSAGES CONTROL']

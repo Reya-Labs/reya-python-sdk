@@ -1,12 +1,11 @@
 """Position operations for ReyaTester."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import asyncio
 import logging
 import time
 
-from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.config import REYA_DEX_ID
@@ -107,7 +106,10 @@ class PositionOperations:
         )
         await self._t.orders.create_limit(limit_order_params)
 
-        expected_order = limit_order_params_to_order(limit_order_params, self._t.account_id)
+        account_id = self._t.account_id
+        if account_id is None:
+            raise ValueError("account_id is required for position setup")
+        expected_order = limit_order_params_to_order(limit_order_params, account_id)
         await self._t.wait.for_order_execution(expected_order)
         await self._t.check.no_open_orders()
 
@@ -117,7 +119,7 @@ class PositionOperations:
         await self._t.check.position(
             symbol=symbol,
             expected_exchange_id=REYA_DEX_ID,
-            expected_account_id=self._t.account_id,
+            expected_account_id=account_id,
             expected_qty=qty,
             expected_side=expected_side,
         )
@@ -142,7 +144,10 @@ class PositionOperations:
         )
         await self._t.orders.create_limit(close_order_params)
 
-        expected_order = limit_order_params_to_order(close_order_params, self._t.account_id)
+        account_id = self._t.account_id
+        if account_id is None:
+            raise ValueError("account_id is required for position close")
+        expected_order = limit_order_params_to_order(close_order_params, account_id)
         execution = await self._t.wait.for_closing_order_execution(expected_order)
         await self._t.check.order_execution(execution, expected_order, qty)
         await self._t.check.position_not_open(symbol)
@@ -165,7 +170,10 @@ class PositionOperations:
         )
         await self._t.orders.create_limit(flip_order_params)
 
-        expected_order = limit_order_params_to_order(flip_order_params, self._t.account_id)
+        account_id = self._t.account_id
+        if account_id is None:
+            raise ValueError("account_id is required for position flip")
+        expected_order = limit_order_params_to_order(flip_order_params, account_id)
         execution = await self._t.wait.for_order_execution(expected_order)
         await self._t.check.order_execution(execution, expected_order, flip_qty)
 
@@ -177,7 +185,7 @@ class PositionOperations:
         await self._t.check.position(
             symbol=symbol,
             expected_exchange_id=REYA_DEX_ID,
-            expected_account_id=self._t.account_id,
+            expected_account_id=account_id,
             expected_qty=remaining_qty,
             expected_side=expected_side,
         )

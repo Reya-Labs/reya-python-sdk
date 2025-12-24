@@ -3,12 +3,13 @@
 Uses unified EventStore and ExecutionMatcher for consistent state tracking.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 import asyncio
 import logging
 import time
 
+from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
@@ -45,9 +46,7 @@ class Waiters:
 
             # Search through all perp executions using EventStore.find()
             if ws_trade is None:
-                ws_trade = self._t.ws.perp_executions.find(
-                    lambda e: ExecutionMatcher.match_perp(e, expected_order)
-                )
+                ws_trade = self._t.ws.perp_executions.find(lambda e: ExecutionMatcher.match_perp(e, expected_order))
                 if ws_trade:
                     elapsed_time = time.time() - start_time
                     logger.info(f" ✅ Trade confirmed via WS: {ws_trade.sequence_number} (took {elapsed_time:.2f}s)")
@@ -65,7 +64,11 @@ class Waiters:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Position confirmed via WS: {expected_order.symbol} (took {elapsed_time:.2f}s)")
 
-            if rest_trade is None and ExecutionMatcher.match_perp(last_trade, expected_order):
+            if (
+                rest_trade is None
+                and last_trade is not None
+                and ExecutionMatcher.match_perp(last_trade, expected_order)
+            ):
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
                 rest_trade = last_trade
@@ -131,7 +134,11 @@ class Waiters:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Position confirmed via WS: {expected_order.symbol} (took {elapsed_time:.2f}s)")
 
-            if rest_trade is None and ExecutionMatcher.match_perp(last_trade, expected_order, expected_qty):
+            if (
+                rest_trade is None
+                and last_trade is not None
+                and ExecutionMatcher.match_perp(last_trade, expected_order, expected_qty)
+            ):
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
                 rest_trade = last_trade
@@ -199,8 +206,11 @@ class Waiters:
                         ws_execution = ws_exec  # Still use it, but warn
 
             if rest_execution is None and ws_execution is not None:
+                wallet_address = self._t.owner_wallet_address
+                if wallet_address is None:
+                    raise ValueError("owner_wallet_address is required for spot execution lookup")
                 executions_list: SpotExecutionList = await self._t.client.wallet.get_wallet_spot_executions(
-                    address=self._t.owner_wallet_address
+                    address=wallet_address
                 )
                 for execution in executions_list.data:
                     if str(execution.order_id) == str(order_id):
@@ -264,7 +274,7 @@ class Waiters:
 
     async def for_order_creation(
         self, order_id: str, expected_order: Optional[Order] = None, timeout: int = 10
-    ) -> Order:
+    ) -> Union[Order, AsyncOrder]:
         """Wait for order creation confirmation via REST and WebSocket.
 
         Args:

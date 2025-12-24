@@ -17,7 +17,6 @@ from tests.helpers.reya_tester import limit_order_params_to_order, logger
 from tests.test_spot.spot_config import SpotTestConfig
 
 
-
 @pytest.mark.spot
 @pytest.mark.cancel
 @pytest.mark.asyncio
@@ -36,13 +35,7 @@ async def test_spot_order_cancellation(spot_config: SpotTestConfig, spot_tester:
     # Place GTC order far from reference (won't fill)
     buy_price = spot_config.price(0.96)  # Far below reference
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy order at ${buy_price:.2f} (far from market)...")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -56,7 +49,9 @@ async def test_spot_order_cancellation(spot_config: SpotTestConfig, spot_tester:
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
 
     # Wait for cancellation confirmation
     cancelled_order_id = await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
@@ -95,21 +90,15 @@ async def test_spot_mass_cancel(spot_config: SpotTestConfig, spot_tester: ReyaTe
         price_factor = 0.96 + (i * 0.005)
         buy_price = round(spot_config.oracle_price * price_factor, 2)
 
-        order_params = (
-            OrderBuilder.from_config(spot_config)
-            .buy()
-            .price(str(buy_price))
-            .gtc()
-            .build()
-        )
+        order_params = OrderBuilder.from_config(spot_config).buy().price(str(buy_price)).gtc().build()
 
-        logger.info(f"Creating order {i+1}/{num_orders} at ${buy_price:.2f}")
+        logger.info(f"Creating order {i + 1}/{num_orders} at ${buy_price:.2f}")
         order_id = await spot_tester.create_limit_order(order_params)
         order_ids.append(order_id)
 
         # Wait for order creation
         await spot_tester.wait_for_order_creation(order_id)
-        logger.info(f"✅ Order {i+1} created: {order_id}")
+        logger.info(f"✅ Order {i + 1} created: {order_id}")
 
     logger.info(f"\n✅ All {num_orders} orders created successfully")
 
@@ -187,7 +176,9 @@ async def test_spot_cancel_nonexistent_order(spot_config: SpotTestConfig, spot_t
 @pytest.mark.cancel
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_cancel_already_filled_order(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_cancel_already_filled_order(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test cancelling an order that was already filled.
 
@@ -207,13 +198,7 @@ async def test_spot_cancel_already_filled_order(spot_config: SpotTestConfig, mak
     # Maker places GTC sell order (maker has more ETH)
     maker_price = spot_config.price(1.04)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(1.04)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -221,17 +206,11 @@ async def test_spot_cancel_already_filled_order(spot_config: SpotTestConfig, mak
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker buys with IOC (taker has more RUSD)
-    taker_price = maker_price
+    _ = maker_price  # taker_price - calculated for reference
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(1.04)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
 
-    logger.info(f"Taker placing IOC buy to fill maker order...")
+    logger.info("Taker placing IOC buy to fill maker order...")
     await taker_tester.create_limit_order(taker_params)
 
     # Wait for fill
@@ -358,7 +337,9 @@ async def test_spot_cancel_by_client_order_id(spot_config: SpotTestConfig, spot_
     except TypeError:
         # If client_order_id is not supported, fall back to order_id
         logger.info("clientOrderId not supported in cancel, using order_id")
-        await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+        await spot_tester.client.cancel_order(
+            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
 
     # Wait for cancellation
     await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)

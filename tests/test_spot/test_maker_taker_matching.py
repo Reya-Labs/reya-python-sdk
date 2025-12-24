@@ -12,7 +12,6 @@ import pytest
 
 from sdk.async_api.depth import Depth
 from sdk.open_api.models.order_status import OrderStatus
-from sdk.open_api.models.time_in_force import TimeInForce
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import limit_order_params_to_order, logger
@@ -23,7 +22,9 @@ from tests.test_spot.spot_config import SpotTestConfig
 @pytest.mark.maker_taker
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_spot_maker_taker_matching(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_maker_taker_matching(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     End-to-end test for spot trading using TWO separate accounts.
 
@@ -59,13 +60,7 @@ async def test_spot_maker_taker_matching(spot_config: SpotTestConfig, maker_test
     logger.info("\n📋 Step 1: Placing maker order (GTC buy)...")
     maker_price = spot_config.price(0.99)
 
-    maker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.99)
-        .gtc()
-        .build()
-    )
+    maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     maker_order_id = await maker_tester.create_limit_order(maker_order_params)
     logger.info(f"Created maker order with ID: {maker_order_id} at price ${maker_price:.2f}")
@@ -110,13 +105,7 @@ async def test_spot_maker_taker_matching(spot_config: SpotTestConfig, maker_test
     maker_tester.clear_balance_updates()
     taker_tester.clear_balance_updates()
 
-    taker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.99)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).ioc().build()
 
     taker_order_id = await taker_tester.create_limit_order(taker_order_params)
     logger.info(f"Created taker order with ID: {taker_order_id} at price ${taker_price:.2f}")

@@ -26,7 +26,6 @@ from tests.test_spot.spot_config import SpotTestConfig
 logger = logging.getLogger("reya.integration_tests")
 
 
-
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
@@ -52,13 +51,7 @@ async def test_spot_ws_order_changes_on_create(spot_config: SpotTestConfig, spot
     # Place GTC order
     order_price = spot_config.price(0.96)
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy: {spot_config.min_qty} @ ${order_price:.2f}")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -74,7 +67,9 @@ async def test_spot_ws_order_changes_on_create(spot_config: SpotTestConfig, spot
     )
 
     # Cleanup
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
     await asyncio.sleep(0.05)
     await spot_tester.check_no_open_orders()
 
@@ -85,7 +80,9 @@ async def test_spot_ws_order_changes_on_create(spot_config: SpotTestConfig, spot
 @pytest.mark.websocket
 @pytest.mark.maker_taker
 @pytest.mark.asyncio
-async def test_spot_ws_order_changes_on_fill(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
+async def test_spot_ws_order_changes_on_fill(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
     """
     Test WebSocket orderChanges event received on order fill.
 
@@ -107,13 +104,7 @@ async def test_spot_ws_order_changes_on_fill(spot_config: SpotTestConfig, maker_
     # Maker places GTC buy order
     maker_price = spot_config.price(0.97)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -121,17 +112,11 @@ async def test_spot_ws_order_changes_on_fill(spot_config: SpotTestConfig, maker_
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker fills the order
-    taker_price = maker_price
+    _ = maker_price  # taker_price - calculated for reference
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
-    logger.info(f"Taker placing IOC sell to fill maker order...")
+    logger.info("Taker placing IOC sell to fill maker order...")
     await taker_tester.create_limit_order(taker_params)
 
     # Wait for fill
@@ -174,13 +159,7 @@ async def test_spot_ws_order_changes_on_cancel(spot_config: SpotTestConfig, spot
     # Place GTC order
     order_price = spot_config.price(0.96)
 
-    order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.96)
-        .gtc()
-        .build()
-    )
+    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy: {spot_config.min_qty} @ ${order_price:.2f}")
     order_id = await spot_tester.create_limit_order(order_params)
@@ -192,7 +171,9 @@ async def test_spot_ws_order_changes_on_cancel(spot_config: SpotTestConfig, spot
 
     # Cancel the order
     logger.info("Cancelling order...")
-    await spot_tester.client.cancel_order(order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id)
+    await spot_tester.client.cancel_order(
+        order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+    )
 
     # Wait for cancellation
     await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED, timeout=5)
@@ -236,13 +217,7 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
     # Maker places GTC buy order
     maker_price = spot_config.price(0.97)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -252,13 +227,7 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
     # Taker fills with IOC sell
     taker_price = maker_price
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     logger.info(f"Taker placing IOC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
     taker_order_id = await taker_tester.create_limit_order(taker_params)
@@ -310,13 +279,7 @@ async def test_spot_ws_balance_updates(spot_config: SpotTestConfig, maker_tester
     # Maker places GTC buy order (buying ETH with RUSD)
     maker_price = spot_config.price(0.97)
 
-    maker_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .at_price(0.97)
-        .gtc()
-        .build()
-    )
+    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
     maker_order_id = await maker_tester.create_limit_order(maker_params)
@@ -326,13 +289,7 @@ async def test_spot_ws_balance_updates(spot_config: SpotTestConfig, maker_tester
     # Taker fills with IOC sell (selling ETH for RUSD)
     taker_price = maker_price
 
-    taker_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .at_price(0.97)
-        .ioc()
-        .build()
-    )
+    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     logger.info(f"Taker placing IOC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
     await taker_tester.create_limit_order(taker_params)

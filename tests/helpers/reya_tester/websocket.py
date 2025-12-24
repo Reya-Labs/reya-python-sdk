@@ -47,9 +47,7 @@ class WebSocketState:
         # Unified state tracking using EventStore
         # Executions: list-based (search by predicate)
         self.perp_executions: EventStore[AsyncPerpExecution] = EventStore()
-        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(
-            key_fn=lambda x: str(x.order_id)
-        )
+        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.order_id))
         self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
 
         # Keyed stores: direct lookup by key
@@ -218,7 +216,9 @@ class WebSocketState:
         if "depth" in message.channel and message.contents:
             depth_data = Depth.model_validate(message.contents)
             self.depth[depth_data.symbol] = depth_data
-            logger.info(f"Stored depth snapshot for {depth_data.symbol}: {len(depth_data.bids)} bids, {len(depth_data.asks)} asks")
+            logger.info(
+                f"Stored depth snapshot for {depth_data.symbol}: {len(depth_data.bids)} bids, {len(depth_data.asks)} asks"
+            )
 
         # Handle initial snapshot for market spot executions channel
         if "/market/" in message.channel and "spotExecutions" in message.channel and message.contents:

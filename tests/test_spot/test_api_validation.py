@@ -620,7 +620,9 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
     # Request 10% more than we can afford
     exceeding_qty = str((max_qty_at_price * Decimal("1.1")).quantize(Decimal("0.01")))
 
-    order_params = OrderBuilder().symbol(spot_config.symbol).buy().price(str(order_price)).qty(exceeding_qty).ioc().build()
+    order_params = (
+        OrderBuilder().symbol(spot_config.symbol).buy().price(str(order_price)).qty(exceeding_qty).ioc().build()
+    )
 
     required_rusd = Decimal(exceeding_qty) * order_price
     logger.info(f"Sending IOC buy for {exceeding_qty} ETH @ ${order_price}")
@@ -812,7 +814,9 @@ async def test_spot_order_price_not_tick_multiple(spot_config: SpotTestConfig, s
     # Most markets have tick size like 0.01, so 0.001 precision would be invalid
     non_tick_price = "250.123456789"
 
-    order_params = OrderBuilder().symbol(spot_config.symbol).buy().price(non_tick_price).qty(spot_config.min_qty).gtc().build()
+    order_params = (
+        OrderBuilder().symbol(spot_config.symbol).buy().price(non_tick_price).qty(spot_config.min_qty).gtc().build()
+    )
 
     logger.info(f"Sending order with non-tick-multiple price: {non_tick_price}")
 
@@ -1886,7 +1890,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
             url = f"{spot_tester.client.config.api_url}/v2/order"
             async with session.post(url, json=order_dict) as resp:
                 if resp.status == 200:
-                    pytest.fail(f"Order with invalid timeInForce should have been rejected")
+                    pytest.fail("Order with invalid timeInForce should have been rejected")
                 response_text = await resp.text()
                 assert (
                     "timeInForce" in response_text.lower() or resp.status == 400
@@ -1962,7 +1966,7 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
             url = f"{spot_tester.client.config.api_url}/v2/order"
             async with session.post(url, json=order_dict) as resp:
                 if resp.status == 200:
-                    pytest.fail(f"Order without expiresAfter should have been rejected")
+                    pytest.fail("Order without expiresAfter should have been rejected")
                 response_text = await resp.text()
                 assert (
                     "expiresAfter" in response_text.lower() or "expires" in response_text.lower() or resp.status == 400

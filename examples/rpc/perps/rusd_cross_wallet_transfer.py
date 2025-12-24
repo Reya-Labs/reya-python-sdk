@@ -17,9 +17,8 @@ Requirements:
 import os
 
 from dotenv import load_dotenv
-from web3 import Web3
 
-from sdk.reya_rpc import DepositParams, WithdrawParams, deposit, get_config, withdraw
+from sdk.reya_rpc import WithdrawParams, get_config, withdraw
 
 
 def main():
@@ -99,8 +98,8 @@ def main():
     private_key_2 = os.environ.get("PERP_PRIVATE_KEY_2")
     if not private_key_2:
         print("  ❌ PERP_PRIVATE_KEY_2 not set in .env!")
-        print(f"  Please add: PERP_PRIVATE_KEY_2=<wallet_b_private_key>")
-        print(f"  Then run the deposit manually or re-run this script.")
+        print("  Please add: PERP_PRIVATE_KEY_2=<wallet_b_private_key>")
+        print("  Then run the deposit manually or re-run this script.")
         return
 
     # Create config for Wallet B

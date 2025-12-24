@@ -4,7 +4,9 @@ This module provides a unified, type-safe storage pattern for all execution
 and event types (perp, spot, orders, positions, balances).
 """
 
-from typing import Callable, Generic, Iterator, KeysView, Optional, TypeVar, Union, overload
+from typing import Callable, Generic, Optional, TypeVar, Union, overload
+
+from collections.abc import Iterator, KeysView
 
 T = TypeVar("T")
 
@@ -151,13 +153,13 @@ class EventStore(Generic[T]):
         return self._by_key.keys()
 
     @overload
-    def __getitem__(self, key: int) -> T: ...
+    def __getitem__(self, key: int) -> T: ...  # noqa: E704
 
     @overload
-    def __getitem__(self, key: slice) -> list[T]: ...
+    def __getitem__(self, key: slice) -> list[T]: ...  # noqa: E704
 
     @overload
-    def __getitem__(self, key: str) -> T: ...
+    def __getitem__(self, key: str) -> T: ...  # noqa: E704
 
     def __getitem__(self, key: Union[int, slice, str]) -> Union[T, list[T]]:
         """Get item by index, slice, or key.
