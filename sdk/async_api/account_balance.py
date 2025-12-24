@@ -6,7 +6,7 @@ class AccountBalance(BaseModel):
   account_id: int = Field(alias='''accountId''')
   asset: str = Field()
   real_balance: str = Field(alias='''realBalance''')
-  balance_deprecated: str = Field(alias='''balance_DEPRECATED''')
+  balance_deprecated: str = Field(alias='''balanceDEPRECATED''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -33,7 +33,7 @@ class AccountBalance(BaseModel):
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['accountId', 'asset', 'realBalance', 'balance_DEPRECATED', 'additionalProperties']
+    known_json_properties = ['accountId', 'asset', 'realBalance', 'balanceDEPRECATED', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
