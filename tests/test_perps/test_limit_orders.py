@@ -229,6 +229,17 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
             },
         },
         {
+            "name": "Invalid is_buy",
+            "params": {
+                "symbol": symbol,
+                "is_buy": "invalid",
+                "limit_px": "100",
+                "qty": "0.01",
+                "time_in_force": TimeInForce.GTC,
+                "reduce_only": False,
+            },
+        },
+        {
             "name": "Missing qty",
             "params": {
                 "symbol": symbol,
@@ -305,12 +316,12 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
             # Build params dict - use values from test case, no defaults for required fields
             params: dict = test_case["params"]  # type: ignore[assignment]
             order_params_test = LimitOrderParameters(
-                symbol=str(params["symbol"]),
-                is_buy=bool(params["is_buy"]),
-                limit_px=str(params["limit_px"]),
-                qty=str(params["qty"]),
+                symbol=params["symbol"],
+                is_buy=params["is_buy"],
+                limit_px=params["limit_px"],
+                qty=params["qty"],
                 time_in_force=params["time_in_force"],
-                reduce_only=params.get("reduce_only"),  # Optional field, can have default
+                reduce_only=params.get("reduce_only"),
             )
             await reya_tester.create_limit_order(order_params_test)
             assert False, f"{test_case['name']} should have failed"
