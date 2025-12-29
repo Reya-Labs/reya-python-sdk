@@ -8,6 +8,7 @@ import logging
 import pytest
 
 from sdk.async_api.order import Order as AsyncOrder
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.execution_type import ExecutionType
 from sdk.open_api.models.order import Order
@@ -84,7 +85,7 @@ class Checks:
                 )
                 logger.warning(f"Order {order.order_id} exists in matching engine, waiting for cancellation...")
                 legitimate_orders.append(order)
-            except Exception as e:
+            except ApiException as e:
                 if "Missing order" in str(e):
                     logger.info(f"Order {order.order_id} is stale (doesn't exist in matching engine), ignoring")
                 else:
@@ -105,7 +106,7 @@ class Checks:
                 await self._t.client.cancel_order(
                     order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
                 )
-            except Exception as e:
+            except ApiException as e:
                 if "Missing order" not in str(e):
                     remaining_legitimate.append(order)
 

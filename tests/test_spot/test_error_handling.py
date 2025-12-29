@@ -15,6 +15,7 @@ import logging
 
 import pytest
 
+from sdk.open_api.exceptions import ApiException
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
 from tests.test_spot.spot_config import SpotTestConfig
@@ -61,7 +62,7 @@ async def test_spot_invalid_symbol(spot_config: SpotTestConfig, spot_tester: Rey
         await spot_tester.client.cancel_order(
             order_id=order_id, symbol=invalid_symbol, account_id=spot_tester.account_id
         )
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
@@ -94,7 +95,7 @@ async def test_spot_zero_quantity(spot_config: SpotTestConfig, spot_tester: Reya
     try:
         order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
@@ -127,7 +128,7 @@ async def test_spot_negative_price(spot_config: SpotTestConfig, spot_tester: Rey
     try:
         order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
@@ -170,7 +171,7 @@ async def test_spot_very_small_quantity(spot_config: SpotTestConfig, spot_tester
             order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
         )
         await asyncio.sleep(0.05)
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
@@ -213,7 +214,7 @@ async def test_spot_very_large_quantity(spot_config: SpotTestConfig, spot_tester
             order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
         )
         await asyncio.sleep(0.05)
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
@@ -254,7 +255,7 @@ async def test_spot_extreme_price(spot_config: SpotTestConfig, spot_tester: Reya
             order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
         )
         await asyncio.sleep(0.05)
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 

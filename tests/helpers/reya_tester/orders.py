@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional
 import asyncio
 import logging
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.time_in_force import TimeInForce
@@ -94,9 +95,9 @@ class OrderOperations:
                                 order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
                             )
                             cancelled_count += 1
-                        except Exception as e:
+                        except ApiException as e:
                             logger.warning(f"Failed to cancel order {order.order_id}: {e}")
-            except Exception as e:
+            except ApiException as e:
                 logger.warning(f"Failed to mass cancel orders for {symbol}: {e}")
                 # Fall back to individual cancellation
                 for order in orders:
@@ -105,7 +106,7 @@ class OrderOperations:
                             order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
                         )
                         cancelled_count += 1
-                    except Exception as e2:
+                    except ApiException as e2:
                         logger.warning(f"Failed to cancel order {order.order_id}: {e2}")
 
         if fail_if_none and cancelled_count == 0:

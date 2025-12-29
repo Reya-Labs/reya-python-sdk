@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.config import REYA_DEX_ID
@@ -29,7 +30,7 @@ class PositionOperations:
         """Close all open positions."""
         try:
             positions = await self._t.data.positions()
-        except Exception as e:
+        except ApiException as e:
             logger.warning(f"Failed to get positions (API may not have market trackers in Redis): {e}")
             if fail_if_none:
                 logger.warning(

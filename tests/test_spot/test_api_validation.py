@@ -18,6 +18,7 @@ from decimal import Decimal
 import aiohttp
 import pytest
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
@@ -83,7 +84,7 @@ async def test_spot_order_invalid_signature(spot_config: SpotTestConfig, spot_te
     try:
         response = await spot_tester.client.orders.create_order(create_order_request=order_request)
         pytest.fail(f"Order with invalid signature should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Invalid signature'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
@@ -168,7 +169,7 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
     try:
         response = await spot_tester.client.orders.create_order(create_order_request=order_request)
         pytest.fail(f"Order from unauthorized signer should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect either:
         # - CREATE_ORDER_OTHER_ERROR with 'Invalid signature' (signature validation fails), or
@@ -250,7 +251,7 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
     try:
         response = await spot_tester.client.orders.create_order(create_order_request=order_request)
         pytest.fail(f"Order with expired deadline should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # API should reject with 400 error - check for deadline-related keywords
         assert (
@@ -319,7 +320,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
     try:
         response = await spot_tester.client.orders.cancel_order(cancel_order_request=cancel_request)
         pytest.fail(f"Cancel with expired deadline should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # API should reject with 400 error - check for deadline-related keywords
         assert (
@@ -448,7 +449,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
     try:
         response = await spot_tester.client.orders.create_order(create_order_request=reused_order_request)
         pytest.fail(f"Order with reused nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
         assert (
@@ -566,7 +567,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
     try:
         response = await spot_tester.client.orders.create_order(create_order_request=old_order_request)
         pytest.fail(f"Order with old nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
         assert (
@@ -631,7 +632,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
     try:
         order_id = await spot_tester.create_limit_order(order_params)
         pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Insufficient balance: required X, available Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
@@ -684,7 +685,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
     try:
         order_id = await spot_tester.create_limit_order(order_params)
         pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Insufficient balance: required X, available Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
@@ -734,7 +735,7 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
         )
         await asyncio.sleep(0.05)
         pytest.fail(f"Order with qty below minimum should have been rejected, got: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order quantity X is below minimum order base Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
@@ -781,7 +782,7 @@ async def test_spot_order_qty_not_step_multiple(spot_config: SpotTestConfig, spo
         )
         await asyncio.sleep(0.05)
         pytest.fail(f"Order with non-step qty should have been rejected, got: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order quantity X does not conform to base spacing Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
@@ -830,7 +831,7 @@ async def test_spot_order_price_not_tick_multiple(spot_config: SpotTestConfig, s
         )
         await asyncio.sleep(0.05)
         pytest.fail(f"Order with non-tick-multiple price should have been rejected, got: {order_id}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order price X does not conform to price spacing Y'
         assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
@@ -896,7 +897,7 @@ async def test_spot_cancel_invalid_signature(spot_config: SpotTestConfig, spot_t
     try:
         response = await spot_tester.client.orders.cancel_order(cancel_order_request=cancel_request)
         pytest.fail(f"Cancel with invalid signature should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid signature: unable to recover signer from signature'
         assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
@@ -1004,7 +1005,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     try:
         response = await spot_tester.client.orders.cancel_order(cancel_order_request=reused_cancel_request)
         pytest.fail(f"Cancel with reused nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
         assert (
@@ -1112,7 +1113,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     try:
         response = await spot_tester.client.orders.cancel_order(cancel_order_request=old_cancel_request)
         pytest.fail(f"Cancel with old nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
         assert (
@@ -1168,7 +1169,7 @@ async def test_spot_mass_cancel_invalid_signature(spot_config: SpotTestConfig, s
     try:
         response = await spot_tester.client.orders.cancel_all(mass_cancel_request)
         pytest.fail(f"Mass cancel with invalid signature should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         # Expect: Invalid signature error
         assert "Invalid signature" in error_msg or "CANCEL" in error_msg, f"Expected signature error, got: {e}"
@@ -1217,7 +1218,7 @@ async def test_spot_mass_cancel_expired_deadline(spot_config: SpotTestConfig, sp
     try:
         response = await spot_tester.client.orders.cancel_all(mass_cancel_request)
         pytest.fail(f"Mass cancel with expired deadline should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for deadline-related keywords
         assert (
@@ -1293,7 +1294,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
     try:
         response = await spot_tester.client.orders.cancel_all(reused_mass_cancel_request)
         pytest.fail(f"Mass cancel with reused nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
         assert (
@@ -1370,7 +1371,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
     try:
         response = await spot_tester.client.orders.cancel_all(old_mass_cancel_request)
         pytest.fail(f"Mass cancel with old nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for nonce-related keywords
         assert (
@@ -1452,7 +1453,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
     try:
         response = await spot_tester.client.orders.cancel_order(cancel_order_request=cancel_request)
         pytest.fail(f"Cancel from unauthorized signer should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for unauthorized/signature-related keywords
         assert (
@@ -1538,7 +1539,7 @@ async def test_spot_mass_cancel_wrong_signer(spot_config: SpotTestConfig, spot_t
     try:
         response = await spot_tester.client.orders.cancel_all(mass_cancel_request)
         pytest.fail(f"Mass cancel from unauthorized signer should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         # API should reject with 400 error - check for unauthorized/signature-related keywords
         assert (
@@ -1624,7 +1625,7 @@ async def test_spot_order_invalid_exchange_id(spot_config: SpotTestConfig, spot_
     try:
         response = await spot_tester.client.orders.create_order(order_request)
         pytest.fail(f"Order with invalid exchangeId should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e)
         assert (
             "exchangeId must be a positive integer" in error_msg
@@ -1694,7 +1695,7 @@ async def test_spot_order_invalid_symbol(spot_config: SpotTestConfig, spot_teste
     try:
         response = await spot_tester.client.orders.create_order(order_request)
         pytest.fail(f"Order with invalid symbol should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         assert (
             "symbol" in error_msg or "unrecognized" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(e)
@@ -1747,7 +1748,7 @@ async def test_spot_order_missing_signature(spot_config: SpotTestConfig, spot_te
     try:
         response = await spot_tester.client.orders.create_order(order_request)
         pytest.fail(f"Order without signature should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         assert "signature" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(
             e
@@ -1817,7 +1818,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
     try:
         response = await spot_tester.client.orders.create_order(order_request)
         pytest.fail(f"Order without nonce should have been rejected, got: {response}")
-    except Exception as e:
+    except ApiException as e:
         error_msg = str(e).lower()
         assert "nonce" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(
             e
@@ -1897,7 +1898,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
                 ), f"Expected timeInForce validation error, got: {response_text}"
                 logger.info(f"✅ Order rejected as expected: HTTP {resp.status}")
                 logger.info(f"   Error: {response_text[:150]}")
-    except Exception as e:
+    except ApiException as e:
         # If we can't make raw request, the SDK validation caught it
         logger.info(f"✅ Order rejected (SDK or API validation): {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
@@ -1973,7 +1974,7 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
                 ), f"Expected expiresAfter validation error, got: {response_text}"
                 logger.info(f"✅ Order rejected as expected: HTTP {resp.status}")
                 logger.info(f"   Error: {response_text[:150]}")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Order rejected (SDK or API validation): {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 

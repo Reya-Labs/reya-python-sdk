@@ -17,6 +17,7 @@ import asyncio
 
 import pytest
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
@@ -157,7 +158,7 @@ async def test_self_match_ioc_taker_cancelled(spot_config: SpotTestConfig, spot_
         await asyncio.sleep(0.1)
         assert spot_tester.ws_last_spot_execution is None, "No execution should occur"
         logger.info("✅ No execution - IOC cancelled")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ IOC rejected (self-match prevented): {type(e).__name__}")
 
     # Verify maker remains
@@ -306,7 +307,7 @@ async def test_non_crossing_ioc_cancelled_no_match(spot_config: SpotTestConfig, 
         await asyncio.sleep(0.1)
         assert spot_tester.ws_last_spot_execution is None, "No execution"
         logger.info("✅ IOC cancelled - no match available")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ IOC rejected (no match): {type(e).__name__}")
 
     # Verify GTC sell remains

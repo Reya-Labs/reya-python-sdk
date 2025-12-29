@@ -82,7 +82,7 @@ async def reya_tester_session():
         await tester.close_active_orders(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Session cleanup completed")
-    except Exception as e:
+    except (OSError, RuntimeError, asyncio.CancelledError) as e:
         logger.warning(f"Error during session cleanup: {e}")
 
 
@@ -146,7 +146,7 @@ async def maker_tester_session():
         await tester.close_active_orders(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Maker session cleanup completed")
-    except Exception as e:
+    except (OSError, RuntimeError, asyncio.CancelledError) as e:
         logger.warning(f"Error during maker cleanup: {e}")
 
 
@@ -181,7 +181,7 @@ async def taker_tester_session():
         await tester.close_active_orders(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Taker session cleanup completed")
-    except Exception as e:
+    except (OSError, RuntimeError, asyncio.CancelledError) as e:
         logger.warning(f"Error during taker cleanup: {e}")
 
 
@@ -262,7 +262,7 @@ async def spot_config(maker_tester_session):
         price_str = await maker_tester_session.data.current_price(oracle_symbol)
         oracle_price = float(price_str)
         logger.info(f"📊 Fetched ETH oracle price: ${oracle_price:.2f}")
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Failed to fetch oracle price for {oracle_symbol}: {e}")
         oracle_price = 3000.0
         logger.warning(f"Using fallback oracle price: ${oracle_price:.2f}")
@@ -338,8 +338,8 @@ async def _execute_spot_transfer(
                     account_id=sender.account_id,
                 )
                 break
-    except Exception:  # nosec B110
-        pass  # Order may have been fully filled
+    except (OSError, RuntimeError) as e:  # nosec B110
+        logger.debug(f"Order cancel failed (may have been fully filled): {e}")
 
     return True
 

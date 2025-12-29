@@ -3,7 +3,7 @@
 import pytest
 
 from sdk.open_api import OrderStatus, RequestError, RequestErrorCode
-from sdk.open_api.exceptions import BadRequestException
+from sdk.open_api.exceptions import ApiException, BadRequestException
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.side import Side
@@ -328,14 +328,10 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
         except (KeyError, TypeError) as e:
             # Missing required field - this is expected for "Missing X" test cases
             logger.info(f"Pass: Expected error for {test_case['name']}: {type(e).__name__}: {e}")
-        except Exception as e:
-            if "should have failed" not in str(e):
-                await reya_tester.check_no_open_orders()
-                await reya_tester.check_position_not_open(symbol)
-                logger.info(f"Pass: Expected error for {test_case['name']}: {e}")
-            else:
-                logger.error(f"Error not found for {test_case['name']}: {e}")
-                raise e
+        except ApiException as e:
+            await reya_tester.check_no_open_orders()
+            await reya_tester.check_position_not_open(symbol)
+            logger.info(f"Pass: Expected error for {test_case['name']}: {e}")
 
     logger.info("input_validation test completed successfully")
     await reya_tester.close_active_orders(fail_if_none=False)

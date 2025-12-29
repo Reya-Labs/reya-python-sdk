@@ -480,7 +480,7 @@ async def refresh_state_from_rest(
             )
 
         state.sync_orders(fresh_orders)
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.warning(f"Failed to refresh state from REST: {e}")
 
 
@@ -533,7 +533,7 @@ async def place_single_order(
             logger.info(f"   Adding {side} @ ${price} qty={qty}")
             qty_used = price_decimal * Decimal(qty) if is_buy else Decimal(qty)
             return True, qty_used
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             error_str = str(e).lower()
             # Check if it's a balance-related error
             if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
@@ -662,7 +662,7 @@ async def cancel_and_replace_order(
         try:
             await client.cancel_order(order_id=order.order_id, symbol=symbol, account_id=account_id)
             logger.info(f"[{cycle:04d}] Cancelled {side} @ ${order.price} (no replacement - low balance)")
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             error_str = str(e)
             if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
                 state.remove_order(order.order_id)
@@ -684,7 +684,7 @@ async def cancel_and_replace_order(
         logger.info(
             f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} → Adding new {side} @ ${new_price} qty={new_qty}"
         )
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         error_str = str(e)
         if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
             state.remove_order(order.order_id)
@@ -709,7 +709,7 @@ async def cancel_and_replace_order(
                 )
             )
             return True
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             error_str = str(e).lower()
             # Check if it's a balance-related error - retry with min qty
             if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
@@ -958,7 +958,7 @@ async def main(symbol: str, oracle_symbol: str):
             try:
                 await client.mass_cancel(symbol=symbol, account_id=account_id)
                 logger.info("✅ Market maker stopped")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning(f"Cleanup failed: {e}")
 
 

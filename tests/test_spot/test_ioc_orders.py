@@ -10,6 +10,7 @@ import time
 
 import pytest
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
@@ -124,7 +125,7 @@ async def test_spot_ioc_no_match_cancels(spot_config: SpotTestConfig, spot_teste
 
         logger.info("✅ IOC order returned but no execution occurred")
 
-    except Exception as e:
+    except ApiException as e:
         # IOC orders without liquidity may be rejected with an error
         logger.info(f"✅ IOC order rejected as expected: {type(e).__name__}")
 
@@ -189,7 +190,7 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
     try:
         await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
         logger.info("✅ Maker order fully filled - execution confirmed")
-    except Exception:
+    except (TimeoutError, RuntimeError):
         # Check if order is still open or was filled
         open_orders = await maker_tester.client.get_open_orders()
         maker_still_open = any(o.order_id == maker_order_id for o in open_orders)
@@ -358,7 +359,7 @@ async def test_spot_ioc_price_qty_validation(spot_config: SpotTestConfig, spot_t
         order_id = await spot_tester.create_limit_order(zero_qty_params)
         # If we get here without error, the API might accept it but not execute
         logger.info(f"Order accepted (may be rejected later): {order_id}")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Zero quantity order rejected: {type(e).__name__}")
 
     # Test 2: Negative price (if supported by builder)
@@ -368,7 +369,7 @@ async def test_spot_ioc_price_qty_validation(spot_config: SpotTestConfig, spot_t
         logger.info("Sending IOC order with negative price...")
         order_id = await spot_tester.create_limit_order(negative_price_params)
         logger.info(f"Order accepted (may be rejected later): {order_id}")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Negative price order rejected: {type(e).__name__}")
 
     # Verify no open orders

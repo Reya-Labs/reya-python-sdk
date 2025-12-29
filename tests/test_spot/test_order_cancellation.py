@@ -10,6 +10,7 @@ import time
 
 import pytest
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
@@ -166,7 +167,7 @@ async def test_spot_cancel_nonexistent_order(spot_config: SpotTestConfig, spot_t
         )
         # If we get here, the API might accept the request but do nothing
         logger.info("Cancel request accepted (order may not exist)")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
 
     logger.info("✅ SPOT CANCEL NONEXISTENT ORDER TEST COMPLETED")
@@ -226,7 +227,7 @@ async def test_spot_cancel_already_filled_order(
             order_id=maker_order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
         )
         logger.info("Cancel request accepted (order already filled)")
-    except Exception as e:
+    except ApiException as e:
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
 
     # Verify no open orders
@@ -261,7 +262,7 @@ async def test_spot_mass_cancel_empty_book(spot_config: SpotTestConfig, spot_tes
     try:
         response = await spot_tester.client.mass_cancel(symbol=spot_config.symbol, account_id=spot_tester.account_id)
         logger.info(f"✅ Mass cancel succeeded: {response}")
-    except Exception as e:
+    except ApiException as e:
         # Some APIs might return an error for empty cancel
         logger.info(f"Mass cancel response: {type(e).__name__}")
 
