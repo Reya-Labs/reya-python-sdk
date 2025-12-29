@@ -65,6 +65,17 @@ class EventStore(Generic[T]):
         """
         return next((item for item in self._items if predicate(item)), None)
 
+    def find_last(self, predicate: Callable[[T], bool]) -> Optional[T]:
+        """Find the last (most recent) item matching a predicate.
+
+        Args:
+            predicate: Function that returns True for matching items.
+
+        Returns:
+            The last matching item, or None if not found.
+        """
+        return next((item for item in reversed(self._items) if predicate(item)), None)
+
     def find_all(self, predicate: Callable[[T], bool]) -> list[T]:
         """Find all items matching a predicate.
 

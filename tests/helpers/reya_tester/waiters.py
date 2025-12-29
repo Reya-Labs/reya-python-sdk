@@ -44,9 +44,11 @@ class Waiters:
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
 
-            # Search through all perp executions using EventStore.find()
+            # Search through all perp executions using EventStore.find_last() to get the most recent match
             if ws_trade is None:
-                ws_trade = self._t.ws.perp_executions.find(lambda e: ExecutionMatcher.match_perp(e, expected_order))
+                ws_trade = self._t.ws.perp_executions.find_last(
+                    lambda e: ExecutionMatcher.match_perp(e, expected_order)
+                )
                 if ws_trade:
                     elapsed_time = time.time() - start_time
                     logger.info(f" ✅ Trade confirmed via WS: {ws_trade.sequence_number} (took {elapsed_time:.2f}s)")
@@ -112,9 +114,9 @@ class Waiters:
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
 
-            # Search through all perp executions using EventStore.find()
+            # Search through all perp executions using EventStore.find_last() to get the most recent match
             if ws_trade is None:
-                ws_trade = self._t.ws.perp_executions.find(
+                ws_trade = self._t.ws.perp_executions.find_last(
                     lambda e: ExecutionMatcher.match_perp(e, expected_order, expected_qty)
                 )
                 if ws_trade:

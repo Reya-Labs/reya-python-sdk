@@ -507,5 +507,20 @@ async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_failure_cancel_gtc_when_order_is_not_found(reya_tester: ReyaTester):
-    # TODO
-    return
+    """Test cancelling a non-existent order returns appropriate error"""
+    await reya_tester.check_no_open_orders()
+
+    try:
+        await reya_tester.client.cancel_order(order_id="non_existent_order_id_12345")
+        assert False, "Cancel should have failed for non-existent order"
+    except BadRequestException as e:
+        assert e.data is not None
+        request_error: RequestError = e.data
+        assert request_error.message is not None
+        assert request_error.message.startswith(
+            "Missing order with id non_existent_order_id_12345"
+        ), f"Expected message to start with 'Missing order with id', got: {request_error.message}"
+        assert request_error.error == RequestErrorCode.CANCEL_ORDER_OTHER_ERROR
+
+    await reya_tester.check_no_open_orders()
+    logger.info("✅ Cancel non-existent order test completed successfully")
