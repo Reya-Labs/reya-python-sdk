@@ -11,6 +11,8 @@ import threading
 import time
 from decimal import Decimal
 
+import aiohttp
+
 from sdk._version import SDK_VERSION
 from sdk.async_api.depth import Depth
 from sdk.open_api.api.market_data_api import MarketDataApi
@@ -710,8 +712,6 @@ class ReyaTradingClient:
             ValueError: If symbol is invalid or API returns an error
         """
         # Direct HTTP request to depth endpoint (not in generated API yet)
-        import aiohttp
-
         url = f"{self._config.api_url}/market/{symbol}/depth"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
@@ -734,8 +734,6 @@ class ReyaTradingClient:
             ValueError: If symbol is invalid or API returns an error
         """
         # Direct HTTP request to market spot executions endpoint
-        import aiohttp
-
         url = f"{self._config.api_url}/market/{symbol}/spotExecutions"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:

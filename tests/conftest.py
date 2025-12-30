@@ -24,6 +24,7 @@ from sdk.open_api.models import TimeInForce  # noqa: E402
 from sdk.reya_rest_api.models.orders import LimitOrderParameters  # noqa: E402
 from tests.helpers import ReyaTester  # noqa: E402
 from tests.helpers.reya_tester import logger  # noqa: E402
+from tests.test_spot.spot_config import SpotTestConfig  # noqa: E402
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)
@@ -253,8 +254,6 @@ async def spot_config(maker_tester_session):
             qty = spot_config.min_qty
             symbol = spot_config.symbol
     """
-    from tests.test_spot.spot_config import SpotTestConfig
-
     # Use ETHRUSD spot market for oracle price
     oracle_symbol = "ETHRUSD"
 

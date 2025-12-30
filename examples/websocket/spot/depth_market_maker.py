@@ -199,8 +199,7 @@ def generate_random_qty(min_qty: Decimal, max_qty: Decimal, qty_step_size: Decim
     random_offset = qty_range * Decimal(random.uniform(0.0, 1.0))  # nosec B311
     qty = round_to_qty_step(min_qty + random_offset, qty_step_size)
 
-    if qty < min_qty:
-        qty = min_qty
+    qty = max(qty, min_qty)
 
     return str(qty)
 

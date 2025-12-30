@@ -17,8 +17,10 @@ Requirements:
 import os
 
 from dotenv import load_dotenv
+from eth_abi import encode
 
 from sdk.reya_rpc import WithdrawParams, get_config, withdraw
+from sdk.reya_rpc.types import CommandType
 
 
 def main():
@@ -127,10 +129,6 @@ def main():
     print(f"  ✓ Approved: {approve_hash.hex()}")
 
     # Step 3b: Deposit into margin account
-    from eth_abi import encode
-
-    from sdk.reya_rpc.types import CommandType
-
     inputs_encoded = encode(["(address,uint256)"], [[rusd_b.address, amount_e6]])
     command = (CommandType.Deposit.value, inputs_encoded, 0, 0)
     commands = [command]

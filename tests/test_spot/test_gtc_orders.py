@@ -12,6 +12,7 @@ Tests for GTC order behavior including:
 
 import asyncio
 import logging
+import random
 
 import pytest
 
@@ -387,8 +388,6 @@ async def test_spot_gtc_with_client_order_id(spot_config: SpotTestConfig, spot_t
     3. Verify order can be queried and has correct clientOrderId
     4. Cancel order using client_order_id (not order_id)
     """
-    import random
-
     logger.info("=" * 80)
     logger.info(f"SPOT GTC WITH CLIENT ORDER ID TEST: {spot_config.symbol}")
     logger.info("=" * 80)

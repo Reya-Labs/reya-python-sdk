@@ -12,9 +12,11 @@ order tracking with sequence numbers) correctly propagates to API surfaces.
 
 import asyncio
 import logging
+import os
 
 import pytest
 
+from sdk.reya_websocket import ReyaSocket
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.test_spot.spot_config import SpotTestConfig
@@ -91,10 +93,6 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     spot_tester.ws.clear()
 
     # Create new WebSocket connection
-    import os
-
-    from sdk.reya_websocket import ReyaSocket
-
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
     spot_tester._websocket = ReyaSocket(
         url=ws_url,

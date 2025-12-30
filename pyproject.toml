@@ -123,12 +123,10 @@ max-module-lines=2000
 ignore-paths = ["sdk/async_api"]
 disable = """
     consider-using-in,
-    consider-using-max-builtin,
     duplicate-code,
     f-string-without-interpolation,
     fixme,
     import-error,
-    import-outside-toplevel,
     inconsistent-return-statements,
     invalid-name,
     logging-fstring-interpolation,
@@ -138,7 +136,6 @@ disable = """
     missing-module-docstring,
     no-else-raise,
     no-else-return,
-    no-member,
     protected-access,
     raise-missing-from,
     redefined-builtin,

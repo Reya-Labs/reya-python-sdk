@@ -9,6 +9,7 @@ Uses EventStore for unified state tracking across all event types.
 from typing import TYPE_CHECKING, Optional
 
 import logging
+from decimal import Decimal
 
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
@@ -329,8 +330,6 @@ class WebSocketState:
         - Base asset change = qty (exactly)
         - Quote asset change = qty * price (exactly)
         """
-        from decimal import Decimal
-
         qty_decimal = Decimal(qty)
         price_decimal = Decimal(price)
         notional = qty_decimal * price_decimal

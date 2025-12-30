@@ -13,8 +13,8 @@ import logging
 import ssl
 import threading
 
-import websocket
 from pydantic import BaseModel, ValidationError
+from websocket import WebSocket, WebSocketApp  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
@@ -81,7 +81,7 @@ class WebSocketDataError(Exception):
     """Exception raised when WebSocket data cannot be parsed into a typed model."""
 
 
-class ReyaSocket(websocket.WebSocketApp):
+class ReyaSocket(WebSocketApp):
     """WebSocket client for Reya API v2 with resource-based access and type safety."""
 
     # Channel to payload type mapping for V2
@@ -100,10 +100,10 @@ class ReyaSocket(websocket.WebSocketApp):
     def __init__(
         self,
         url: Optional[str] = None,
-        on_open: Optional[Callable[[websocket.WebSocket], None]] = None,
-        on_message: Optional[Callable[[websocket.WebSocket, WebSocketMessage], None]] = None,
-        on_error: Optional[Callable[[websocket.WebSocket, Exception], None]] = None,
-        on_close: Optional[Callable[[websocket.WebSocket, int, str], None]] = None,
+        on_open: Optional[Callable[[WebSocket], None]] = None,
+        on_message: Optional[Callable[[WebSocket, WebSocketMessage], None]] = None,
+        on_error: Optional[Callable[[WebSocket, Exception], None]] = None,
+        on_close: Optional[Callable[[WebSocket, int, str], None]] = None,
         config: Optional[WebSocketConfig] = None,
         **kwargs,
     ):
@@ -154,7 +154,7 @@ class ReyaSocket(websocket.WebSocketApp):
             **kwargs,
         )
 
-    def _wrap_message_handler(self) -> Callable[[websocket.WebSocket, str], None]:
+    def _wrap_message_handler(self) -> Callable[[WebSocket, str], None]:
         """Create a message handler that parses JSON into typed Pydantic models.
 
         Following REST API patterns:
@@ -163,7 +163,7 @@ class ReyaSocket(websocket.WebSocketApp):
         - Callbacks receive typed payloads directly
         """
 
-        def wrapper(ws: websocket.WebSocket, message: str) -> None:
+        def wrapper(ws: WebSocket, message: str) -> None:
             logger.debug(f"RAW WEBSOCKET MESSAGE: {message!r}")
             raw = json.loads(message)
 
@@ -353,7 +353,7 @@ class ReyaSocket(websocket.WebSocketApp):
         # Send ping to confirm connection and trigger subscription workflow
         self.send(json.dumps({"type": "ping"}))
 
-    def _default_on_message(self, _ws: websocket.WebSocket, message: WebSocketMessage) -> None:
+    def _default_on_message(self, _ws: WebSocket, message: WebSocketMessage) -> None:
         """Default handler for message events.
 
         Args:
