@@ -1888,7 +1888,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
     try:
         # Use raw HTTP request to bypass SDK validation
         async with aiohttp.ClientSession() as session:
-            url = f"{spot_tester.client.config.api_url}/v2/order"
+            url = f"{spot_tester.client.config.api_url}/createOrder"
             async with session.post(url, json=order_dict) as resp:
                 if resp.status == 200:
                     pytest.fail("Order with invalid timeInForce should have been rejected")
@@ -1964,7 +1964,7 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
 
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"{spot_tester.client.config.api_url}/v2/order"
+            url = f"{spot_tester.client.config.api_url}/createOrder"
             async with session.post(url, json=order_dict) as resp:
                 if resp.status == 200:
                     pytest.fail("Order without expiresAfter should have been rejected")

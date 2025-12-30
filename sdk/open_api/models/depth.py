@@ -115,12 +115,16 @@ class Depth(BaseModel):
         if not isinstance(obj, dict):
             return cls.model_validate(obj)
 
+        # Handle updatedAt which may come as string from API
+        updated_at = obj.get("updatedAt")
+        if isinstance(updated_at, str):
+            updated_at = int(updated_at)
         _obj = cls.model_validate({
             "symbol": obj.get("symbol"),
             "type": obj.get("type"),
             "bids": [Level.from_dict(_item) for _item in obj["bids"]] if obj.get("bids") is not None else None,
             "asks": [Level.from_dict(_item) for _item in obj["asks"]] if obj.get("asks") is not None else None,
-            "updatedAt": obj.get("updatedAt")
+            "updatedAt": updated_at
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

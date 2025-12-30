@@ -14,6 +14,7 @@ import asyncio
 import logging
 
 import pytest
+from eth_abi.exceptions import EncodingError
 
 from sdk.open_api.exceptions import ApiException
 from tests.helpers import ReyaTester
@@ -62,7 +63,8 @@ async def test_spot_invalid_symbol(spot_config: SpotTestConfig, spot_tester: Rey
         await spot_tester.client.cancel_order(
             order_id=order_id, symbol=invalid_symbol, account_id=spot_tester.account_id
         )
-    except ApiException as e:
+    except (ApiException, ValueError) as e:
+        # SDK validates symbol locally and raises ValueError if not found
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
@@ -129,6 +131,10 @@ async def test_spot_negative_price(spot_config: SpotTestConfig, spot_tester: Rey
         order_id = await spot_tester.create_limit_order(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
     except ApiException as e:
+        logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
+        logger.info(f"   Error: {str(e)[:100]}")
+    except EncodingError as e:
+        # eth_abi raises ValueOutOfBounds (subclass of EncodingError) for negative prices
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 

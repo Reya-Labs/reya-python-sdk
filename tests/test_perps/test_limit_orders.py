@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from decimal import InvalidOperation
+
 import pytest
 
 from sdk.open_api import OrderStatus, RequestError, RequestErrorCode
@@ -325,8 +327,8 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
             )
             await reya_tester.create_limit_order(order_params_test)
             assert False, f"{test_case['name']} should have failed"
-        except (KeyError, TypeError) as e:
-            # Missing required field - this is expected for "Missing X" test cases
+        except (KeyError, TypeError, ValueError, InvalidOperation) as e:
+            # Missing required field, SDK validation error, or decimal conversion error
             logger.info(f"Pass: Expected error for {test_case['name']}: {type(e).__name__}: {e}")
         except ApiException as e:
             await reya_tester.check_no_open_orders()

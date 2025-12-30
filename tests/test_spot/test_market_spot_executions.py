@@ -17,6 +17,7 @@ import logging
 
 import pytest
 
+from sdk.open_api.exceptions import BadRequestException
 from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
@@ -130,7 +131,9 @@ async def test_rest_get_market_spot_executions_after_trade(
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_executions_invalid_symbol(_spot_config: SpotTestConfig, spot_tester: ReyaTester):
+async def test_rest_get_market_spot_executions_invalid_symbol(
+    spot_config: SpotTestConfig, spot_tester: ReyaTester
+):  # pylint: disable=unused-argument
     """
     Test REST API returns error for invalid symbol.
     """
@@ -141,7 +144,7 @@ async def test_rest_get_market_spot_executions_invalid_symbol(_spot_config: Spot
     try:
         await spot_tester.client.markets.get_market_spot_executions(symbol="INVALID_SYMBOL")
         pytest.fail("Should have raised an error for invalid symbol")
-    except ValueError as e:
+    except BadRequestException as e:
         logger.info(f"✅ Correctly rejected invalid symbol: {e}")
 
     logger.info("✅ REST GET MARKET SPOT EXECUTIONS INVALID SYMBOL TEST COMPLETED")
@@ -351,7 +354,9 @@ async def test_ws_and_rest_market_spot_executions_consistency(
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_multiple_symbols(_spot_config: SpotTestConfig, spot_tester: ReyaTester):
+async def test_ws_market_spot_executions_multiple_symbols(
+    spot_config: SpotTestConfig, spot_tester: ReyaTester
+):  # pylint: disable=unused-argument
     """
     Test subscribing to multiple market spot execution channels.
 

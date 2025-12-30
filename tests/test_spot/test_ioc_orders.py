@@ -9,6 +9,7 @@ import asyncio
 import time
 
 import pytest
+from eth_abi.exceptions import EncodingError
 
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
@@ -370,6 +371,9 @@ async def test_spot_ioc_price_qty_validation(spot_config: SpotTestConfig, spot_t
         order_id = await spot_tester.create_limit_order(negative_price_params)
         logger.info(f"Order accepted (may be rejected later): {order_id}")
     except ApiException as e:
+        logger.info(f"✅ Negative price order rejected: {type(e).__name__}")
+    except EncodingError as e:
+        # eth_abi raises ValueOutOfBounds (subclass of EncodingError) for negative prices
         logger.info(f"✅ Negative price order rejected: {type(e).__name__}")
 
     # Verify no open orders
