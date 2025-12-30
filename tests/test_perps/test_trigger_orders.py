@@ -22,7 +22,7 @@ def assert_tp_sl_order_submission(
     order_details: Order,
     expected_order_details: Order,
     position: Position,
-    reya_tester: ReyaTester,
+    _reya_tester: ReyaTester,
 ):
     """Assert that order execution details are correct"""
 

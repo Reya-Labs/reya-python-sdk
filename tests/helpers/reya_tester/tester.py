@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 
 from sdk.async_api.depth import Depth
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.auth.signatures import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_websocket import ReyaSocket
 
@@ -114,11 +113,9 @@ class ReyaTester:
             # Return a client with None values - tests will skip if needed
             return ReyaTradingClient()
 
-        # Create client and override its config for the spot account
-        client = ReyaTradingClient()
-
-        # Get base config values
-        base_config = client._config
+        # Get base config to inherit api_url and chain_id
+        base_client = ReyaTradingClient()
+        base_config = base_client.config
 
         # Create new config with spot account values
         if wallet_address is None:
@@ -133,11 +130,8 @@ class ReyaTester:
             account_id=int(account_id),
         )
 
-        # Replace client config and signature generator
-        client._config = spot_config
-        client._signature_generator = SignatureGenerator(spot_config)
-
-        return client
+        # Create client with the spot config directly
+        return ReyaTradingClient(config=spot_config)
 
     async def setup(self) -> None:
         """Set up WebSocket connection for trade monitoring."""
@@ -173,6 +167,11 @@ class ReyaTester:
     def websocket(self) -> Optional[ReyaSocket]:
         """Backward compatibility: access to raw websocket."""
         return self._websocket
+
+    @websocket.setter
+    def websocket(self, value: Optional[ReyaSocket]) -> None:
+        """Set the websocket connection."""
+        self._websocket = value
 
     @property
     def ws_last_trade(self):
@@ -376,4 +375,4 @@ class ReyaTester:
         Returns:
             The next nonce value to use for API requests.
         """
-        return self.client._get_next_nonce()
+        return self.client.get_next_nonce()

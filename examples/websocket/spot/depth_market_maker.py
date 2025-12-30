@@ -318,7 +318,7 @@ class WebSocketHandler:
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/openOrders")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/spotExecutions")
 
-    def on_message(self, ws: ReyaSocket, message: WebSocketMessage) -> None:
+    def on_message(self, _ws: ReyaSocket, message: WebSocketMessage) -> None:
         """Handle incoming WebSocket messages."""
 
         # Handle subscription confirmations
@@ -378,11 +378,11 @@ class WebSocketHandler:
                 )
             return
 
-    def on_error(self, ws: ReyaSocket, error: Exception) -> None:
+    def on_error(self, _ws: ReyaSocket, error: Exception) -> None:
         """Handle WebSocket errors."""
         logger.error(f"WebSocket error: {error}")
 
-    def on_close(self, ws: ReyaSocket, close_status_code: int, close_msg: str) -> None:
+    def on_close(self, _ws: ReyaSocket, close_status_code: int, close_msg: str) -> None:
         """Handle WebSocket close."""
         logger.warning(f"WebSocket closed: {close_status_code} - {close_msg}")
         self._connected.clear()

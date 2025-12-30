@@ -6,10 +6,17 @@ across all tests in a session, enabling session-scoped async fixtures.
 """
 
 import asyncio
+from decimal import Decimal
 
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
+
+from sdk.open_api.models import TimeInForce
+from sdk.reya_rest_api.models.orders import LimitOrderParameters
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import logger
+from tests.test_spot.spot_config import SpotTestConfig
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
@@ -17,14 +24,6 @@ TEST_DELAY_SECONDS = 0.1
 # Minimum balance requirements for SPOT tests
 MIN_ETH_BALANCE = 0.05
 MIN_RUSD_BALANCE = 15.0
-
-from decimal import Decimal  # noqa: E402
-
-from sdk.open_api.models import TimeInForce  # noqa: E402
-from sdk.reya_rest_api.models.orders import LimitOrderParameters  # noqa: E402
-from tests.helpers import ReyaTester  # noqa: E402
-from tests.helpers.reya_tester import logger  # noqa: E402
-from tests.test_spot.spot_config import SpotTestConfig  # noqa: E402
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)
@@ -88,7 +87,7 @@ async def reya_tester_session():
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def reya_tester(reya_tester_session):
+async def reya_tester(reya_tester_session):  # pylint: disable=redefined-outer-name
     """
     Function-scoped wrapper that cleans state between tests.
 
@@ -187,7 +186,7 @@ async def taker_tester_session():
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def maker_tester(maker_tester_session):
+async def maker_tester(maker_tester_session):  # pylint: disable=redefined-outer-name
     """
     Function-scoped wrapper for maker that cleans state between tests.
     """
@@ -203,7 +202,7 @@ async def maker_tester(maker_tester_session):
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def spot_tester(maker_tester_session):
+async def spot_tester(maker_tester_session):  # pylint: disable=redefined-outer-name
     """
     Function-scoped wrapper for single-account spot tests.
     Uses SPOT account 1 (same as maker_tester).
@@ -220,7 +219,7 @@ async def spot_tester(maker_tester_session):
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def taker_tester(taker_tester_session):
+async def taker_tester(taker_tester_session):  # pylint: disable=redefined-outer-name
     """
     Function-scoped wrapper for taker that cleans state between tests.
     """
@@ -241,7 +240,7 @@ async def taker_tester(taker_tester_session):
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def spot_config(maker_tester_session):
+async def spot_config(maker_tester_session):  # pylint: disable=redefined-outer-name
     """
     Session-scoped fixture that provides centralized SPOT test configuration.
 
@@ -344,7 +343,9 @@ async def _execute_spot_transfer(
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session", autouse=True)
-async def spot_balance_guard(maker_tester_session, taker_tester_session, spot_config):
+async def spot_balance_guard(
+    maker_tester_session, taker_tester_session, spot_config
+):  # pylint: disable=redefined-outer-name
     """
     Session-scoped fixture that checks balances before SPOT tests and restores them after.
 

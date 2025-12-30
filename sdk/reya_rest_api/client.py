@@ -212,6 +212,19 @@ class ReyaTradingClient:
         return self._config
 
     @property
+    def signature_generator(self) -> SignatureGenerator:
+        """Get the signature generator for creating order signatures."""
+        return self._signature_generator
+
+    def get_next_nonce(self) -> int:
+        """Get the next nonce for order signing.
+
+        Returns:
+            A unique nonce guaranteed to be greater than any previously returned nonce.
+        """
+        return self._get_next_nonce()
+
+    @property
     def signer_wallet_address(self) -> str:
         """Get the signer wallet address (derived from private key)."""
         return self._signature_generator.signer_wallet_address

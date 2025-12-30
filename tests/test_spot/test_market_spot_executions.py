@@ -130,7 +130,7 @@ async def test_rest_get_market_spot_executions_after_trade(
 
 @pytest.mark.spot
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_executions_invalid_symbol(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+async def test_rest_get_market_spot_executions_invalid_symbol(_spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test REST API returns error for invalid symbol.
     """
@@ -351,7 +351,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_ws_market_spot_executions_multiple_symbols(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+async def test_ws_market_spot_executions_multiple_symbols(_spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test subscribing to multiple market spot execution channels.
 

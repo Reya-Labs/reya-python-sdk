@@ -136,10 +136,8 @@ disable = """
     missing-module-docstring,
     no-else-raise,
     no-else-return,
-    protected-access,
     raise-missing-from,
     redefined-builtin,
-    redefined-outer-name,
     self-assigning-variable,
     simplifiable-if-expression,
     too-few-public-methods,
@@ -151,10 +149,7 @@ disable = """
     too-many-public-methods,
     too-many-return-statements,
     too-many-statements,
-    too-many-instance-attributes,
-    unused-argument,
-    wrong-import-order,
-    wrong-import-position
+    too-many-instance-attributes
 """
 
 [tool.pytest.ini_options]

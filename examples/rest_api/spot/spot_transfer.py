@@ -35,7 +35,6 @@ from eth_account import Account
 
 from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.auth import SignatureGenerator
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 
@@ -238,15 +237,18 @@ async def balance_accounts_mode() -> None:
     logger.info(f"  Account 1: {spot_account_1}")
     logger.info(f"  Account 2: {spot_account_2}")
 
-    async with ReyaTradingClient() as client_1:
-        base_config = client_1._config
-        client_1._config = create_trading_client_config(spot_key_1, spot_account_1, base_config)
-        client_1._signature_generator = SignatureGenerator(client_1._config)
+    # Get base config to inherit api_url and chain_id
+    base_client = ReyaTradingClient()
+    base_config = base_client.config
+
+    # Create client 1 with proper config
+    config_1 = create_trading_client_config(spot_key_1, spot_account_1, base_config)
+    async with ReyaTradingClient(config=config_1) as client_1:
         await client_1.start()
 
-        async with ReyaTradingClient() as client_2:
-            client_2._config = create_trading_client_config(spot_key_2, spot_account_2, base_config)
-            client_2._signature_generator = SignatureGenerator(client_2._config)
+        # Create client 2 with proper config
+        config_2 = create_trading_client_config(spot_key_2, spot_account_2, base_config)
+        async with ReyaTradingClient(config=config_2) as client_2:
             await client_2.start()
 
             # Get current balances
@@ -409,12 +411,13 @@ async def main():
     logger.info(f"  Symbol:       {symbol}")
     logger.info(f"  Price:        ${transfer_price}")
 
-    async with ReyaTradingClient() as sender_client:
-        base_config = sender_client._config
+    # Get base config to inherit api_url and chain_id
+    base_client = ReyaTradingClient()
+    base_config = base_client.config
 
-        # Configure sender client
-        sender_client._config = create_trading_client_config(sender_key, from_account_id, base_config)
-        sender_client._signature_generator = SignatureGenerator(sender_client._config)
+    # Create sender client with proper config
+    sender_config = create_trading_client_config(sender_key, from_account_id, base_config)
+    async with ReyaTradingClient(config=sender_config) as sender_client:
         await sender_client.start()
 
         # Validate sender has sufficient balance
@@ -422,10 +425,9 @@ async def main():
         if not await validate_sufficient_balance(sender_client, from_account_id, asset, qty_decimal):
             sys.exit(1)
 
-        # Configure and start receiver client
-        async with ReyaTradingClient() as receiver_client:
-            receiver_client._config = create_trading_client_config(receiver_key, to_account_id, base_config)
-            receiver_client._signature_generator = SignatureGenerator(receiver_client._config)
+        # Create receiver client with proper config
+        receiver_config = create_trading_client_config(receiver_key, to_account_id, base_config)
+        async with ReyaTradingClient(config=receiver_config) as receiver_client:
             await receiver_client.start()
 
             # Log initial balances (now both clients available)

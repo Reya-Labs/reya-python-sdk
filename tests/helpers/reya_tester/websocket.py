@@ -141,16 +141,16 @@ class WebSocketState:
 
     def subscribe_to_market_depth(self, symbol: str) -> None:
         """Subscribe to L2 market depth updates for a specific symbol."""
-        if self._t._websocket is None:
+        if self._t.websocket is None:
             raise RuntimeError("WebSocket not connected - call setup() first")
-        self._t._websocket.market.depth(symbol).subscribe()
+        self._t.websocket.market.depth(symbol).subscribe()
         logger.info(f"Subscribed to market depth for {symbol}")
 
     def subscribe_to_market_spot_executions(self, symbol: str) -> None:
         """Subscribe to market-level spot executions for a specific symbol."""
-        if self._t._websocket is None:
+        if self._t.websocket is None:
             raise RuntimeError("WebSocket not connected - call setup() first")
-        self._t._websocket.market.spot_executions(symbol).subscribe()
+        self._t.websocket.market.spot_executions(symbol).subscribe()
         logger.info(f"Subscribed to market spot executions for {symbol}")
 
     def clear_market_spot_executions(self, symbol: Optional[str] = None) -> None:
@@ -173,7 +173,7 @@ class WebSocketState:
         ws.wallet.positions(self._t.owner_wallet_address).subscribe()
         ws.wallet.balances(self._t.owner_wallet_address).subscribe()
 
-    def on_message(self, ws, message: WebSocketMessage) -> None:
+    def on_message(self, _ws, message: WebSocketMessage) -> None:
         """Handle WebSocket messages using typed payloads from SDK.
 
         The SDK parses all messages into typed Pydantic models automatically.

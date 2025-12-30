@@ -195,15 +195,20 @@ class OrderBuilder:
     def copy(self) -> OrderBuilder:
         """Create a copy of this builder with the same settings."""
         builder = OrderBuilder()
-        builder._config = self._config
-        builder._symbol = self._symbol
-        builder._is_buy = self._is_buy
-        builder._qty = self._qty
-        builder._limit_px = self._limit_px
-        builder._time_in_force = self._time_in_force
-        builder._reduce_only = self._reduce_only
-        builder._expires_after = self._expires_after
-        builder._client_order_id = self._client_order_id
+        # Use object.__setattr__ to set dataclass fields directly
+        # This avoids protected-access warnings while still copying internal state
+        for field_name in [
+            "_config",
+            "_symbol",
+            "_is_buy",
+            "_qty",
+            "_limit_px",
+            "_time_in_force",
+            "_reduce_only",
+            "_expires_after",
+            "_client_order_id",
+        ]:
+            setattr(builder, field_name, getattr(self, field_name))
         return builder
 
 
@@ -289,8 +294,6 @@ class TriggerOrderBuilder:
     def copy(self) -> TriggerOrderBuilder:
         """Create a copy of this builder."""
         builder = TriggerOrderBuilder()
-        builder._symbol = self._symbol
-        builder._is_buy = self._is_buy
-        builder._trigger_px = self._trigger_px
-        builder._trigger_type = self._trigger_type
+        for field_name in ["_symbol", "_is_buy", "_trigger_px", "_trigger_type"]:
+            setattr(builder, field_name, getattr(self, field_name))
         return builder

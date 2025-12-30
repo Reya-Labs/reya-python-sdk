@@ -211,7 +211,7 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
     nonce = spot_tester.get_next_nonce()
 
     # Get signature generator from client
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,
@@ -296,7 +296,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
     expired_deadline = int(time.time()) - 60  # 1 minute ago (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
     signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
         market_id=SPOT_MARKET_ID,
@@ -367,7 +367,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
     first_nonce = spot_tester.get_next_nonce()
     first_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,
@@ -484,7 +484,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
     first_nonce = spot_tester.get_next_nonce()
     first_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,
@@ -952,7 +952,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     first_nonce = spot_tester.get_next_nonce()
     first_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
         market_id=SPOT_MARKET_ID,
@@ -1059,7 +1059,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     first_nonce = spot_tester.get_next_nonce()
     first_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
         market_id=SPOT_MARKET_ID,
@@ -1197,7 +1197,7 @@ async def test_spot_mass_cancel_expired_deadline(spot_config: SpotTestConfig, sp
     expired_deadline = int(time.time()) - 3600  # 1 hour ago (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
     signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
         market_id=SPOT_MARKET_ID,
@@ -1249,10 +1249,10 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
 
     # Step 1: Perform a valid mass cancel using the SDK's nonce generator
     # This establishes a nonce baseline in the API's nonce tracker
-    first_nonce = spot_tester.client._get_next_nonce()
+    first_nonce = spot_tester.client.get_next_nonce()
     first_deadline = int(time.time()) + 60  # 1 minute from now
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
         market_id=SPOT_MARKET_ID,
@@ -1325,10 +1325,10 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
 
     # Step 1: Perform a valid mass cancel using the SDK's nonce generator
     # This establishes a nonce baseline in the API's nonce tracker
-    first_nonce = spot_tester.client._get_next_nonce()
+    first_nonce = spot_tester.client.get_next_nonce()
     first_deadline = int(time.time()) + 60  # 1 minute from now
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
         market_id=SPOT_MARKET_ID,
@@ -1584,7 +1584,7 @@ async def test_spot_order_invalid_exchange_id(spot_config: SpotTestConfig, spot_
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     # Create inputs for signing
     inputs = sig_gen.encode_inputs_limit_order(
@@ -1655,7 +1655,7 @@ async def test_spot_order_invalid_symbol(spot_config: SpotTestConfig, spot_teste
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,
@@ -1725,7 +1725,7 @@ async def test_spot_order_missing_signature(spot_config: SpotTestConfig, spot_te
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     # Create request without signature (empty string)
     order_request = CreateOrderRequest(
@@ -1778,7 +1778,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,
@@ -1848,7 +1848,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     nonce = spot_tester.get_next_nonce()
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,
@@ -1925,7 +1925,7 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
     nonce = spot_tester.get_next_nonce()
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    sig_gen = spot_tester.client._signature_generator
+    sig_gen = spot_tester.client.signature_generator
 
     inputs = sig_gen.encode_inputs_limit_order(
         is_buy=True,

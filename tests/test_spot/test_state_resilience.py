@@ -70,8 +70,8 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     # Step 3: Disconnect WebSocket (real disconnect)
     logger.info("Disconnecting WebSocket...")
-    if spot_tester._websocket:
-        spot_tester._websocket.close()
+    if spot_tester.websocket:
+        spot_tester.websocket.close()
 
     # Wait for disconnect to complete
     await asyncio.sleep(0.5)
@@ -94,12 +94,12 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     # Create new WebSocket connection
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
-    spot_tester._websocket = ReyaSocket(
+    spot_tester.websocket = ReyaSocket(
         url=ws_url,
         on_open=spot_tester.ws.on_open,
         on_message=spot_tester.ws.on_message,
     )
-    spot_tester._websocket.connect()
+    spot_tester.websocket.connect()
 
     # Wait for connection and subscriptions to be established
     # WebSocket needs time to connect and subscribe to all channels

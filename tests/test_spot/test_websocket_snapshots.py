@@ -451,7 +451,7 @@ async def test_spot_executions_ws_initial_snapshot(
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_spot_balances_ws_initial_snapshot(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+async def test_spot_balances_ws_initial_snapshot(_spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test that subscribing to balances channel returns balance data.
 
