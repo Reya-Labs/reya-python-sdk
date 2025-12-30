@@ -12,8 +12,8 @@ import logging
 
 import pytest
 
-from sdk.async_api.depth import Depth
 from sdk.open_api.models import OrderStatus
+from sdk.open_api.models.depth import Depth
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
 from tests.test_spot.spot_config import SpotTestConfig

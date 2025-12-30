@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Optional
 
 import logging
 
-from sdk.async_api.depth import Depth
 from sdk.open_api.models.account_balance import AccountBalance
+from sdk.open_api.models.depth import Depth
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.perp_execution import PerpExecution
@@ -106,7 +106,7 @@ class DataOperations:
 
     async def market_depth(self, symbol: str) -> Depth:
         """Get L2 market depth (orderbook) for a given symbol via REST API."""
-        return await self._t.client.get_market_depth(symbol)
+        return await self._t.client.markets.get_market_depth(symbol=symbol)
 
     async def market_definition(self, symbol: str) -> MarketDefinition:
         """Get market configuration for a specific symbol."""

@@ -41,7 +41,7 @@ async def test_rest_get_market_spot_executions_empty(spot_config: SpotTestConfig
     logger.info("=" * 80)
 
     # Query market spot executions
-    executions = await spot_tester.client.get_market_spot_executions(spot_config.symbol)
+    executions = await spot_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
 
     # Should return a valid response (may be empty or have historical data)
     assert executions is not None, "Should receive a response"
@@ -98,7 +98,7 @@ async def test_rest_get_market_spot_executions_after_trade(
     logger.info("✅ Trade executed")
 
     # Step 2: Query market spot executions via REST
-    executions = await maker_tester.client.get_market_spot_executions(spot_config.symbol)
+    executions = await maker_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
 
     assert executions is not None, "Should receive a response"
     assert hasattr(executions, "data"), "Response should have 'data' attribute"
@@ -139,7 +139,7 @@ async def test_rest_get_market_spot_executions_invalid_symbol(_spot_config: Spot
     logger.info("=" * 80)
 
     try:
-        await spot_tester.client.get_market_spot_executions("INVALID_SYMBOL")
+        await spot_tester.client.markets.get_market_spot_executions(symbol="INVALID_SYMBOL")
         pytest.fail("Should have raised an error for invalid symbol")
     except ValueError as e:
         logger.info(f"✅ Correctly rejected invalid symbol: {e}")
@@ -322,7 +322,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(
     logger.info("✅ Trade executed")
 
     # Step 3: Query REST API
-    rest_executions = await maker_tester.client.get_market_spot_executions(spot_config.symbol)
+    rest_executions = await maker_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
 
     # Step 4: Verify consistency
     ws_executions = maker_tester.ws_market_spot_executions.get(spot_config.symbol, [])

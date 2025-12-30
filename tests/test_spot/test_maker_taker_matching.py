@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from sdk.async_api.depth import Depth
+from sdk.open_api.models.depth import Depth
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder

@@ -11,10 +11,7 @@ import threading
 import time
 from decimal import Decimal
 
-import aiohttp
-
 from sdk._version import SDK_VERSION
-from sdk.async_api.depth import Depth
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.order_entry_api import OrderEntryApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
@@ -44,8 +41,7 @@ from sdk.reya_rest_api.constants.enums import OrdersGatewayOrderType
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
 CONDITIONAL_ORDER_DEADLINE = 10**18
-DEFAULT_DEADLINE_S = 5  # For perp IOC orders and cancel operations
-SPOT_IOC_DEADLINE_S = 300  # 5 minutes for spot IOC orders (on-chain execution can take time)
+DEFAULT_DEADLINE_S = 10  # Default deadline for IOC orders and cancel operations
 GTC_DEADLINE_S = 86400  # 24 hours for GTC spot orders
 BUY_TRIGGER_ORDER_PRICE_LIMIT = 100000000000000000000
 
@@ -291,11 +287,8 @@ class ReyaTradingClient:
             else:
                 deadline = CONDITIONAL_ORDER_DEADLINE
         elif params.expires_after is None:
-            # For IOC orders: spot needs longer deadline due to on-chain execution time
-            if self._is_spot_market(params.symbol):
-                deadline = int(time.time()) + SPOT_IOC_DEADLINE_S  # 5 minutes for spot IOC
-            else:
-                deadline = int(time.time()) + DEFAULT_DEADLINE_S  # 5 seconds for perp IOC
+            # For IOC orders, use default deadline
+            deadline = int(time.time()) + DEFAULT_DEADLINE_S
         else:
             deadline = params.expires_after
 
@@ -710,53 +703,6 @@ class ReyaTradingClient:
             raise ValueError("No wallet address available. Private key must be provided.")
 
         return await self.wallet.get_wallet_spot_executions(address=wallet)
-
-    async def get_market_depth(self, symbol: str) -> Depth:
-        """
-        Get L2 market depth (orderbook) for a given symbol.
-
-        Args:
-            symbol: Market symbol (e.g., 'WETHRUSD', 'BTCRUSD')
-
-        Returns:
-            Depth: Market depth with bids and asks (typed from spec)
-
-        Raises:
-            ValueError: If symbol is invalid or API returns an error
-        """
-        # Direct HTTP request to depth endpoint (not in generated API yet)
-        url = f"{self._config.api_url}/market/{symbol}/depth"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    raise ValueError(f"Failed to get market depth: {response.status}")
-                data = await response.json()
-                return Depth.model_validate(data)
-
-    async def get_market_spot_executions(self, symbol: str) -> SpotExecutionList:
-        """
-        Get spot executions for a specific market.
-
-        Args:
-            symbol: Market symbol (e.g., 'WETHRUSD', 'BTCRUSD')
-
-        Returns:
-            SpotExecutionList: List of spot executions for the market
-
-        Raises:
-            ValueError: If symbol is invalid or API returns an error
-        """
-        # Direct HTTP request to market spot executions endpoint
-        url = f"{self._config.api_url}/market/{symbol}/spotExecutions"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    raise ValueError(f"Failed to get market spot executions: {response.status}")
-                data = await response.json()
-                result = SpotExecutionList.from_dict(data)
-                if result is None:
-                    raise ValueError("Failed to parse spot executions response")
-                return result
 
     async def close(self) -> None:
         """

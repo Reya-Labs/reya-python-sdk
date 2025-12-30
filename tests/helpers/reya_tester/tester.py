@@ -8,7 +8,7 @@ import os
 
 from dotenv import load_dotenv
 
-from sdk.async_api.depth import Depth
+from sdk.open_api.models.depth import Depth
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_websocket import ReyaSocket
