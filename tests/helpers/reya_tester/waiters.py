@@ -74,10 +74,12 @@ class Waiters:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
                 rest_trade = last_trade
-                trade_seq_num = last_trade.sequence_number
+                # Only set trade_seq_num from REST if WS hasn't set it yet
+                if trade_seq_num is None:
+                    trade_seq_num = last_trade.sequence_number
 
             position = await self._t.data.position(expected_order.symbol)
-            if rest_position is None and position is not None and trade_seq_num == position.last_trade_sequence_number:
+            if rest_position is None and position is not None and trade_seq_num is not None and trade_seq_num == position.last_trade_sequence_number:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Position confirmed via REST: {expected_order.symbol} (took {elapsed_time:.2f}s)")
                 rest_position = position
@@ -144,7 +146,9 @@ class Waiters:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Trade confirmed via REST: {last_trade.sequence_number} (took {elapsed_time:.2f}s)")
                 rest_trade = last_trade
-                trade_seq_num = last_trade.sequence_number
+                # Only set trade_seq_num from REST if WS hasn't set it yet
+                if trade_seq_num is None:
+                    trade_seq_num = last_trade.sequence_number
 
             position = await self._t.data.position(expected_order.symbol)
             if not rest_closed and position is None:

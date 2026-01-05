@@ -201,16 +201,7 @@ async def test_asset_definitions(reya_tester: ReyaTester):
 
     tokens = {}
     for asset in assets:
-        tokens[asset.spot_market_symbol] = asset
-
         assert asset.asset is not None and len(asset.asset) > 0, "Asset symbol should not be empty"
-        assert (
-            asset.spot_market_symbol is not None and len(asset.spot_market_symbol) > 0
-        ), "Spot market symbol should not be empty"
-
-        assert re.match(
-            "^[a-zA-Z0-9]*$", asset.spot_market_symbol
-        ), "Spot market symbol should only have alphanumeric characters"
         assert re.match("^[a-zA-Z0-9]*$", asset.asset), "Asset symbol should only have alphanumeric characters"
 
         assert (
@@ -220,16 +211,22 @@ async def test_asset_definitions(reya_tester: ReyaTester):
             0 <= float(asset.liquidation_discount) <= 1
         ), f"Liquidation discount should be between 0 and 1, got: {asset.liquidation_discount}"
 
-        assert (
-            "USD" in asset.spot_market_symbol
-        ), f"Spot market symbol should contain USD, got: {asset.spot_market_symbol}"
+        # spotMarketSymbol is optional - some assets like RUSD don't have a spot market
+        if asset.spot_market_symbol is not None:
+            tokens[asset.spot_market_symbol] = asset
+            assert re.match(
+                "^[a-zA-Z0-9]*$", asset.spot_market_symbol
+            ), "Spot market symbol should only have alphanumeric characters"
+            assert (
+                "USD" in asset.spot_market_symbol
+            ), f"Spot market symbol should contain USD, got: {asset.spot_market_symbol}"
 
-    assert "ETHRUSD" in tokens, "ETHRUSD should be in asset definitions"
+    assert "WETHRUSD" in tokens, "WETHRUSD should be in asset definitions"
     assert "SRUSDRUSD" in tokens, "SRUSDRUSD should be in asset definitions"
 
-    eth_asset = tokens.get("ETHRUSD")
-    assert eth_asset is not None
-    assert eth_asset.asset == "ETH", f"Expected ETH asset, got: {eth_asset.asset}"
+    weth_asset = tokens.get("WETHRUSD")
+    assert weth_asset is not None
+    assert weth_asset.asset == "ETH", f"Expected ETH asset, got: {weth_asset.asset}"
 
 
 @pytest.mark.asyncio

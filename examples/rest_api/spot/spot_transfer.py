@@ -48,7 +48,7 @@ logger.addHandler(handler)
 logger.propagate = False
 
 ASSET_TO_SYMBOL = {"ETH": "WETHRUSD", "WETH": "WETHRUSD"}
-DEFAULT_TRANSFER_PRICE = "2855"  # Realistic ETH price for transfers
+DEFAULT_TRANSFER_PRICE = "3156"  # Realistic ETH price for transfers
 ORDER_SETTLEMENT_RETRIES = 3
 ORDER_SETTLEMENT_DELAY = 1.0
 

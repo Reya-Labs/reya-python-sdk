@@ -342,12 +342,14 @@ async def _execute_spot_transfer(
     return True
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="session", autouse=True)
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
 async def spot_balance_guard(
     maker_tester_session, taker_tester_session, spot_config
 ):  # pylint: disable=redefined-outer-name
     """
     Session-scoped fixture that checks balances before SPOT tests and restores them after.
+    
+    NOTE: This fixture is NOT autouse - it must be explicitly requested by spot tests.
 
     At session start:
     - Checks both accounts have minimum required balances (0.05 ETH, 50 RUSD each)

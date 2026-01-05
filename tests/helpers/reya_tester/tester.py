@@ -71,6 +71,9 @@ class ReyaTester:
         """
         load_dotenv()
 
+        # Track if this is a spot account (cannot trade perps)
+        self._is_spot_account = spot_account_number is not None
+
         if spot_account_number is None:
             # Default - use standard config (PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1)
             self.client = ReyaTradingClient()
@@ -149,8 +152,13 @@ class ReyaTester:
 
         await asyncio.sleep(0.05)
 
-        await self.orders.close_all(fail_if_none=False)
-        await self.positions.close_all(fail_if_none=False)
+        # Only close perp orders/positions for perp accounts
+        # Spot accounts (account_id >= 10 billion) cannot trade perps
+        if not self._is_spot_account:
+            await self.orders.close_all(fail_if_none=False)
+            await self.positions.close_all(fail_if_none=False)
+        else:
+            logger.info("Skipping perp cleanup for spot account")
 
     async def close(self) -> None:
         """Close all connections."""
