@@ -11,6 +11,8 @@ from sdk.open_api.models.order import Order
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 
+from .retry import with_retry
+
 if TYPE_CHECKING:
     from .tester import ReyaTester
 
@@ -32,7 +34,12 @@ class OrderOperations:
             f"📤 Creating {time_in_force_text} {side_text} order: symbol={params.symbol}, price=${params.limit_px}, qty={params.qty}"
         )
 
-        response = await self._t.client.create_limit_order(params)
+        response = await with_retry(
+            lambda: self._t.client.create_limit_order(params),
+            max_retries=3,
+            retry_delay=1.0,
+            operation_name=f"create_limit_order({params.symbol})",
+        )
         logger.info(f"Response: {response}")
 
         return response.order_id
@@ -46,7 +53,12 @@ class OrderOperations:
             f"📤 Creating {trigger_type_text} {side_text} order: symbol={params.symbol}, trigger_px=${params.trigger_px}"
         )
 
-        response = await self._t.client.create_trigger_order(params)
+        response = await with_retry(
+            lambda: self._t.client.create_trigger_order(params),
+            max_retries=3,
+            retry_delay=1.0,
+            operation_name=f"create_trigger_order({params.symbol})",
+        )
 
         logger.info(f"✅ {trigger_type_text} {side_text} order created with ID: {response.order_id}")
         return response

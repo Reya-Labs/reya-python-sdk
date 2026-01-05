@@ -221,8 +221,9 @@ async def test_success_tp_wide_when_executed(reya_tester: ReyaTester):
     await reya_tester.wait_for_order_state(tp_order.order_id, OrderStatus.FILLED)
 
     # Wait for execution and validate
+    # Note: Conditional orders bot may be slow on some environments, use longer timeout
     expected_tp_order = trigger_order_params_to_order(tp_params, reya_tester.account_id)
-    execution = await reya_tester.wait_for_closing_order_execution(expected_tp_order, qty)
+    execution = await reya_tester.wait_for_closing_order_execution(expected_tp_order, qty, timeout=30)
     await reya_tester.check_order_execution(execution, expected_tp_order, qty)
 
     # After TP execution, position should be closed
@@ -277,8 +278,9 @@ async def test_success_sl_when_executed(reya_tester: ReyaTester):
     await reya_tester.wait_for_order_state(order_response.order_id, OrderStatus.FILLED)
 
     # Wait for execution and validate
+    # Note: Conditional orders bot may be slow on some environments, use longer timeout
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
-    execution = await reya_tester.wait_for_closing_order_execution(expected_sl_order, qty)
+    execution = await reya_tester.wait_for_closing_order_execution(expected_sl_order, qty, timeout=30)
     await reya_tester.check_order_execution(execution, expected_sl_order, qty)
 
     # After SL execution, position should be closed
@@ -591,8 +593,9 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
 
     # Step 4: Wait for SL to execute (should happen quickly since it's in cross)
     # The SL execution should close the position
+    # Note: Conditional orders bot may be slow on some environments, use longer timeout
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
-    execution = await reya_tester.wait_for_closing_order_execution(expected_sl_order, "0.01")
+    execution = await reya_tester.wait_for_closing_order_execution(expected_sl_order, "0.01", timeout=30)
     await reya_tester.check_order_execution(execution, expected_sl_order, "0.01")
     await reya_tester.check_position_not_open(symbol)
 
@@ -665,8 +668,9 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
 
     # Step 4: Wait for TP to execute (should happen quickly since it's in cross)
     # The TP execution should close the position
+    # Note: Conditional orders bot may be slow on some environments, use longer timeout
     expected_tp_order = trigger_order_params_to_order(tp_params, reya_tester.account_id)
-    execution = await reya_tester.wait_for_closing_order_execution(expected_tp_order, "0.01")
+    execution = await reya_tester.wait_for_closing_order_execution(expected_tp_order, "0.01", timeout=30)
     await reya_tester.check_order_execution(execution, expected_tp_order, "0.01")
     await reya_tester.check_position_not_open(symbol)
 

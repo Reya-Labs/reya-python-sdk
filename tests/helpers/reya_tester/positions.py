@@ -45,13 +45,19 @@ class PositionOperations:
             return None
 
         for symbol, position in positions.items():
-            price_with_offset = 0 if position.side == Side.B else 1000000000000
+            # Re-fetch position to get current qty (may have changed due to trigger orders)
+            current_position = await self._t.data.position(symbol)
+            if current_position is None:
+                logger.info(f"Position {symbol} already closed, skipping")
+                continue
+
+            price_with_offset = 0 if current_position.side == Side.B else 1000000000000
 
             limit_order_params = LimitOrderParameters(
                 symbol=symbol,
-                is_buy=not (position.side == Side.B),
+                is_buy=not (current_position.side == Side.B),
                 limit_px=str(price_with_offset),
-                qty=str(position.qty),
+                qty=str(current_position.qty),
                 time_in_force=TimeInForce.IOC,
                 reduce_only=True,
             )
