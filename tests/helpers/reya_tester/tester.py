@@ -16,6 +16,7 @@ from sdk.reya_websocket import ReyaSocket
 from .checks import Checks
 from .data import DataOperations
 from .orders import OrderOperations
+from .perp_trade_context import PerpTradeContext
 from .positions import PositionOperations
 from .waiters import Waiters
 from .websocket import WebSocketState
@@ -166,6 +167,25 @@ class ReyaTester:
             self._websocket.close()
         await self.client.close()
 
+    def perp_trade(self) -> PerpTradeContext:
+        """Create a context for bulletproof PERP trade verification.
+        
+        This context manager captures the baseline sequence number BEFORE
+        any order is placed, enabling reliable trade verification across
+        both REST and WebSocket channels.
+        
+        Usage:
+            async with reya_tester.perp_trade() as ctx:
+                await reya_tester.create_limit_order(params)
+                result = await ctx.wait_for_execution(expected_order)
+                # result.rest_execution and result.ws_execution are guaranteed
+                # to be the SAME trade (same sequence_number)
+        
+        Returns:
+            PerpTradeContext: Context manager for trade verification.
+        """
+        return PerpTradeContext(tester=self)
+
     # ==========================================================================
     # Backward compatibility properties/methods
     # These allow existing tests to work without changes during migration
@@ -310,11 +330,11 @@ class ReyaTester:
     async def create_trigger_order(self, params):
         return await self.orders.create_trigger(params)
 
-    async def wait_for_order_execution(self, expected_order, timeout: int = 10):
-        return await self.wait.for_order_execution(expected_order, timeout)
+    async def wait_for_order_execution(self, expected_order, timeout: int = 10, baseline_seq: Optional[int] = None):
+        return await self.wait.for_order_execution(expected_order, timeout, baseline_seq)
 
-    async def wait_for_closing_order_execution(self, expected_order, expected_qty=None, timeout: int = 10):
-        return await self.wait.for_closing_order_execution(expected_order, expected_qty, timeout)
+    async def wait_for_closing_order_execution(self, expected_order, expected_qty=None, timeout: int = 10, baseline_seq: Optional[int] = None):
+        return await self.wait.for_closing_order_execution(expected_order, expected_qty, timeout, baseline_seq)
 
     async def wait_for_spot_execution(self, order_id: str, expected_order, timeout: int = 10):
         return await self.wait.for_spot_execution(order_id, expected_order, timeout)

@@ -238,6 +238,11 @@ class WebSocketState:
     def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
         """Handle perp execution updates."""
         for trade in message.data:
+            logger.info(
+                f"📊 Perp execution received: seq={trade.sequence_number}, "
+                f"account_id={trade.account_id}, symbol={trade.symbol}, "
+                f"side={trade.side.value if hasattr(trade.side, 'value') else trade.side}, qty={trade.qty}"
+            )
             self.perp_executions.add(trade)
 
     def _handle_spot_executions(
@@ -259,6 +264,8 @@ class WebSocketState:
     def _handle_order_changes(self, message: OrderChangeUpdatePayload) -> None:
         """Handle order change updates."""
         for order_data in message.data:
+            status_val = order_data.status.value if hasattr(order_data.status, "value") else order_data.status
+            logger.info(f"📋 Order change: order_id={order_data.order_id}, status={status_val}, type={order_data.order_type.value if hasattr(order_data.order_type, 'value') else order_data.order_type}")
             self.orders.add(order_data)
 
     def _handle_position_updates(self, message: PositionUpdatePayload) -> None:
