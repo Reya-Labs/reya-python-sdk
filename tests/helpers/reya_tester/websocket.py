@@ -265,7 +265,9 @@ class WebSocketState:
         """Handle order change updates."""
         for order_data in message.data:
             status_val = order_data.status.value if hasattr(order_data.status, "value") else order_data.status
-            logger.info(f"📋 Order change: order_id={order_data.order_id}, status={status_val}, type={order_data.order_type.value if hasattr(order_data.order_type, 'value') else order_data.order_type}")
+            logger.info(
+                f"📋 Order change: order_id={order_data.order_id}, status={status_val}, type={order_data.order_type.value if hasattr(order_data.order_type, 'value') else order_data.order_type}"
+            )
             self.orders.add(order_data)
 
     def _handle_position_updates(self, message: PositionUpdatePayload) -> None:

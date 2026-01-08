@@ -32,7 +32,7 @@ class Waiters:
 
     async def _get_baseline_sequence(self) -> int:
         """Get the current max sequence number to use as baseline for filtering.
-        
+
         This prevents matching stale executions from previous operations.
         """
         execution = await self._t.data.last_perp_execution()
@@ -42,7 +42,7 @@ class Waiters:
         self, expected_order: Order, timeout: int = 10, baseline_seq: Optional[int] = None
     ) -> PerpExecution:
         """Wait for perp order execution confirmation via both REST and WebSocket.
-        
+
         Args:
             expected_order: The order to match against.
             timeout: Maximum time to wait in seconds.
@@ -71,8 +71,7 @@ class Waiters:
             if ws_trade is None:
                 ws_trade = self._t.ws.perp_executions.find_last(
                     lambda e, bs=baseline_seq: (
-                        (e.sequence_number or 0) > bs and
-                        ExecutionMatcher.match_perp(e, expected_order)
+                        (e.sequence_number or 0) > bs and ExecutionMatcher.match_perp(e, expected_order)
                     )
                 )
                 if ws_trade:
@@ -107,7 +106,12 @@ class Waiters:
                     trade_seq_num = last_trade.sequence_number
 
             position = await self._t.data.position(expected_order.symbol)
-            if rest_position is None and position is not None and trade_seq_num is not None and trade_seq_num == position.last_trade_sequence_number:
+            if (
+                rest_position is None
+                and position is not None
+                and trade_seq_num is not None
+                and trade_seq_num == position.last_trade_sequence_number
+            ):
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Position confirmed via REST: {expected_order.symbol} (took {elapsed_time:.2f}s)")
                 rest_position = position
@@ -129,10 +133,14 @@ class Waiters:
         )
 
     async def for_closing_order_execution(
-        self, expected_order: Order, expected_qty: Optional[str] = None, timeout: int = 10, baseline_seq: Optional[int] = None
+        self,
+        expected_order: Order,
+        expected_qty: Optional[str] = None,
+        timeout: int = 10,
+        baseline_seq: Optional[int] = None,
     ) -> PerpExecution:
         """Wait for position-closing trade confirmation via both REST and WebSocket.
-        
+
         Args:
             expected_order: The order to match against.
             expected_qty: Optional expected quantity for the closing trade.
@@ -162,8 +170,7 @@ class Waiters:
             if ws_trade is None:
                 ws_trade = self._t.ws.perp_executions.find_last(
                     lambda e, bs=baseline_seq: (
-                        (e.sequence_number or 0) > bs and
-                        ExecutionMatcher.match_perp(e, expected_order, expected_qty)
+                        (e.sequence_number or 0) > bs and ExecutionMatcher.match_perp(e, expected_order, expected_qty)
                     )
                 )
                 if ws_trade:
@@ -286,14 +293,14 @@ class Waiters:
 
     async def for_order_state(self, order_id: str, expected_status: OrderStatus, timeout: int = 10) -> str:
         """Wait for order to reach a specific state.
-        
+
         Uses WS as the PRIMARY and AUTHORITATIVE source of truth for order status.
-        
+
         NOTE: The REST API only has `getWalletOpenOrders` endpoint - there is NO
         endpoint to get order history or a specific order's final status. Therefore:
         - WS tells us the ACTUAL status (FILLED, CANCELLED, REJECTED)
         - REST can only confirm "order is no longer open" (not the specific status)
-        
+
         Returns the order_id if successful.
         Raises RuntimeError if order reaches unexpected state or times out.
         """
@@ -308,14 +315,14 @@ class Waiters:
             # Step 1: WS is the PRIMARY source - wait for WS to show the status
             ws_order = self._t.ws.orders.get(str(order_id))
             ws_status_value = ws_order.status.value if ws_order else None
-            
+
             if ws_order and ws_status_value:
                 # Check if WS shows an unexpected terminal state
                 if ws_status_value != OrderStatus.OPEN.value and ws_status_value != expected_status.value:
                     raise RuntimeError(
                         f"Order {order_id} reached {ws_status_value} state via WS, but expected {expected_status.value}"
                     )
-                
+
                 # Check if WS confirms the expected state
                 if not ws_confirmed and ws_status_value == expected_status.value:
                     elapsed_time = time.time() - start_time
@@ -328,7 +335,7 @@ class Waiters:
             if ws_confirmed and not rest_verified:
                 orders: list[Order] = await self._t.client.get_open_orders()
                 order_ids = [order.order_id for order in orders]
-                
+
                 # For FILLED/CANCELLED/REJECTED, order should not be in open orders
                 if order_id not in order_ids:
                     elapsed_time = time.time() - start_time

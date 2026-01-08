@@ -49,7 +49,7 @@ logger = logging.getLogger("market_maker_ws")
 # Market configuration (defaults, can be overridden via command line)
 DEFAULT_SYMBOL = "WETHRUSD"  # Default spot trading pair symbol
 DEFAULT_ORACLE_SYMBOL = "ETHRUSD"  # Default oracle price symbol for reference pricing
-MAX_DEVIATION_PCT = Decimal("0.02")  # ±2% from reference price
+DEFAULT_MAX_SPREAD_PCT = Decimal("0.01")  # ±1% from reference price (configurable via --max-spread)
 MAX_ORDER_QTY = Decimal("0.01")  # Maximum order quantity
 NUM_LEVELS = 10  # Number of price levels on each side
 REFRESH_INTERVAL = 5  # Seconds between quote adjustments
@@ -86,6 +86,7 @@ class MarketMakerState:
     # Symbol configuration (set once on startup)
     symbol: str = DEFAULT_SYMBOL
     oracle_symbol: str = DEFAULT_ORACLE_SYMBOL
+    max_spread_pct: Decimal = DEFAULT_MAX_SPREAD_PCT  # Configurable max bid-ask spread
 
     # Market parameters (set once on startup)
     market_params: Optional[MarketParams] = None
@@ -369,6 +370,8 @@ class WebSocketHandler:
             for execution in message.data:
                 if execution.symbol != self.state.symbol:
                     continue
+                if execution.order_id is None:
+                    continue
                 self.state.log_execution(
                     order_id=execution.order_id,
                     qty=execution.qty,
@@ -597,11 +600,11 @@ def find_out_of_range_orders(
     bids: list[OpenOrder],
     asks: list[OpenOrder],
     reference_price: Decimal,
-    max_deviation_pct: Decimal,
+    max_spread_pct: Decimal,
 ) -> list[OpenOrder]:
     """Find orders that are outside the allowed price range."""
-    min_price = reference_price * (1 - max_deviation_pct)
-    max_price = reference_price * (1 + max_deviation_pct)
+    min_price = reference_price * (1 - max_spread_pct)
+    max_price = reference_price * (1 + max_spread_pct)
 
     out_of_range = []
     for order in bids + asks:
@@ -639,7 +642,7 @@ async def cancel_and_replace_order(
     new_price = generate_single_price(
         is_buy=order.is_buy,
         reference=reference_price,
-        max_deviation_pct=MAX_DEVIATION_PCT,
+        max_deviation_pct=state.max_spread_pct,
         tick_size=market_params.tick_size,
         best_bid=best_bid,
         best_ask=best_ask,
@@ -681,7 +684,8 @@ async def cancel_and_replace_order(
         )
         reason_str = f" ({reason})" if reason else ""
         logger.info(
-            f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} → Adding new {side} @ ${new_price} qty={new_qty}"
+            f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} "
+            f"→ Adding new {side} @ ${new_price} qty={new_qty}"
         )
     except (OSError, RuntimeError) as e:
         error_str = str(e)
@@ -744,11 +748,11 @@ async def adjust_orders(
     # Calculate available balance
     available_base, available_quote = calculate_available_balance(base_balance, quote_balance, bids, asks)
 
-    min_price = reference_price * (1 - MAX_DEVIATION_PCT)
-    max_price = reference_price * (1 + MAX_DEVIATION_PCT)
+    min_price = reference_price * (1 - state.max_spread_pct)
+    max_price = reference_price * (1 + state.max_spread_pct)
 
     # Check for out-of-range orders first
-    out_of_range = find_out_of_range_orders(bids, asks, reference_price, MAX_DEVIATION_PCT)
+    out_of_range = find_out_of_range_orders(bids, asks, reference_price, state.max_spread_pct)
 
     if out_of_range:
         logger.info(f"[{cycle:04d}] 📊 Oracle price: ${reference_price} | Range: ${min_price:.2f} - ${max_price:.2f}")
@@ -820,7 +824,7 @@ async def adjust_orders(
     )
 
 
-async def main(symbol: str, oracle_symbol: str):
+async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal):
     load_dotenv()
 
     logger.info("=" * 60)
@@ -828,7 +832,7 @@ async def main(symbol: str, oracle_symbol: str):
     logger.info("=" * 60)
 
     # Initialize state with symbol configuration
-    state = MarketMakerState(symbol=symbol, oracle_symbol=oracle_symbol)
+    state = MarketMakerState(symbol=symbol, oracle_symbol=oracle_symbol, max_spread_pct=max_spread_pct)
 
     # Create config for SPOT account (uses SPOT_* env vars instead of PERP_*)
     spot_config = TradingConfig.from_env_spot(account_number=1)
@@ -857,11 +861,11 @@ async def main(symbol: str, oracle_symbol: str):
         # Fetch initial state via REST
         await fetch_initial_state(client, state)
 
-        min_price = state.reference_price * (1 - MAX_DEVIATION_PCT)
-        max_price = state.reference_price * (1 + MAX_DEVIATION_PCT)
+        min_price = state.reference_price * (1 - state.max_spread_pct)
+        max_price = state.reference_price * (1 + state.max_spread_pct)
 
         logger.info(f"   Reference Price: ${state.reference_price} (from {oracle_symbol} oracle)")
-        logger.info(f"   Price Range:     ${min_price:.2f} - ${max_price:.2f} (±{MAX_DEVIATION_PCT * 100}%)")
+        logger.info(f"   Price Range:     ${min_price:.2f} - ${max_price:.2f} (±{state.max_spread_pct * 100}%)")
         logger.info(f"   Tick Size:       {market_params.tick_size}")
         logger.info(f"   Min Order Qty:   {market_params.min_order_qty}")
         logger.info(f"   Max Order Qty:   {MAX_ORDER_QTY}")
@@ -909,7 +913,7 @@ async def main(symbol: str, oracle_symbol: str):
                 state.base_balance, state.quote_balance, [], []
             )
             bid_prices, ask_prices = generate_quote_prices(
-                state.reference_price, MAX_DEVIATION_PCT, NUM_LEVELS, market_params.tick_size
+                state.reference_price, state.max_spread_pct, NUM_LEVELS, market_params.tick_size
             )
             order_count = await place_orders(
                 client, symbol, bid_prices, ask_prices, market_params, available_base, available_quote
@@ -973,12 +977,20 @@ def parse_args():
         default=DEFAULT_ORACLE_SYMBOL,
         help=f"Oracle price symbol for reference pricing (default: {DEFAULT_ORACLE_SYMBOL})",
     )
+    parser.add_argument(
+        "--max-spread",
+        type=float,
+        default=float(DEFAULT_MAX_SPREAD_PCT),
+        help=f"Maximum bid-ask spread as decimal (e.g., 0.01 for 1%%, default: {DEFAULT_MAX_SPREAD_PCT})",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     try:
         args = parse_args()
-        asyncio.run(main(symbol=args.symbol, oracle_symbol=args.oracle_symbol))
+        asyncio.run(
+            main(symbol=args.symbol, oracle_symbol=args.oracle_symbol, max_spread_pct=Decimal(str(args.max_spread)))
+        )
     except KeyboardInterrupt:
         pass

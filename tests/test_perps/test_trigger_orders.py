@@ -192,13 +192,13 @@ async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: str) -> None:
 @pytest.mark.asyncio
 async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
     """TP order executes immediately when trigger condition is already met (in-cross).
-    
+
     Setup: SHORT position at ~1.0x market
     TP trigger: 1.1x (above market) - condition "price <= 1.1x" is already TRUE
-    
+
     Note: This tests the CO bot's in-cross detection, not a semantically correct TP.
     A real TP for a short would have trigger BELOW entry (profit when price drops).
-    
+
     Verifies:
     1. TP order executes immediately when in-cross
     2. Trade is consistent between REST and WS (same sequence number)
@@ -229,11 +229,11 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
     last_error: Exception | None = None
     for attempt in range(1, CO_MAX_RETRIES + 1):
         logger.info(f"🔄 TP execution attempt {attempt}/{CO_MAX_RETRIES}")
-        
+
         # Verify position exists before placing CO
         if await reya_tester.data.position(symbol) is None:
             raise AssertionError(f"Position closed before placing TP (attempt {attempt})")
-        
+
         async with reya_tester.perp_trade() as ctx:
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
@@ -243,7 +243,7 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
             )
             tp_order = await reya_tester.create_trigger_order(tp_params)
             logger.info(f"Created TP order: {tp_order.order_id}")
-            
+
             try:
                 # PerpTradeContext handles all verification:
                 # - Waits for WS execution matching criteria
@@ -253,31 +253,31 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
                 expected_tp = trigger_order_params_to_order(tp_params, reya_tester.account_id)
                 result = await ctx.wait_for_closing_execution(expected_tp, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
                 logger.info(f"✅ TP executed with trade seq={result.sequence_number}")
-                
+
                 # Verify execution fields match expected order
                 await reya_tester.check_order_execution(result.rest_execution, expected_tp, qty)
                 await reya_tester.check_position_not_open(symbol)
                 return  # SUCCESS
-                
+
             except RuntimeError as e:
                 last_error = e
                 logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
                 await _cancel_order_if_open(reya_tester, tp_order.order_id)
                 continue
-    
+
     raise AssertionError(f"TP order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
 @pytest.mark.asyncio
 async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
     """SL order executes immediately when trigger condition is already met (in-cross).
-    
+
     Setup: SHORT position at ~0.9x market
     SL trigger: 0.9x (at entry) - condition "price >= 0.9x" is already TRUE
-    
+
     Note: This tests the CO bot's in-cross detection. The SL is at entry price,
     so it triggers immediately (current price ~1.0x >= 0.9x trigger).
-    
+
     Verifies:
     1. SL order executes immediately when in-cross
     2. Trade is consistent between REST and WS (same sequence number)
@@ -308,11 +308,11 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
     last_error: Exception | None = None
     for attempt in range(1, CO_MAX_RETRIES + 1):
         logger.info(f"🔄 SL execution attempt {attempt}/{CO_MAX_RETRIES}")
-        
+
         # Verify position exists before placing CO
         if await reya_tester.data.position(symbol) is None:
             raise AssertionError(f"Position closed before placing SL (attempt {attempt})")
-        
+
         async with reya_tester.perp_trade() as ctx:
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
@@ -322,32 +322,32 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
             )
             sl_order = await reya_tester.create_trigger_order(sl_params)
             logger.info(f"Created SL order: {sl_order.order_id}")
-            
+
             try:
                 expected_sl = trigger_order_params_to_order(sl_params, reya_tester.account_id)
                 result = await ctx.wait_for_closing_execution(expected_sl, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
                 logger.info(f"✅ SL executed with trade seq={result.sequence_number}")
-                
+
                 await reya_tester.check_order_execution(result.rest_execution, expected_sl, qty)
                 await reya_tester.check_position_not_open(symbol)
                 return  # SUCCESS
-                
+
             except RuntimeError as e:
                 last_error = e
                 logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
                 await _cancel_order_if_open(reya_tester, sl_order.order_id)
                 continue
-    
+
     raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
 @pytest.mark.asyncio
 async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     """SL/TP orders are immediately cancelled when no position exists.
-    
+
     Setup: No position
     Action: Submit SL and TP orders
-    
+
     Verifies:
     1. SL order is immediately cancelled (not filled, not left open)
     2. TP order is immediately cancelled (not filled, not left open)
@@ -399,7 +399,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
 @pytest.mark.asyncio
 async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """Cancelling a non-existent order returns proper error.
-    
+
     Verifies:
     1. API returns BadRequestException for unknown order ID
     2. Error message indicates the order was not found
@@ -425,10 +425,10 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
 @pytest.mark.asyncio
 async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     """SL/TP orders are cancelled when position is manually closed.
-    
+
     Setup: LONG position with SL and TP orders (both not in-cross)
     Action: Manually close position with market order
-    
+
     Verifies:
     1. Position opens correctly
     2. SL and TP orders are created
@@ -513,10 +513,10 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
 @pytest.mark.asyncio
 async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     """SL/TP orders are cancelled when position is flipped (long to short).
-    
+
     Setup: LONG position with SL and TP orders (both not in-cross)
     Action: Flip position by selling 2x the position size
-    
+
     Verifies:
     1. Long position opens correctly
     2. SL and TP orders are created
@@ -608,11 +608,11 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
 @pytest.mark.asyncio
 async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     """SL executes (in-cross) and cancels the TP order.
-    
+
     Setup: LONG position with both SL and TP orders
     SL trigger: At entry price (in-cross for long SL)
     TP trigger: Above market (not in-cross)
-    
+
     Verifies:
     1. SL order executes correctly when in-cross
     2. Trade is consistent between REST and WS (same sequence number)
@@ -643,11 +643,11 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     last_error: Exception | None = None
     for attempt in range(1, CO_MAX_RETRIES + 1):
         logger.info(f"🔄 SL execution attempt {attempt}/{CO_MAX_RETRIES}")
-        
+
         # Verify position exists before placing CO
         if await reya_tester.data.position(symbol) is None:
             raise AssertionError(f"Position closed before placing SL (attempt {attempt})")
-        
+
         async with reya_tester.perp_trade() as ctx:
             # Create SL order (in cross - should trigger)
             sl_params = TriggerOrderParameters(
@@ -674,7 +674,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
                 expected_sl = trigger_order_params_to_order(sl_params, reya_tester.account_id)
                 result = await ctx.wait_for_closing_execution(expected_sl, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
                 logger.info(f"✅ SL executed with trade seq={result.sequence_number}")
-                
+
                 await reya_tester.check_order_execution(result.rest_execution, expected_sl, qty)
                 await reya_tester.check_position_not_open(symbol)
 
@@ -683,25 +683,25 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
                 await reya_tester.check_no_open_orders()
                 logger.info("✅ TP order cancelled when SL executed")
                 return  # SUCCESS
-                
+
             except RuntimeError as e:
                 last_error = e
                 logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
                 await _cancel_order_if_open(reya_tester, sl_order.order_id)
                 await _cancel_order_if_open(reya_tester, tp_order.order_id)
                 continue
-    
+
     raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
 @pytest.mark.asyncio
 async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
     """TP executes (in-cross) and cancels the SL order.
-    
+
     Setup: LONG position with both SL and TP orders
     SL trigger: Below market (not in-cross)
     TP trigger: Below market (in-cross for long TP)
-    
+
     Verifies:
     1. TP order executes correctly when in-cross
     2. Trade is consistent between REST and WS (same sequence number)
@@ -732,11 +732,11 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
     last_error: Exception | None = None
     for attempt in range(1, CO_MAX_RETRIES + 1):
         logger.info(f"🔄 TP execution attempt {attempt}/{CO_MAX_RETRIES}")
-        
+
         # Verify position exists before placing CO
         if await reya_tester.data.position(symbol) is None:
             raise AssertionError(f"Position closed before placing TP (attempt {attempt})")
-        
+
         async with reya_tester.perp_trade() as ctx:
             # Create SL order (not in cross - should be cancelled when TP executes)
             sl_params = TriggerOrderParameters(
@@ -763,7 +763,7 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
                 expected_tp = trigger_order_params_to_order(tp_params, reya_tester.account_id)
                 result = await ctx.wait_for_closing_execution(expected_tp, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
                 logger.info(f"✅ TP executed with trade seq={result.sequence_number}")
-                
+
                 await reya_tester.check_order_execution(result.rest_execution, expected_tp, qty)
                 await reya_tester.check_position_not_open(symbol)
 
@@ -772,12 +772,12 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
                 await reya_tester.check_no_open_orders()
                 logger.info("✅ SL order cancelled when TP executed")
                 return  # SUCCESS
-                
+
             except RuntimeError as e:
                 last_error = e
                 logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
                 await _cancel_order_if_open(reya_tester, sl_order.order_id)
                 await _cancel_order_if_open(reya_tester, tp_order.order_id)
                 continue
-    
+
     raise AssertionError(f"TP order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")

@@ -348,7 +348,7 @@ async def spot_balance_guard(
 ):  # pylint: disable=redefined-outer-name
     """
     Session-scoped fixture that checks balances before SPOT tests and restores them after.
-    
+
     NOTE: This fixture is NOT autouse - it must be explicitly requested by spot tests.
 
     At session start:

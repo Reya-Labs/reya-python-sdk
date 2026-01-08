@@ -169,18 +169,18 @@ class ReyaTester:
 
     def perp_trade(self) -> PerpTradeContext:
         """Create a context for bulletproof PERP trade verification.
-        
+
         This context manager captures the baseline sequence number BEFORE
         any order is placed, enabling reliable trade verification across
         both REST and WebSocket channels.
-        
+
         Usage:
             async with reya_tester.perp_trade() as ctx:
                 await reya_tester.create_limit_order(params)
                 result = await ctx.wait_for_execution(expected_order)
                 # result.rest_execution and result.ws_execution are guaranteed
                 # to be the SAME trade (same sequence_number)
-        
+
         Returns:
             PerpTradeContext: Context manager for trade verification.
         """
@@ -333,7 +333,9 @@ class ReyaTester:
     async def wait_for_order_execution(self, expected_order, timeout: int = 10, baseline_seq: Optional[int] = None):
         return await self.wait.for_order_execution(expected_order, timeout, baseline_seq)
 
-    async def wait_for_closing_order_execution(self, expected_order, expected_qty=None, timeout: int = 10, baseline_seq: Optional[int] = None):
+    async def wait_for_closing_order_execution(
+        self, expected_order, expected_qty=None, timeout: int = 10, baseline_seq: Optional[int] = None
+    ):
         return await self.wait.for_closing_order_execution(expected_order, expected_qty, timeout, baseline_seq)
 
     async def wait_for_spot_execution(self, order_id: str, expected_order, timeout: int = 10):
