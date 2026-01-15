@@ -20,10 +20,10 @@ async def test_get_wallet_positions_empty(reya_tester: ReyaTester):
     """Test getting positions when no positions exist for the symbol"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    positions = await reya_tester.get_positions()
+    positions = await reya_tester.data.positions()
     assert isinstance(positions, dict), "Positions should be a dictionary"
     assert symbol not in positions, f"Should not have position for {symbol}"
 
@@ -35,10 +35,10 @@ async def test_get_wallet_positions_with_position(reya_tester: ReyaTester):
     """Test getting positions when a position exists"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     test_qty = "0.01"
 
     limit_order_params = LimitOrderParameters(
@@ -50,12 +50,12 @@ async def test_get_wallet_positions_with_position(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(limit_order_params)
+    await reya_tester.orders.create_limit(limit_order_params)
 
     expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
-    positions = await reya_tester.get_positions()
+    positions = await reya_tester.data.positions()
     assert isinstance(positions, dict), "Positions should be a dictionary"
     assert symbol in positions, f"Should have position for {symbol}"
 
@@ -74,13 +74,13 @@ async def test_get_wallet_perp_executions(reya_tester: ReyaTester):
     """Test getting perp execution history for wallet"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
     last_execution_before = await reya_tester.get_last_wallet_perp_execution()
     sequence_before = last_execution_before.sequence_number if last_execution_before else 0
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     test_qty = "0.01"
 
     limit_order_params = LimitOrderParameters(
@@ -92,10 +92,10 @@ async def test_get_wallet_perp_executions(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(limit_order_params)
+    await reya_tester.orders.create_limit(limit_order_params)
 
     expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
     last_execution_after = await reya_tester.get_last_wallet_perp_execution()
     assert last_execution_after is not None, "Should have execution after order"
@@ -132,7 +132,7 @@ async def test_get_wallet_accounts(reya_tester: ReyaTester):
 @pytest.mark.asyncio
 async def test_get_wallet_account_balances(reya_tester: ReyaTester):
     """Test getting wallet account balances"""
-    balances = await reya_tester.get_balances()
+    balances = await reya_tester.data.balances()
 
     assert isinstance(balances, dict), "Balances should be a dictionary"
     assert "RUSD" in balances or len(balances) > 0, "Should have at least one balance"
@@ -167,13 +167,13 @@ async def test_get_single_position(reya_tester: ReyaTester):
     """Test getting a single position by symbol"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    position = await reya_tester.get_position(symbol)
+    position = await reya_tester.data.position(symbol)
     assert position is None, "Should not have position initially"
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     test_qty = "0.01"
 
     limit_order_params = LimitOrderParameters(
@@ -185,12 +185,12 @@ async def test_get_single_position(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(limit_order_params)
+    await reya_tester.orders.create_limit(limit_order_params)
 
     expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
-    position = await reya_tester.get_position(symbol)
+    position = await reya_tester.data.position(symbol)
     assert position is not None, "Should have position after order"
     assert position.symbol == symbol, "Position symbol should match"
     assert float(position.qty) == float(test_qty), "Position qty should match"

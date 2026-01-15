@@ -46,13 +46,13 @@ async def test_spot_maker_taker_matching(
     logger.info(f"Using oracle price for orders: ${spot_config.oracle_price:.2f}")
 
     # Clear any existing orders for BOTH accounts
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     # Get initial balances for both accounts
     logger.info("\n📊 Getting initial balances...")
-    maker_initial_balances = await maker_tester.get_balances()
-    taker_initial_balances = await taker_tester.get_balances()
+    maker_initial_balances = await maker_tester.data.balances()
+    taker_initial_balances = await taker_tester.data.balances()
     logger.info(f"Maker initial balances: {[(b.asset, b.real_balance) for b in maker_initial_balances.values()]}")
     logger.info(f"Taker initial balances: {[(b.asset, b.real_balance) for b in taker_initial_balances.values()]}")
 
@@ -62,20 +62,20 @@ async def test_spot_maker_taker_matching(
 
     maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
-    maker_order_id = await maker_tester.create_limit_order(maker_order_params)
+    maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
     logger.info(f"Created maker order with ID: {maker_order_id} at price ${maker_price:.2f}")
 
     # Wait for maker order creation confirmation
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    await maker_tester.wait.for_order_creation(maker_order_id)
     expected_maker_order = limit_order_params_to_order(maker_order_params, maker_tester.account_id)
-    await maker_tester.check_open_order_created(maker_order_id, expected_maker_order)
+    await maker_tester.check.open_order_created(maker_order_id, expected_maker_order)
     logger.info("✅ Maker order confirmed on the book")
 
     # Step 2: Check L2 depth to verify maker order is visible
     logger.info("\n📊 Step 2: Checking L2 depth...")
     await asyncio.sleep(0.05)
 
-    depth = await maker_tester.get_market_depth(spot_config.symbol)
+    depth = await maker_tester.data.market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     logger.info(f"Market depth type: {depth.type}")
     logger.info(f"Bids: {len(depth.bids)} levels")
@@ -102,12 +102,12 @@ async def test_spot_maker_taker_matching(
     taker_price = maker_price  # Same price ensures within oracle deviation
 
     # Clear balance updates before placing order
-    maker_tester.clear_balance_updates()
-    taker_tester.clear_balance_updates()
+    maker_tester.ws.clear_balance_updates()
+    taker_tester.ws.clear_balance_updates()
 
     taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).ioc().build()
 
-    taker_order_id = await taker_tester.create_limit_order(taker_order_params)
+    taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
     logger.info(f"Created taker order with ID: {taker_order_id} at price ${taker_price:.2f}")
 
     # Step 4: Wait for spot execution confirmation
@@ -115,16 +115,16 @@ async def test_spot_maker_taker_matching(
     expected_taker_order = limit_order_params_to_order(taker_order_params, taker_tester.account_id)
 
     # Strict matching on order_id and all fields
-    taker_execution = await taker_tester.wait_for_spot_execution(taker_order_id, expected_taker_order)
+    taker_execution = await taker_tester.wait.for_spot_execution(taker_order_id, expected_taker_order)
     logger.info(f"✅ Taker execution confirmed: {taker_execution.order_id}")
 
-    await taker_tester.check_spot_execution(taker_execution, expected_taker_order)
+    await taker_tester.check.spot_execution(taker_execution, expected_taker_order)
     logger.info("✅ Taker execution details validated")
 
     # Step 5: Verify maker order was filled
     logger.info("\n📋 Step 5: Checking maker order status...")
     try:
-        await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
         logger.info("✅ Maker order fully filled")
     except RuntimeError:
         logger.info("⚠️ Maker order might be partially filled or still open")
@@ -133,14 +133,14 @@ async def test_spot_maker_taker_matching(
     logger.info("\n💰 Step 6: Verifying balance changes...")
     await asyncio.sleep(0.1)
 
-    maker_final_balances = await maker_tester.get_balances()
-    taker_final_balances = await taker_tester.get_balances()
+    maker_final_balances = await maker_tester.data.balances()
+    taker_final_balances = await taker_tester.data.balances()
 
     # For WETHRUSD: base=ETH, quote=RUSD
     base_asset = spot_config.symbol.replace("W", "").replace("RUSD", "")  # "WETHRUSD" -> "ETH"
     quote_asset = "RUSD"
 
-    maker_tester.verify_spot_trade_balance_changes(
+    maker_tester.ws.verify_spot_trade_balance_changes(
         maker_initial_balances=maker_initial_balances,
         maker_final_balances=maker_final_balances,
         taker_initial_balances=taker_initial_balances,
@@ -155,8 +155,8 @@ async def test_spot_maker_taker_matching(
     # Verify balance updates via WebSocket
     # Each tester has its own WebSocket connection subscribed to its own wallet
     logger.info("\n💰 Verifying balance updates via WebSocket...")
-    maker_balance_updates = [b for b in maker_tester.ws_balance_updates if b.account_id == maker_tester.account_id]
-    taker_balance_updates = [b for b in taker_tester.ws_balance_updates if b.account_id == taker_tester.account_id]
+    maker_balance_updates = [b for b in maker_tester.ws.balance_updates if b.account_id == maker_tester.account_id]
+    taker_balance_updates = [b for b in taker_tester.ws.balance_updates if b.account_id == taker_tester.account_id]
 
     logger.info(f"Maker received {len(maker_balance_updates)} balance updates via WS")
     logger.info(f"Taker received {len(taker_balance_updates)} balance updates via WS")
@@ -180,21 +180,21 @@ async def test_spot_maker_taker_matching(
 
     # Step 7: Verify order changes via WebSocket
     logger.info("\n📨 Step 7: Verifying order changes via WebSocket...")
-    assert maker_order_id in maker_tester.ws_order_changes, "Maker order should be in WS order changes"
-    if taker_order_id in taker_tester.ws_order_changes:
+    assert maker_order_id in maker_tester.ws.order_changes, "Maker order should be in WS order changes"
+    if taker_order_id in taker_tester.ws.order_changes:
         logger.info("✅ Taker order changes received via WebSocket")
     logger.info("✅ Order changes verification completed")
 
     # Step 8: Verify spot execution via WebSocket
     logger.info("\n📊 Step 8: Verifying spot execution via WebSocket...")
-    assert taker_tester.ws_last_spot_execution is not None, "Should have received spot execution via WS"
-    assert taker_tester.ws_last_spot_execution.symbol == spot_config.symbol
+    assert taker_tester.ws.last_spot_execution is not None, "Should have received spot execution via WS"
+    assert taker_tester.ws.last_spot_execution.symbol == spot_config.symbol
     logger.info("✅ Spot execution received via WebSocket")
 
     # Cleanup
     logger.info("\n🧹 Cleanup: Cancelling any remaining orders...")
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     logger.info("\n%s", "=" * 80)
     logger.info("✅ SPOT TRADING E2E TEST COMPLETED SUCCESSFULLY")

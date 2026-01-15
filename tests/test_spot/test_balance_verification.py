@@ -58,8 +58,8 @@ async def test_spot_balance_update_after_buy(
     logger.info(f"SPOT BALANCE UPDATE AFTER BUY TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Record initial balances
     maker_balances_before = await get_account_balances(maker_tester)
@@ -78,8 +78,8 @@ async def test_spot_balance_update_after_buy(
     maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.create_limit_order(maker_params)
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker buys with IOC
@@ -88,11 +88,11 @@ async def test_spot_balance_update_after_buy(
     taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
 
     logger.info(f"Taker placing IOC buy: {spot_config.min_qty} @ ${taker_price:.2f}")
-    await taker_tester.create_limit_order(taker_params)
+    await taker_tester.orders.create_limit(taker_params)
 
     # Wait for trade to settle
     await asyncio.sleep(0.05)
-    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
     # Wait for indexer to update balances (REST API may lag behind WebSocket)
     await asyncio.sleep(1.0)
@@ -162,8 +162,8 @@ async def test_spot_balance_update_after_sell(
     logger.info(f"SPOT BALANCE UPDATE AFTER SELL TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Record initial balances
     maker_balances_before = await get_account_balances(maker_tester)
@@ -182,8 +182,8 @@ async def test_spot_balance_update_after_sell(
     maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.create_limit_order(maker_params)
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker buys with IOC (taker has more RUSD)
@@ -192,11 +192,11 @@ async def test_spot_balance_update_after_sell(
     taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
 
     logger.info(f"Taker placing IOC buy: {spot_config.min_qty} @ ${taker_price:.2f}")
-    await taker_tester.create_limit_order(taker_params)
+    await taker_tester.orders.create_limit(taker_params)
 
     # Wait for trade to settle
     await asyncio.sleep(0.05)
-    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
     # Wait for indexer to update balances (REST API may lag behind WebSocket)
     await asyncio.sleep(1.0)
@@ -264,8 +264,8 @@ async def test_spot_balance_maker_taker_consistency(
     logger.info(f"SPOT BALANCE MAKER/TAKER CONSISTENCY TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Record initial balances
     maker_balances_before = await get_account_balances(maker_tester)
@@ -281,14 +281,14 @@ async def test_spot_balance_maker_taker_consistency(
 
     maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
-    maker_order_id = await maker_tester.create_limit_order(maker_params)
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
 
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
-    await taker_tester.create_limit_order(taker_params)
+    await taker_tester.orders.create_limit(taker_params)
     await asyncio.sleep(0.05)
-    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
     # Wait for indexer to update balances (REST API may lag behind WebSocket)
     await asyncio.sleep(1.0)

@@ -53,7 +53,7 @@ async def test_spot_order_invalid_signature(spot_config: SpotTestConfig, spot_te
     logger.info("SPOT ORDER INVALID SIGNATURE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Create a valid order request but with a tampered signature
     order_price = spot_config.price(0.96)
@@ -92,7 +92,7 @@ async def test_spot_order_invalid_signature(spot_config: SpotTestConfig, spot_te
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER INVALID SIGNATURE TEST COMPLETED")
 
 
@@ -110,7 +110,7 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
     logger.info("SPOT ORDER WRONG SIGNER TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Create a different private key for signing
     wrong_private_key = "0x" + "12" * 32  # A different private key
@@ -181,7 +181,7 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER WRONG SIGNER TEST COMPLETED")
 
 
@@ -203,7 +203,7 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
     logger.info("SPOT ORDER EXPIRED DEADLINE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     order_price = spot_config.price(0.96)
     # Set deadline in the past
@@ -260,7 +260,7 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER EXPIRED DEADLINE TEST COMPLETED")
 
 
@@ -275,7 +275,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
     logger.info("SPOT CANCEL EXPIRED DEADLINE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # First create a valid order
     order_params = (
@@ -288,8 +288,8 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
         .build()
     )
 
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"Created order: {order_id}")
 
     # Now try to cancel with expired deadline
@@ -336,7 +336,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT CANCEL EXPIRED DEADLINE TEST COMPLETED")
 
 
@@ -359,7 +359,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
     logger.info("SPOT ORDER REUSED NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     order_price = spot_config.price(0.96)
 
@@ -458,7 +458,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER REUSED NONCE TEST COMPLETED")
 
 
@@ -476,7 +476,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
     logger.info("SPOT ORDER OLD NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     order_price = spot_config.price(0.96)
 
@@ -576,7 +576,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER OLD NONCE TEST COMPLETED")
 
 
@@ -599,7 +599,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
     logger.info("SPOT IOC INSUFFICIENT BALANCE (BUY) TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Get the actual RUSD balance for this account
     balances = await spot_tester.client.get_account_balances()
@@ -630,7 +630,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
     logger.info(f"Required RUSD: {required_rusd}, Available: {rusd_balance}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
@@ -640,7 +640,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT IOC INSUFFICIENT BALANCE (BUY) TEST COMPLETED")
 
 
@@ -658,7 +658,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
     logger.info("SPOT IOC INSUFFICIENT BALANCE (SELL) TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Get the actual ETH balance for this account
     balances = await spot_tester.client.get_account_balances()
@@ -683,7 +683,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
     logger.info(f"Required ETH: {exceeding_qty}, Available: {eth_balance}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
@@ -693,7 +693,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT IOC INSUFFICIENT BALANCE (SELL) TEST COMPLETED")
 
 
@@ -715,7 +715,7 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
     logger.info("SPOT ORDER QTY BELOW MINIMUM TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Use a quantity below the minimum (0.001 for WETHRUSD)
     tiny_qty = "0.0001"  # Below minimum of 0.001
@@ -726,7 +726,7 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
     logger.info(f"Sending order with qty below minimum: {tiny_qty}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         # If accepted, clean up
         await spot_tester.client.cancel_order(
             order_id=order_id,
@@ -743,7 +743,7 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER QTY BELOW MINIMUM TEST COMPLETED")
 
 
@@ -762,7 +762,7 @@ async def test_spot_order_qty_not_step_multiple(spot_config: SpotTestConfig, spo
     logger.info("SPOT ORDER QTY NOT STEP MULTIPLE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Use a quantity with excessive decimal places that won't be a step multiple
     non_step_qty = "0.0123456789"
@@ -773,7 +773,7 @@ async def test_spot_order_qty_not_step_multiple(spot_config: SpotTestConfig, spo
     logger.info(f"Sending order with non-step-multiple qty: {non_step_qty}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         # If accepted, clean up
         await spot_tester.client.cancel_order(
             order_id=order_id,
@@ -792,7 +792,7 @@ async def test_spot_order_qty_not_step_multiple(spot_config: SpotTestConfig, spo
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER QTY NOT STEP MULTIPLE TEST COMPLETED")
 
 
@@ -809,7 +809,7 @@ async def test_spot_order_price_not_tick_multiple(spot_config: SpotTestConfig, s
     logger.info("SPOT ORDER PRICE NOT TICK MULTIPLE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Use a price with too many decimal places (beyond tick precision)
     # Most markets have tick size like 0.01, so 0.001 precision would be invalid
@@ -822,7 +822,7 @@ async def test_spot_order_price_not_tick_multiple(spot_config: SpotTestConfig, s
     logger.info(f"Sending order with non-tick-multiple price: {non_tick_price}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         # If accepted, clean up
         await spot_tester.client.cancel_order(
             order_id=order_id,
@@ -841,7 +841,7 @@ async def test_spot_order_price_not_tick_multiple(spot_config: SpotTestConfig, s
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT ORDER PRICE NOT TICK MULTIPLE TEST COMPLETED")
 
 
@@ -861,7 +861,7 @@ async def test_spot_cancel_invalid_signature(spot_config: SpotTestConfig, spot_t
     logger.info("SPOT CANCEL INVALID SIGNATURE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # First create a valid order
     order_params = (
@@ -874,8 +874,8 @@ async def test_spot_cancel_invalid_signature(spot_config: SpotTestConfig, spot_t
         .build()
     )
 
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"Created order: {order_id}")
 
     # Try to cancel with invalid signature
@@ -914,7 +914,7 @@ async def test_spot_cancel_invalid_signature(spot_config: SpotTestConfig, spot_t
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT CANCEL INVALID SIGNATURE TEST COMPLETED")
 
 
@@ -932,7 +932,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     logger.info("SPOT CANCEL REUSED NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Create first order and cancel it with a specific nonce
     order_params = (
@@ -945,8 +945,8 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
         .build()
     )
 
-    first_order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(first_order_id)
+    first_order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(first_order_id)
     logger.info(f"Step 1: Created first order: {first_order_id}")
 
     first_nonce = spot_tester.get_next_nonce()
@@ -977,8 +977,8 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     logger.info("✅ First cancel succeeded")
 
     # Step 2: Create second order and try to cancel with reused nonce
-    second_order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(second_order_id)
+    second_order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(second_order_id)
     logger.info(f"Step 2: Created second order: {second_order_id}")
 
     reused_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
@@ -1021,7 +1021,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT CANCEL REUSED NONCE TEST COMPLETED")
 
 
@@ -1039,7 +1039,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     logger.info("SPOT CANCEL OLD NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Create first order and cancel it with a specific nonce
     order_params = (
@@ -1052,8 +1052,8 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
         .build()
     )
 
-    first_order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(first_order_id)
+    first_order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(first_order_id)
     logger.info(f"Step 1: Created first order: {first_order_id}")
 
     first_nonce = spot_tester.get_next_nonce()
@@ -1084,8 +1084,8 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     logger.info("✅ First cancel succeeded")
 
     # Step 2: Create second order and try to cancel with nonce - 1
-    second_order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(second_order_id)
+    second_order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(second_order_id)
     logger.info(f"Step 2: Created second order: {second_order_id}")
 
     old_nonce = first_nonce - 1
@@ -1129,7 +1129,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT CANCEL OLD NONCE TEST COMPLETED")
 
 
@@ -1149,7 +1149,7 @@ async def test_spot_mass_cancel_invalid_signature(spot_config: SpotTestConfig, s
     logger.info("SPOT MASS CANCEL INVALID SIGNATURE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Create a fake signature
     fake_signature = "0x" + "ab" * 65
@@ -1176,7 +1176,7 @@ async def test_spot_mass_cancel_invalid_signature(spot_config: SpotTestConfig, s
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT MASS CANCEL INVALID SIGNATURE TEST COMPLETED")
 
 
@@ -1191,7 +1191,7 @@ async def test_spot_mass_cancel_expired_deadline(spot_config: SpotTestConfig, sp
     logger.info("SPOT MASS CANCEL EXPIRED DEADLINE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Use an expired deadline (1 hour in the past)
     expired_deadline = int(time.time()) - 3600  # 1 hour ago (in seconds)
@@ -1227,7 +1227,7 @@ async def test_spot_mass_cancel_expired_deadline(spot_config: SpotTestConfig, sp
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT MASS CANCEL EXPIRED DEADLINE TEST COMPLETED")
 
 
@@ -1245,7 +1245,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
     logger.info("SPOT MASS CANCEL REUSED NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Perform a valid mass cancel using the SDK's nonce generator
     # This establishes a nonce baseline in the API's nonce tracker
@@ -1303,7 +1303,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT MASS CANCEL REUSED NONCE TEST COMPLETED")
 
 
@@ -1321,7 +1321,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
     logger.info("SPOT MASS CANCEL OLD NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Perform a valid mass cancel using the SDK's nonce generator
     # This establishes a nonce baseline in the API's nonce tracker
@@ -1380,7 +1380,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
         logger.info(f"✅ Mass cancel rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT MASS CANCEL OLD NONCE TEST COMPLETED")
 
 
@@ -1398,7 +1398,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
     logger.info("SPOT CANCEL WRONG SIGNER TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # First create a valid order
     order_params = (
@@ -1411,8 +1411,8 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
         .build()
     )
 
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"Created order: {order_id}")
 
     # Create a different signer (wrong wallet)
@@ -1469,7 +1469,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT CANCEL WRONG SIGNER TEST COMPLETED")
 
 
@@ -1487,7 +1487,7 @@ async def test_spot_mass_cancel_wrong_signer(spot_config: SpotTestConfig, spot_t
     logger.info("SPOT MASS CANCEL WRONG SIGNER TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # First create a valid order
     order_params = (
@@ -1500,8 +1500,8 @@ async def test_spot_mass_cancel_wrong_signer(spot_config: SpotTestConfig, spot_t
         .build()
     )
 
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"Created order: {order_id}")
 
     # Create a different signer (wrong wallet)
@@ -1555,7 +1555,7 @@ async def test_spot_mass_cancel_wrong_signer(spot_config: SpotTestConfig, spot_t
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ SPOT MASS CANCEL WRONG SIGNER TEST COMPLETED")
 
 
@@ -1577,7 +1577,7 @@ async def test_spot_order_invalid_exchange_id(spot_config: SpotTestConfig, spot_
     logger.info("SPOT ORDER INVALID EXCHANGE ID TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Build order request with invalid exchangeId
     price = str(spot_config.price(0.96))
@@ -1649,7 +1649,7 @@ async def test_spot_order_invalid_symbol(spot_config: SpotTestConfig, spot_teste
     logger.info("SPOT ORDER INVALID SYMBOL TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     price = str(spot_config.price(0.96))
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
@@ -1719,7 +1719,7 @@ async def test_spot_order_missing_signature(spot_config: SpotTestConfig, spot_te
     logger.info("SPOT ORDER MISSING SIGNATURE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     price = str(spot_config.price(0.96))
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
@@ -1772,7 +1772,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
     logger.info("SPOT ORDER MISSING NONCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     price = str(spot_config.price(0.96))
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
@@ -1842,7 +1842,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
     logger.info("SPOT ORDER INVALID TIME IN FORCE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     price = str(spot_config.price(0.96))
     deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
@@ -1919,7 +1919,7 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
     logger.info("SPOT ORDER MISSING EXPIRATION TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     price = str(spot_config.price(0.96))
     nonce = spot_tester.get_next_nonce()

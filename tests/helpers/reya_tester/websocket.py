@@ -141,16 +141,16 @@ class WebSocketState:
 
     def subscribe_to_market_depth(self, symbol: str) -> None:
         """Subscribe to L2 market depth updates for a specific symbol."""
-        if self._t.websocket is None:
+        if self._t._websocket is None:
             raise RuntimeError("WebSocket not connected - call setup() first")
-        self._t.websocket.market.depth(symbol).subscribe()
+        self._t._websocket.market.depth(symbol).subscribe()
         logger.info(f"Subscribed to market depth for {symbol}")
 
     def subscribe_to_market_spot_executions(self, symbol: str) -> None:
         """Subscribe to market-level spot executions for a specific symbol."""
-        if self._t.websocket is None:
+        if self._t._websocket is None:
             raise RuntimeError("WebSocket not connected - call setup() first")
-        self._t.websocket.market.spot_executions(symbol).subscribe()
+        self._t._websocket.market.spot_executions(symbol).subscribe()
         logger.info(f"Subscribed to market spot executions for {symbol}")
 
     def clear_market_spot_executions(self, symbol: Optional[str] = None) -> None:
@@ -234,6 +234,14 @@ class WebSocketState:
                 self.market_spot_executions[symbol].add(execution)
 
             logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
+
+        # Handle initial snapshot for balances channel
+        if "balances" in message.channel and message.contents:
+            data = message.contents.get("data", [])
+            for b in data:
+                balance = AsyncAccountBalance.model_validate(b)
+                self.balances.add(balance)
+            logger.info(f"Stored balances snapshot: {len(data)} balance(s)")
 
     def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
         """Handle perp execution updates."""

@@ -39,7 +39,7 @@ async def test_spot_invalid_symbol(spot_config: SpotTestConfig, spot_tester: Rey
     logger.info("SPOT INVALID SYMBOL TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Use an invalid symbol
     invalid_symbol = "INVALIDRUSD"
@@ -57,7 +57,7 @@ async def test_spot_invalid_symbol(spot_config: SpotTestConfig, spot_tester: Rey
     logger.info(f"Attempting to place order with invalid symbol: {invalid_symbol}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
         # If accepted, clean up
         await spot_tester.client.cancel_order(
@@ -86,7 +86,7 @@ async def test_spot_zero_quantity(spot_config: SpotTestConfig, spot_tester: Reya
     logger.info("SPOT ZERO QUANTITY TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     order_params = (
         OrderBuilder.from_config(spot_config).buy().price(str(spot_config.oracle_price)).qty("0").gtc().build()
@@ -95,13 +95,13 @@ async def test_spot_zero_quantity(spot_config: SpotTestConfig, spot_tester: Reya
     logger.info("Attempting to place order with zero quantity")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
     except ApiException as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT ZERO QUANTITY TEST COMPLETED")
 
@@ -121,14 +121,14 @@ async def test_spot_negative_price(spot_config: SpotTestConfig, spot_tester: Rey
     logger.info("SPOT NEGATIVE PRICE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     order_params = OrderBuilder.from_config(spot_config).buy().price("-100").gtc().build()
 
     logger.info("Attempting to place order with negative price")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         logger.info(f"Order unexpectedly accepted: {order_id}")
     except ApiException as e:
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
@@ -138,7 +138,7 @@ async def test_spot_negative_price(spot_config: SpotTestConfig, spot_tester: Rey
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT NEGATIVE PRICE TEST COMPLETED")
 
@@ -158,7 +158,7 @@ async def test_spot_very_small_quantity(spot_config: SpotTestConfig, spot_tester
     logger.info("SPOT VERY SMALL QUANTITY TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Very small quantity - may be below minimum
     small_qty = "0.0000001"
@@ -170,7 +170,7 @@ async def test_spot_very_small_quantity(spot_config: SpotTestConfig, spot_tester
     logger.info(f"Attempting to place order with very small quantity: {small_qty}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
         await spot_tester.client.cancel_order(
@@ -181,7 +181,7 @@ async def test_spot_very_small_quantity(spot_config: SpotTestConfig, spot_tester
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT VERY SMALL QUANTITY TEST COMPLETED")
 
@@ -201,7 +201,7 @@ async def test_spot_very_large_quantity(spot_config: SpotTestConfig, spot_tester
     logger.info("SPOT VERY LARGE QUANTITY TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Very large quantity - likely exceeds balance
     large_qty = "1000000"
@@ -213,7 +213,7 @@ async def test_spot_very_large_quantity(spot_config: SpotTestConfig, spot_tester
     logger.info(f"Attempting to place order with very large quantity: {large_qty}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
         await spot_tester.client.cancel_order(
@@ -224,7 +224,7 @@ async def test_spot_very_large_quantity(spot_config: SpotTestConfig, spot_tester
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT VERY LARGE QUANTITY TEST COMPLETED")
 
@@ -244,7 +244,7 @@ async def test_spot_extreme_price(spot_config: SpotTestConfig, spot_tester: Reya
     logger.info("SPOT EXTREME PRICE TEST")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Extremely high price
     extreme_price = "999999999999"
@@ -254,7 +254,7 @@ async def test_spot_extreme_price(spot_config: SpotTestConfig, spot_tester: Reya
     logger.info(f"Attempting to place order with extreme price: {extreme_price}")
 
     try:
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         logger.info(f"Order accepted: {order_id}")
         # Clean up if accepted
         await spot_tester.client.cancel_order(
@@ -265,6 +265,6 @@ async def test_spot_extreme_price(spot_config: SpotTestConfig, spot_tester: Reya
         logger.info(f"✅ Order rejected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:100]}")
 
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT EXTREME PRICE TEST COMPLETED")

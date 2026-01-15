@@ -31,7 +31,7 @@ async def test_spot_order_cancellation(spot_config: SpotTestConfig, spot_tester:
     logger.info(f"Using reference price for orders: ${spot_config.oracle_price}")
 
     # Clear any existing orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     # Place GTC order far from reference (won't fill)
     buy_price = spot_config.price(0.96)  # Far below reference
@@ -39,13 +39,13 @@ async def test_spot_order_cancellation(spot_config: SpotTestConfig, spot_tester:
     order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy order at ${buy_price:.2f} (far from market)...")
-    order_id = await spot_tester.create_limit_order(order_params)
+    order_id = await spot_tester.orders.create_limit(order_params)
     logger.info(f"Created order with ID: {order_id}")
 
     # Wait for order creation
-    await spot_tester.wait_for_order_creation(order_id)
+    await spot_tester.wait.for_order_creation(order_id)
     expected_order = limit_order_params_to_order(order_params, spot_tester.account_id)
-    await spot_tester.check_open_order_created(order_id, expected_order)
+    await spot_tester.check.open_order_created(order_id, expected_order)
     logger.info("✅ Order confirmed on the book")
 
     # Cancel the order
@@ -55,12 +55,12 @@ async def test_spot_order_cancellation(spot_config: SpotTestConfig, spot_tester:
     )
 
     # Wait for cancellation confirmation
-    cancelled_order_id = await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    cancelled_order_id = await spot_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED)
     assert cancelled_order_id == order_id, "Order was not cancelled"
     logger.info("✅ Order cancelled successfully")
 
     # Verify no open orders remain
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT ORDER CANCELLATION TEST COMPLETED SUCCESSFULLY")
 
@@ -80,7 +80,7 @@ async def test_spot_mass_cancel(spot_config: SpotTestConfig, spot_tester: ReyaTe
     logger.info(f"Using reference price for orders: ${spot_config.oracle_price}")
 
     # Clear any existing orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     # Place multiple GTC orders at different prices (far from market, won't fill)
     order_ids = []
@@ -94,11 +94,11 @@ async def test_spot_mass_cancel(spot_config: SpotTestConfig, spot_tester: ReyaTe
         order_params = OrderBuilder.from_config(spot_config).buy().price(str(buy_price)).gtc().build()
 
         logger.info(f"Creating order {i + 1}/{num_orders} at ${buy_price:.2f}")
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         order_ids.append(order_id)
 
         # Wait for order creation
-        await spot_tester.wait_for_order_creation(order_id)
+        await spot_tester.wait.for_order_creation(order_id)
         logger.info(f"✅ Order {i + 1} created: {order_id}")
 
     logger.info(f"\n✅ All {num_orders} orders created successfully")
@@ -132,7 +132,7 @@ async def test_spot_mass_cancel(spot_config: SpotTestConfig, spot_tester: ReyaTe
     logger.info(f"✅ All {num_orders} orders successfully cancelled via mass cancel")
 
     # Final verification - no open orders remain
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("\n%s", "=" * 80)
     logger.info("✅ SPOT MASS CANCEL TEST COMPLETED SUCCESSFULLY")
@@ -154,7 +154,7 @@ async def test_spot_cancel_nonexistent_order(spot_config: SpotTestConfig, spot_t
     logger.info(f"SPOT CANCEL NONEXISTENT ORDER TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Use a fake order ID that doesn't exist
     fake_order_id = "999999999999999999"
@@ -193,8 +193,8 @@ async def test_spot_cancel_already_filled_order(
     logger.info(f"SPOT CANCEL ALREADY FILLED ORDER TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Maker places GTC sell order (maker has more ETH)
     maker_price = spot_config.price(1.04)
@@ -202,8 +202,8 @@ async def test_spot_cancel_already_filled_order(
     maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.create_limit_order(maker_params)
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker buys with IOC (taker has more RUSD)
@@ -212,11 +212,11 @@ async def test_spot_cancel_already_filled_order(
     taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
 
     logger.info("Taker placing IOC buy to fill maker order...")
-    await taker_tester.create_limit_order(taker_params)
+    await taker_tester.orders.create_limit(taker_params)
 
     # Wait for fill
     await asyncio.sleep(0.05)
-    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Maker order filled")
 
     # Now try to cancel the already-filled order
@@ -231,8 +231,8 @@ async def test_spot_cancel_already_filled_order(
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
 
     # Verify no open orders
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT CANCEL ALREADY FILLED ORDER TEST COMPLETED")
 
@@ -254,8 +254,8 @@ async def test_spot_mass_cancel_empty_book(spot_config: SpotTestConfig, spot_tes
     logger.info("=" * 80)
 
     # Ensure no orders exist
-    await spot_tester.close_active_orders(fail_if_none=False)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
+    await spot_tester.check.no_open_orders()
 
     logger.info("Calling mass cancel on empty book...")
 
@@ -267,7 +267,7 @@ async def test_spot_mass_cancel_empty_book(spot_config: SpotTestConfig, spot_tes
         logger.info(f"Mass cancel response: {type(e).__name__}")
 
     # Verify still no orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT MASS CANCEL EMPTY BOOK TEST COMPLETED")
 
@@ -288,7 +288,7 @@ async def test_spot_cancel_by_client_order_id(spot_config: SpotTestConfig, spot_
     logger.info(f"SPOT CANCEL BY CLIENT ORDER ID TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Generate a unique client order ID (must be an integer)
     client_order_id = int(time.time() * 1000) % (2**31 - 1)  # Keep within int32 range
@@ -308,8 +308,8 @@ async def test_spot_cancel_by_client_order_id(spot_config: SpotTestConfig, spot_
     )
 
     logger.info(f"Placing GTC order with clientOrderId: {client_order_id}")
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify order is on the book
@@ -343,11 +343,11 @@ async def test_spot_cancel_by_client_order_id(spot_config: SpotTestConfig, spot_
         )
 
     # Wait for cancellation
-    await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    await spot_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED)
     logger.info("✅ Order cancelled successfully")
 
     # Verify no open orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT CANCEL BY CLIENT ORDER ID TEST COMPLETED")
 
@@ -370,8 +370,8 @@ async def test_spot_mass_cancel_no_orders(spot_config: SpotTestConfig, spot_test
     logger.info("=" * 80)
 
     # Ensure no open orders exist
-    await spot_tester.close_active_orders(fail_if_none=False)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
+    await spot_tester.check.no_open_orders()
     logger.info("✅ Confirmed no open orders exist")
 
     # Execute mass cancel on empty order book (for this account)
@@ -393,6 +393,6 @@ async def test_spot_mass_cancel_no_orders(spot_config: SpotTestConfig, spot_test
         logger.info("✅ Mass cancel succeeded without error (no count in response)")
 
     # Verify still no open orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT MASS CANCEL NO ORDERS TEST COMPLETED")

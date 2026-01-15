@@ -76,10 +76,10 @@ async def reya_tester_session():
     logger.info("🧹 SESSION END: Closing connections")
     logger.info("=" * 60)
     try:
-        if tester.websocket:
-            tester.websocket.close()
-        await tester.close_exposures(fail_if_none=False)
-        await tester.close_active_orders(fail_if_none=False)
+        if tester._websocket:
+            tester._websocket.close()
+        await tester.positions.close_all(fail_if_none=False)
+        await tester.orders.close_all(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Session cleanup completed")
     except (OSError, RuntimeError, asyncio.CancelledError) as e:
@@ -94,20 +94,17 @@ async def reya_tester(reya_tester_session):  # pylint: disable=redefined-outer-n
     Reuses the session-scoped connection but ensures clean state for each test.
     """
     # Clean up any leftover positions and orders from previous test
-    await reya_tester_session.close_exposures(fail_if_none=False)
-    await reya_tester_session.close_active_orders(fail_if_none=False)
+    await reya_tester_session.positions.close_all(fail_if_none=False)
+    await reya_tester_session.orders.close_all(fail_if_none=False)
 
     # Clear ALL WebSocket tracking state for fresh test
-    reya_tester_session.ws.clear()  # Clear all WebSocket state including positions
-    reya_tester_session.ws_order_changes.clear()
-    reya_tester_session.ws_balance_updates.clear()
-    reya_tester_session.ws_last_trade = None
+    reya_tester_session.ws.clear()
 
     yield reya_tester_session
 
     # Clean up positions and orders after test (connection stays open)
-    await reya_tester_session.close_exposures(fail_if_none=False)
-    await reya_tester_session.close_active_orders(fail_if_none=False)
+    await reya_tester_session.positions.close_all(fail_if_none=False)
+    await reya_tester_session.orders.close_all(fail_if_none=False)
 
 
 # ============================================================================
@@ -141,9 +138,9 @@ async def maker_tester_session():
 
     # Cleanup
     try:
-        if tester.websocket:
-            tester.websocket.close()
-        await tester.close_active_orders(fail_if_none=False)
+        if tester._websocket:
+            tester._websocket.close()
+        await tester.orders.close_all(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Maker session cleanup completed")
     except (OSError, RuntimeError, asyncio.CancelledError) as e:
@@ -176,9 +173,9 @@ async def taker_tester_session():
 
     # Cleanup
     try:
-        if tester.websocket:
-            tester.websocket.close()
-        await tester.close_active_orders(fail_if_none=False)
+        if tester._websocket:
+            tester._websocket.close()
+        await tester.orders.close_all(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Taker session cleanup completed")
     except (OSError, RuntimeError, asyncio.CancelledError) as e:
@@ -190,15 +187,12 @@ async def maker_tester(maker_tester_session):  # pylint: disable=redefined-outer
     """
     Function-scoped wrapper for maker that cleans state between tests.
     """
-    await maker_tester_session.close_active_orders(fail_if_none=False)
-    maker_tester_session.ws_order_changes.clear()
-    maker_tester_session.ws_balance_updates.clear()
-    maker_tester_session.ws.clear_spot_executions()  # Clear all spot executions
-    maker_tester_session.ws_last_trade = None
+    await maker_tester_session.orders.close_all(fail_if_none=False)
+    maker_tester_session.ws.clear()
 
     yield maker_tester_session
 
-    await maker_tester_session.close_active_orders(fail_if_none=False)
+    await maker_tester_session.orders.close_all(fail_if_none=False)
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
@@ -207,15 +201,12 @@ async def spot_tester(maker_tester_session):  # pylint: disable=redefined-outer-
     Function-scoped wrapper for single-account spot tests.
     Uses SPOT account 1 (same as maker_tester).
     """
-    await maker_tester_session.close_active_orders(fail_if_none=False)
-    maker_tester_session.ws_order_changes.clear()
-    maker_tester_session.ws_balance_updates.clear()
-    maker_tester_session.ws.clear_spot_executions()
-    maker_tester_session.ws_last_trade = None
+    await maker_tester_session.orders.close_all(fail_if_none=False)
+    maker_tester_session.ws.clear()
 
     yield maker_tester_session
 
-    await maker_tester_session.close_active_orders(fail_if_none=False)
+    await maker_tester_session.orders.close_all(fail_if_none=False)
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
@@ -223,15 +214,12 @@ async def taker_tester(taker_tester_session):  # pylint: disable=redefined-outer
     """
     Function-scoped wrapper for taker that cleans state between tests.
     """
-    await taker_tester_session.close_active_orders(fail_if_none=False)
-    taker_tester_session.ws_order_changes.clear()
-    taker_tester_session.ws_balance_updates.clear()
-    taker_tester_session.ws.clear_spot_executions()  # Clear all spot executions
-    taker_tester_session.ws_last_trade = None
+    await taker_tester_session.orders.close_all(fail_if_none=False)
+    taker_tester_session.ws.clear()
 
     yield taker_tester_session
 
-    await taker_tester_session.close_active_orders(fail_if_none=False)
+    await taker_tester_session.orders.close_all(fail_if_none=False)
 
 
 # ============================================================================

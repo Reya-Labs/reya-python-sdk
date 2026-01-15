@@ -49,7 +49,7 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Place GTC order
     order_price = spot_config.price(0.96)  # Far from market
@@ -57,21 +57,21 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Step 2: Verify order exists via REST and WS
     open_orders = await spot_tester.client.get_open_orders()
     order_ids_before = {o.order_id for o in open_orders if o.symbol == spot_config.symbol}
     assert order_id in order_ids_before, f"Order {order_id} should be in REST open orders"
-    assert order_id in spot_tester.ws_order_changes, f"Order {order_id} should be in WS order changes"
+    assert order_id in spot_tester.ws.order_changes, f"Order {order_id} should be in WS order changes"
     logger.info(f"✅ Order confirmed in both REST and WS: {order_id}")
 
     # Step 3: Disconnect WebSocket (real disconnect)
     logger.info("Disconnecting WebSocket...")
-    if spot_tester.websocket:
-        spot_tester.websocket.close()
+    if spot_tester._websocket:
+        spot_tester._websocket.close()
 
     # Wait for disconnect to complete
     await asyncio.sleep(0.5)
@@ -94,12 +94,12 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     # Create new WebSocket connection
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
-    spot_tester.websocket = ReyaSocket(
+    spot_tester._websocket = ReyaSocket(
         url=ws_url,
         on_open=spot_tester.ws.on_open,
         on_message=spot_tester.ws.on_message,
     )
-    spot_tester.websocket.connect()
+    spot_tester._websocket.connect()
 
     # Wait for connection and subscriptions to be established
     # WebSocket needs time to connect and subscribe to all channels
@@ -112,12 +112,12 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     order_params_2 = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info("Placing second order to verify WS receives updates after reconnect...")
-    order_id_2 = await spot_tester.create_limit_order(order_params_2)
-    await spot_tester.wait_for_order_creation(order_id_2)
+    order_id_2 = await spot_tester.orders.create_limit(order_params_2)
+    await spot_tester.wait.for_order_creation(order_id_2)
 
     # Verify new order appears in WebSocket state
     assert (
-        order_id_2 in spot_tester.ws_order_changes
+        order_id_2 in spot_tester.ws.order_changes
     ), f"New order {order_id_2} should appear in WS order changes after reconnect"
     logger.info(f"✅ WebSocket receiving updates after reconnect: {order_id_2}")
 
@@ -130,7 +130,7 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     )
 
     await asyncio.sleep(0.1)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT ORDER SURVIVES WS RECONNECT TEST COMPLETED")
 
@@ -159,15 +159,15 @@ async def test_spot_ws_rest_consistency_after_activity(
     logger.info(f"SPOT WS/REST CONSISTENCY TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Wait for WebSocket subscriptions to be fully established
     # This is needed because the previous test may have reconnected the WebSocket
     await asyncio.sleep(1.0)
 
     # Clear WebSocket tracking
-    maker_tester.ws_order_changes.clear()
+    maker_tester.ws.order_changes.clear()
 
     # Step 1: Place multiple maker orders at different prices
     maker_prices = [
@@ -180,8 +180,8 @@ async def test_spot_ws_rest_consistency_after_activity(
     for price in maker_prices:
         order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
-        order_id = await maker_tester.create_limit_order(order_params)
-        await maker_tester.wait_for_order_creation(order_id)
+        order_id = await maker_tester.orders.create_limit(order_params)
+        await maker_tester.wait.for_order_creation(order_id)
         maker_order_ids.append(order_id)
         logger.info(f"✅ Maker order created at ${price:.2f}: {order_id}")
 
@@ -191,7 +191,7 @@ async def test_spot_ws_rest_consistency_after_activity(
     # Step 2: Verify all orders appear in both REST and WS
     rest_orders = await maker_tester.client.get_open_orders()
     rest_order_ids = {o.order_id for o in rest_orders if o.symbol == spot_config.symbol}
-    ws_order_ids = set(maker_tester.ws_order_changes.keys())
+    ws_order_ids = set(maker_tester.ws.order_changes.keys())
 
     for order_id in maker_order_ids:
         assert order_id in rest_order_ids, f"Order {order_id} should be in REST"
@@ -205,7 +205,7 @@ async def test_spot_ws_rest_consistency_after_activity(
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     logger.info("Taker placing IOC sell to fill one maker order...")
-    await taker_tester.create_limit_order(taker_params)
+    await taker_tester.orders.create_limit(taker_params)
 
     # Wait for fill to propagate
     await asyncio.sleep(0.3)
@@ -227,7 +227,7 @@ async def test_spot_ws_rest_consistency_after_activity(
 
     assert filled_order_id is not None, "Should have found filled order"
 
-    ws_order = maker_tester.ws_order_changes.get(filled_order_id)
+    ws_order = maker_tester.ws.order_changes.get(filled_order_id)
     assert ws_order is not None, f"Filled order {filled_order_id} should be in WS"
     ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
     assert ws_status == "FILLED", f"WS should show FILLED status, got {ws_status}"
@@ -252,15 +252,15 @@ async def test_spot_ws_rest_consistency_after_activity(
 
     # WS should show CANCELLED for remaining orders
     for order_id in remaining_order_ids:
-        ws_order = maker_tester.ws_order_changes.get(order_id)
+        ws_order = maker_tester.ws.order_changes.get(order_id)
         assert ws_order is not None, f"Order {order_id} should be in WS"
         ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
         assert ws_status == "CANCELLED", f"WS should show CANCELLED for {order_id}, got {ws_status}"
 
     logger.info("✅ Final state: REST and WS are consistent")
 
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT WS/REST CONSISTENCY TEST COMPLETED")
 
@@ -285,10 +285,10 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     logger.info(f"SPOT RAPID ORDER OPERATIONS TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Clear WebSocket tracking
-    spot_tester.ws_order_changes.clear()
+    spot_tester.ws.order_changes.clear()
 
     # Step 1: Rapidly create 10 orders at different prices
     num_orders = 10
@@ -302,7 +302,7 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
 
         order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
-        order_id = await spot_tester.create_limit_order(order_params)
+        order_id = await spot_tester.orders.create_limit(order_params)
         order_ids.append(order_id)
         logger.debug(f"  Created order {i + 1}/{num_orders}: {order_id} @ ${order_price}")
 
@@ -323,7 +323,7 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     logger.info(f"✅ All {num_orders} orders confirmed in REST")
 
     # Verify all orders appear in WebSocket
-    ws_order_ids = set(spot_tester.ws_order_changes.keys())
+    ws_order_ids = set(spot_tester.ws.order_changes.keys())
     missing_in_ws = [oid for oid in order_ids if oid not in ws_order_ids]
     assert len(missing_in_ws) == 0, f"All orders should appear in WS. Missing: {missing_in_ws}"
     logger.info(f"✅ All {num_orders} orders confirmed in WS")
@@ -356,7 +356,7 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     # Verify all orders show CANCELLED in WebSocket
     not_cancelled_in_ws = []
     for order_id in order_ids:
-        ws_order = spot_tester.ws_order_changes.get(order_id)
+        ws_order = spot_tester.ws.order_changes.get(order_id)
         if ws_order:
             ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
             if ws_status != "CANCELLED":
@@ -368,7 +368,7 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     logger.info(f"✅ All {num_orders} orders show CANCELLED in WS")
 
     # Step 5: Final verification - no orphaned state
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ No orphaned state detected")
     logger.info("✅ SPOT RAPID ORDER OPERATIONS TEST COMPLETED")

@@ -37,14 +37,14 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     # Subscribe to market depth
-    spot_tester.subscribe_to_market_depth(spot_config.symbol)
+    spot_tester.ws.subscribe_to_market_depth(spot_config.symbol)
     await asyncio.sleep(0.05)
 
     # Get initial depth
-    initial_depth = await spot_tester.get_market_depth(spot_config.symbol)
+    initial_depth = await spot_tester.data.market_depth(spot_config.symbol)
     assert isinstance(initial_depth, Depth), f"Expected Depth type, got {type(initial_depth)}"
     initial_bid_count = len(initial_depth.bids)
     logger.info(f"Initial depth: {initial_bid_count} bids")
@@ -55,15 +55,15 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
 
     # Get updated depth
-    updated_depth = await spot_tester.get_market_depth(spot_config.symbol)
+    updated_depth = await spot_tester.data.market_depth(spot_config.symbol)
     assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
     bids = updated_depth.bids
 
@@ -85,13 +85,13 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     await spot_tester.client.cancel_order(
         order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
     )
-    await spot_tester.wait_for_order_state(order_id, OrderStatus.CANCELLED)
+    await spot_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED)
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
 
     # Verify order removed from depth
-    final_depth = await spot_tester.get_market_depth(spot_config.symbol)
+    final_depth = await spot_tester.data.market_depth(spot_config.symbol)
     final_bids = final_depth.bids
 
     order_still_present = False
@@ -123,7 +123,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     # Place two orders at the same price
     order_price = spot_config.price(0.98)  # 20% below reference
@@ -133,8 +133,8 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     for i in range(2):
         order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
-        order_id = await spot_tester.create_limit_order(order_params)
-        await spot_tester.wait_for_order_creation(order_id)
+        order_id = await spot_tester.orders.create_limit(order_params)
+        await spot_tester.wait.for_order_creation(order_id)
         order_ids.append(order_id)
         logger.info(f"✅ Order {i + 1} created: {order_id}")
 
@@ -142,7 +142,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     await asyncio.sleep(0.1)
 
     # Get depth and verify aggregation
-    depth = await spot_tester.get_market_depth(spot_config.symbol)
+    depth = await spot_tester.data.market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -167,7 +167,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
         )
 
     await asyncio.sleep(0.05)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT DEPTH AGGREGATION TEST COMPLETED")
 
@@ -193,8 +193,8 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
     logger.info("=" * 80)
 
     # Clear any existing orders (fail_if_none=False since we're just cleaning up)
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Use prices far from market to avoid matching existing liquidity
     bid_price = spot_config.price(0.96)  # 50% below reference
@@ -202,8 +202,8 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
     bid_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Maker placing bid at ${bid_price:.2f}...")
-    bid_order_id = await maker_tester.create_limit_order(bid_params)
-    await maker_tester.wait_for_order_creation(bid_order_id)
+    bid_order_id = await maker_tester.orders.create_limit(bid_params)
+    await maker_tester.wait.for_order_creation(bid_order_id)
     logger.info(f"✅ Bid order created: {bid_order_id}")
 
     # Taker places ask (sell) order at high price (taker has more ETH balance)
@@ -212,15 +212,15 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
     ask_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
 
     logger.info(f"Taker placing ask at ${ask_price:.2f}...")
-    ask_order_id = await taker_tester.create_limit_order(ask_params)
-    await taker_tester.wait_for_order_creation(ask_order_id)
+    ask_order_id = await taker_tester.orders.create_limit(ask_params)
+    await taker_tester.wait.for_order_creation(ask_order_id)
     logger.info(f"✅ Ask order created: {ask_order_id}")
 
     # Wait for depth to update
     await asyncio.sleep(0.1)
 
     # Get depth
-    depth = await maker_tester.get_market_depth(spot_config.symbol)
+    depth = await maker_tester.data.market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
     asks = depth.asks
@@ -261,7 +261,7 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
     )
 
     await asyncio.sleep(0.05)
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT BID/ASK SPREAD TEST COMPLETED")

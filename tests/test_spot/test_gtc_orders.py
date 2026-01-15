@@ -43,8 +43,8 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     logger.info(f"SPOT GTC FULL FILL TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Maker places GTC buy order at price within oracle deviation limit
     maker_price = spot_config.price(0.99)
@@ -52,8 +52,8 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.create_limit_order(maker_params)
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker places GTC sell order at same price (ensures within oracle deviation)
@@ -62,22 +62,22 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).gtc().build()
 
     logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
-    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
     await asyncio.sleep(0.05)
 
     # Verify both orders are filled (not on book)
-    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Maker order filled")
 
-    await taker_tester.wait_for_order_state(taker_order_id, OrderStatus.FILLED, timeout=5)
+    await taker_tester.wait.for_order_state(taker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Taker order filled")
 
     # Verify no open orders remain
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT GTC FULL FILL TEST COMPLETED")
 
@@ -103,8 +103,8 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
     logger.info(f"SPOT GTC PARTIAL FILL TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Maker places small GTC buy order
     maker_price = spot_config.price(0.99)
@@ -113,8 +113,8 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
     maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy: {maker_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.create_limit_order(maker_params)
-    await maker_tester.wait_for_order_creation(maker_order_id)
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker places larger GTC sell order
@@ -124,14 +124,14 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).qty(taker_qty).gtc().build()
 
     logger.info(f"Taker placing GTC sell: {taker_qty} @ ${taker_price:.2f}")
-    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
     await asyncio.sleep(0.05)
 
     # Verify maker order is fully filled
-    await maker_tester.wait_for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Maker order fully filled")
 
     # Verify taker order is partially filled (remainder on book)
@@ -146,7 +146,7 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
         order_id=taker_order_id, symbol=spot_config.symbol, account_id=taker_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await taker_tester.check_no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT GTC PARTIAL FILL TEST COMPLETED")
 
@@ -168,7 +168,7 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
     logger.info(f"SPOT GTC NO MATCH (ADDED TO BOOK) TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Place GTC buy order at price within oracle deviation (won't match without seller)
     order_price = spot_config.price(0.96)
@@ -176,8 +176,8 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
     order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Placing GTC buy: {spot_config.min_qty} @ ${order_price:.2f}")
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify order is on book (open orders)
@@ -188,7 +188,7 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
 
     # Verify order appears in L2 depth
     await asyncio.sleep(0.1)
-    depth = await spot_tester.get_market_depth(spot_config.symbol)
+    depth = await spot_tester.data.market_depth(spot_config.symbol)
     assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
     bids = depth.bids
 
@@ -207,7 +207,7 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
         order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT GTC NO MATCH TEST COMPLETED")
 
@@ -233,8 +233,8 @@ async def test_spot_gtc_price_time_priority_fifo(
     logger.info(f"SPOT GTC PRICE-TIME PRIORITY (FIFO) TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Same price for both maker orders
     maker_price = spot_config.price(0.99)
@@ -243,8 +243,8 @@ async def test_spot_gtc_price_time_priority_fifo(
     first_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing FIRST GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
-    first_order_id = await maker_tester.create_limit_order(first_params)
-    await maker_tester.wait_for_order_creation(first_order_id)
+    first_order_id = await maker_tester.orders.create_limit(first_params)
+    await maker_tester.wait.for_order_creation(first_order_id)
     logger.info(f"✅ First order created: {first_order_id}")
 
     # Small delay to ensure time priority
@@ -254,8 +254,8 @@ async def test_spot_gtc_price_time_priority_fifo(
     second_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing SECOND GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
-    second_order_id = await maker_tester.create_limit_order(second_params)
-    await maker_tester.wait_for_order_creation(second_order_id)
+    second_order_id = await maker_tester.orders.create_limit(second_params)
+    await maker_tester.wait.for_order_creation(second_order_id)
     logger.info(f"✅ Second order created: {second_order_id}")
 
     # Taker places sell order that fills exactly one order
@@ -272,14 +272,14 @@ async def test_spot_gtc_price_time_priority_fifo(
     )
 
     logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
-    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
     await asyncio.sleep(0.05)
 
     # Verify first order is filled (FIFO)
-    await maker_tester.wait_for_order_state(first_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(first_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ First order filled (FIFO priority)")
 
     # Verify second order is still on book
@@ -293,8 +293,8 @@ async def test_spot_gtc_price_time_priority_fifo(
         order_id=second_order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT GTC FIFO TEST COMPLETED")
 
@@ -319,8 +319,8 @@ async def test_spot_gtc_best_price_first(
     logger.info(f"SPOT GTC BEST PRICE FIRST TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await maker_tester.close_active_orders(fail_if_none=False)
-    await taker_tester.close_active_orders(fail_if_none=False)
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # First order at lower price (within oracle deviation)
     lower_price = spot_config.price(0.96)
@@ -328,8 +328,8 @@ async def test_spot_gtc_best_price_first(
     lower_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
 
     logger.info(f"Maker placing GTC buy at LOWER price: {spot_config.min_qty} @ ${lower_price:.2f}")
-    lower_order_id = await maker_tester.create_limit_order(lower_params)
-    await maker_tester.wait_for_order_creation(lower_order_id)
+    lower_order_id = await maker_tester.orders.create_limit(lower_params)
+    await maker_tester.wait.for_order_creation(lower_order_id)
     logger.info(f"✅ Lower price order created: {lower_order_id}")
 
     # Second order at higher (better for seller) price
@@ -338,8 +338,8 @@ async def test_spot_gtc_best_price_first(
     higher_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
 
     logger.info(f"Maker placing GTC buy at HIGHER price: {spot_config.min_qty} @ ${higher_price:.2f}")
-    higher_order_id = await maker_tester.create_limit_order(higher_params)
-    await maker_tester.wait_for_order_creation(higher_order_id)
+    higher_order_id = await maker_tester.orders.create_limit(higher_params)
+    await maker_tester.wait.for_order_creation(higher_order_id)
     logger.info(f"✅ Higher price order created: {higher_order_id}")
 
     # Taker places sell order that fills exactly one order
@@ -348,14 +348,14 @@ async def test_spot_gtc_best_price_first(
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.96).gtc().build()
 
     logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
-    taker_order_id = await taker_tester.create_limit_order(taker_params)
+    taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
     await asyncio.sleep(0.05)
 
     # Verify higher price order is filled first (best price for seller)
-    await maker_tester.wait_for_order_state(higher_order_id, OrderStatus.FILLED, timeout=5)
+    await maker_tester.wait.for_order_state(higher_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Higher price order filled first (best price priority)")
 
     # Verify lower price order is still on book
@@ -369,8 +369,8 @@ async def test_spot_gtc_best_price_first(
         order_id=lower_order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
     )
     await asyncio.sleep(0.05)
-    await maker_tester.check_no_open_orders()
-    await taker_tester.check_no_open_orders()
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT GTC BEST PRICE FIRST TEST COMPLETED")
 
@@ -392,7 +392,7 @@ async def test_spot_gtc_with_client_order_id(spot_config: SpotTestConfig, spot_t
     logger.info(f"SPOT GTC WITH CLIENT ORDER ID TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    await spot_tester.close_active_orders(fail_if_none=False)
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Generate unique client order ID (positive integer, fits in uint64)
     test_client_order_id = random.randint(1, 2**32 - 1)  # nosec B311
@@ -411,8 +411,8 @@ async def test_spot_gtc_with_client_order_id(spot_config: SpotTestConfig, spot_t
     )
 
     logger.info(f"Placing GTC buy with clientOrderId={test_client_order_id}...")
-    order_id = await spot_tester.create_limit_order(order_params)
-    await spot_tester.wait_for_order_creation(order_id)
+    order_id = await spot_tester.orders.create_limit(order_params)
+    await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
     # Verify the order has the clientOrderId
@@ -440,7 +440,7 @@ async def test_spot_gtc_with_client_order_id(spot_config: SpotTestConfig, spot_t
         account_id=spot_tester.account_id,
     )
     await asyncio.sleep(0.05)
-    await spot_tester.check_no_open_orders()
+    await spot_tester.check.no_open_orders()
     logger.info("✅ Order cancelled (API prefers order_id when both provided)")
 
     logger.info("✅ SPOT GTC WITH CLIENT ORDER ID TEST COMPLETED")

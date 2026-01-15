@@ -16,10 +16,10 @@ async def test_position_increase_long(reya_tester: ReyaTester):
     """Test increasing a long position by adding more"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     initial_qty = "0.01"
 
     initial_order = LimitOrderParameters(
@@ -31,11 +31,11 @@ async def test_position_increase_long(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(initial_order)
+    await reya_tester.orders.create_limit(initial_order)
     expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -53,12 +53,12 @@ async def test_position_increase_long(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(add_order)
+    await reya_tester.orders.create_limit(add_order)
     expected_add_order = limit_order_params_to_order(add_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_add_order)
+    await reya_tester.wait.for_order_execution(expected_add_order)
 
     expected_total_qty = str(float(initial_qty) + float(add_qty))
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -74,10 +74,10 @@ async def test_position_increase_short(reya_tester: ReyaTester):
     """Test increasing a short position by adding more"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     initial_qty = "0.01"
 
     initial_order = LimitOrderParameters(
@@ -89,11 +89,11 @@ async def test_position_increase_short(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(initial_order)
+    await reya_tester.orders.create_limit(initial_order)
     expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -111,12 +111,12 @@ async def test_position_increase_short(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(add_order)
+    await reya_tester.orders.create_limit(add_order)
     expected_add_order = limit_order_params_to_order(add_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_add_order)
+    await reya_tester.wait.for_order_execution(expected_add_order)
 
     expected_total_qty = str(float(initial_qty) + float(add_qty))
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -132,10 +132,10 @@ async def test_position_partial_close_long(reya_tester: ReyaTester):
     """Test partially closing a long position"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     initial_qty = "0.02"
 
     initial_order = LimitOrderParameters(
@@ -147,11 +147,11 @@ async def test_position_partial_close_long(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(initial_order)
+    await reya_tester.orders.create_limit(initial_order)
     expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -169,12 +169,12 @@ async def test_position_partial_close_long(reya_tester: ReyaTester):
         reduce_only=True,
     )
 
-    await reya_tester.create_limit_order(close_order)
+    await reya_tester.orders.create_limit(close_order)
     expected_close_order = limit_order_params_to_order(close_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_close_order)
+    await reya_tester.wait.for_order_execution(expected_close_order)
 
     expected_remaining_qty = str(float(initial_qty) - float(close_qty))
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -190,10 +190,10 @@ async def test_position_partial_close_short(reya_tester: ReyaTester):
     """Test partially closing a short position"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     initial_qty = "0.02"
 
     initial_order = LimitOrderParameters(
@@ -205,11 +205,11 @@ async def test_position_partial_close_short(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(initial_order)
+    await reya_tester.orders.create_limit(initial_order)
     expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order)
 
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -227,12 +227,12 @@ async def test_position_partial_close_short(reya_tester: ReyaTester):
         reduce_only=True,
     )
 
-    await reya_tester.create_limit_order(close_order)
+    await reya_tester.orders.create_limit(close_order)
     expected_close_order = limit_order_params_to_order(close_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_close_order)
+    await reya_tester.wait.for_order_execution(expected_close_order)
 
     expected_remaining_qty = str(float(initial_qty) - float(close_qty))
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -248,10 +248,10 @@ async def test_position_full_close_with_reduce_only(reya_tester: ReyaTester):
     """Test fully closing a position using reduce_only flag"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     position_qty = "0.01"
 
     open_order = LimitOrderParameters(
@@ -263,11 +263,11 @@ async def test_position_full_close_with_reduce_only(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(open_order)
+    await reya_tester.orders.create_limit(open_order)
     expected_open_order = limit_order_params_to_order(open_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_open_order)
+    await reya_tester.wait.for_order_execution(expected_open_order)
 
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -284,12 +284,12 @@ async def test_position_full_close_with_reduce_only(reya_tester: ReyaTester):
         reduce_only=True,
     )
 
-    await reya_tester.create_limit_order(close_order)
+    await reya_tester.orders.create_limit(close_order)
     expected_close_order = limit_order_params_to_order(close_order, reya_tester.account_id)
     # Use wait_for_closing_order_execution since position will be fully closed
     await reya_tester.wait_for_closing_order_execution(expected_close_order, position_qty)
 
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.position_not_open(symbol)
 
     logger.info("✅ Position full close with reduce_only test completed successfully")
 
@@ -299,10 +299,10 @@ async def test_position_decrease_without_reduce_only(reya_tester: ReyaTester):
     """Test decreasing a position without reduce_only flag (counter-trade)"""
     symbol = "ETHRUSDPERP"
 
-    await reya_tester.check_no_open_orders()
-    await reya_tester.check_position_not_open(symbol)
+    await reya_tester.check.no_open_orders()
+    await reya_tester.check.position_not_open(symbol)
 
-    market_price = await reya_tester.get_current_price()
+    market_price = await reya_tester.data.current_price()
     initial_qty = "0.02"
 
     open_order = LimitOrderParameters(
@@ -314,11 +314,11 @@ async def test_position_decrease_without_reduce_only(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(open_order)
+    await reya_tester.orders.create_limit(open_order)
     expected_open_order = limit_order_params_to_order(open_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_open_order)
+    await reya_tester.wait.for_order_execution(expected_open_order)
 
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -336,12 +336,12 @@ async def test_position_decrease_without_reduce_only(reya_tester: ReyaTester):
         reduce_only=False,
     )
 
-    await reya_tester.create_limit_order(counter_order)
+    await reya_tester.orders.create_limit(counter_order)
     expected_counter_order = limit_order_params_to_order(counter_order, reya_tester.account_id)
-    await reya_tester.wait_for_order_execution(expected_counter_order)
+    await reya_tester.wait.for_order_execution(expected_counter_order)
 
     expected_remaining_qty = str(float(initial_qty) - float(counter_qty))
-    await reya_tester.check_position(
+    await reya_tester.check.position(
         symbol=symbol,
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
