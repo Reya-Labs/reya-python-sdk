@@ -11,6 +11,10 @@ Test Categories:
 3. Quantity Scenarios (partial qty, different sizes)
 4. Market Maker Scenarios (multiple levels, non-crossing orders)
 5. Cross-Account Matching (sanity checks that matching works between accounts)
+
+NOTE: Self-match prevention tests require a controlled environment where our
+maker order is the only liquidity at the test price. When external liquidity
+exists at crossing prices, these tests are skipped to avoid false failures.
 """
 
 import asyncio
@@ -23,6 +27,24 @@ from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import limit_order_params_to_order, logger
 from tests.test_spot.spot_config import SpotTestConfig
+
+
+async def _skip_if_external_liquidity_exists(spot_config: SpotTestConfig, tester: ReyaTester) -> None:
+    """
+    Skip the test if external liquidity exists that could interfere with self-match tests.
+    
+    Self-match tests need a controlled environment where our maker order is the only
+    liquidity at the test price. If external liquidity exists, the taker order might
+    match against it instead of triggering self-match prevention.
+    """
+    await spot_config.refresh_order_book(tester.data)
+    
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping self-match test: external liquidity exists in order book. "
+            "Self-match tests require a controlled environment."
+        )
+
 
 # SECTION 1: Basic Self-Match Prevention
 # =============================================================================
@@ -42,6 +64,9 @@ async def test_self_match_gtc_taker_sell_cancelled(spot_config: SpotTestConfig, 
     logger.info("=" * 80)
     logger.info("TEST: GTC taker sell cancelled on self-match")
     logger.info("=" * 80)
+
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
 
     await spot_tester.orders.close_all(fail_if_none=False)
 
@@ -90,6 +115,9 @@ async def test_self_match_gtc_taker_buy_cancelled(spot_config: SpotTestConfig, s
     logger.info("TEST: GTC taker buy cancelled on self-match")
     logger.info("=" * 80)
 
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
+
     await spot_tester.orders.close_all(fail_if_none=False)
 
     maker_price = spot_config.price(0.97)
@@ -137,6 +165,9 @@ async def test_self_match_ioc_taker_cancelled(spot_config: SpotTestConfig, spot_
     logger.info("=" * 80)
     logger.info("TEST: IOC taker cancelled on self-match")
     logger.info("=" * 80)
+
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
 
     await spot_tester.orders.close_all(fail_if_none=False)
     spot_tester.ws.last_spot_execution = None
@@ -192,6 +223,9 @@ async def test_self_match_exact_price_boundary(spot_config: SpotTestConfig, spot
     logger.info("=" * 80)
     logger.info("TEST: Exact price boundary triggers self-match")
     logger.info("=" * 80)
+
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
 
     await spot_tester.orders.close_all(fail_if_none=False)
     spot_tester.ws.last_spot_execution = None
@@ -341,6 +375,9 @@ async def test_self_match_partial_qty_taker_fully_cancelled(spot_config: SpotTes
     logger.info("TEST: Partial qty self-match - taker fully cancelled")
     logger.info("=" * 80)
 
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
+
     await spot_tester.orders.close_all(fail_if_none=False)
     spot_tester.ws.last_spot_execution = None
 
@@ -400,6 +437,9 @@ async def test_self_match_larger_taker_fully_cancelled(spot_config: SpotTestConf
     logger.info("=" * 80)
     logger.info("TEST: Larger taker self-match - fully cancelled")
     logger.info("=" * 80)
+
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
 
     await spot_tester.orders.close_all(fail_if_none=False)
     spot_tester.ws.last_spot_execution = None
@@ -526,6 +566,9 @@ async def test_multiple_self_matches_in_sequence(spot_config: SpotTestConfig, sp
     logger.info("TEST: Multiple self-matches in sequence")
     logger.info("=" * 80)
 
+    # Skip if external liquidity exists
+    await _skip_if_external_liquidity_exists(spot_config, spot_tester)
+
     await spot_tester.orders.close_all(fail_if_none=False)
     spot_tester.ws.last_spot_execution = None
 
@@ -603,6 +646,13 @@ async def test_partial_fill_then_self_match_cancels_remainder(
 
     Result: 1 execution, taker cancelled after partial fill, self-order untouched.
     """
+    # Skip if external liquidity exists - this test requires controlled price levels
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping partial fill self-match test: external liquidity exists. "
+            "Test requires controlled environment for specific matching behavior."
+        )
+
     logger.info("=" * 80)
     logger.info("TEST: Partial fill then self-match cancels remainder")
     logger.info("=" * 80)
@@ -702,6 +752,13 @@ async def test_cross_account_match_works(
     Confirms that while self-match is prevented, cross-account matching
     works correctly.
     """
+    # Skip if external liquidity exists - taker would match external orders instead of our maker
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping cross-account match test: external liquidity exists. "
+            "Taker orders would match external liquidity first."
+        )
+
     logger.info("=" * 80)
     logger.info("TEST: Cross-account matching works")
     logger.info("=" * 80)
@@ -747,6 +804,13 @@ async def test_non_crossing_orders_can_match_other_accounts(
     Account 2 places an order that crosses Account 1's order.
     The cross-account match should succeed.
     """
+    # Skip if external liquidity exists - taker would match external orders instead of our maker
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping non-crossing orders test: external liquidity exists. "
+            "Taker orders would match external liquidity first."
+        )
+
     logger.info("=" * 80)
     logger.info("TEST: Non-crossing orders can match other accounts")
     logger.info("=" * 80)

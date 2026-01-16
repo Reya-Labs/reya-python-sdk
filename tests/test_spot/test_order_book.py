@@ -3,6 +3,9 @@ Tests for spot order book (L2 depth) verification.
 
 These tests verify that orders appear correctly in the order book
 and that depth updates are received via WebSocket.
+
+These tests use safe no-match prices to ensure orders are added to the book
+without matching existing liquidity.
 """
 
 import asyncio
@@ -25,12 +28,15 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     """
     Test that a GTC order appears in the L2 order book depth.
 
+    Uses a safe no-match price to ensure the order is added to the book.
+
     Flow:
     1. Subscribe to market depth
-    2. Place GTC order
-    3. Verify order appears in L2 depth via REST
-    4. Cancel order
-    5. Verify order removed from depth
+    2. Get safe no-match price
+    3. Place GTC order at that price
+    4. Verify order appears in L2 depth via REST
+    5. Cancel order
+    6. Verify order removed from depth
     """
     logger.info("=" * 80)
     logger.info(f"SPOT ORDER BOOK TEST: {spot_config.symbol}")
@@ -43,16 +49,18 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     spot_tester.ws.subscribe_to_market_depth(spot_config.symbol)
     await asyncio.sleep(0.05)
 
-    # Get initial depth
+    # Get initial depth and determine safe no-match price
+    await spot_config.refresh_order_book(spot_tester.data)
     initial_depth = await spot_tester.data.market_depth(spot_config.symbol)
     assert isinstance(initial_depth, Depth), f"Expected Depth type, got {type(initial_depth)}"
     initial_bid_count = len(initial_depth.bids)
     logger.info(f"Initial depth: {initial_bid_count} bids")
 
-    # Place GTC buy order at specific price
-    order_price = spot_config.price(0.98)  # 15% below reference
+    # Get a buy price guaranteed not to match (below all asks)
+    order_price = spot_config.get_safe_no_match_buy_price()
+    logger.info(f"Safe no-match buy price: ${order_price:.2f}")
 
-    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+    order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
     order_id = await spot_tester.orders.create_limit(order_params)
@@ -72,7 +80,7 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     for bid in bids:
         assert isinstance(bid, Level), f"Expected Level type, got {type(bid)}"
         bid_price = float(bid.px)
-        if abs(bid_price - order_price) < 0.01:
+        if abs(bid_price - float(order_price)) < 0.01:
             order_found = True
             bid_qty = float(bid.qty)
             logger.info(f"✅ Found order in depth: ${bid_price:.2f} x {bid_qty}")
@@ -97,7 +105,7 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     order_still_present = False
     for bid in final_bids:
         bid_price = float(bid.px)
-        if abs(bid_price - order_price) < 0.01:
+        if abs(bid_price - float(order_price)) < 0.01:
             order_still_present = True
             break
 
@@ -113,10 +121,13 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     """
     Test that multiple orders at the same price aggregate in depth.
 
+    Uses a safe no-match price to ensure orders are added to the book.
+
     Flow:
-    1. Place two orders at the same price
-    2. Verify depth shows aggregated quantity
-    3. Cancel both orders
+    1. Get safe no-match price
+    2. Place two orders at the same price
+    3. Verify depth shows aggregated quantity
+    4. Cancel both orders
     """
     logger.info("=" * 80)
     logger.info(f"SPOT DEPTH AGGREGATION TEST: {spot_config.symbol}")
@@ -125,13 +136,16 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     # Clear any existing orders
     await spot_tester.check.no_open_orders()
 
-    # Place two orders at the same price
-    order_price = spot_config.price(0.98)  # 20% below reference
+    # Get safe no-match price
+    await spot_config.refresh_order_book(spot_tester.data)
+    order_price = spot_config.get_safe_no_match_buy_price()
+    logger.info(f"Safe no-match buy price: ${order_price:.2f}")
+
     qty_per_order = spot_config.min_qty
 
     order_ids = []
     for i in range(2):
-        order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+        order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
         order_id = await spot_tester.orders.create_limit(order_params)
         await spot_tester.wait.for_order_creation(order_id)
@@ -149,7 +163,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     aggregated_qty = None
     for bid in bids:
         bid_price = float(bid.px)
-        if abs(bid_price - order_price) < 0.01:
+        if abs(bid_price - float(order_price)) < 0.01:
             aggregated_qty = float(bid.qty)
             break
 

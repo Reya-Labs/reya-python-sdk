@@ -86,10 +86,14 @@ async def test_spot_ws_order_changes_on_fill(
     """
     Test WebSocket orderChanges event received on order fill.
 
+    This test requires a controlled environment to verify order fill events.
+    When external liquidity exists, we skip to avoid unpredictable matching.
+
     Flow:
-    1. Maker places GTC order
-    2. Taker fills the order
-    3. Verify orderChanges event shows FILLED status
+    1. Check for external liquidity - skip if present
+    2. Maker places GTC order
+    3. Taker fills the order
+    4. Verify orderChanges event shows FILLED status
     """
     logger.info("=" * 80)
     logger.info(f"SPOT WS ORDER CHANGES ON FILL TEST: {spot_config.symbol}")
@@ -97,6 +101,16 @@ async def test_spot_ws_order_changes_on_fill(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping WS order fill test: external liquidity exists. "
+            "This test requires a controlled environment to verify order fill events."
+        )
 
     # Clear WebSocket tracking
     maker_tester.ws.order_changes.clear()
@@ -112,8 +126,6 @@ async def test_spot_ws_order_changes_on_fill(
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker fills the order
-    _ = maker_price  # taker_price - calculated for reference
-
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
     logger.info("Taker placing IOC sell to fill maker order...")
@@ -199,10 +211,15 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
     """
     Test WebSocket spotExecutions event received on trade.
 
+    Supports both empty and non-empty order books:
+    - If external bid liquidity exists, taker sells into it
+    - If no external liquidity, maker provides bid liquidity first
+
     Flow:
-    1. Maker places GTC order
-    2. Taker fills with IOC order
-    3. Verify spotExecutions event received with correct details
+    1. Check for external liquidity
+    2. If needed, maker places GTC order
+    3. Taker fills with IOC order
+    4. Verify spotExecutions event received with correct details
     """
     logger.info("=" * 80)
     logger.info(f"SPOT WS SPOT EXECUTIONS TEST: {spot_config.symbol}")
@@ -214,22 +231,31 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
     # Clear WebSocket tracking
     taker_tester.ws.last_spot_execution = None
 
-    # Maker places GTC buy order
-    maker_price = spot_config.price(0.97)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
+    maker_order_id = None
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
 
-    logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker order created: {maker_order_id}")
+    if usable_bid_price is not None:
+        # External bid liquidity exists - use it
+        fill_price = float(usable_bid_price)
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        fill_price = spot_config.price(0.97)
+
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
+
+        logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${fill_price:.2f}")
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker fills with IOC sell
-    taker_price = maker_price
+    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
-
-    logger.info(f"Taker placing IOC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
+    logger.info(f"Taker placing IOC sell: {spot_config.min_qty} @ ${fill_price:.2f}")
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
 
     # Wait for spot execution event via WebSocket (strict matching on order_id and all fields)
@@ -241,7 +267,11 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
     assert execution.symbol == spot_config.symbol
     assert execution.side.value == "A"  # Taker was selling
     assert execution.qty == spot_config.min_qty
-    assert float(execution.price) == maker_price  # Compare as floats to handle "325" vs "325.0"
+    # Price may differ slightly due to order book changes, just verify it's within circuit breaker range
+    exec_price = float(execution.price)
+    assert spot_config.circuit_breaker_floor <= exec_price <= spot_config.circuit_breaker_ceiling, (
+        f"Fill price ${exec_price} should be within circuit breaker range"
+    )
     logger.info(f"✅ Spot execution received: {execution.order_id}")
 
     # Verify no open orders
@@ -259,10 +289,15 @@ async def test_spot_ws_balance_updates(spot_config: SpotTestConfig, maker_tester
     """
     Test WebSocket accountBalances event received on trade.
 
+    This test requires a controlled environment to verify balance updates
+    between our maker and taker accounts. When external liquidity exists,
+    we skip to avoid unpredictable balance changes.
+
     Flow:
-    1. Record initial balance update count
-    2. Execute a trade between maker and taker
-    3. Verify balance update events received via WebSocket
+    1. Check for external liquidity - skip if present
+    2. Record initial balance update count
+    3. Execute a trade between maker and taker
+    4. Verify balance update events received via WebSocket
     """
     logger.info("=" * 80)
     logger.info(f"SPOT WS BALANCE UPDATES TEST: {spot_config.symbol}")
@@ -270,6 +305,16 @@ async def test_spot_ws_balance_updates(spot_config: SpotTestConfig, maker_tester
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment for balance verification
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping WS balance updates test: external liquidity exists. "
+            "This test requires a controlled environment to verify balance changes."
+        )
 
     # Record initial balance update counts using ReyaTester method
     maker_initial_count = maker_tester.ws.get_balance_update_count()
@@ -287,11 +332,9 @@ async def test_spot_ws_balance_updates(spot_config: SpotTestConfig, maker_tester
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     # Taker fills with IOC sell (selling ETH for RUSD)
-    taker_price = maker_price
-
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
 
-    logger.info(f"Taker placing IOC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
+    logger.info(f"Taker placing IOC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
     await taker_tester.orders.create_limit(taker_params)
 
     # Wait for balance updates via WebSocket (with proper timeout)

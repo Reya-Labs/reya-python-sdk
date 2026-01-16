@@ -8,11 +8,18 @@ Tests for GTC order behavior including:
 - Price-time priority (FIFO)
 - Best price first matching
 - Client order ID tracking
+
+These tests support both empty and non-empty order books:
+- When external liquidity exists, tests use it instead of providing their own
+- When no external liquidity exists, tests provide maker liquidity as before
+- Execution assertions are flexible to handle order book changes
 """
 
 import asyncio
 import logging
 import random
+from decimal import Decimal
+from typing import Optional
 
 import pytest
 
@@ -33,11 +40,15 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     """
     Test GTC order fully filled immediately when matching liquidity exists.
 
+    Supports both empty and non-empty order books:
+    - If external bid liquidity exists, taker sells into it
+    - If no external liquidity, maker provides bid liquidity first
+
     Flow:
-    1. Maker places GTC buy order
-    2. Taker places GTC sell order at crossing price
-    3. Verify taker order is immediately filled (not on book)
-    4. Verify maker order is filled
+    1. Check for external bid liquidity
+    2. If needed, maker places GTC buy order
+    3. Taker places GTC sell order at crossing price
+    4. Verify execution occurred
     """
     logger.info("=" * 80)
     logger.info(f"SPOT GTC FULL FILL TEST: {spot_config.symbol}")
@@ -46,36 +57,47 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Maker places GTC buy order at price within oracle deviation limit
-    maker_price = spot_config.price(0.99)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
+    maker_order_id: Optional[str] = None
+    fill_price: Decimal
 
-    logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker order created: {maker_order_id}")
+    # Determine liquidity source
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
 
-    # Taker places GTC sell order at same price (ensures within oracle deviation)
-    taker_price = maker_price
+    if usable_bid_price is not None:
+        fill_price = usable_bid_price
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        maker_price = spot_config.price(0.99)
+        fill_price = Decimal(str(maker_price))
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).gtc().build()
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
+        logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${fill_price:.2f}")
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker order created: {maker_order_id}")
 
-    logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
+    # Taker places GTC sell order
+    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).gtc().build()
+    logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${fill_price:.2f}")
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.1)
 
-    # Verify both orders are filled (not on book)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-    logger.info("✅ Maker order filled")
-
+    # Verify taker order is filled
     await taker_tester.wait.for_order_state(taker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Taker order filled")
 
-    # Verify no open orders remain
+    # Verify maker order is filled (if we placed one)
+    if maker_order_id:
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Maker order filled")
+
+    # Verify no open orders remain from our accounts
     await maker_tester.check.no_open_orders()
     await taker_tester.check.no_open_orders()
 
@@ -92,12 +114,17 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
     """
     Test GTC order partially fills, remainder added to book.
 
+    This test requires a controlled environment to verify partial fill behavior.
+    When external liquidity exists, taker orders would match against it first,
+    making it impossible to verify specific partial fill behavior.
+
     Flow:
-    1. Maker places small GTC buy order
-    2. Taker places larger GTC sell order at crossing price
-    3. Verify maker order is fully filled
-    4. Verify taker order is partially filled with remainder on book
-    5. Cancel taker's remaining order
+    1. Check for external liquidity - skip if present
+    2. Maker places small GTC buy order
+    3. Taker places larger GTC sell order at crossing price
+    4. Verify maker order is fully filled
+    5. Verify taker order is partially filled with remainder on book
+    6. Cancel taker's remaining order
     """
     logger.info("=" * 80)
     logger.info(f"SPOT GTC PARTIAL FILL TEST: {spot_config.symbol}")
@@ -105,6 +132,16 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - taker would match against it first
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping partial fill test: external liquidity exists. "
+            "Taker orders would match against external liquidity first."
+        )
 
     # Maker places small GTC buy order
     maker_price = spot_config.price(0.99)
@@ -117,18 +154,17 @@ async def test_spot_gtc_partial_fill_remainder_on_book(
     await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
-    # Taker places larger GTC sell order
-    taker_price = maker_price
+    # Taker places larger GTC sell order at crossing price
     taker_qty = "0.002"  # Larger than maker (0.001) to test partial fill
 
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).qty(taker_qty).gtc().build()
 
-    logger.info(f"Taker placing GTC sell: {taker_qty} @ ${taker_price:.2f}")
+    logger.info(f"Taker placing GTC sell: {taker_qty} @ ${maker_price:.2f}")
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.1)
 
     # Verify maker order is fully filled
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
@@ -158,11 +194,14 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
     """
     Test GTC order added to book when no match exists.
 
+    Uses a safe no-match price to ensure the order doesn't match existing liquidity.
+
     Flow:
-    1. Place GTC buy order at price within oracle deviation
-    2. Verify order is on book (not filled)
-    3. Verify order appears in L2 depth
-    4. Cancel order
+    1. Check order book for safe no-match price
+    2. Place GTC buy order at that price
+    3. Verify order is on book (not filled)
+    4. Verify order appears in L2 depth
+    5. Cancel order
     """
     logger.info("=" * 80)
     logger.info(f"SPOT GTC NO MATCH (ADDED TO BOOK) TEST: {spot_config.symbol}")
@@ -170,10 +209,14 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
 
     await spot_tester.orders.close_all(fail_if_none=False)
 
-    # Place GTC buy order at price within oracle deviation (won't match without seller)
-    order_price = spot_config.price(0.96)
+    # Check order book to get safe no-match price
+    await spot_config.refresh_order_book(spot_tester.data)
 
-    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
+    # Get a buy price guaranteed not to match (below all asks)
+    order_price = spot_config.get_safe_no_match_buy_price()
+    logger.info(f"Safe no-match buy price: ${order_price:.2f}")
+
+    order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
     logger.info(f"Placing GTC buy: {spot_config.min_qty} @ ${order_price:.2f}")
     order_id = await spot_tester.orders.create_limit(order_params)
@@ -195,7 +238,7 @@ async def test_spot_gtc_no_match_added_to_book(spot_config: SpotTestConfig, spot
     found_in_depth = False
     for bid in bids:
         price = float(bid.px)
-        if abs(price - order_price) < 10.0:
+        if abs(price - float(order_price)) < 10.0:
             found_in_depth = True
             logger.info(f"✅ Order found in L2 depth at ${price:.2f}")
             break
@@ -222,12 +265,17 @@ async def test_spot_gtc_price_time_priority_fifo(
     """
     Test multiple GTC orders at same price filled in FIFO order.
 
+    This test requires a controlled environment to verify FIFO behavior.
+    When external liquidity exists, taker orders would match against it first,
+    making it impossible to verify specific FIFO behavior.
+
     Flow:
-    1. Maker places first GTC buy order at price X
-    2. Maker places second GTC buy order at same price X
-    3. Taker places GTC sell order that fills one order
-    4. Verify first order is filled (FIFO)
-    5. Verify second order remains on book
+    1. Check for external liquidity - skip if present
+    2. Maker places first GTC buy order at price X
+    3. Maker places second GTC buy order at same price X
+    4. Taker places GTC sell order that fills one order
+    5. Verify first order is filled (FIFO)
+    6. Verify second order remains on book
     """
     logger.info("=" * 80)
     logger.info(f"SPOT GTC PRICE-TIME PRIORITY (FIFO) TEST: {spot_config.symbol}")
@@ -235,6 +283,16 @@ async def test_spot_gtc_price_time_priority_fifo(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - taker would match against it first
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping FIFO test: external liquidity exists. "
+            "Taker orders would match against external liquidity first."
+        )
 
     # Same price for both maker orders
     maker_price = spot_config.price(0.99)
@@ -309,11 +367,16 @@ async def test_spot_gtc_best_price_first(
     """
     Test GTC order matches best prices first.
 
+    This test requires a controlled environment to verify best-price-first behavior.
+    When external liquidity exists, taker orders would match against it first,
+    making it impossible to verify specific price priority behavior.
+
     Flow:
-    1. Maker places GTC buy order at price X
-    2. Maker places GTC buy order at better price Y (Y > X)
-    3. Taker places GTC sell order
-    4. Verify better price order (Y) is filled first
+    1. Check for external liquidity - skip if present
+    2. Maker places GTC buy order at price X
+    3. Maker places GTC buy order at better price Y (Y > X)
+    4. Taker places GTC sell order
+    5. Verify better price order (Y) is filled first
     """
     logger.info("=" * 80)
     logger.info(f"SPOT GTC BEST PRICE FIRST TEST: {spot_config.symbol}")
@@ -321,6 +384,16 @@ async def test_spot_gtc_best_price_first(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - taker would match against it first
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping best-price-first test: external liquidity exists. "
+            "Taker orders would match against external liquidity first."
+        )
 
     # First order at lower price (within oracle deviation)
     lower_price = spot_config.price(0.96)
@@ -343,11 +416,9 @@ async def test_spot_gtc_best_price_first(
     logger.info(f"✅ Higher price order created: {higher_order_id}")
 
     # Taker places sell order that fills exactly one order
-    taker_price = lower_price  # Same as lower price ensures within oracle deviation
-
     taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.96).gtc().build()
 
-    logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${taker_price:.2f}")
+    logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${lower_price:.2f}")
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"Taker order sent: {taker_order_id}")
 

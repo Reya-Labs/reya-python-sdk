@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import asyncio
 import logging
+import os
 
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.create_order_response import CreateOrderResponse
@@ -75,7 +76,17 @@ class OrderOperations:
         Args:
             fail_if_none: If True, assert failure when no orders to close
             wait_for_confirmation: If True, wait for cancellation confirmation (slower but safer)
+        
+        Note:
+            Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip order cancellation for SPOT_ACCOUNT_ID_1.
+            This is useful when testing with external liquidity from a depth script.
         """
+        # Check if we should preserve orders for SPOT account 1
+        preserve_account1 = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
+        if preserve_account1 and self._t._spot_account_number == 1:
+            logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping close_all for SPOT account 1")
+            return None
+
         active_orders: list[Order] = await self._t.client.get_open_orders()
 
         if active_orders is None or len(active_orders) == 0:

@@ -44,15 +44,20 @@ async def test_spot_balance_update_after_buy(
     """
     Test balance changes correctly after spot buy.
 
+    This test requires a controlled environment to verify exact balance changes
+    between our maker and taker accounts. When external liquidity exists,
+    we skip to avoid unpredictable balance changes.
+
     When taker buys ETH:
     - Taker: ETH balance increases, RUSD balance decreases
     - Maker: ETH balance decreases, RUSD balance increases
 
     Flow:
-    1. Record initial balances
-    2. Maker places sell order
-    3. Taker buys with IOC
-    4. Verify balance changes
+    1. Check for external liquidity - skip if present
+    2. Record initial balances
+    3. Maker places sell order
+    4. Taker buys with IOC
+    5. Verify balance changes
     """
     logger.info("=" * 80)
     logger.info(f"SPOT BALANCE UPDATE AFTER BUY TEST: {spot_config.symbol}")
@@ -60,6 +65,16 @@ async def test_spot_balance_update_after_buy(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment for balance verification
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping balance verification test: external liquidity exists. "
+            "This test requires a controlled environment to verify exact balance changes."
+        )
 
     # Record initial balances
     maker_balances_before = await get_account_balances(maker_tester)
@@ -148,15 +163,20 @@ async def test_spot_balance_update_after_sell(
     """
     Test balance changes correctly after spot sell.
 
+    This test requires a controlled environment to verify exact balance changes
+    between our maker and taker accounts. When external liquidity exists,
+    we skip to avoid unpredictable balance changes.
+
     When maker sells ETH (maker has more ETH):
     - Maker: ETH balance decreases, RUSD balance increases
     - Taker: ETH balance increases, RUSD balance decreases
 
     Flow:
-    1. Record initial balances
-    2. Maker places sell order
-    3. Taker buys with IOC
-    4. Verify balance changes
+    1. Check for external liquidity - skip if present
+    2. Record initial balances
+    3. Maker places sell order
+    4. Taker buys with IOC
+    5. Verify balance changes
     """
     logger.info("=" * 80)
     logger.info(f"SPOT BALANCE UPDATE AFTER SELL TEST: {spot_config.symbol}")
@@ -164,6 +184,16 @@ async def test_spot_balance_update_after_sell(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment for balance verification
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping balance verification test: external liquidity exists. "
+            "This test requires a controlled environment to verify exact balance changes."
+        )
 
     # Record initial balances
     maker_balances_before = await get_account_balances(maker_tester)
@@ -252,13 +282,18 @@ async def test_spot_balance_maker_taker_consistency(
     """
     Test that maker and taker balances sum correctly (conservation of value).
 
+    This test requires a controlled environment to verify exact balance conservation
+    between our maker and taker accounts. When external liquidity exists,
+    we skip to avoid unpredictable balance changes.
+
     Since spot trading has ZERO fees, the total ETH and RUSD across both
     accounts should be EXACTLY conserved.
 
     Flow:
-    1. Record total balances before trade
-    2. Execute trade
-    3. Verify total balances are exactly conserved (no fee tolerance needed)
+    1. Check for external liquidity - skip if present
+    2. Record total balances before trade
+    3. Execute trade
+    4. Verify total balances are exactly conserved (no fee tolerance needed)
     """
     logger.info("=" * 80)
     logger.info(f"SPOT BALANCE MAKER/TAKER CONSISTENCY TEST: {spot_config.symbol}")
@@ -266,6 +301,16 @@ async def test_spot_balance_maker_taker_consistency(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment for balance verification
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping balance consistency test: external liquidity exists. "
+            "This test requires a controlled environment to verify exact balance conservation."
+        )
 
     # Record initial balances
     maker_balances_before = await get_account_balances(maker_tester)

@@ -3,10 +3,17 @@ Tests for spot IOC (Immediate-Or-Cancel) orders.
 
 IOC orders execute immediately against available liquidity and cancel
 any unfilled portion. These tests verify IOC behavior for spot markets.
+
+These tests support both empty and non-empty order books:
+- When external liquidity exists, tests use it instead of providing their own
+- When no external liquidity exists, tests provide maker liquidity as before
+- Execution assertions are flexible to handle order book changes between submission and fill
 """
 
 import asyncio
 import time
+from decimal import Decimal
+from typing import Optional
 
 import pytest
 from eth_abi.exceptions import EncodingError
@@ -27,52 +34,102 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     """
     Test IOC order that fully fills against existing liquidity.
 
+    Supports both empty and non-empty order books:
+    - If external bid liquidity exists, taker sells into it
+    - If no external liquidity, maker provides bid liquidity first
+
     Flow:
-    1. Maker places GTC order on the book
-    2. Taker sends IOC order that matches completely
-    3. Verify both orders are filled
-    4. Verify execution details
+    1. Check for external bid liquidity
+    2. If needed, maker places GTC buy order on the book
+    3. Taker sends IOC sell order that matches
+    4. Verify execution occurred
     """
     logger.info("=" * 80)
     logger.info(f"SPOT IOC FULL FILL TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    # Clear any existing orders
+    # Clear any existing orders from our accounts
     await maker_tester.check.no_open_orders()
     await taker_tester.check.no_open_orders()
 
-    # Step 1: Maker places GTC buy order
-    maker_price = spot_config.price(0.99)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
+    # Record taker's initial balances for verification
+    taker_balances_before = await taker_tester.data.balances()
+    taker_eth_before = Decimal(str(taker_balances_before.get("ETH").real_balance)) if "ETH" in taker_balances_before else Decimal("0")
+    taker_rusd_before = Decimal(str(taker_balances_before.get("RUSD").real_balance)) if "RUSD" in taker_balances_before else Decimal("0")
+    logger.info(f"Taker initial balances: ETH={taker_eth_before}, RUSD={taker_rusd_before}")
 
-    maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker GTC order created: {maker_order_id}")
+    maker_order_id: Optional[str] = None
+    fill_price: Decimal
+
+    # Step 1: Determine liquidity source
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+
+    if usable_bid_price is not None:
+        # External bid liquidity exists - use it
+        fill_price = usable_bid_price
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        maker_price = spot_config.price(0.99)
+        fill_price = Decimal(str(maker_price))
+
+        maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
+        maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker GTC buy order created: {maker_order_id} @ ${fill_price:.2f}")
 
     # Step 2: Taker sends IOC sell order to match
-    _ = maker_price  # Same price ensures within oracle deviation
-
-    taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).ioc().build()
-
+    taker_order_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
     taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
-    logger.info(f"Taker IOC order sent: {taker_order_id}")
+    logger.info(f"Taker IOC sell order sent: {taker_order_id} @ ${fill_price:.2f}")
 
-    # Step 3: Wait for execution (strict matching on order_id and all fields)
+    # Step 3: Wait for execution
     expected_taker_order = limit_order_params_to_order(taker_order_params, taker_tester.account_id)
     execution = await taker_tester.wait.for_spot_execution(taker_order_id, expected_taker_order)
 
-    # Step 4: Verify execution
-    await taker_tester.check.spot_execution(execution, expected_taker_order)
-    logger.info(f"✅ Execution verified: {execution.order_id}")
+    # Step 4: Verify execution (flexible - price may differ due to order book changes)
+    assert execution is not None, "Execution should have occurred"
+    assert execution.symbol == spot_config.symbol, "Symbol should match"
+    assert Decimal(execution.qty) <= Decimal(spot_config.min_qty), "Qty should not exceed order qty"
 
-    # Verify maker order is filled
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-    logger.info("✅ Maker order filled")
+    # Verify fill price is within circuit breaker range
+    exec_price = Decimal(execution.price)
+    assert spot_config.circuit_breaker_floor <= exec_price <= spot_config.circuit_breaker_ceiling, (
+        f"Fill price ${exec_price} should be within circuit breaker range "
+        f"[${spot_config.circuit_breaker_floor}, ${spot_config.circuit_breaker_ceiling}]"
+    )
+    logger.info(f"✅ Execution verified: order_id={execution.order_id}, price=${exec_price:.2f}")
 
-    # Verify no open orders remain
+    # Verify maker order is filled (if we placed one)
+    if maker_order_id:
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Maker order filled")
+
+    # Verify no open orders remain from our accounts
     await maker_tester.check.no_open_orders()
     await taker_tester.check.no_open_orders()
+
+    # Step 5: Verify taker's balance changed correctly
+    # Wait for balances to update
+    await asyncio.sleep(0.5)
+    taker_balances_after = await taker_tester.data.balances()
+    taker_eth_after = Decimal(str(taker_balances_after.get("ETH").real_balance)) if "ETH" in taker_balances_after else Decimal("0")
+    taker_rusd_after = Decimal(str(taker_balances_after.get("RUSD").real_balance)) if "RUSD" in taker_balances_after else Decimal("0")
+    logger.info(f"Taker final balances: ETH={taker_eth_after}, RUSD={taker_rusd_after}")
+
+    # Taker sold ETH, so ETH should decrease and RUSD should increase
+    taker_eth_change = taker_eth_after - taker_eth_before
+    taker_rusd_change = taker_rusd_after - taker_rusd_before
+    logger.info(f"Taker balance changes: ETH={taker_eth_change}, RUSD={taker_rusd_change}")
+
+    # Verify ETH decreased (taker sold ETH)
+    assert taker_eth_change < Decimal("0"), f"Taker ETH should decrease after selling, got change: {taker_eth_change}"
+    # Verify RUSD increased (taker received RUSD)
+    assert taker_rusd_change > Decimal("0"), f"Taker RUSD should increase after selling, got change: {taker_rusd_change}"
+    logger.info("✅ Taker balance changes verified (ETH decreased, RUSD increased)")
 
     logger.info("✅ SPOT IOC FULL FILL TEST COMPLETED")
 
@@ -84,11 +141,15 @@ async def test_spot_ioc_no_match_cancels(spot_config: SpotTestConfig, spot_teste
     """
     Test IOC order that finds no matching liquidity and cancels.
 
+    Supports both empty and non-empty order books:
+    - Uses a price guaranteed not to match any existing liquidity
+    - Price is calculated to be below all asks (for buy) or above all bids (for sell)
+
     Flow:
-    1. Ensure order book is empty (no matching orders)
-    2. Send IOC order with price that won't match
-    3. Verify order is cancelled/rejected (not filled)
-    4. Verify no execution occurred
+    1. Check current order book state
+    2. Calculate a safe no-match price
+    3. Send IOC order at that price
+    4. Verify order is cancelled/rejected (not filled)
 
     Note: IOC orders without matching liquidity may return a 400 error
     or return None for order_id, depending on the API implementation.
@@ -97,19 +158,23 @@ async def test_spot_ioc_no_match_cancels(spot_config: SpotTestConfig, spot_teste
     logger.info(f"SPOT IOC NO MATCH TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    # Clear any existing orders
+    # Clear any existing orders from our account
     await spot_tester.check.no_open_orders()
+
+    # Check current order book to determine safe no-match price
+    await spot_config.refresh_order_book(spot_tester.data)
 
     # Clear execution tracking
     spot_tester.ws.last_spot_execution = None
     start_timestamp = int(time.time() * 1000)
 
-    # Send IOC buy order at low price within oracle deviation (won't match any asks)
-    low_price = spot_config.price(0.96)
+    # Get a buy price guaranteed not to match (below all asks)
+    safe_buy_price = spot_config.get_safe_no_match_buy_price()
+    logger.info(f"Safe no-match buy price: ${safe_buy_price:.2f}")
 
-    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).ioc().build()
+    order_params = OrderBuilder.from_config(spot_config).buy().price(str(safe_buy_price)).ioc().build()
 
-    logger.info(f"Sending IOC buy at ${low_price:.2f} (expecting no match)...")
+    logger.info(f"Sending IOC buy at ${safe_buy_price:.2f} (expecting no match)...")
 
     # IOC orders without matching liquidity may raise an error or return None
     try:
@@ -144,62 +209,76 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
     """
     Test IOC order that matches against available liquidity.
 
-    When taker sends a larger IOC order than maker's available quantity,
+    When taker sends a larger IOC order than available quantity,
     the IOC fills what it can and the remainder is cancelled.
 
+    Supports both empty and non-empty order books:
+    - Checks existing bid liquidity and supplements if needed
+    - Taker sends IOC sell larger than available to test partial fill behavior
+
     Flow:
-    1. Maker places small GTC order at a specific price
-    2. Taker sends larger IOC order that matches
-    3. Verify execution occurred
-    4. Verify maker order is filled
+    1. Check external bid liquidity
+    2. Supplement with maker order if needed to ensure known qty
+    3. Taker sends larger IOC order that partially fills
+    4. Verify execution occurred
     5. Verify no open orders remain
     """
     logger.info("=" * 80)
     logger.info(f"SPOT IOC PARTIAL FILL TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
-    # Clear any existing orders for both accounts (fail_if_none=False since we're just cleaning up)
+    # Clear any existing orders for both accounts
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Use a price within oracle deviation
-    maker_price = spot_config.price(0.99)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    maker_order_id: Optional[str] = None
     maker_qty = spot_config.min_qty
+    taker_qty = "0.002"  # Larger than maker qty - will partially fill
 
-    maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
+    # Determine fill price and ensure we have known liquidity
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(maker_qty)
 
-    logger.info(f"Step 1: Maker placing GTC buy: {maker_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker order created: {maker_order_id}")
+    if usable_bid_price is not None:
+        # External bid liquidity exists - use it directly without placing our own order
+        fill_price = usable_bid_price
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        maker_price = spot_config.price(0.99)
+        fill_price = Decimal(str(maker_price))
 
-    # Taker sends larger IOC sell order at or below maker's price
-    taker_price = maker_price  # Same price ensures within oracle deviation
-    taker_qty = "0.002"  # Larger than maker (0.001) - will partially fill
+        maker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.99).gtc().build()
+        maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker order created: {maker_order_id} @ ${fill_price:.2f}")
 
-    taker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(0.99).qty(taker_qty).ioc().build()
+    # Taker sends larger IOC sell order
+    taker_order_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).qty(taker_qty).ioc().build()
 
-    logger.info(f"Step 2: Taker sending IOC sell: {taker_qty} @ ${taker_price:.2f}")
+    logger.info(f"Taker sending IOC sell: {taker_qty} @ ${fill_price:.2f}")
     taker_tester.ws.last_spot_execution = None
     taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
     logger.info(f"Taker IOC order sent: {taker_order_id}")
 
-    # Wait for execution - use a shorter timeout and check via REST
-    await asyncio.sleep(0.05)
+    # Wait for execution
+    await asyncio.sleep(0.1)
 
-    # Verify maker order is filled (this confirms execution occurred)
-    try:
-        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-        logger.info("✅ Maker order fully filled - execution confirmed")
-    except (TimeoutError, RuntimeError):
-        # Check if order is still open or was filled
-        open_orders = await maker_tester.client.get_open_orders()
-        maker_still_open = any(o.order_id == maker_order_id for o in open_orders)
-        if maker_still_open:
-            raise AssertionError(f"Maker order {maker_order_id} should have been filled but is still open")
-        logger.info("✅ Maker order no longer open - execution confirmed")
+    # Verify maker order is filled (if we placed one)
+    if maker_order_id:
+        try:
+            await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+            logger.info("✅ Maker order fully filled - execution confirmed")
+        except (TimeoutError, RuntimeError):
+            open_orders = await maker_tester.client.get_open_orders()
+            maker_still_open = any(o.order_id == maker_order_id for o in open_orders)
+            if maker_still_open:
+                raise AssertionError(f"Maker order {maker_order_id} should have been filled but is still open")
+            logger.info("✅ Maker order no longer open - execution confirmed")
 
-    # Verify no open orders remain (IOC remainder was cancelled)
+    # Verify no open orders remain from our accounts (IOC remainder was cancelled)
     await maker_tester.check.no_open_orders()
     await taker_tester.check.no_open_orders()
 
@@ -212,15 +291,17 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
 @pytest.mark.asyncio
 async def test_spot_ioc_sell_full_fill(spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester):
     """
-    Test IOC sell order fully filled against existing buy liquidity.
+    Test IOC buy order fully filled against existing sell liquidity.
 
-    This is the inverse of test_spot_ioc_full_fill - maker posts ask,
-    taker buys into it with IOC.
+    Supports both empty and non-empty order books:
+    - If external ask liquidity exists, taker buys into it
+    - If no external liquidity, maker provides ask liquidity first
 
     Flow:
-    1. Maker places GTC sell order on the book
-    2. Taker sends IOC buy order that matches completely
-    3. Verify both orders are filled
+    1. Check for external ask liquidity
+    2. If needed, maker places GTC sell order on the book
+    3. Taker sends IOC buy order that matches
+    4. Verify execution occurred
     """
     logger.info("=" * 80)
     logger.info(f"SPOT IOC SELL FULL FILL TEST: {spot_config.symbol}")
@@ -229,33 +310,45 @@ async def test_spot_ioc_sell_full_fill(spot_config: SpotTestConfig, maker_tester
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Maker places GTC sell order at price within oracle deviation
-    maker_price = spot_config.price(1.01)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(1.01).gtc().build()
+    maker_order_id: Optional[str] = None
+    fill_price: Decimal
 
-    logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker GTC order created: {maker_order_id}")
+    # Determine liquidity source
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
-    # Taker sends IOC buy order at same price
-    taker_price = maker_price  # Same price ensures within oracle deviation
+    if usable_ask_price is not None:
+        # External ask liquidity exists - use it
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        maker_price = spot_config.price(1.01)
+        fill_price = Decimal(str(maker_price))
 
-    taker_order_params = OrderBuilder.from_config(spot_config).buy().at_price(1.01).ioc().build()
+        maker_order_params = OrderBuilder.from_config(spot_config).sell().at_price(1.01).gtc().build()
+        maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker GTC sell order created: {maker_order_id} @ ${fill_price:.2f}")
 
-    logger.info(f"Taker sending IOC buy: {spot_config.min_qty} @ ${taker_price:.2f}")
+    # Taker sends IOC buy order
+    taker_order_params = OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).ioc().build()
+
+    logger.info(f"Taker sending IOC buy: {spot_config.min_qty} @ ${fill_price:.2f}")
     taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
     logger.info(f"Taker IOC order sent: {taker_order_id}")
 
     # Wait for matching
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.1)
 
-    # Verify maker order is filled
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-    logger.info("✅ Maker order filled")
+    # Verify maker order is filled (if we placed one)
+    if maker_order_id:
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Maker order filled")
 
-    # Verify no open orders remain
+    # Verify no open orders remain from our accounts
     await maker_tester.check.no_open_orders()
     await taker_tester.check.no_open_orders()
 
@@ -272,11 +365,14 @@ async def test_spot_ioc_multiple_price_level_crossing(
     """
     Test IOC order that crosses multiple price levels.
 
+    This test requires a controlled environment to verify multi-level matching behavior.
+    When external liquidity exists, we skip to avoid unpredictable matching.
+
     Flow:
-    1. Maker places multiple GTC orders at different prices
-    2. Taker sends large IOC order that fills across multiple levels
-    3. Verify all maker orders are filled
-    4. Verify correct execution sequence (best price first)
+    1. Check for external liquidity - skip if present
+    2. Maker places multiple GTC orders at different prices
+    3. Taker sends large IOC order that fills across multiple levels
+    4. Verify all maker orders are filled
     """
     logger.info("=" * 80)
     logger.info(f"SPOT IOC MULTIPLE PRICE LEVEL TEST: {spot_config.symbol}")
@@ -284,6 +380,16 @@ async def test_spot_ioc_multiple_price_level_crossing(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping multi-level crossing test: external liquidity exists. "
+            "This test requires a controlled environment to verify multi-level matching."
+        )
 
     # Maker places multiple GTC buy orders at different prices within oracle deviation
     price_1 = spot_config.price(0.97)  # Lower price
@@ -306,7 +412,7 @@ async def test_spot_ioc_multiple_price_level_crossing(
     await maker_tester.wait.for_order_creation(order_2_id)
     logger.info(f"✅ Order #2 created: {order_2_id}")
 
-    # Taker sends IOC sell order large enough to fill both
+    # Taker sends IOC sell order large enough to fill both our orders
     taker_price = price_1  # Same as lower price ensures within oracle deviation
     taker_qty = "0.002"  # Enough to fill both orders (2 x 0.001)
 
@@ -317,7 +423,7 @@ async def test_spot_ioc_multiple_price_level_crossing(
     logger.info(f"Taker IOC order sent: {taker_order_id}")
 
     # Wait for matching
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.1)
 
     # Verify both maker orders are filled
     await maker_tester.wait.for_order_state(order_1_id, OrderStatus.FILLED, timeout=5)
@@ -326,7 +432,7 @@ async def test_spot_ioc_multiple_price_level_crossing(
     await maker_tester.wait.for_order_state(order_2_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Order #2 filled")
 
-    # Verify no open orders remain
+    # Verify no open orders remain from our accounts
     await maker_tester.check.no_open_orders()
     await taker_tester.check.no_open_orders()
 

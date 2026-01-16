@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional, Union
 
 import asyncio
 import logging
+import os
 
 import pytest
 
@@ -67,7 +68,18 @@ class Checks:
         assert open_order.status == OrderStatus.OPEN, "check_open_order_created: Wrong order status"
 
     async def no_open_orders(self) -> None:
-        """Assert no open orders exist."""
+        """Assert no open orders exist.
+        
+        Note:
+            Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip this check for SPOT_ACCOUNT_ID_1.
+            This is useful when testing with external liquidity from a depth script.
+        """
+        # Check if we should preserve orders for SPOT account 1
+        preserve_account1 = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
+        if preserve_account1 and self._t._spot_account_number == 1:
+            logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping no_open_orders check for SPOT account 1")
+            return
+
         open_orders = await self._t.client.get_open_orders()
         if len(open_orders) == 0:
             return

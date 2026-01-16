@@ -189,6 +189,13 @@ async def test_spot_cancel_already_filled_order(
     3. Attempt to cancel the filled order
     4. Verify error response (order already filled)
     """
+    # Skip if external liquidity exists - taker would match external orders instead of our maker
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping cancel filled order test: external liquidity exists. "
+            "Taker orders would match external liquidity first."
+        )
+
     logger.info("=" * 80)
     logger.info(f"SPOT CANCEL ALREADY FILLED ORDER TEST: {spot_config.symbol}")
     logger.info("=" * 80)

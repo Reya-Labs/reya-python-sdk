@@ -71,10 +71,16 @@ async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: R
     """
     Test getting spot executions via REST API.
 
+    Supports both empty and non-empty order books:
+    - If external bid liquidity exists, taker sells into it
+    - If no external liquidity, maker provides bid liquidity first
+
     Flow:
-    1. Execute a spot trade
-    2. Query spot executions via REST
-    3. Verify execution data is correct
+    1. Check for external liquidity
+    2. If needed, maker places GTC buy order
+    3. Taker places IOC sell order
+    4. Query spot executions via REST
+    5. Verify execution data is correct
     """
     logger.info("=" * 80)
     logger.info("SPOT EXECUTIONS REST TEST")
@@ -83,23 +89,35 @@ async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: R
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Execute a trade
-    maker_price = spot_config.price(0.97)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
+    maker_order_id = None
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
 
-    logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
+    if usable_bid_price is not None:
+        # External bid liquidity exists - use it
+        fill_price = usable_bid_price
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        fill_price = spot_config.price(0.97)
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
-    logger.info("Taker placing IOC sell...")
+        logger.info(f"Maker placing GTC buy: {spot_config.min_qty} @ ${fill_price:.2f}")
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+
+    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+
+    logger.info(f"Taker placing IOC sell at ${fill_price:.2f}...")
     await taker_tester.orders.create_limit(taker_params)
 
     # Wait for execution
     await asyncio.sleep(0.05)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    if maker_order_id:
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Trade executed")
 
     # Query spot executions via REST
@@ -210,11 +228,14 @@ async def test_spot_executions_multiple_trades(
     """
     Test spot executions are correctly recorded for multiple trades.
 
+    This test requires a controlled environment to verify multiple trades at specific prices.
+    When external liquidity exists, we skip to avoid unpredictable matching.
+
     Flow:
-    1. Execute multiple trades
-    2. Query executions via REST
-    3. Verify executions are recorded
-    4. Verify execution data structure
+    1. Check for external liquidity - skip if present
+    2. Execute multiple trades
+    3. Query executions via REST
+    4. Verify executions are recorded
     """
     logger.info("=" * 80)
     logger.info("SPOT EXECUTIONS MULTIPLE TRADES TEST")
@@ -222,6 +243,16 @@ async def test_spot_executions_multiple_trades(
 
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Check current order book state
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Skip if external liquidity exists - this test needs controlled environment
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping multiple trades test: external liquidity exists. "
+            "This test requires a controlled environment to verify multiple trades."
+        )
 
     # Execute multiple trades
     num_trades = 3

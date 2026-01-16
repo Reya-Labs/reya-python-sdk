@@ -73,6 +73,7 @@ class ReyaTester:
 
         # Track if this is a spot account (cannot trade perps)
         self._is_spot_account = spot_account_number is not None
+        self._spot_account_number = spot_account_number
 
         if spot_account_number is None:
             # Default - use standard config (PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1)

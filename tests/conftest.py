@@ -6,6 +6,7 @@ across all tests in a session, enabling session-scoped async fixtures.
 """
 
 import asyncio
+import os
 from decimal import Decimal
 
 import pytest
@@ -140,7 +141,11 @@ async def maker_tester_session():
     try:
         if tester._websocket:
             tester._websocket.close()
-        await tester.orders.close_all(fail_if_none=False)
+        preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
+        if not preserve_orders:
+            await tester.orders.close_all(fail_if_none=False)
+        else:
+            logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping session cleanup for maker account")
         await tester.client.close()
         logger.info("✅ Maker session cleanup completed")
     except (OSError, RuntimeError, asyncio.CancelledError) as e:
@@ -186,13 +191,22 @@ async def taker_tester_session():
 async def maker_tester(maker_tester_session):  # pylint: disable=redefined-outer-name
     """
     Function-scoped wrapper for maker that cleans state between tests.
+    
+    Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip order cleanup for SPOT_ACCOUNT_ID_1.
+    This is useful when testing with external liquidity from a depth script.
     """
-    await maker_tester_session.orders.close_all(fail_if_none=False)
+    preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
+    
+    if not preserve_orders:
+        await maker_tester_session.orders.close_all(fail_if_none=False)
+    else:
+        logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping order cleanup for maker account")
     maker_tester_session.ws.clear()
 
     yield maker_tester_session
 
-    await maker_tester_session.orders.close_all(fail_if_none=False)
+    if not preserve_orders:
+        await maker_tester_session.orders.close_all(fail_if_none=False)
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
@@ -200,13 +214,22 @@ async def spot_tester(maker_tester_session):  # pylint: disable=redefined-outer-
     """
     Function-scoped wrapper for single-account spot tests.
     Uses SPOT account 1 (same as maker_tester).
+    
+    Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip order cleanup for SPOT_ACCOUNT_ID_1.
+    This is useful when testing with external liquidity from a depth script.
     """
-    await maker_tester_session.orders.close_all(fail_if_none=False)
+    preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
+    
+    if not preserve_orders:
+        await maker_tester_session.orders.close_all(fail_if_none=False)
+    else:
+        logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping order cleanup for spot_tester")
     maker_tester_session.ws.clear()
 
     yield maker_tester_session
 
-    await maker_tester_session.orders.close_all(fail_if_none=False)
+    if not preserve_orders:
+        await maker_tester_session.orders.close_all(fail_if_none=False)
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
@@ -399,11 +422,19 @@ async def spot_balance_guard(
     # ========================================================================
     # BALANCE RESTORATION (runs after all SPOT tests complete)
     # ========================================================================
+    # This restoration logic handles both scenarios:
+    # 1. Tests traded only between maker and taker accounts
+    # 2. Tests traded with external liquidity (non-empty order book)
+    #
+    # Strategy: Track each account independently and restore via maker↔taker
+    # transfers. External liquidity trades will show as imbalances that we
+    # correct by transferring between our accounts.
+    # ========================================================================
     logger.info("=" * 60)
     logger.info("💰 SPOT BALANCE GUARD: Restoring account balances")
     logger.info("=" * 60)
 
-    # Get final balances
+    # Get final balances for both accounts
     final_maker_eth = await _get_account_balance(maker_tester_session, "ETH")
     final_maker_rusd = await _get_account_balance(maker_tester_session, "RUSD")
     final_taker_eth = await _get_account_balance(taker_tester_session, "ETH")
@@ -412,58 +443,149 @@ async def spot_balance_guard(
     logger.info(f"📊 Final Account 1 (Maker): {final_maker_eth} ETH, {final_maker_rusd} RUSD")
     logger.info(f"📊 Final Account 2 (Taker): {final_taker_eth} ETH, {final_taker_rusd} RUSD")
 
-    # Calculate differences (positive = maker gained, negative = maker lost)
-    eth_diff = final_maker_eth - initial_balances["maker_eth"]
-    rusd_diff = final_maker_rusd - initial_balances["maker_rusd"]
+    # Calculate changes for EACH account independently
+    maker_eth_change = final_maker_eth - initial_balances["maker_eth"]
+    maker_rusd_change = final_maker_rusd - initial_balances["maker_rusd"]
+    taker_eth_change = final_taker_eth - initial_balances["taker_eth"]
+    taker_rusd_change = final_taker_rusd - initial_balances["taker_rusd"]
 
-    logger.info(f"📈 Changes for Maker: ETH {eth_diff:+}, RUSD {rusd_diff:+}")
+    logger.info(f"📈 Maker changes: ETH {maker_eth_change:+}, RUSD {maker_rusd_change:+}")
+    logger.info(f"📈 Taker changes: ETH {taker_eth_change:+}, RUSD {taker_rusd_change:+}")
 
     symbol = "WETHRUSD"
     oracle_price = Decimal(str(spot_config.oracle_price))
     min_price = oracle_price * Decimal("0.95")
     max_price = oracle_price * Decimal("1.05")
 
-    # Restore balances if significant ETH change
-    if abs(eth_diff) >= Decimal("0.001"):
-        # Calculate the effective price that would restore RUSD exactly
-        # effective_price = |RUSD_diff| / |ETH_diff|
-        # This is the average price at which trades occurred during tests
-        if abs(rusd_diff) > Decimal("0.01"):
-            effective_price = abs(rusd_diff) / abs(eth_diff)
+    # Determine restoration needs
+    # Net ETH change across both accounts (non-zero means external trades occurred)
+    net_eth_change = maker_eth_change + taker_eth_change
+    if abs(net_eth_change) >= Decimal("0.001"):
+        logger.info(f"📊 Net ETH change (external trades): {net_eth_change:+}")
+
+    min_qty = Decimal("0.001")
+
+    # Calculate what each account needs to reach initial balance
+    maker_eth_needed = initial_balances["maker_eth"] - final_maker_eth  # positive = needs more ETH
+    taker_eth_needed = initial_balances["taker_eth"] - final_taker_eth  # positive = needs more ETH
+
+    logger.info(f"📊 Maker needs: {maker_eth_needed:+} ETH, Taker needs: {taker_eth_needed:+} ETH")
+
+    # Get current order book to determine restoration strategy
+    depth = await taker_tester_session.data.market_depth(symbol)
+    has_external_bids = depth.bids and len(depth.bids) > 0
+    has_external_asks = depth.asks and len(depth.asks) > 0
+    has_external_liquidity = has_external_bids or has_external_asks
+
+    logger.info(f"📊 Order book: bids={has_external_bids}, asks={has_external_asks}")
+
+    # ========================================================================
+    # RESTORATION STRATEGY:
+    # - If NO external liquidity: Use internal transfers (maker ↔ taker)
+    # - If external liquidity exists: Each account trades with external liquidity
+    #   (internal transfers won't work because IOC orders match external first)
+    # ========================================================================
+
+    if not has_external_liquidity:
+        # EMPTY ORDER BOOK: Use internal transfers between maker and taker
+        logger.info("📋 Empty order book - using internal transfers")
+
+        # Calculate restoration price based on RUSD changes
+        total_eth_moved = abs(maker_eth_change) + abs(taker_eth_change)
+        total_rusd_moved = abs(maker_rusd_change) + abs(taker_rusd_change)
+
+        if total_eth_moved > Decimal("0") and total_rusd_moved > Decimal("0.01"):
+            effective_price = total_rusd_moved / total_eth_moved
         else:
             effective_price = oracle_price
 
-        logger.info(f"� Effective trade price during tests: ${effective_price:.2f}")
-
-        # Clamp to allowed price range (±5% of oracle)
         restoration_price = max(min_price, min(max_price, effective_price))
         restoration_price = restoration_price.quantize(Decimal("0.01"))
+        logger.info(f"💱 Restoration price: ${restoration_price}")
 
-        logger.info(f"� Restoration price (clamped to range): ${restoration_price}")
+        if abs(maker_eth_needed) >= min_qty:
+            if maker_eth_needed > 0:
+                qty = str(maker_eth_needed.quantize(min_qty))
+                logger.info(f"🔄 Internal transfer: {qty} ETH from Taker → Maker @ ${restoration_price}")
+                await _execute_spot_transfer(
+                    sender=taker_tester_session,
+                    receiver=maker_tester_session,
+                    symbol=symbol,
+                    qty=qty,
+                    price=str(restoration_price),
+                )
+            else:
+                qty = str((-maker_eth_needed).quantize(min_qty))
+                logger.info(f"🔄 Internal transfer: {qty} ETH from Maker → Taker @ ${restoration_price}")
+                await _execute_spot_transfer(
+                    sender=maker_tester_session,
+                    receiver=taker_tester_session,
+                    symbol=symbol,
+                    qty=qty,
+                    price=str(restoration_price),
+                )
+            await asyncio.sleep(1.0)
 
-        if eth_diff > 0:
-            # Maker gained ETH during tests, transfer back to Taker
-            qty = str(eth_diff.quantize(Decimal("0.001")))
-            logger.info(f"🔄 Restoring: Transferring {qty} ETH from Maker → Taker @ ${restoration_price}")
-            await _execute_spot_transfer(
-                sender=maker_tester_session,
-                receiver=taker_tester_session,
-                symbol=symbol,
-                qty=qty,
-                price=str(restoration_price),
-            )
-        else:
-            # Maker lost ETH during tests, transfer from Taker back to Maker
-            qty = str((-eth_diff).quantize(Decimal("0.001")))
-            logger.info(f"🔄 Restoring: Transferring {qty} ETH from Taker → Maker @ ${restoration_price}")
-            await _execute_spot_transfer(
-                sender=taker_tester_session,
-                receiver=maker_tester_session,
-                symbol=symbol,
-                qty=qty,
-                price=str(restoration_price),
-            )
+    else:
+        # NON-EMPTY ORDER BOOK: Each account trades with external liquidity
+        logger.info("📋 External liquidity present - each account trades with external")
 
+        # Helper function to restore an account's ETH balance via external liquidity
+        async def restore_account_eth(tester: ReyaTester, eth_needed: Decimal, account_name: str):
+            if abs(eth_needed) < min_qty:
+                return
+
+            if eth_needed > 0:
+                # Account needs more ETH - buy from external asks
+                if not has_external_asks:
+                    logger.warning(f"⚠️ {account_name} needs {eth_needed} ETH but no external asks available")
+                    return
+
+                qty = str(eth_needed.quantize(min_qty))
+                best_ask = Decimal(str(depth.asks[0].px))
+                buy_price = min(max_price, best_ask * Decimal("1.001")).quantize(Decimal("0.01"))
+                logger.info(f"🔄 {account_name}: Buying {qty} ETH @ ${buy_price} from external asks")
+
+                try:
+                    buy_params = LimitOrderParameters(
+                        symbol=symbol,
+                        is_buy=True,
+                        limit_px=str(buy_price),
+                        qty=qty,
+                        time_in_force=TimeInForce.IOC,
+                    )
+                    await tester.client.create_limit_order(buy_params)
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logger.warning(f"⚠️ {account_name}: Failed to buy ETH: {e}")
+
+            else:
+                # Account has excess ETH - sell to external bids
+                if not has_external_bids:
+                    logger.warning(f"⚠️ {account_name} has excess {-eth_needed} ETH but no external bids available")
+                    return
+
+                qty = str((-eth_needed).quantize(min_qty))
+                best_bid = Decimal(str(depth.bids[0].px))
+                sell_price = max(min_price, best_bid * Decimal("0.999")).quantize(Decimal("0.01"))
+                logger.info(f"🔄 {account_name}: Selling {qty} ETH @ ${sell_price} to external bids")
+
+                try:
+                    sell_params = LimitOrderParameters(
+                        symbol=symbol,
+                        is_buy=False,
+                        limit_px=str(sell_price),
+                        qty=qty,
+                        time_in_force=TimeInForce.IOC,
+                    )
+                    await tester.client.create_limit_order(sell_params)
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logger.warning(f"⚠️ {account_name}: Failed to sell ETH: {e}")
+
+        # Restore both accounts
+        await restore_account_eth(maker_tester_session, maker_eth_needed, "Maker")
+        await restore_account_eth(taker_tester_session, taker_eth_needed, "Taker")
         await asyncio.sleep(1.0)
 
     # Log final restored balances
@@ -475,9 +597,13 @@ async def spot_balance_guard(
     logger.info(f"✅ Final Account 1 (Maker): {restored_maker_eth} ETH, {restored_maker_rusd} RUSD")
     logger.info(f"✅ Final Account 2 (Taker): {restored_taker_eth} ETH, {restored_taker_rusd} RUSD")
 
-    # Log how close we got to initial balances
-    final_eth_diff = restored_maker_eth - initial_balances["maker_eth"]
-    final_rusd_diff = restored_maker_rusd - initial_balances["maker_rusd"]
-    logger.info(f"📊 Remaining difference from initial: ETH {final_eth_diff:+}, RUSD {final_rusd_diff:+}")
+    # Log how close we got to initial balances for both accounts
+    maker_eth_diff = restored_maker_eth - initial_balances["maker_eth"]
+    maker_rusd_diff = restored_maker_rusd - initial_balances["maker_rusd"]
+    taker_eth_diff = restored_taker_eth - initial_balances["taker_eth"]
+    taker_rusd_diff = restored_taker_rusd - initial_balances["taker_rusd"]
+
+    logger.info(f"📊 Maker remaining diff from initial: ETH {maker_eth_diff:+}, RUSD {maker_rusd_diff:+}")
+    logger.info(f"📊 Taker remaining diff from initial: ETH {taker_eth_diff:+}, RUSD {taker_rusd_diff:+}")
 
     logger.info("=" * 60)

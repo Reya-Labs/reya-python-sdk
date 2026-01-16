@@ -46,6 +46,10 @@ from sdk.reya_websocket import ReyaSocket, WebSocketMessage
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("market_maker_ws")
 
+# Enable verbose HTTP logging for debugging API issues
+logging.getLogger("aiohttp.client").setLevel(logging.DEBUG)
+logging.getLogger("urllib3").setLevel(logging.DEBUG)
+
 # Market configuration (defaults, can be overridden via command line)
 DEFAULT_SYMBOL = "WETHRUSD"  # Default spot trading pair symbol
 DEFAULT_ORACLE_SYMBOL = "ETHRUSD"  # Default oracle price symbol for reference pricing

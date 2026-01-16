@@ -155,6 +155,13 @@ async def test_spot_ws_rest_consistency_after_activity(
     4. Compare final WS state vs REST state
     5. Verify complete consistency
     """
+    # Skip if external liquidity exists - taker would match external orders instead of our maker
+    if spot_config.has_any_external_liquidity:
+        pytest.skip(
+            "Skipping WS/REST consistency test: external liquidity exists. "
+            "Taker orders would match external liquidity first."
+        )
+
     logger.info("=" * 80)
     logger.info(f"SPOT WS/REST CONSISTENCY TEST: {spot_config.symbol}")
     logger.info("=" * 80)

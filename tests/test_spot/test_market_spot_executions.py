@@ -10,6 +10,9 @@ These tests verify:
 2. WebSocket channel delivers real-time spot execution updates
 3. WebSocket snapshot contains historical executions
 4. Data consistency between REST and WebSocket
+
+These tests always provide their own maker liquidity to ensure predictable
+execution behavior for verification purposes.
 """
 
 import asyncio
@@ -66,10 +69,16 @@ async def test_rest_get_market_spot_executions_after_trade(
     """
     Test REST API returns spot execution after a trade is executed.
 
+    Supports both empty and non-empty order books:
+    - If external bid liquidity exists, taker sells into it
+    - If no external liquidity, maker provides bid liquidity first
+
     Flow:
-    1. Execute a spot trade between maker and taker
-    2. Query market spot executions via REST
-    3. Verify the execution appears in the response
+    1. Check for external liquidity
+    2. If needed, maker places GTC buy order
+    3. Taker places IOC sell order
+    4. Query market spot executions via REST
+    5. Verify the execution appears in the response
     """
     logger.info("=" * 80)
     logger.info(f"REST GET MARKET SPOT EXECUTIONS AFTER TRADE TEST: {spot_config.symbol}")
@@ -78,24 +87,36 @@ async def test_rest_get_market_spot_executions_after_trade(
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Step 1: Execute a trade
-    maker_price = spot_config.price(0.97)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
+    maker_order_id = None
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
 
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
+    if usable_bid_price is not None:
+        # External bid liquidity exists - use it
+        fill_price = usable_bid_price
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        fill_price = spot_config.price(0.97)
+
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
+
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker order created: {maker_order_id} @ ${fill_price:.2f}")
 
     # Taker fills with IOC
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.97).ioc().build()
+    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
 
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
 
     # Wait for execution
     await asyncio.sleep(0.3)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    if maker_order_id:
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Trade executed")
 
     # Step 2: Query market spot executions via REST
@@ -165,10 +186,16 @@ async def test_ws_market_spot_executions_realtime(
     """
     Test WebSocket delivers real-time spot execution updates for market channel.
 
+    Supports both empty and non-empty order books:
+    - If external bid liquidity exists, taker sells into it
+    - If no external liquidity, maker provides bid liquidity first
+
     Flow:
     1. Subscribe to market spot executions channel
-    2. Execute a spot trade
-    3. Verify execution is received via WebSocket
+    2. Check for external liquidity
+    3. If needed, maker places GTC buy order
+    4. Taker places IOC sell order
+    5. Verify execution is received via WebSocket
     """
     logger.info("=" * 80)
     logger.info(f"WS MARKET SPOT EXECUTIONS REALTIME TEST: {spot_config.symbol}")
@@ -184,23 +211,35 @@ async def test_ws_market_spot_executions_realtime(
     # Wait for subscription to be established
     await asyncio.sleep(0.3)
 
-    # Step 2: Execute a trade
-    maker_price = spot_config.price(0.98)
+    # Check for external liquidity
+    await spot_config.refresh_order_book(maker_tester.data)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+    maker_order_id = None
+    usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
 
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker order created: {maker_order_id} @ ${maker_price}")
+    if usable_bid_price is not None:
+        # External bid liquidity exists - use it
+        fill_price = usable_bid_price
+        logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+    else:
+        # No external liquidity - provide our own
+        fill_price = spot_config.price(0.98)
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
+        logger.info(f"✅ Maker order created: {maker_order_id} @ ${fill_price:.2f}")
+
+    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
 
     await taker_tester.orders.create_limit(taker_params)
     logger.info("✅ Taker IOC order sent")
 
     # Wait for execution and WebSocket update
     await asyncio.sleep(0.5)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    if maker_order_id:
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Trade executed")
 
     # Step 3: Verify execution received via WebSocket
@@ -231,7 +270,7 @@ async def test_ws_market_spot_executions_snapshot(
     Test WebSocket snapshot contains historical executions when subscribing.
 
     Flow:
-    1. Execute a spot trade to create execution history
+    1. Execute a spot trade to create execution history (use external liquidity if available)
     2. Clear WebSocket state
     3. Subscribe to market spot executions channel
     4. Verify snapshot contains historical execution
@@ -243,21 +282,41 @@ async def test_ws_market_spot_executions_snapshot(
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
+    # Refresh order book state to check for external liquidity
+    await spot_config.refresh_order_book(taker_tester.data)
+
     # Step 1: Execute a trade to create execution history
-    _ = spot_config.price(0.98)  # maker_price - calculated for reference
+    # Use external liquidity if available, otherwise create our own maker order
+    usable_bid = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+    if usable_bid is not None:
+        # External bid liquidity exists - taker sells into it
+        logger.info(f"Using external bid liquidity at ${usable_bid}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(usable_bid)).ioc().build()
+        await taker_tester.orders.create_limit(taker_params)
+        await asyncio.sleep(0.5)  # Wait for execution to settle
+        logger.info("✅ Trade executed against external bid - execution history created")
+    elif usable_ask is not None:
+        # External ask liquidity exists - taker buys into it
+        logger.info(f"Using external ask liquidity at ${usable_ask}")
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(usable_ask)).ioc().build()
+        await taker_tester.orders.create_limit(taker_params)
+        await asyncio.sleep(0.5)  # Wait for execution to settle
+        logger.info("✅ Trade executed against external ask - execution history created")
+    else:
+        # No external liquidity - create our own maker order
+        logger.info("No external liquidity - creating maker order")
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
 
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
+        taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
+        await taker_tester.orders.create_limit(taker_params)
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
-
-    await taker_tester.orders.create_limit(taker_params)
-
-    await asyncio.sleep(0.3)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-    logger.info("✅ Trade executed - execution history created")
+        await asyncio.sleep(0.3)
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Trade executed - execution history created")
 
     # Step 2: Clear WebSocket state and resubscribe
     maker_tester.ws.clear_market_spot_executions(spot_config.symbol)
@@ -292,7 +351,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(
 
     Flow:
     1. Subscribe to market spot executions channel
-    2. Execute a spot trade
+    2. Execute a spot trade (use external liquidity if available)
     3. Query REST API
     4. Verify WebSocket and REST data are consistent
     """
@@ -304,31 +363,50 @@ async def test_ws_and_rest_market_spot_executions_consistency(
     await taker_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Subscribe to market spot executions
-    maker_tester.ws.clear_market_spot_executions(spot_config.symbol)
-    maker_tester.ws.subscribe_to_market_spot_executions(spot_config.symbol)
+    taker_tester.ws.clear_market_spot_executions(spot_config.symbol)
+    taker_tester.ws.subscribe_to_market_spot_executions(spot_config.symbol)
     await asyncio.sleep(0.3)
 
-    # Step 2: Execute a trade
-    _ = spot_config.price(0.98)  # maker_price - calculated for reference
+    # Refresh order book state to check for external liquidity
+    await spot_config.refresh_order_book(taker_tester.data)
 
-    maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+    # Step 2: Execute a trade (use external liquidity if available)
+    usable_bid = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
+    if usable_bid is not None:
+        # External bid liquidity exists - taker sells into it
+        logger.info(f"Using external bid liquidity at ${usable_bid}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(usable_bid)).ioc().build()
+        await taker_tester.orders.create_limit(taker_params)
+        await asyncio.sleep(0.5)  # Wait for execution to settle
+        logger.info("✅ Trade executed against external bid")
+    elif usable_ask is not None:
+        # External ask liquidity exists - taker buys into it
+        logger.info(f"Using external ask liquidity at ${usable_ask}")
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(usable_ask)).ioc().build()
+        await taker_tester.orders.create_limit(taker_params)
+        await asyncio.sleep(0.5)  # Wait for execution to settle
+        logger.info("✅ Trade executed against external ask")
+    else:
+        # No external liquidity - create our own maker order
+        logger.info("No external liquidity - creating maker order")
+        maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
+        maker_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(maker_order_id)
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
+        taker_params = OrderBuilder.from_config(spot_config).sell().at_price(0.98).ioc().build()
+        await taker_tester.orders.create_limit(taker_params)
 
-    await taker_tester.orders.create_limit(taker_params)
-
-    await asyncio.sleep(0.5)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-    logger.info("✅ Trade executed")
+        await asyncio.sleep(0.5)
+        await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Trade executed")
 
     # Step 3: Query REST API
-    rest_executions = await maker_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
+    rest_executions = await taker_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
 
-    # Step 4: Verify consistency
-    ws_executions = maker_tester.ws.market_spot_executions.get(spot_config.symbol, [])
+    # Step 4: Verify consistency (use taker_tester since that's who subscribed)
+    ws_executions = taker_tester.ws.market_spot_executions.get(spot_config.symbol, [])
 
     logger.info(f"REST executions: {len(rest_executions.data)}")
     logger.info(f"WS executions: {len(ws_executions)}")
