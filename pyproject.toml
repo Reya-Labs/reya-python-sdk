@@ -180,4 +180,5 @@ markers = [
     "balance: Balance verification tests",
     "validation: API validation tests (signature, nonce, deadline, etc.)",
     "error: Error handling tests",
+    "rest_api: REST API endpoint tests",
 ]
