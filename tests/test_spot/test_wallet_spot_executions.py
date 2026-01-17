@@ -170,14 +170,20 @@ async def test_rest_get_wallet_spot_executions_pagination(
     assert len(all_executions.data) >= num_trades, f"Expected at least {num_trades} executions"
     logger.info(f"Total executions: {len(all_executions.data)}")
 
-    # Test with limit parameter (if supported)
-    limited_executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
-        address=wallet_address,
-        limit=2
-    )
+    # Test with time-based pagination (start_time/end_time)
+    if len(all_executions.data) >= 2:
+        # Use the timestamp of the second execution as end_time to get only older executions
+        second_execution = all_executions.data[1]
+        end_time = second_execution.timestamp
 
-    assert len(limited_executions.data) <= 2, "Limit should restrict results"
-    logger.info(f"Limited executions (limit=2): {len(limited_executions.data)}")
+        filtered_executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
+            address=wallet_address,
+            end_time=end_time
+        )
+
+        # Should return executions up to and including the end_time
+        assert len(filtered_executions.data) >= 1, "Should have at least one execution before end_time"
+        logger.info(f"Filtered executions (end_time={end_time}): {len(filtered_executions.data)}")
 
     logger.info("✅ Pagination parameters work correctly")
     logger.info("✅ WALLET SPOT EXECUTIONS PAGINATION TEST COMPLETED")

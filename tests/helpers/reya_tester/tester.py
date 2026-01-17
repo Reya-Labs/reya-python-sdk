@@ -197,3 +197,30 @@ class ReyaTester:
             The next nonce value to use for API requests.
         """
         return self.client.get_next_nonce()
+
+    async def get_last_perp_execution_sequence_number(self) -> int:
+        """Get the sequence number of the last perp execution.
+
+        Returns 0 if no executions exist.
+        """
+        execution = await self.data.last_perp_execution()
+        return execution.sequence_number if execution and execution.sequence_number else 0
+
+    async def get_last_wallet_perp_execution(self):
+        """Get the most recent perp execution for this wallet.
+
+        Returns None if no executions exist.
+        """
+        return await self.data.last_perp_execution()
+
+    async def get_market_definition(self, symbol: str):
+        """Get market configuration for a specific symbol."""
+        return await self.data.market_definition(symbol)
+
+    async def wait_for_closing_order_execution(self, expected_order, expected_qty: Optional[str] = None):
+        """Wait for position-closing trade confirmation via both REST and WebSocket."""
+        return await self.wait.for_closing_order_execution(expected_order, expected_qty)
+
+    async def check_no_order_execution_since(self, since_sequence_number: int) -> None:
+        """Assert no order execution occurred since the given sequence number."""
+        await self.check.no_order_execution_since(since_sequence_number)
