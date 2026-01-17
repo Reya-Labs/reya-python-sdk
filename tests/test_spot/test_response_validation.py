@@ -21,6 +21,7 @@ from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
+from tests.helpers.validators import validate_order_fields, validate_spot_execution_fields
 from tests.test_spot.spot_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
@@ -74,8 +75,8 @@ async def test_order_response_fields_gtc(spot_config: SpotTestConfig, spot_teste
 
     assert order is not None, f"Order {order_id} not found in open orders"
 
-    # Validate required fields and types
-    _validate_order_fields(order, spot_config, is_gtc=True)
+    # Validate required fields and types using shared validator
+    validate_order_fields(order, expected_symbol=spot_config.symbol, is_gtc=True, log_details=True)
 
     logger.info("✅ All GTC order fields validated successfully")
 
@@ -243,9 +244,9 @@ async def test_spot_execution_response_fields(
 
     assert len(executions.data) > 0, "Should have at least one execution"
 
-    # Validate the latest execution
+    # Validate the latest execution using shared validator
     execution: SpotExecution = executions.data[0]
-    _validate_spot_execution_fields(execution, spot_config)
+    validate_spot_execution_fields(execution, expected_symbol=spot_config.symbol, log_details=True)
 
     logger.info("✅ All spot execution fields validated successfully")
     logger.info("✅ SPOT EXECUTION RESPONSE FIELDS VALIDATION COMPLETED")
@@ -311,6 +312,182 @@ async def test_spot_execution_side_correctness(
     logger.info(f"✅ Taker execution side is correct: {latest.side}")
 
     logger.info("✅ SPOT EXECUTION SIDE CORRECTNESS VALIDATION COMPLETED")
+
+
+@pytest.mark.spot
+@pytest.mark.validation
+@pytest.mark.asyncio
+async def test_spot_execution_maker_vs_taker_fields(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
+    """
+    Test that maker and taker see consistent execution data with correct account references.
+
+    This test works with both empty and non-empty order books by always creating
+    our own maker order at a price that will be matched by our taker.
+
+    Validates:
+    - Taker execution: account_id = taker, order_id = taker's order
+    - Maker execution: account_id = maker, order_id = maker's order
+    - Both have same maker_account_id and maker_order_id (pointing to maker)
+    - Both have matching qty, price, symbol
+    """
+    logger.info("=" * 80)
+    logger.info("SPOT EXECUTION MAKER VS TAKER FIELDS VALIDATION")
+    logger.info("=" * 80)
+
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
+
+    await spot_config.refresh_order_book(maker_tester.data)
+
+    # Determine the best price for our maker order
+    # We need to ensure our maker order is at the BEST price so taker matches with us
+    # Check both bid and ask liquidity to decide which direction to trade
+    best_external_bid = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    best_external_ask = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
+
+    logger.info(f"External liquidity: bid={best_external_bid}, ask={best_external_ask}")
+
+    # Decide trade direction based on what external liquidity exists
+    # Case 1: No external liquidity - default to maker buys
+    # Case 2: Only bids exist - maker buys at better price than external bids
+    # Case 3: Only asks exist - maker sells at better price than external asks
+    # Case 4: Both exist - maker buys at better price than external bids
+    if best_external_ask is not None and best_external_bid is None:
+        # Only external asks exist - maker places SELL, taker BUYS
+        # Place our ask BELOW the best external ask so we get matched first
+        maker_price = round(float(best_external_ask) * 0.999, 2)
+        logger.info(f"Only external asks exist - placing maker SELL at ${maker_price} (below ${best_external_ask})")
+
+        maker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).gtc().build()
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(maker_price)).ioc().build()
+    else:
+        # No external liquidity, only bids, or both - maker places BUY, taker SELLS
+        if best_external_bid is not None:
+            # Place our bid ABOVE the best external bid so we get matched first
+            maker_price = round(float(best_external_bid) * 1.001, 2)
+            logger.info(f"External bids exist - placing maker BUY at ${maker_price} (above ${best_external_bid})")
+        else:
+            maker_price = spot_config.price(0.99)
+            logger.info(f"No external liquidity - placing maker BUY at ${maker_price}")
+
+        maker_params = OrderBuilder.from_config(spot_config).buy().price(str(maker_price)).gtc().build()
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).ioc().build()
+
+    maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    await maker_tester.wait.for_order_creation(maker_order_id)
+    logger.info(f"✅ Maker order created: {maker_order_id}")
+
+    taker_response = await taker_tester.orders.create_limit(taker_params)
+    taker_order_id = taker_response
+    logger.info(f"Taker order sent: {taker_order_id}")
+
+    # Wait for maker order to be filled
+    await asyncio.sleep(0.3)
+    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
+    logger.info("✅ Trade executed")
+
+    # Fetch executions from BOTH wallets
+    await asyncio.sleep(0.3)  # Allow indexing
+
+    taker_executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
+        address=taker_tester.owner_wallet_address
+    )
+    maker_executions: SpotExecutionList = await maker_tester.client.wallet.get_wallet_spot_executions(
+        address=maker_tester.owner_wallet_address
+    )
+
+    assert len(taker_executions.data) > 0, "Taker should have at least one execution"
+    assert len(maker_executions.data) > 0, "Maker should have at least one execution"
+
+    # Find the matching executions
+    # Taker's execution: order_id = taker's order
+    # Maker's execution: maker_order_id = maker's order (the order_id field is always the taker's order)
+    taker_exec = next((e for e in taker_executions.data if str(e.order_id) == str(taker_order_id)), None)
+    maker_exec = next((e for e in maker_executions.data if str(e.maker_order_id) == str(maker_order_id)), None)
+
+    assert taker_exec is not None, f"Taker execution for order {taker_order_id} not found"
+    assert maker_exec is not None, f"Maker execution for maker_order {maker_order_id} not found"
+
+    logger.info("Found matching executions for both maker and taker")
+
+    # Understanding the execution structure:
+    # - account_id: ALWAYS the taker's account
+    # - order_id: ALWAYS the taker's order
+    # - maker_account_id: ALWAYS the maker's account
+    # - maker_order_id: ALWAYS the maker's order
+    # Both taker and maker see the SAME execution record with these fields
+
+    # Validate taker's view of the execution
+    logger.info("\n📋 Validating TAKER's view of execution:")
+    assert taker_exec.account_id == taker_tester.account_id, (
+        f"account_id should be taker's account {taker_tester.account_id}, got {taker_exec.account_id}"
+    )
+    logger.info(f"  ✅ account_id = {taker_exec.account_id} (taker's account)")
+
+    assert str(taker_exec.order_id) == str(taker_order_id), (
+        f"order_id should be taker's order {taker_order_id}, got {taker_exec.order_id}"
+    )
+    logger.info(f"  ✅ order_id = {taker_exec.order_id} (taker's order)")
+
+    assert taker_exec.maker_account_id == maker_tester.account_id, (
+        f"maker_account_id should be maker's account {maker_tester.account_id}, got {taker_exec.maker_account_id}"
+    )
+    logger.info(f"  ✅ maker_account_id = {taker_exec.maker_account_id} (maker's account)")
+
+    assert str(taker_exec.maker_order_id) == str(maker_order_id), (
+        f"maker_order_id should be maker's order {maker_order_id}, got {taker_exec.maker_order_id}"
+    )
+    logger.info(f"  ✅ maker_order_id = {taker_exec.maker_order_id} (maker's order)")
+
+    # Validate maker's view of the execution (should be identical)
+    logger.info("\n📋 Validating MAKER's view of execution:")
+    assert maker_exec.account_id == taker_tester.account_id, (
+        f"account_id should be taker's account {taker_tester.account_id}, got {maker_exec.account_id}"
+    )
+    logger.info(f"  ✅ account_id = {maker_exec.account_id} (taker's account - same as taker's view)")
+
+    assert str(maker_exec.order_id) == str(taker_order_id), (
+        f"order_id should be taker's order {taker_order_id}, got {maker_exec.order_id}"
+    )
+    logger.info(f"  ✅ order_id = {maker_exec.order_id} (taker's order - same as taker's view)")
+
+    assert maker_exec.maker_account_id == maker_tester.account_id, (
+        f"maker_account_id should be maker's account {maker_tester.account_id}, got {maker_exec.maker_account_id}"
+    )
+    logger.info(f"  ✅ maker_account_id = {maker_exec.maker_account_id} (maker's account)")
+
+    assert str(maker_exec.maker_order_id) == str(maker_order_id), (
+        f"maker_order_id should be maker's order {maker_order_id}, got {maker_exec.maker_order_id}"
+    )
+    logger.info(f"  ✅ maker_order_id = {maker_exec.maker_order_id} (maker's order)")
+
+    # Validate both executions have matching trade details
+    logger.info("\n📋 Validating MATCHING trade details:")
+    assert taker_exec.symbol == maker_exec.symbol == spot_config.symbol, (
+        f"Symbol mismatch: taker={taker_exec.symbol}, maker={maker_exec.symbol}, expected={spot_config.symbol}"
+    )
+    logger.info(f"  ✅ symbol matches: {taker_exec.symbol}")
+
+    assert taker_exec.qty == maker_exec.qty, (
+        f"Qty mismatch: taker={taker_exec.qty}, maker={maker_exec.qty}"
+    )
+    logger.info(f"  ✅ qty matches: {taker_exec.qty}")
+
+    assert taker_exec.price == maker_exec.price, (
+        f"Price mismatch: taker={taker_exec.price}, maker={maker_exec.price}"
+    )
+    logger.info(f"  ✅ price matches: {taker_exec.price}")
+
+    # Timestamps should be very close (within 1 second)
+    timestamp_diff = abs(taker_exec.timestamp - maker_exec.timestamp)
+    assert timestamp_diff < 1000, (  # 1000ms = 1 second
+        f"Timestamp difference too large: {timestamp_diff}ms"
+    )
+    logger.info(f"  ✅ timestamps match (diff={timestamp_diff}ms)")
+
+    logger.info("\n✅ SPOT EXECUTION MAKER VS TAKER FIELDS VALIDATION COMPLETED")
 
 
 # =============================================================================
@@ -552,161 +729,6 @@ def _is_numeric_string(value: str) -> bool:
         return True
     except (ValueError, TypeError):
         return False
-
-
-def _validate_order_fields(order: Order, spot_config: SpotTestConfig, is_gtc: bool = True) -> None:
-    """Validate all required order fields."""
-    # exchange_id
-    assert hasattr(order, "exchange_id"), "Order should have 'exchange_id'"
-    assert isinstance(order.exchange_id, int), f"exchange_id should be int, got {type(order.exchange_id)}"
-    logger.info(f"✅ exchange_id: {order.exchange_id}")
-
-    # symbol
-    assert hasattr(order, "symbol"), "Order should have 'symbol'"
-    assert isinstance(order.symbol, str), f"symbol should be str, got {type(order.symbol)}"
-    assert order.symbol == spot_config.symbol, f"Expected {spot_config.symbol}, got {order.symbol}"
-    logger.info(f"✅ symbol: {order.symbol}")
-
-    # account_id
-    assert hasattr(order, "account_id"), "Order should have 'account_id'"
-    assert isinstance(order.account_id, int), f"account_id should be int, got {type(order.account_id)}"
-    logger.info(f"✅ account_id: {order.account_id}")
-
-    # order_id
-    assert hasattr(order, "order_id"), "Order should have 'order_id'"
-    assert isinstance(order.order_id, str), f"order_id should be str, got {type(order.order_id)}"
-    assert len(order.order_id) > 0, "order_id should not be empty"
-    logger.info(f"✅ order_id: {order.order_id}")
-
-    # qty
-    assert hasattr(order, "qty"), "Order should have 'qty'"
-    if order.qty is not None:
-        assert isinstance(order.qty, str), f"qty should be str, got {type(order.qty)}"
-        assert _is_numeric_string(order.qty), f"qty should be numeric: {order.qty}"
-        logger.info(f"✅ qty: {order.qty}")
-
-    # side
-    assert hasattr(order, "side"), "Order should have 'side'"
-    assert order.side is not None, "side should not be None"
-    assert hasattr(order.side, "value"), f"side should be an enum, got {type(order.side)}"
-    logger.info(f"✅ side: {order.side}")
-
-    # limit_px
-    assert hasattr(order, "limit_px"), "Order should have 'limit_px'"
-    assert isinstance(order.limit_px, str), f"limit_px should be str, got {type(order.limit_px)}"
-    assert _is_numeric_string(order.limit_px), f"limit_px should be numeric: {order.limit_px}"
-    logger.info(f"✅ limit_px: {order.limit_px}")
-
-    # order_type
-    assert hasattr(order, "order_type"), "Order should have 'order_type'"
-    assert order.order_type is not None, "order_type should not be None"
-    assert hasattr(order.order_type, "value"), f"order_type should be an enum, got {type(order.order_type)}"
-    logger.info(f"✅ order_type: {order.order_type}")
-
-    # time_in_force (for GTC orders)
-    if is_gtc:
-        assert hasattr(order, "time_in_force"), "Order should have 'time_in_force'"
-        if order.time_in_force is not None:
-            assert hasattr(order.time_in_force, "value"), (
-                f"time_in_force should be an enum, got {type(order.time_in_force)}"
-            )
-            logger.info(f"✅ time_in_force: {order.time_in_force}")
-
-    # status
-    assert hasattr(order, "status"), "Order should have 'status'"
-    assert order.status is not None, "status should not be None"
-    assert hasattr(order.status, "value"), f"status should be an enum, got {type(order.status)}"
-    logger.info(f"✅ status: {order.status}")
-
-    # created_at
-    assert hasattr(order, "created_at"), "Order should have 'created_at'"
-    assert isinstance(order.created_at, int), f"created_at should be int, got {type(order.created_at)}"
-    assert order.created_at > 0, f"created_at should be positive timestamp, got {order.created_at}"
-    logger.info(f"✅ created_at: {order.created_at}")
-
-    # last_update_at
-    assert hasattr(order, "last_update_at"), "Order should have 'last_update_at'"
-    assert isinstance(order.last_update_at, int), f"last_update_at should be int, got {type(order.last_update_at)}"
-    assert order.last_update_at > 0, f"last_update_at should be positive timestamp, got {order.last_update_at}"
-    logger.info(f"✅ last_update_at: {order.last_update_at}")
-
-
-def _validate_spot_execution_fields(execution: SpotExecution, spot_config: SpotTestConfig) -> None:
-    """Validate all required spot execution fields."""
-    # exchange_id (optional)
-    if execution.exchange_id is not None:
-        assert isinstance(execution.exchange_id, int), (
-            f"exchange_id should be int, got {type(execution.exchange_id)}"
-        )
-        logger.info(f"✅ exchange_id: {execution.exchange_id}")
-
-    # symbol
-    assert hasattr(execution, "symbol"), "Execution should have 'symbol'"
-    assert isinstance(execution.symbol, str), f"symbol should be str, got {type(execution.symbol)}"
-    assert execution.symbol == spot_config.symbol, f"Expected {spot_config.symbol}, got {execution.symbol}"
-    logger.info(f"✅ symbol: {execution.symbol}")
-
-    # account_id
-    assert hasattr(execution, "account_id"), "Execution should have 'account_id'"
-    assert isinstance(execution.account_id, int), f"account_id should be int, got {type(execution.account_id)}"
-    logger.info(f"✅ account_id: {execution.account_id}")
-
-    # maker_account_id
-    assert hasattr(execution, "maker_account_id"), "Execution should have 'maker_account_id'"
-    assert isinstance(execution.maker_account_id, int), (
-        f"maker_account_id should be int, got {type(execution.maker_account_id)}"
-    )
-    logger.info(f"✅ maker_account_id: {execution.maker_account_id}")
-
-    # order_id (optional)
-    if execution.order_id is not None:
-        assert isinstance(execution.order_id, str), f"order_id should be str, got {type(execution.order_id)}"
-        logger.info(f"✅ order_id: {execution.order_id}")
-
-    # maker_order_id (optional)
-    if execution.maker_order_id is not None:
-        assert isinstance(execution.maker_order_id, str), (
-            f"maker_order_id should be str, got {type(execution.maker_order_id)}"
-        )
-        logger.info(f"✅ maker_order_id: {execution.maker_order_id}")
-
-    # side
-    assert hasattr(execution, "side"), "Execution should have 'side'"
-    assert execution.side is not None, "side should not be None"
-    assert hasattr(execution.side, "value"), f"side should be an enum, got {type(execution.side)}"
-    logger.info(f"✅ side: {execution.side}")
-
-    # qty
-    assert hasattr(execution, "qty"), "Execution should have 'qty'"
-    assert isinstance(execution.qty, str), f"qty should be str, got {type(execution.qty)}"
-    assert _is_numeric_string(execution.qty), f"qty should be numeric: {execution.qty}"
-    assert Decimal(execution.qty) > 0, f"qty should be positive: {execution.qty}"
-    logger.info(f"✅ qty: {execution.qty}")
-
-    # price
-    assert hasattr(execution, "price"), "Execution should have 'price'"
-    assert isinstance(execution.price, str), f"price should be str, got {type(execution.price)}"
-    assert _is_numeric_string(execution.price), f"price should be numeric: {execution.price}"
-    assert Decimal(execution.price) > 0, f"price should be positive: {execution.price}"
-    logger.info(f"✅ price: {execution.price}")
-
-    # fee
-    assert hasattr(execution, "fee"), "Execution should have 'fee'"
-    assert isinstance(execution.fee, str), f"fee should be str, got {type(execution.fee)}"
-    assert _is_numeric_string(execution.fee), f"fee should be numeric: {execution.fee}"
-    logger.info(f"✅ fee: {execution.fee}")
-
-    # type
-    assert hasattr(execution, "type"), "Execution should have 'type'"
-    assert execution.type is not None, "type should not be None"
-    assert hasattr(execution.type, "value"), f"type should be an enum, got {type(execution.type)}"
-    logger.info(f"✅ type: {execution.type}")
-
-    # timestamp
-    assert hasattr(execution, "timestamp"), "Execution should have 'timestamp'"
-    assert isinstance(execution.timestamp, int), f"timestamp should be int, got {type(execution.timestamp)}"
-    assert execution.timestamp > 0, f"timestamp should be positive: {execution.timestamp}"
-    logger.info(f"✅ timestamp: {execution.timestamp}")
 
 
 def _validate_level_structure(level: Level, level_name: str) -> None:

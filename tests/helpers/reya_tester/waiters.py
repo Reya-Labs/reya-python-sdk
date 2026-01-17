@@ -17,6 +17,7 @@ from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 
 from .matchers import ExecutionMatcher, FieldValidator
+from tests.helpers.validators import validate_order_fields, validate_spot_execution_fields
 
 if TYPE_CHECKING:
     from .tester import ReyaTester
@@ -282,6 +283,9 @@ class Waiters:
                         break
 
             if rest_execution and ws_execution:
+                # Validate spot execution fields structure
+                validate_spot_execution_fields(rest_execution, expected_symbol=expected_order.symbol)
+                logger.debug(f"   ✅ Spot execution fields validated for order_id={order_id}")
                 return rest_execution
 
             await asyncio.sleep(0.1)
@@ -406,14 +410,23 @@ class Waiters:
                 assert (
                     rest_order.order_id == ws_order.order_id
                 ), f"Order ID mismatch: REST={rest_order.order_id}, WS={ws_order.order_id}"
+                # Validate order fields structure
+                validate_order_fields(rest_order, expected_symbol=rest_order.symbol)
+                logger.debug(f"   ✅ Order fields validated for {order_id}")
                 return rest_order
             elif ws_order:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Order created via WS only: order_id={order_id} (took {elapsed_time:.2f}s)")
+                # Validate order fields structure
+                validate_order_fields(ws_order, expected_symbol=ws_order.symbol)
+                logger.debug(f"   ✅ Order fields validated for {order_id}")
                 return ws_order
             elif rest_order:
                 elapsed_time = time.time() - start_time
                 logger.info(f" ✅ Order created via REST only: order_id={order_id} (took {elapsed_time:.2f}s)")
+                # Validate order fields structure
+                validate_order_fields(rest_order, expected_symbol=rest_order.symbol)
+                logger.debug(f"   ✅ Order fields validated for {order_id}")
                 return rest_order
 
             await asyncio.sleep(0.1)
