@@ -115,9 +115,19 @@ def _approve_rusd_spending(config: dict, params: BridgeOutParams):
     periphery = config["w3contracts"]["periphery"]
     rusd = config["w3contracts"]["rusd"]
 
-    tx_hash = rusd.functions.approve(periphery.address, params.amount).transact({"from": account.address})
+    # Build transaction
+    tx = rusd.functions.approve(periphery.address, params.amount).build_transaction({
+        'from': account.address,
+        'nonce': w3.eth.get_transaction_count(account.address),
+        'gas': 100000,  # Standard gas limit for ERC20 approve
+        'gasPrice': w3.eth.gas_price,
+    })
+    
+    # Sign and send transaction
+    signed_tx = w3.eth.account.sign_transaction(tx, config["private_key"])
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Approved rUSD to periphery: {tx_receipt.transactionHash.hex()}")
+    print(f"Approved rUSD to periphery: {tx_receipt['transactionHash'].hex()}")
 
 
 def _execute_bridge_out_withdrawal(
@@ -129,7 +139,8 @@ def _execute_bridge_out_withdrawal(
     periphery = config["w3contracts"]["periphery"]
     rusd = config["w3contracts"]["rusd"]
 
-    tx_hash = periphery.functions.withdraw(
+    # Build transaction
+    tx = periphery.functions.withdraw(
         (
             params.amount,
             rusd.address,
@@ -137,10 +148,19 @@ def _execute_bridge_out_withdrawal(
             dest_chain_id,
             account.address,
         )
-    ).transact({"from": account.address, "value": socket_fees})
-
+    ).build_transaction({
+        'from': account.address,
+        'nonce': w3.eth.get_transaction_count(account.address),
+        'gas': 500000,  # Higher gas limit for bridge withdrawal
+        'gasPrice': w3.eth.gas_price,
+        'value': socket_fees
+    })
+    
+    # Sign and send transaction
+    signed_tx = w3.eth.account.sign_transaction(tx, config["private_key"])
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Initiated bridge out: {tx_receipt.transactionHash.hex()}")
+    print(f"Initiated bridge out: {tx_receipt['transactionHash'].hex()}")
     return tx_receipt
 
 
