@@ -229,8 +229,16 @@ async def balance_accounts_mode() -> None:
     spot_key_1 = os.getenv("SPOT_PRIVATE_KEY_1")
     spot_key_2 = os.getenv("SPOT_PRIVATE_KEY_2")
 
-    if not all([spot_account_1, spot_account_2, spot_key_1, spot_key_2]):
-        logger.error("❌ SPOT_ACCOUNT_ID_1, SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_1, SPOT_PRIVATE_KEY_2 must all be set")
+    if not spot_account_1 or not spot_account_2:
+        logger.error("❌ SPOT_ACCOUNT_ID_1 and SPOT_ACCOUNT_ID_2 must be set")
+        sys.exit(1)
+
+    if not spot_key_1:
+        logger.error("❌ SPOT_PRIVATE_KEY_1 must be set")
+        sys.exit(1)
+
+    if not spot_key_2:
+        logger.error("❌ SPOT_PRIVATE_KEY_2 must be set")
         sys.exit(1)
 
     logger.info("⚖️  BALANCE ACCOUNTS MODE")
@@ -380,6 +388,9 @@ async def main():
         sys.exit(1)
 
     # Determine which key to use for sender and receiver based on account ownership
+    sender_key: str | None = None
+    receiver_key: str | None = None
+
     if from_account_id == spot_account_1:
         sender_key = spot_key_1
     elif from_account_id == spot_account_2:

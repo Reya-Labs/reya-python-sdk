@@ -14,7 +14,7 @@ import ssl
 import threading
 
 from pydantic import BaseModel, ValidationError
-from websocket import WebSocket, WebSocketApp  # pylint: disable=no-name-in-module
+from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
