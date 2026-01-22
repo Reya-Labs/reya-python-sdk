@@ -1,6 +1,6 @@
 [project]
 name = "reya-python-sdk"
-version = "2.0.7.1"
+version = "2.1.3.0"
 description = "SDK for interacting with Reya Labs APIs"
 authors = [
     {name = "Reya Labs"}
@@ -124,6 +124,7 @@ ignore-paths = ["sdk/async_api"]
 disable = """
     consider-using-in,
     duplicate-code,
+    f-string-without-interpolation,
     fixme,
     import-error,
     inconsistent-return-statements,
@@ -142,9 +143,12 @@ disable = """
     too-few-public-methods,
     too-many-arguments,
     too-many-branches,
+    too-many-locals,
+    too-many-nested-blocks,
     too-many-positional-arguments,
     too-many-public-methods,
     too-many-return-statements,
+    too-many-statements,
     too-many-instance-attributes
 """
 
@@ -153,3 +157,28 @@ disable = """
 # Directories that are not visited by pytest collector:
 norecursedirs =["hooks", "*.egg", ".eggs", "dist", "build", "docs", ".tox", ".git", "__pycache__"]
 doctest_optionflags = ["NUMBER", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
+asyncio_mode = "auto"
+# Use session-scoped event loop for all async fixtures and tests (pytest-asyncio 0.24+)
+# This enables sharing a single WebSocket/API connection across all tests
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+# Test markers for categorization
+markers = [
+    "spot: Spot trading tests (ETHRUSD, BTCRUSD)",
+    "perp: Perpetual trading tests (ETHRUSDPERP, BTCRUSDPERP)",
+    "market_data: Market data endpoint tests",
+    "slow: Tests that take longer than 5 seconds",
+    "maker_taker: Tests requiring two accounts (maker and taker)",
+    "websocket: Tests that verify WebSocket events",
+    "rest: Tests that verify REST API responses",
+    "e2e: Full end-to-end flow tests",
+    "ioc: Immediate-Or-Cancel order tests",
+    "gtc: Good-Till-Cancelled order tests",
+    "trigger: Trigger order tests (SL/TP)",
+    "cancel: Order cancellation tests",
+    "balance: Balance verification tests",
+    "validation: API validation tests (signature, nonce, deadline, etc.)",
+    "error: Error handling tests",
+    "rest_api: REST API endpoint tests",
+]

@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Example script showing how to get price information using the Reya Trading SDK.
+"""
+Example script showing how to get price information using the Reya Trading SDK.
 
-Before running this example, ensure you have a .env file with the following variables:
-- API_URL: (optional) The API URL to use
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_WALLET_ADDRESS_1: Your wallet address
+
+Usage:
+    python -m examples.rest_api.perps.prices_example
 """
 import asyncio
 

@@ -2,9 +2,13 @@
 """
 Example script showing how to get accounts for a wallet address using the Reya Trading SDK.
 
-Before running this example, ensure you have a .env file with the following variables:
-- PRIVATE_KEY: Your Ethereum private key
+Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+- PERP_WALLET_ADDRESS_1: Your wallet address
+
+Usage:
+    python -m examples.rest_api.perps.account_info
 """
 import asyncio
 

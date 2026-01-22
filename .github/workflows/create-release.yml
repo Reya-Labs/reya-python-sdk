@@ -8,6 +8,10 @@ on:
       - pyproject.toml
       - sdk/_version.py
 
+env:
+  CI_COMMIT_AUTHOR: ${{ github.event.repository.name }} Reya Bot
+  CI_COMMIT_EMAIL: devcold@voltz.xyz
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
@@ -76,8 +80,8 @@ jobs:
           COMMIT_SHA="${{ github.sha }}"
 
           # Create annotated tag with v prefix
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "${{ env.CI_COMMIT_EMAIL }}"
+          git config --local user.name "${{ env.CI_COMMIT_AUTHOR }}"
           git tag -a "v$VERSION" -m "Release version v$VERSION
 
           Auto-tagged after merge to main branch.

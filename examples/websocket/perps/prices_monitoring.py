@@ -1,14 +1,15 @@
-"""Example of monitoring asset pair prices using the WebSocket API.
+"""
+Prices Monitoring - Monitor asset pair prices via WebSocket.
 
 This example connects to the Reya WebSocket API and subscribes to price data streams.
 
-Before running this example, ensure you have a .env file with the following variables:
-- PRIVATE_KEY: Your Ethereum private key
-- ACCOUNT_ID: Your Reya account ID
+Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-"""
+- REYA_WS_URL: (optional) WebSocket URL, defaults based on chain ID
 
-from typing import Any
+Usage:
+    python -m examples.websocket.perps.prices_monitoring
+"""
 
 import asyncio
 import json
@@ -18,8 +19,12 @@ import time
 
 from dotenv import load_dotenv
 
+from sdk.async_api.error_message_payload import ErrorMessagePayload
+from sdk.async_api.ping_message_payload import PingMessagePayload
+from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
+from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.reya_websocket import ReyaSocket
 from sdk.reya_websocket.config import WebSocketConfig
 
@@ -44,11 +49,8 @@ def on_open(ws):
     ws.prices.price(SYMBOL).subscribe()
 
 
-def handle_all_prices_data(message: dict[str, Any]) -> None:
-    """Handle /v2/prices channel data with proper type conversion."""
-
-    payload = PricesUpdatePayload.model_validate(message)
-
+def handle_all_prices_data(payload: PricesUpdatePayload) -> None:
+    """Handle /v2/prices channel data."""
     logger.info("💰 All Prices Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -65,11 +67,8 @@ def handle_all_prices_data(message: dict[str, Any]) -> None:
         logger.info(f"    ... and {len(payload.data) - 5} more prices")
 
 
-def handle_single_price_data(message: dict[str, Any]) -> None:
-    """Handle /v2/prices/:symbol channel data with proper type conversion."""
-
-    # Convert raw message to typed payload
-    payload = PriceUpdatePayload.model_validate(message)
+def handle_single_price_data(payload: PriceUpdatePayload) -> None:
+    """Handle /v2/prices/:symbol channel data."""
     price = payload.data
 
     logger.info(f"💵 Price Update for {price.symbol}:")
@@ -81,41 +80,40 @@ def handle_single_price_data(message: dict[str, Any]) -> None:
 
 
 def on_message(ws, message):
-    """Handle WebSocket messages with proper type conversion and dedicated handlers."""
-    message_type = message.get("type")
+    """Handle WebSocket messages - receives typed Pydantic models from SDK."""
+    # Handle subscription confirmations
+    if isinstance(message, SubscribedMessagePayload):
+        logger.info(f"✅ Successfully subscribed to {message.channel}")
+        if message.contents:
+            logger.info(f"📦 Initial data received: {len(str(message.contents))} characters")
+        return
 
-    if message_type == "subscribed":
-        channel = message.get("channel", "unknown")
-        logger.info(f"✅ Successfully subscribed to {channel}")
+    # Handle price data updates
+    if isinstance(message, PricesUpdatePayload):
+        handle_all_prices_data(message)
+        return
 
-        # Log the initial data from subscription
-        if "contents" in message:
-            logger.info(f"📦 Initial data received: {len(str(message['contents']))} characters")
+    if isinstance(message, PriceUpdatePayload):
+        handle_single_price_data(message)
+        return
 
-    elif message_type == "channel_data":
-        channel = message.get("channel", "unknown")
-
-        # Route to appropriate handler based on channel pattern
-        if channel == "/v2/prices":
-            handle_all_prices_data(message)
-        elif "/v2/prices/" in channel:
-            handle_single_price_data(message)
-        else:
-            logger.warning(f"🔍 Unhandled channel data: {channel}")
-
-    elif message_type == "ping":
+    # Handle ping/pong
+    if isinstance(message, PingMessagePayload):
         logger.info("🏓 Received ping from server, sending pong response")
         ws.send(json.dumps({"type": "pong"}))
-        logger.debug("✅ Pong sent successfully")
+        return
 
-    elif message_type == "pong":
+    if isinstance(message, PongMessagePayload):
         logger.info("🏓 Connection confirmed via pong response")
+        return
 
-    elif message_type == "error":
-        logger.error(f"❌ Error: {message.get('message', 'unknown error')}")
+    # Handle errors
+    if isinstance(message, ErrorMessagePayload):
+        logger.error(f"❌ Error: {message.message}")
+        return
 
-    else:
-        logger.debug(f"🔍 Received message type: {message_type}")
+    # Unknown message type
+    logger.debug(f"🔍 Received unhandled message type: {type(message).__name__}")
 
 
 async def periodic_task(ws):

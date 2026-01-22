@@ -1,11 +1,22 @@
+"""
+Update Oracle Prices - Update oracle prices on Reya DEX.
+
+This script demonstrates how to update oracle prices on Reya DEX
+using signed price payloads.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+
+Usage:
+    python -m examples.rpc.update_oracle_prices
+"""
+
 from sdk.reya_rpc import get_config, update_oracle_prices
 
 
 def main():
-    """
-    Example script demonstrating how to update oracle prices on Reya DEX
-    using signed price payloads.
-    """
+    """Execute oracle price update example."""
 
     # Load configuration
     config = get_config()

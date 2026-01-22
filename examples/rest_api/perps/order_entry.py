@@ -9,11 +9,14 @@ This example demonstrates all supported order types:
 - Take Profit (TP) Orders
 - Order Cancellation
 
-Before running this example, ensure you have a .env file with the following variables:
-- PRIVATE_KEY: Your Ethereum private key
-- ACCOUNT_ID: Your Reya account ID
+Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- API_URL: The API URL (optional, defaults based on chain ID)
+- PERP_ACCOUNT_ID_1: Your Reya account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+- PERP_WALLET_ADDRESS_1: Your wallet address
+
+Usage:
+    python -m examples.rest_api.perps.order_entry
 """
 import asyncio
 import logging
@@ -239,7 +242,7 @@ async def main():
     load_dotenv()
 
     # Verify required environment variables
-    required_vars = ["PRIVATE_KEY", "ACCOUNT_ID"]
+    required_vars = ["PERP_PRIVATE_KEY_1", "PERP_ACCOUNT_ID_1", "PERP_WALLET_ADDRESS_1"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
 
     if missing_vars:
