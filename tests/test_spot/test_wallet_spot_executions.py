@@ -9,7 +9,6 @@ Tests for the GET /v2/wallet/:address/spotExecutions endpoint:
 
 import asyncio
 import logging
-from decimal import Decimal
 
 import pytest
 
@@ -84,9 +83,7 @@ async def test_rest_get_wallet_spot_executions_structure(
     wallet_address = taker_tester.owner_wallet_address
     assert wallet_address is not None, "Wallet address required"
 
-    executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
-        address=wallet_address
-    )
+    executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(address=wallet_address)
 
     # Verify response structure
     assert executions is not None, "Response should not be None"
@@ -137,10 +134,7 @@ async def test_rest_get_wallet_spot_executions_pagination(
 
     # Skip if external liquidity exists
     if spot_config.has_any_external_liquidity:
-        pytest.skip(
-            "Skipping pagination test: external liquidity exists. "
-            "This test requires a controlled environment."
-        )
+        pytest.skip("Skipping pagination test: external liquidity exists. This test requires a controlled environment.")
 
     # Execute multiple trades to have pagination data
     num_trades = 3
@@ -177,8 +171,7 @@ async def test_rest_get_wallet_spot_executions_pagination(
         end_time = second_execution.timestamp
 
         filtered_executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
-            address=wallet_address,
-            end_time=end_time
+            address=wallet_address, end_time=end_time
         )
 
         # Should return executions up to and including the end_time
@@ -256,10 +249,7 @@ async def test_rest_get_wallet_spot_executions_filters_by_wallet(
     taker_account_id = taker_tester.account_id
     for execution in taker_executions.data[:5]:  # Check first 5
         # Execution should involve taker's account (as account_id or maker_account_id)
-        is_taker_execution = (
-            execution.account_id == taker_account_id or
-            execution.maker_account_id == taker_account_id
-        )
+        is_taker_execution = execution.account_id == taker_account_id or execution.maker_account_id == taker_account_id
         assert is_taker_execution, (
             f"Execution should involve taker account {taker_account_id}, "
             f"got account_id={execution.account_id}, maker_account_id={execution.maker_account_id}"

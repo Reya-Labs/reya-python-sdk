@@ -1,8 +1,10 @@
 """Retry utilities for handling transient API errors."""
 
+from typing import Callable, TypeVar
+
 import asyncio
 import logging
-from typing import TypeVar, Callable, Awaitable
+from collections.abc import Awaitable
 
 from sdk.open_api.exceptions import ApiException, ServiceException
 

@@ -5,11 +5,11 @@ This module provides tools to detect and analyze order book liquidity,
 enabling tests to automatically adapt to both empty and non-empty order books.
 """
 
-from dataclasses import dataclass, field
-from decimal import Decimal
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import logging
+from dataclasses import dataclass, field
+from decimal import Decimal
 
 if TYPE_CHECKING:
     from sdk.open_api.models.depth import Depth
@@ -33,7 +33,7 @@ class LiquidityInfo:
     has_liquidity: bool
     best_price: Optional[Decimal]
     total_qty: Decimal
-    levels: List["Level"] = field(default_factory=list)
+    levels: list["Level"] = field(default_factory=list)
     within_circuit_breaker: bool = False
 
     @property
@@ -89,9 +89,7 @@ class LiquidityDetector:
         """
         self._oracle_price = Decimal(str(oracle_price))
 
-    async def get_order_book_state(
-        self, data_ops: "DataOperations", symbol: str
-    ) -> OrderBookState:
+    async def get_order_book_state(self, data_ops: "DataOperations", symbol: str) -> OrderBookState:
         """
         Fetch and analyze current order book state.
 
@@ -106,11 +104,11 @@ class LiquidityDetector:
 
         bids = self._analyze_side(
             levels=depth.bids if depth else [],
-            is_bid=True,
+            _is_bid=True,
         )
         asks = self._analyze_side(
             levels=depth.asks if depth else [],
-            is_bid=False,
+            _is_bid=False,
         )
 
         return OrderBookState(
@@ -122,8 +120,8 @@ class LiquidityDetector:
 
     def _analyze_side(
         self,
-        levels: List["Level"],
-        is_bid: bool,
+        levels: list["Level"],
+        _is_bid: bool,
     ) -> LiquidityInfo:
         """
         Analyze liquidity on one side of the order book.
@@ -145,7 +143,7 @@ class LiquidityDetector:
             )
 
         best_price = Decimal(levels[0].px)
-        total_qty = sum(Decimal(level.qty) for level in levels)
+        total_qty = sum((Decimal(level.qty) for level in levels), Decimal("0"))
 
         # Check if best price is within circuit breaker range
         floor = self._oracle_price * (1 - CIRCUIT_BREAKER_PCT)
@@ -160,9 +158,7 @@ class LiquidityDetector:
             within_circuit_breaker=within_cb,
         )
 
-    def get_usable_bid_price(
-        self, state: OrderBookState, min_qty: str
-    ) -> Optional[Decimal]:
+    def get_usable_bid_price(self, state: OrderBookState, min_qty: str) -> Optional[Decimal]:
         """
         Get best bid price with sufficient quantity within circuit breaker.
 
@@ -184,7 +180,7 @@ class LiquidityDetector:
             qty = Decimal(level.qty)
 
             # Check if this level is within circuit breaker
-            if not (state.circuit_breaker_floor <= price <= state.circuit_breaker_ceiling):
+            if not state.circuit_breaker_floor <= price <= state.circuit_breaker_ceiling:
                 continue
 
             cumulative_qty += qty
@@ -193,9 +189,7 @@ class LiquidityDetector:
 
         return None
 
-    def get_usable_ask_price(
-        self, state: OrderBookState, min_qty: str
-    ) -> Optional[Decimal]:
+    def get_usable_ask_price(self, state: OrderBookState, min_qty: str) -> Optional[Decimal]:
         """
         Get best ask price with sufficient quantity within circuit breaker.
 
@@ -217,7 +211,7 @@ class LiquidityDetector:
             qty = Decimal(level.qty)
 
             # Check if this level is within circuit breaker
-            if not (state.circuit_breaker_floor <= price <= state.circuit_breaker_ceiling):
+            if not state.circuit_breaker_floor <= price <= state.circuit_breaker_ceiling:
                 continue
 
             cumulative_qty += qty
@@ -226,7 +220,7 @@ class LiquidityDetector:
 
         return None
 
-    def get_safe_no_match_buy_price(self, state: OrderBookState) -> Decimal:
+    def get_safe_no_match_buy_price(self, _state: OrderBookState) -> Decimal:
         """
         Get a buy price guaranteed not to match any existing asks.
 
@@ -241,7 +235,7 @@ class LiquidityDetector:
         """
         return SAFE_NO_MATCH_BUY_PRICE
 
-    def get_safe_no_match_sell_price(self, state: OrderBookState) -> Decimal:
+    def get_safe_no_match_sell_price(self, _state: OrderBookState) -> Decimal:
         """
         Get a sell price guaranteed not to match any existing bids.
 
@@ -256,9 +250,7 @@ class LiquidityDetector:
         """
         return SAFE_NO_MATCH_SELL_PRICE
 
-    def get_qty_at_price_or_better(
-        self, state: OrderBookState, side: str, price: Decimal
-    ) -> Decimal:
+    def get_qty_at_price_or_better(self, state: OrderBookState, side: str, price: Decimal) -> Decimal:
         """
         Get total quantity available at a price or better.
 
@@ -293,9 +285,7 @@ def log_order_book_state(state: OrderBookState) -> None:
     """Log a summary of the order book state."""
     logger.info(f"Order book state for {state.symbol}:")
     logger.info(f"  Oracle price: ${state.oracle_price:.2f}")
-    logger.info(
-        f"  Circuit breaker range: ${state.circuit_breaker_floor:.2f} - ${state.circuit_breaker_ceiling:.2f}"
-    )
+    logger.info(f"  Circuit breaker range: ${state.circuit_breaker_floor:.2f} - ${state.circuit_breaker_ceiling:.2f}")
 
     if state.bids.has_liquidity:
         logger.info(

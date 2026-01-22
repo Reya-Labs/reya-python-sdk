@@ -10,10 +10,11 @@ These tests support both empty and non-empty order books:
 - Execution assertions are flexible to handle order book changes between submission and fill
 """
 
+from typing import Optional
+
 import asyncio
 import time
 from decimal import Decimal
-from typing import Optional
 
 import pytest
 from eth_abi.exceptions import EncodingError
@@ -57,20 +58,35 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
 
     # Record taker's initial balances for verification
     taker_balances_before = await taker_tester.data.balances()
-    taker_eth_before = Decimal(str(taker_balances_before.get("ETH").real_balance)) if "ETH" in taker_balances_before else Decimal("0")
-    taker_rusd_before = Decimal(str(taker_balances_before.get("RUSD").real_balance)) if "RUSD" in taker_balances_before else Decimal("0")
+    eth_balance_before = taker_balances_before.get("ETH")
+    rusd_balance_before = taker_balances_before.get("RUSD")
+    taker_eth_before = Decimal(str(eth_balance_before.real_balance)) if eth_balance_before is not None else Decimal("0")
+    taker_rusd_before = (
+        Decimal(str(rusd_balance_before.real_balance)) if rusd_balance_before is not None else Decimal("0")
+    )
     logger.info(f"Taker initial balances: ETH={taker_eth_before}, RUSD={taker_rusd_before}")
 
     maker_order_id: Optional[str] = None
     fill_price: Decimal
 
-    # Step 1: Determine liquidity source
+    # Step 1: Determine liquidity source - check both bid and ask
     usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
     if usable_bid_price is not None:
-        # External bid liquidity exists - use it
+        # External bid liquidity exists - taker sells into it
         fill_price = usable_bid_price
         logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+        taker_order_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+        taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
+        logger.info(f"Taker IOC sell order sent: {taker_order_id} @ ${fill_price:.2f}")
+    elif usable_ask_price is not None:
+        # External ask liquidity exists - taker buys from it
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+        taker_order_params = OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).ioc().build()
+        taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
+        logger.info(f"Taker IOC buy order sent: {taker_order_id} @ ${fill_price:.2f}")
     else:
         # No external liquidity - provide our own
         maker_price = spot_config.price(0.99)
@@ -81,10 +97,9 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
         await maker_tester.wait.for_order_creation(maker_order_id)
         logger.info(f"✅ Maker GTC buy order created: {maker_order_id} @ ${fill_price:.2f}")
 
-    # Step 2: Taker sends IOC sell order to match
-    taker_order_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
-    taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
-    logger.info(f"Taker IOC sell order sent: {taker_order_id} @ ${fill_price:.2f}")
+        taker_order_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+        taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
+        logger.info(f"Taker IOC sell order sent: {taker_order_id} @ ${fill_price:.2f}")
 
     # Step 3: Wait for execution
     expected_taker_order = limit_order_params_to_order(taker_order_params, taker_tester.account_id)
@@ -116,8 +131,10 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     # Wait for balances to update
     await asyncio.sleep(0.5)
     taker_balances_after = await taker_tester.data.balances()
-    taker_eth_after = Decimal(str(taker_balances_after.get("ETH").real_balance)) if "ETH" in taker_balances_after else Decimal("0")
-    taker_rusd_after = Decimal(str(taker_balances_after.get("RUSD").real_balance)) if "RUSD" in taker_balances_after else Decimal("0")
+    eth_balance_after = taker_balances_after.get("ETH")
+    rusd_balance_after = taker_balances_after.get("RUSD")
+    taker_eth_after = Decimal(str(eth_balance_after.real_balance)) if eth_balance_after is not None else Decimal("0")
+    taker_rusd_after = Decimal(str(rusd_balance_after.real_balance)) if rusd_balance_after is not None else Decimal("0")
     logger.info(f"Taker final balances: ETH={taker_eth_after}, RUSD={taker_rusd_after}")
 
     # Taker sold ETH, so ETH should decrease and RUSD should increase
@@ -128,7 +145,9 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     # Verify ETH decreased (taker sold ETH)
     assert taker_eth_change < Decimal("0"), f"Taker ETH should decrease after selling, got change: {taker_eth_change}"
     # Verify RUSD increased (taker received RUSD)
-    assert taker_rusd_change > Decimal("0"), f"Taker RUSD should increase after selling, got change: {taker_rusd_change}"
+    assert taker_rusd_change > Decimal(
+        "0"
+    ), f"Taker RUSD should increase after selling, got change: {taker_rusd_change}"
     logger.info("✅ Taker balance changes verified (ETH decreased, RUSD increased)")
 
     logger.info("✅ SPOT IOC FULL FILL TEST COMPLETED")
@@ -184,10 +203,9 @@ async def test_spot_ioc_no_match_cancels(spot_config: SpotTestConfig, spot_teste
         # If we get here, wait and verify no execution
         await asyncio.sleep(0.1)
 
-        if spot_tester.ws.last_spot_execution is not None:
-            exec_time = spot_tester.ws.last_spot_execution.timestamp
-            if exec_time and exec_time > start_timestamp:
-                pytest.fail("IOC order should not have executed")
+        last_exec = spot_tester.ws.spot_executions.last
+        if last_exec is not None and last_exec.timestamp > start_timestamp:
+            pytest.fail("IOC order should not have executed")
 
         logger.info("✅ IOC order returned but no execution occurred")
 
@@ -238,13 +256,26 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
     maker_qty = spot_config.min_qty
     taker_qty = "0.002"  # Larger than maker qty - will partially fill
 
-    # Determine fill price and ensure we have known liquidity
+    # Determine fill price and ensure we have known liquidity - check both bid and ask
     usable_bid_price = spot_config.get_usable_bid_price_for_qty(maker_qty)
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(maker_qty)
 
     if usable_bid_price is not None:
-        # External bid liquidity exists - use it directly without placing our own order
+        # External bid liquidity exists - taker sells into it
         fill_price = usable_bid_price
         logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+        taker_order_params = (
+            OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).qty(taker_qty).ioc().build()
+        )
+        logger.info(f"Taker sending IOC sell: {taker_qty} @ ${fill_price:.2f}")
+    elif usable_ask_price is not None:
+        # External ask liquidity exists - taker buys from it
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+        taker_order_params = (
+            OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).qty(taker_qty).ioc().build()
+        )
+        logger.info(f"Taker sending IOC buy: {taker_qty} @ ${fill_price:.2f}")
     else:
         # No external liquidity - provide our own
         maker_price = spot_config.price(0.99)
@@ -255,10 +286,10 @@ async def test_spot_ioc_partial_fill(spot_config: SpotTestConfig, maker_tester: 
         await maker_tester.wait.for_order_creation(maker_order_id)
         logger.info(f"✅ Maker order created: {maker_order_id} @ ${fill_price:.2f}")
 
-    # Taker sends larger IOC sell order
-    taker_order_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).qty(taker_qty).ioc().build()
-
-    logger.info(f"Taker sending IOC sell: {taker_qty} @ ${fill_price:.2f}")
+        taker_order_params = (
+            OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).qty(taker_qty).ioc().build()
+        )
+        logger.info(f"Taker sending IOC sell: {taker_qty} @ ${fill_price:.2f}")
     taker_tester.ws.last_spot_execution = None
     taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
     logger.info(f"Taker IOC order sent: {taker_order_id}")

@@ -96,6 +96,9 @@ class ReyaTester:
         # Internal WebSocket reference
         self._websocket: Optional[ReyaSocket] = None
 
+        # Nonce tracking for order operations
+        self._nonce_counter: int = 0
+
         # Composed components
         self.ws = WebSocketState(self)
         self.data = DataOperations(self)
@@ -166,6 +169,26 @@ class ReyaTester:
         if self._websocket:
             self._websocket.close()
         await self.client.close()
+
+    @property
+    def websocket(self) -> Optional[ReyaSocket]:
+        """Get the WebSocket connection (for cleanup/testing purposes)."""
+        return self._websocket
+
+    @websocket.setter
+    def websocket(self, value: Optional[ReyaSocket]) -> None:
+        """Set the WebSocket connection (for reconnection in tests)."""
+        self._websocket = value
+
+    @property
+    def spot_account_number(self) -> Optional[int]:
+        """Get the spot account number (1 or 2) if this is a spot account, None otherwise."""
+        return self._spot_account_number
+
+    @property
+    def is_spot_account(self) -> bool:
+        """Check if this tester is configured for a spot account."""
+        return self._is_spot_account
 
     def perp_trade(self) -> PerpTradeContext:
         """Create a context for bulletproof PERP trade verification.

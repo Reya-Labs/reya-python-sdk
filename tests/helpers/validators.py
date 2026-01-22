@@ -5,9 +5,10 @@ These validators ensure API responses have correct structure and data types.
 They are automatically called by wait.for_order_creation() and wait.for_spot_execution().
 """
 
+from typing import Optional, Union
+
 import logging
 from decimal import Decimal, InvalidOperation
-from typing import Optional, Union
 
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.spot_execution import SpotExecution as AsyncSpotExecution
@@ -105,9 +106,9 @@ def validate_order_fields(
     if is_gtc:
         assert hasattr(order, "time_in_force"), "Order should have 'time_in_force'"
         if order.time_in_force is not None:
-            assert hasattr(order.time_in_force, "value"), (
-                f"time_in_force should be an enum, got {type(order.time_in_force)}"
-            )
+            assert hasattr(
+                order.time_in_force, "value"
+            ), f"time_in_force should be an enum, got {type(order.time_in_force)}"
             if log_details:
                 logger.info(f"✅ time_in_force: {order.time_in_force}")
 
@@ -151,9 +152,7 @@ def validate_spot_execution_fields(
     """
     # exchange_id (optional)
     if execution.exchange_id is not None:
-        assert isinstance(execution.exchange_id, int), (
-            f"exchange_id should be int, got {type(execution.exchange_id)}"
-        )
+        assert isinstance(execution.exchange_id, int), f"exchange_id should be int, got {type(execution.exchange_id)}"
         if log_details:
             logger.info(f"✅ exchange_id: {execution.exchange_id}")
 
@@ -173,9 +172,9 @@ def validate_spot_execution_fields(
 
     # maker_account_id
     assert hasattr(execution, "maker_account_id"), "Execution should have 'maker_account_id'"
-    assert isinstance(execution.maker_account_id, int), (
-        f"maker_account_id should be int, got {type(execution.maker_account_id)}"
-    )
+    assert isinstance(
+        execution.maker_account_id, int
+    ), f"maker_account_id should be int, got {type(execution.maker_account_id)}"
     if log_details:
         logger.info(f"✅ maker_account_id: {execution.maker_account_id}")
 
@@ -187,9 +186,9 @@ def validate_spot_execution_fields(
 
     # maker_order_id (optional)
     if execution.maker_order_id is not None:
-        assert isinstance(execution.maker_order_id, str), (
-            f"maker_order_id should be str, got {type(execution.maker_order_id)}"
-        )
+        assert isinstance(
+            execution.maker_order_id, str
+        ), f"maker_order_id should be str, got {type(execution.maker_order_id)}"
         if log_details:
             logger.info(f"✅ maker_order_id: {execution.maker_order_id}")
 

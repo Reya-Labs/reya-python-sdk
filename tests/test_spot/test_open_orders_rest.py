@@ -67,7 +67,7 @@ async def test_rest_get_open_orders_with_orders(spot_config: SpotTestConfig, spo
             break
 
     assert our_order is not None, f"Order {order_id} should be in open orders list"
-    logger.info(f"✅ Found our order in open orders list")
+    logger.info("✅ Found our order in open orders list")
 
     # Verify order structure
     assert isinstance(our_order, Order), f"Expected Order type, got {type(our_order)}"
@@ -114,10 +114,7 @@ async def test_rest_get_open_orders_empty(spot_config: SpotTestConfig, spot_test
     logger.info(f"Open orders returned: {len(open_orders)}")
 
     # Filter to only our account's orders for the spot symbol
-    our_orders = [
-        o for o in open_orders
-        if o.account_id == spot_tester.account_id and o.symbol == spot_config.symbol
-    ]
+    our_orders = [o for o in open_orders if o.account_id == spot_tester.account_id and o.symbol == spot_config.symbol]
 
     assert len(our_orders) == 0, f"Should have no open orders for {spot_config.symbol}, got {len(our_orders)}"
     logger.info(f"✅ No open orders for account {spot_tester.account_id} on {spot_config.symbol}")
@@ -168,9 +165,7 @@ async def test_rest_get_open_orders_multiple(spot_config: SpotTestConfig, spot_t
 
     # Verify all our orders are in the list
     found_orders = [o for o in open_orders if o.order_id in order_ids]
-    assert len(found_orders) == num_orders, (
-        f"Expected {num_orders} orders, found {len(found_orders)}"
-    )
+    assert len(found_orders) == num_orders, f"Expected {num_orders} orders, found {len(found_orders)}"
     logger.info(f"✅ All {num_orders} orders found in open orders list")
 
     # Cleanup
@@ -226,18 +221,16 @@ async def test_rest_get_open_orders_filters_by_wallet(
     taker_orders: list[Order] = await taker_tester.client.get_open_orders()
     taker_order_ids = [o.order_id for o in taker_orders]
 
-    assert maker_order_id not in taker_order_ids, (
-        f"Maker's order {maker_order_id} should NOT appear in taker's open orders"
-    )
+    assert (
+        maker_order_id not in taker_order_ids
+    ), f"Maker's order {maker_order_id} should NOT appear in taker's open orders"
     logger.info("✅ Maker's order does NOT appear in taker's open orders")
 
     # Maker fetches open orders
     maker_orders: list[Order] = await maker_tester.client.get_open_orders()
     maker_order_ids = [o.order_id for o in maker_orders]
 
-    assert maker_order_id in maker_order_ids, (
-        f"Maker's order {maker_order_id} should appear in maker's open orders"
-    )
+    assert maker_order_id in maker_order_ids, f"Maker's order {maker_order_id} should appear in maker's open orders"
     logger.info("✅ Maker's order DOES appear in maker's open orders")
 
     # Cleanup

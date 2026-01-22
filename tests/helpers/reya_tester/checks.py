@@ -8,9 +8,10 @@ import os
 
 import pytest
 
+from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.order import Order as AsyncOrder
+from sdk.async_api.spot_execution import SpotExecution as AsyncSpotExecution
 from sdk.open_api.exceptions import ApiException
-from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.execution_type import ExecutionType
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
@@ -31,8 +32,10 @@ class Checks:
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
 
-    async def open_order_created(self, order_id: str, expected_order: Order) -> None:
+    async def open_order_created(self, order_id: Optional[str], expected_order: Order) -> None:
         """Verify an open order was created with expected values."""
+        if order_id is None:
+            raise ValueError("order_id is required for open_order_created (got None)")
         open_order: Optional[Union[Order, AsyncOrder]] = await self._t.data.open_order(order_id)
 
         # For trigger orders (SL/TP), if not found in open orders, check WebSocket
@@ -69,14 +72,14 @@ class Checks:
 
     async def no_open_orders(self) -> None:
         """Assert no open orders exist.
-        
+
         Note:
             Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip this check for SPOT_ACCOUNT_ID_1.
             This is useful when testing with external liquidity from a depth script.
         """
         # Check if we should preserve orders for SPOT account 1
         preserve_account1 = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
-        if preserve_account1 and self._t._spot_account_number == 1:
+        if preserve_account1 and self._t.spot_account_number == 1:
             logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping no_open_orders check for SPOT account 1")
             return
 
@@ -272,13 +275,15 @@ class Checks:
 
     def ws_order_change_received(
         self,
-        order_id: str,
+        order_id: Optional[str],
         expected_symbol: Optional[str] = None,
         expected_side: Optional[str] = None,
         expected_status: Optional[OrderStatus] = None,
         expected_qty: Optional[str] = None,
-    ) -> Order:
+    ) -> AsyncOrder:
         """Assert that an order change event was received via WebSocket."""
+        if order_id is None:
+            raise ValueError("order_id is required for ws_order_change_received (got None)")
         assert order_id in self._t.ws.order_changes, (
             f"Order {order_id} not found in WebSocket order changes. "
             f"Available orders: {list(self._t.ws.order_changes.keys())}"
@@ -315,7 +320,7 @@ class Checks:
             assert abs(ws_qty - exp_qty) < 0.0001, f"Qty mismatch: expected {exp_qty}, got {ws_qty}"
             logger.info(f"   ✅ Qty: {ws_order.qty}")
 
-        return ws_order  # type: ignore[return-value]
+        return ws_order
 
     def ws_spot_execution_received(
         self,
@@ -323,7 +328,7 @@ class Checks:
         expected_side: Optional[str] = None,
         expected_qty: Optional[str] = None,
         expected_price: Optional[str] = None,
-    ) -> SpotExecution:
+    ) -> AsyncSpotExecution:
         """Assert that a spot execution event was received via WebSocket."""
         assert self._t.ws.last_spot_execution is not None, "No spot execution event received via WebSocket"
 
@@ -355,14 +360,14 @@ class Checks:
             assert abs(exec_price - exp_price) < 1e-9, f"Price mismatch: expected {exp_price}, got {exec_price}"
             logger.info(f"   ✅ Price: {execution.price}")
 
-        return execution  # type: ignore[return-value]
+        return execution
 
     def ws_balance_updates_received(
         self,
         initial_update_count: int,
         min_updates: int = 1,
         expected_assets: Optional[list[str]] = None,
-    ) -> list[AccountBalance]:
+    ) -> list[AsyncAccountBalance]:
         """Assert that balance update events were received via WebSocket."""
         new_update_count = len(self._t.ws.balance_updates) - initial_update_count
 
@@ -384,4 +389,4 @@ class Checks:
                 else:
                     logger.warning(f"   ⚠️ {asset} balance update not found (may be delayed)")
 
-        return new_updates  # type: ignore[return-value]
+        return new_updates

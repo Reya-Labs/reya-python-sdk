@@ -9,6 +9,7 @@ Tests for spot-specific market data:
 
 import asyncio
 import logging
+from decimal import Decimal
 
 import pytest
 
@@ -94,14 +95,23 @@ async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: R
 
     maker_order_id = None
     usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
     if usable_bid_price is not None:
-        # External bid liquidity exists - use it
+        # External bid liquidity exists - taker sells into it
         fill_price = usable_bid_price
         logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+        logger.info(f"Taker placing IOC sell at ${fill_price:.2f}...")
+    elif usable_ask_price is not None:
+        # External ask liquidity exists - taker buys from it
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).ioc().build()
+        logger.info(f"Taker placing IOC buy at ${fill_price:.2f}...")
     else:
         # No external liquidity - provide our own
-        fill_price = spot_config.price(0.97)
+        fill_price = Decimal(str(spot_config.price(0.97)))
 
         maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
@@ -109,9 +119,8 @@ async def test_spot_executions_rest(spot_config: SpotTestConfig, maker_tester: R
         maker_order_id = await maker_tester.orders.create_limit(maker_params)
         await maker_tester.wait.for_order_creation(maker_order_id)
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
-
-    logger.info(f"Taker placing IOC sell at ${fill_price:.2f}...")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+        logger.info(f"Taker placing IOC sell at ${fill_price:.2f}...")
     await taker_tester.orders.create_limit(taker_params)
 
     # Wait for execution

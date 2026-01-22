@@ -10,7 +10,7 @@ Usage in test files:
     async def test_something(spot_config: SpotTestConfig, maker_tester: ReyaTester):
         # Refresh liquidity state before test logic
         await spot_config.refresh_order_book(maker_tester.data)
-        
+
         # Check if external liquidity is available
         if spot_config.has_usable_bid_liquidity:
             fill_price = spot_config.best_bid_price
@@ -19,13 +19,15 @@ Usage in test files:
             ...
 """
 
-from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
 import logging
+from dataclasses import dataclass, field
+from decimal import Decimal
 
 from tests.helpers.liquidity_detector import (
+    SAFE_NO_MATCH_BUY_PRICE,
+    SAFE_NO_MATCH_SELL_PRICE,
     LiquidityDetector,
     OrderBookState,
     log_order_book_state,
@@ -180,7 +182,6 @@ class SpotTestConfig:
 
         Returns $10 - an extreme low price that will never match.
         """
-        from tests.helpers.liquidity_detector import SAFE_NO_MATCH_BUY_PRICE
         return SAFE_NO_MATCH_BUY_PRICE
 
     def get_safe_no_match_sell_price(self) -> Decimal:
@@ -189,5 +190,4 @@ class SpotTestConfig:
 
         Returns $10,000,000 - an extreme high price that will never match.
         """
-        from tests.helpers.liquidity_detector import SAFE_NO_MATCH_SELL_PRICE
         return SAFE_NO_MATCH_SELL_PRICE

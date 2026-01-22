@@ -17,6 +17,7 @@ execution behavior for verification purposes.
 
 import asyncio
 import logging
+from decimal import Decimal
 
 import pytest
 
@@ -92,14 +93,21 @@ async def test_rest_get_market_spot_executions_after_trade(
 
     maker_order_id = None
     usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
     if usable_bid_price is not None:
-        # External bid liquidity exists - use it
+        # External bid liquidity exists - taker sells into it
         fill_price = usable_bid_price
         logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+    elif usable_ask_price is not None:
+        # External ask liquidity exists - taker buys from it
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).ioc().build()
     else:
         # No external liquidity - provide our own
-        fill_price = spot_config.price(0.97)
+        fill_price = Decimal(str(spot_config.price(0.97)))
 
         maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
@@ -107,8 +115,7 @@ async def test_rest_get_market_spot_executions_after_trade(
         await maker_tester.wait.for_order_creation(maker_order_id)
         logger.info(f"✅ Maker order created: {maker_order_id} @ ${fill_price:.2f}")
 
-    # Taker fills with IOC
-    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
 
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
     logger.info(f"✅ Taker IOC order sent: {taker_order_id}")
@@ -216,14 +223,21 @@ async def test_ws_market_spot_executions_realtime(
 
     maker_order_id = None
     usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
     if usable_bid_price is not None:
-        # External bid liquidity exists - use it
+        # External bid liquidity exists - taker sells into it
         fill_price = usable_bid_price
         logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+    elif usable_ask_price is not None:
+        # External ask liquidity exists - taker buys from it
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).ioc().build()
     else:
         # No external liquidity - provide our own
-        fill_price = spot_config.price(0.98)
+        fill_price = Decimal(str(spot_config.price(0.98)))
 
         maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.98).gtc().build()
 
@@ -231,7 +245,7 @@ async def test_ws_market_spot_executions_realtime(
         await maker_tester.wait.for_order_creation(maker_order_id)
         logger.info(f"✅ Maker order created: {maker_order_id} @ ${fill_price:.2f}")
 
-    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).ioc().build()
 
     await taker_tester.orders.create_limit(taker_params)
     logger.info("✅ Taker IOC order sent")
@@ -243,7 +257,7 @@ async def test_ws_market_spot_executions_realtime(
     logger.info("✅ Trade executed")
 
     # Step 3: Verify execution received via WebSocket
-    market_executions = maker_tester.ws.market_spot_executions.get(spot_config.symbol, [])
+    market_executions = list(maker_tester.ws.market_spot_executions.get(spot_config.symbol, []))
 
     logger.info(f"Market spot executions received via WS: {len(market_executions)}")
 
@@ -328,7 +342,7 @@ async def test_ws_market_spot_executions_snapshot(
     await asyncio.sleep(0.5)
 
     # Step 4: Verify snapshot contains historical execution
-    market_executions = maker_tester.ws.market_spot_executions.get(spot_config.symbol, [])
+    market_executions = list(maker_tester.ws.market_spot_executions.get(spot_config.symbol, []))
 
     logger.info(f"Market spot executions in snapshot: {len(market_executions)}")
 
@@ -406,7 +420,7 @@ async def test_ws_and_rest_market_spot_executions_consistency(
     rest_executions = await taker_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
 
     # Step 4: Verify consistency (use taker_tester since that's who subscribed)
-    ws_executions = taker_tester.ws.market_spot_executions.get(spot_config.symbol, [])
+    ws_executions = list(taker_tester.ws.market_spot_executions.get(spot_config.symbol, []))
 
     logger.info(f"REST executions: {len(rest_executions.data)}")
     logger.info(f"WS executions: {len(ws_executions)}")
@@ -456,7 +470,7 @@ async def test_ws_market_spot_executions_multiple_symbols(
 
     # Verify subscriptions are independent
     for symbol in symbols:
-        executions = spot_tester.ws.market_spot_executions.get(symbol, [])
+        executions = list(spot_tester.ws.market_spot_executions.get(symbol, []))
         logger.info(f"{symbol}: {len(executions)} execution(s)")
 
     logger.info("✅ WS MARKET SPOT EXECUTIONS MULTIPLE SYMBOLS TEST COMPLETED")

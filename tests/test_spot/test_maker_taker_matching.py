@@ -11,8 +11,6 @@ Supports both empty and non-empty order books:
 """
 
 import asyncio
-from decimal import Decimal
-from typing import Optional
 
 import pytest
 
@@ -200,8 +198,9 @@ async def test_spot_maker_taker_matching(
 
     # Step 7: Verify order changes via WebSocket
     logger.info("\n📨 Step 7: Verifying order changes via WebSocket...")
+    assert maker_order_id is not None, "Maker order_id should not be None"
     assert maker_order_id in maker_tester.ws.order_changes, "Maker order should be in WS order changes"
-    if taker_order_id in taker_tester.ws.order_changes:
+    if taker_order_id is not None and taker_order_id in taker_tester.ws.order_changes:
         logger.info("✅ Taker order changes received via WebSocket")
     logger.info("✅ Order changes verification completed")
 

@@ -36,15 +36,14 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
     """
     Test that subscribing to /depth channel returns correct initial snapshot.
 
-    This test requires a controlled environment to verify our specific orders
-    appear in the snapshot. When external liquidity exists, we skip.
+    Uses safe no-match prices ($10 buy) to ensure orders don't match external liquidity
+    while still verifying they appear in the depth snapshot.
 
     Flow:
-    1. Check for external liquidity - skip if present
-    2. Place multiple GTC orders at different prices (create book state)
-    3. Subscribe to /depth channel
-    4. Verify initial snapshot message contains our orders
-    5. Verify bid ordering is correct in snapshot (descending by price)
+    1. Place multiple GTC buy orders at safe no-match prices
+    2. Subscribe to /depth channel
+    3. Verify initial snapshot message contains our orders
+    4. Verify bid ordering is correct in snapshot (descending by price)
     """
     logger.info("=" * 80)
     logger.info(f"SPOT DEPTH WS INITIAL SNAPSHOT TEST: {spot_config.symbol}")
@@ -53,21 +52,13 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
     # Clear any existing orders
     await spot_tester.orders.close_all(fail_if_none=False)
 
-    # Check current order book state
-    await spot_config.refresh_order_book(spot_tester.data)
-
-    # Skip if external liquidity exists - this test needs controlled environment
-    if spot_config.has_any_external_liquidity:
-        pytest.skip(
-            "Skipping depth snapshot test: external liquidity exists. "
-            "This test requires a controlled environment to verify specific orders in snapshot."
-        )
-
-    # Step 1: Place multiple GTC orders at different prices
+    # Step 1: Place multiple GTC orders at safe no-match prices
+    # Use prices around $10 (far below market) to avoid matching external liquidity
+    base_safe_price = float(spot_config.get_safe_no_match_buy_price())
     prices = [
-        spot_config.price(0.96),  # ~96% of oracle
-        spot_config.price(0.97),  # ~97% of oracle
-        spot_config.price(0.98),  # ~98% of oracle
+        base_safe_price,
+        base_safe_price + 1,  # $11
+        base_safe_price + 2,  # $12
     ]
 
     order_ids = []
@@ -141,15 +132,14 @@ async def test_spot_depth_ws_snapshot_with_asks(
     """
     Test depth snapshot includes both bids and asks.
 
-    This test requires a controlled environment to verify our specific orders
-    appear in the snapshot. When external liquidity exists, we skip.
+    Uses safe no-match prices ($10 buy, $10M sell) to ensure orders don't match
+    external liquidity while still verifying they appear in the depth snapshot.
 
     Flow:
-    1. Check for external liquidity - skip if present
-    2. Maker places buy order (bid)
-    3. Taker places sell order (ask) - taker has more ETH
-    4. Subscribe to depth
-    5. Verify snapshot contains both bid and ask
+    1. Maker places buy order at safe no-match price ($10)
+    2. Taker places sell order at safe no-match price ($10M)
+    3. Subscribe to depth
+    4. Verify snapshot contains both bid and ask
     """
     logger.info("=" * 80)
     logger.info(f"SPOT DEPTH WS SNAPSHOT WITH ASKS TEST: {spot_config.symbol}")
@@ -158,27 +148,17 @@ async def test_spot_depth_ws_snapshot_with_asks(
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Check current order book state
-    await spot_config.refresh_order_book(maker_tester.data)
-
-    # Skip if external liquidity exists - this test needs controlled environment
-    if spot_config.has_any_external_liquidity:
-        pytest.skip(
-            "Skipping depth snapshot with asks test: external liquidity exists. "
-            "This test requires a controlled environment to verify specific orders in snapshot."
-        )
-
-    # Place bid (maker buys with RUSD)
-    bid_price = spot_config.price(0.96)
-    bid_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
+    # Place bid at safe no-match price (maker buys with RUSD)
+    bid_price = spot_config.get_safe_no_match_buy_price()
+    bid_params = OrderBuilder.from_config(spot_config).buy().price(str(bid_price)).gtc().build()
 
     bid_order_id = await maker_tester.orders.create_limit(bid_params)
     await maker_tester.wait.for_order_creation(bid_order_id)
     logger.info(f"✅ Bid order created at ${bid_price:.2f}")
 
-    # Place ask (taker sells ETH)
-    ask_price = spot_config.price(1.04)
-    ask_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
+    # Place ask at safe no-match price (taker sells ETH)
+    ask_price = spot_config.get_safe_no_match_sell_price()
+    ask_params = OrderBuilder.from_config(spot_config).sell().price(str(ask_price)).gtc().build()
 
     ask_order_id = await taker_tester.orders.create_limit(ask_params)
     await taker_tester.wait.for_order_creation(ask_order_id)
@@ -204,8 +184,8 @@ async def test_spot_depth_ws_snapshot_with_asks(
     logger.info(f"Snapshot: {len(bids)} bids, {len(asks)} asks")
 
     # Find our orders (using typed Level.px attribute)
-    bid_found = any(abs(float(b.px) - bid_price) < 1.0 for b in bids)
-    ask_found = any(abs(float(a.px) - ask_price) < 1.0 for a in asks)
+    bid_found = any(abs(float(b.px) - float(bid_price)) < 1.0 for b in bids)
+    ask_found = any(abs(float(a.px) - float(ask_price)) < 1.0 for a in asks)
 
     assert bid_found, f"Bid at ${bid_price:.2f} not found in snapshot"
     assert ask_found, f"Ask at ${ask_price:.2f} not found in snapshot"
@@ -241,32 +221,21 @@ async def test_spot_depth_ws_incremental_after_snapshot(spot_config: SpotTestCon
     """
     Test incremental updates are received after initial snapshot.
 
-    This test requires a controlled environment to verify our specific orders
-    appear in incremental updates. When external liquidity exists, we skip.
+    Uses safe no-match price ($10 buy) to ensure orders don't match external liquidity
+    while still verifying incremental updates work correctly.
 
     Flow:
-    1. Check for external liquidity - skip if present
-    2. Subscribe to /depth channel (receive initial snapshot)
-    3. Place a new order
-    4. Verify incremental update is received with new order
-    5. Cancel the order
-    6. Verify incremental update removes the order
+    1. Subscribe to /depth channel (receive initial snapshot)
+    2. Place a new order at safe no-match price
+    3. Verify incremental update is received with new order
+    4. Cancel the order
+    5. Verify incremental update removes the order
     """
     logger.info("=" * 80)
     logger.info(f"SPOT DEPTH WS INCREMENTAL AFTER SNAPSHOT TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
     await spot_tester.orders.close_all(fail_if_none=False)
-
-    # Check current order book state
-    await spot_config.refresh_order_book(spot_tester.data)
-
-    # Skip if external liquidity exists - this test needs controlled environment
-    if spot_config.has_any_external_liquidity:
-        pytest.skip(
-            "Skipping incremental snapshot test: external liquidity exists. "
-            "This test requires a controlled environment to verify specific orders in updates."
-        )
 
     # Step 1: Subscribe to depth and get initial snapshot
     spot_tester.ws.last_depth.clear()
@@ -278,10 +247,10 @@ async def test_spot_depth_ws_incremental_after_snapshot(spot_config: SpotTestCon
     initial_bid_count = len(initial_snapshot.bids) if initial_snapshot else 0
     logger.info(f"Initial snapshot: {initial_bid_count} bids")
 
-    # Step 2: Place a new order
-    order_price = spot_config.price(0.96)  # Very low price to be unique
+    # Step 2: Place a new order at safe no-match price
+    order_price = float(spot_config.get_safe_no_match_buy_price())
 
-    order_params = OrderBuilder.from_config(spot_config).buy().at_price(0.96).gtc().build()
+    order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
     order_id = await spot_tester.orders.create_limit(order_params)
     await spot_tester.wait.for_order_creation(order_id)
@@ -374,6 +343,7 @@ async def test_spot_order_changes_ws_initial_snapshot(spot_config: SpotTestConfi
 
     # Verify order changes were received for each order
     for order_id in order_ids:
+        assert order_id is not None, "Order ID should not be None"
         assert order_id in spot_tester.ws.order_changes, f"Order {order_id} should be in orderChanges"
         order = spot_tester.ws.order_changes[order_id]
         assert order.symbol == spot_config.symbol

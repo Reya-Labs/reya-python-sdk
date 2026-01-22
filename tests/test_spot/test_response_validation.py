@@ -118,8 +118,7 @@ async def test_order_response_fields_after_partial_fill(
 
     if spot_config.has_any_external_liquidity:
         pytest.skip(
-            "Skipping partial fill test: external liquidity exists. "
-            "This test requires a controlled environment."
+            "Skipping partial fill test: external liquidity exists. This test requires a controlled environment."
         )
 
     # Place a larger maker order
@@ -238,6 +237,7 @@ async def test_spot_execution_response_fields(
     logger.info("✅ Trade executed")
 
     # Fetch spot executions
+    assert taker_tester.owner_wallet_address is not None, "Taker wallet address should not be None"
     executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
         address=taker_tester.owner_wallet_address
     )
@@ -281,8 +281,7 @@ async def test_spot_execution_side_correctness(
 
     if spot_config.has_any_external_liquidity:
         pytest.skip(
-            "Skipping side correctness test: external liquidity exists. "
-            "This test requires a controlled environment."
+            "Skipping side correctness test: external liquidity exists. This test requires a controlled environment."
         )
 
     # Maker places buy order
@@ -299,6 +298,7 @@ async def test_spot_execution_side_correctness(
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
     # Fetch taker's executions
+    assert taker_tester.owner_wallet_address is not None, "Taker wallet address should not be None"
     executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
         address=taker_tester.owner_wallet_address
     )
@@ -391,6 +391,8 @@ async def test_spot_execution_maker_vs_taker_fields(
     # Fetch executions from BOTH wallets
     await asyncio.sleep(0.3)  # Allow indexing
 
+    assert taker_tester.owner_wallet_address is not None, "Taker wallet address should not be None"
+    assert maker_tester.owner_wallet_address is not None, "Maker wallet address should not be None"
     taker_executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
         address=taker_tester.owner_wallet_address
     )
@@ -421,70 +423,64 @@ async def test_spot_execution_maker_vs_taker_fields(
 
     # Validate taker's view of the execution
     logger.info("\n📋 Validating TAKER's view of execution:")
-    assert taker_exec.account_id == taker_tester.account_id, (
-        f"account_id should be taker's account {taker_tester.account_id}, got {taker_exec.account_id}"
-    )
+    assert (
+        taker_exec.account_id == taker_tester.account_id
+    ), f"account_id should be taker's account {taker_tester.account_id}, got {taker_exec.account_id}"
     logger.info(f"  ✅ account_id = {taker_exec.account_id} (taker's account)")
 
-    assert str(taker_exec.order_id) == str(taker_order_id), (
-        f"order_id should be taker's order {taker_order_id}, got {taker_exec.order_id}"
-    )
+    assert str(taker_exec.order_id) == str(
+        taker_order_id
+    ), f"order_id should be taker's order {taker_order_id}, got {taker_exec.order_id}"
     logger.info(f"  ✅ order_id = {taker_exec.order_id} (taker's order)")
 
-    assert taker_exec.maker_account_id == maker_tester.account_id, (
-        f"maker_account_id should be maker's account {maker_tester.account_id}, got {taker_exec.maker_account_id}"
-    )
+    assert (
+        taker_exec.maker_account_id == maker_tester.account_id
+    ), f"maker_account_id should be maker's account {maker_tester.account_id}, got {taker_exec.maker_account_id}"
     logger.info(f"  ✅ maker_account_id = {taker_exec.maker_account_id} (maker's account)")
 
-    assert str(taker_exec.maker_order_id) == str(maker_order_id), (
-        f"maker_order_id should be maker's order {maker_order_id}, got {taker_exec.maker_order_id}"
-    )
+    assert str(taker_exec.maker_order_id) == str(
+        maker_order_id
+    ), f"maker_order_id should be maker's order {maker_order_id}, got {taker_exec.maker_order_id}"
     logger.info(f"  ✅ maker_order_id = {taker_exec.maker_order_id} (maker's order)")
 
     # Validate maker's view of the execution (should be identical)
     logger.info("\n📋 Validating MAKER's view of execution:")
-    assert maker_exec.account_id == taker_tester.account_id, (
-        f"account_id should be taker's account {taker_tester.account_id}, got {maker_exec.account_id}"
-    )
+    assert (
+        maker_exec.account_id == taker_tester.account_id
+    ), f"account_id should be taker's account {taker_tester.account_id}, got {maker_exec.account_id}"
     logger.info(f"  ✅ account_id = {maker_exec.account_id} (taker's account - same as taker's view)")
 
-    assert str(maker_exec.order_id) == str(taker_order_id), (
-        f"order_id should be taker's order {taker_order_id}, got {maker_exec.order_id}"
-    )
+    assert str(maker_exec.order_id) == str(
+        taker_order_id
+    ), f"order_id should be taker's order {taker_order_id}, got {maker_exec.order_id}"
     logger.info(f"  ✅ order_id = {maker_exec.order_id} (taker's order - same as taker's view)")
 
-    assert maker_exec.maker_account_id == maker_tester.account_id, (
-        f"maker_account_id should be maker's account {maker_tester.account_id}, got {maker_exec.maker_account_id}"
-    )
+    assert (
+        maker_exec.maker_account_id == maker_tester.account_id
+    ), f"maker_account_id should be maker's account {maker_tester.account_id}, got {maker_exec.maker_account_id}"
     logger.info(f"  ✅ maker_account_id = {maker_exec.maker_account_id} (maker's account)")
 
-    assert str(maker_exec.maker_order_id) == str(maker_order_id), (
-        f"maker_order_id should be maker's order {maker_order_id}, got {maker_exec.maker_order_id}"
-    )
+    assert str(maker_exec.maker_order_id) == str(
+        maker_order_id
+    ), f"maker_order_id should be maker's order {maker_order_id}, got {maker_exec.maker_order_id}"
     logger.info(f"  ✅ maker_order_id = {maker_exec.maker_order_id} (maker's order)")
 
     # Validate both executions have matching trade details
     logger.info("\n📋 Validating MATCHING trade details:")
-    assert taker_exec.symbol == maker_exec.symbol == spot_config.symbol, (
-        f"Symbol mismatch: taker={taker_exec.symbol}, maker={maker_exec.symbol}, expected={spot_config.symbol}"
-    )
+    assert (
+        taker_exec.symbol == maker_exec.symbol == spot_config.symbol
+    ), f"Symbol mismatch: taker={taker_exec.symbol}, maker={maker_exec.symbol}, expected={spot_config.symbol}"
     logger.info(f"  ✅ symbol matches: {taker_exec.symbol}")
 
-    assert taker_exec.qty == maker_exec.qty, (
-        f"Qty mismatch: taker={taker_exec.qty}, maker={maker_exec.qty}"
-    )
+    assert taker_exec.qty == maker_exec.qty, f"Qty mismatch: taker={taker_exec.qty}, maker={maker_exec.qty}"
     logger.info(f"  ✅ qty matches: {taker_exec.qty}")
 
-    assert taker_exec.price == maker_exec.price, (
-        f"Price mismatch: taker={taker_exec.price}, maker={maker_exec.price}"
-    )
+    assert taker_exec.price == maker_exec.price, f"Price mismatch: taker={taker_exec.price}, maker={maker_exec.price}"
     logger.info(f"  ✅ price matches: {taker_exec.price}")
 
     # Timestamps should be very close (within 1 second)
     timestamp_diff = abs(taker_exec.timestamp - maker_exec.timestamp)
-    assert timestamp_diff < 1000, (  # 1000ms = 1 second
-        f"Timestamp difference too large: {timestamp_diff}ms"
-    )
+    assert timestamp_diff < 1000, f"Timestamp difference too large: {timestamp_diff}ms"  # 1000ms = 1 second
     logger.info(f"  ✅ timestamps match (diff={timestamp_diff}ms)")
 
     logger.info("\n✅ SPOT EXECUTION MAKER VS TAKER FIELDS VALIDATION COMPLETED")
@@ -665,8 +661,7 @@ async def test_depth_quantity_aggregation(spot_config: SpotTestConfig, spot_test
 
     if spot_config.has_any_external_liquidity:
         pytest.skip(
-            "Skipping aggregation test: external liquidity exists. "
-            "This test requires a controlled environment."
+            "Skipping aggregation test: external liquidity exists. This test requires a controlled environment."
         )
 
     # Place multiple orders at the same price
@@ -674,9 +669,10 @@ async def test_depth_quantity_aggregation(spot_config: SpotTestConfig, spot_test
     num_orders = 3
     order_ids = []
 
-    for i in range(num_orders):
+    for _ in range(num_orders):
         order_params = OrderBuilder.from_config(spot_config).buy().price(str(safe_price)).gtc().build()
         order_id = await spot_tester.orders.create_limit(order_params)
+        assert order_id is not None, "Order creation should return order_id for GTC orders"
         await spot_tester.wait.for_order_creation(order_id)
         order_ids.append(order_id)
 
@@ -698,9 +694,7 @@ async def test_depth_quantity_aggregation(spot_config: SpotTestConfig, spot_test
     expected_qty = Decimal(spot_config.min_qty) * num_orders
     actual_qty = Decimal(our_level.qty)
 
-    assert actual_qty >= expected_qty, (
-        f"Aggregated qty should be at least {expected_qty}, got {actual_qty}"
-    )
+    assert actual_qty >= expected_qty, f"Aggregated qty should be at least {expected_qty}, got {actual_qty}"
     logger.info(f"✅ Quantity correctly aggregated: {actual_qty} (expected >= {expected_qty})")
 
     # Cleanup

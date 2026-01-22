@@ -15,11 +15,12 @@ These tests support both empty and non-empty order books:
 - Execution assertions are flexible to handle order book changes
 """
 
+from typing import Optional
+
 import asyncio
 import logging
 import random
 from decimal import Decimal
-from typing import Optional
 
 import pytest
 
@@ -63,13 +64,28 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     maker_order_id: Optional[str] = None
     fill_price: Decimal
 
-    # Determine liquidity source
+    # Determine liquidity source - check both bid and ask
     usable_bid_price = spot_config.get_usable_bid_price_for_qty(spot_config.min_qty)
+    usable_ask_price = spot_config.get_usable_ask_price_for_qty(spot_config.min_qty)
 
     if usable_bid_price is not None:
+        # External bids exist - taker sells into them
         fill_price = usable_bid_price
         logger.info(f"Using external bid liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).gtc().build()
+        logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${fill_price:.2f}")
+        taker_order_id = await taker_tester.orders.create_limit(taker_params)
+        logger.info(f"Taker order sent: {taker_order_id}")
+    elif usable_ask_price is not None:
+        # External asks exist - taker buys from them
+        fill_price = usable_ask_price
+        logger.info(f"Using external ask liquidity at ${fill_price:.2f}")
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(fill_price)).gtc().build()
+        logger.info(f"Taker placing GTC buy: {spot_config.min_qty} @ ${fill_price:.2f}")
+        taker_order_id = await taker_tester.orders.create_limit(taker_params)
+        logger.info(f"Taker order sent: {taker_order_id}")
     else:
+        # No external liquidity - maker provides liquidity, taker fills
         maker_price = spot_config.price(0.99)
         fill_price = Decimal(str(maker_price))
 
@@ -79,11 +95,10 @@ async def test_spot_gtc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
         await maker_tester.wait.for_order_creation(maker_order_id)
         logger.info(f"✅ Maker order created: {maker_order_id}")
 
-    # Taker places GTC sell order
-    taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).gtc().build()
-    logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${fill_price:.2f}")
-    taker_order_id = await taker_tester.orders.create_limit(taker_params)
-    logger.info(f"Taker order sent: {taker_order_id}")
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(fill_price)).gtc().build()
+        logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${fill_price:.2f}")
+        taker_order_id = await taker_tester.orders.create_limit(taker_params)
+        logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for matching
     await asyncio.sleep(0.1)

@@ -32,13 +32,13 @@ from tests.test_spot.spot_config import SpotTestConfig
 async def _skip_if_external_liquidity_exists(spot_config: SpotTestConfig, tester: ReyaTester) -> None:
     """
     Skip the test if external liquidity exists that could interfere with self-match tests.
-    
+
     Self-match tests need a controlled environment where our maker order is the only
     liquidity at the test price. If external liquidity exists, the taker order might
     match against it instead of triggering self-match prevention.
     """
     await spot_config.refresh_order_book(tester.data)
-    
+
     if spot_config.has_any_external_liquidity:
         pytest.skip(
             "Skipping self-match test: external liquidity exists in order book. "

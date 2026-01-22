@@ -6,9 +6,10 @@ These types match the AsyncAPI spec and are auto-generated.
 Uses EventStore for unified state tracking across all event types.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 import logging
+from collections.abc import Mapping
 from decimal import Decimal
 
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
@@ -25,6 +26,7 @@ from sdk.async_api.spot_execution import SpotExecution as AsyncSpotExecution
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
+from sdk.open_api.models.account_balance import AccountBalance as OpenApiAccountBalance
 from sdk.reya_websocket import WebSocketMessage
 
 from .store import EventStore
@@ -141,16 +143,16 @@ class WebSocketState:
 
     def subscribe_to_market_depth(self, symbol: str) -> None:
         """Subscribe to L2 market depth updates for a specific symbol."""
-        if self._t._websocket is None:
+        if self._t.websocket is None:
             raise RuntimeError("WebSocket not connected - call setup() first")
-        self._t._websocket.market.depth(symbol).subscribe()
+        self._t.websocket.market.depth(symbol).subscribe()
         logger.info(f"Subscribed to market depth for {symbol}")
 
     def subscribe_to_market_spot_executions(self, symbol: str) -> None:
         """Subscribe to market-level spot executions for a specific symbol."""
-        if self._t._websocket is None:
+        if self._t.websocket is None:
             raise RuntimeError("WebSocket not connected - call setup() first")
-        self._t._websocket.market.spot_executions(symbol).subscribe()
+        self._t.websocket.market.spot_executions(symbol).subscribe()
         logger.info(f"Subscribed to market spot executions for {symbol}")
 
     def clear_market_spot_executions(self, symbol: Optional[str] = None) -> None:
@@ -330,10 +332,10 @@ class WebSocketState:
 
     def verify_spot_trade_balance_changes(
         self,
-        maker_initial_balances: dict[str, AsyncAccountBalance],
-        maker_final_balances: dict[str, AsyncAccountBalance],
-        taker_initial_balances: dict[str, AsyncAccountBalance],
-        taker_final_balances: dict[str, AsyncAccountBalance],
+        maker_initial_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
+        maker_final_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
+        taker_initial_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
+        taker_final_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
         base_asset: str,
         quote_asset: str,
         qty: str,

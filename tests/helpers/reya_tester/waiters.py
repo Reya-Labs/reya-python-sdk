@@ -15,9 +15,9 @@ from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
+from tests.helpers.validators import validate_order_fields, validate_spot_execution_fields
 
 from .matchers import ExecutionMatcher, FieldValidator
-from tests.helpers.validators import validate_order_fields, validate_spot_execution_fields
 
 if TYPE_CHECKING:
     from .tester import ReyaTester
@@ -61,8 +61,7 @@ class Waiters:
         rest_position = None
 
         # Use provided baseline or default to 0 (no filtering)
-        if baseline_seq is None:
-            baseline_seq = 0
+        effective_baseline: int = baseline_seq if baseline_seq is not None else 0
 
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
@@ -70,11 +69,11 @@ class Waiters:
             # Search through perp executions, filtering to only those AFTER baseline sequence
             # This prevents matching stale executions from previous operations
             if ws_trade is None:
-                ws_trade = self._t.ws.perp_executions.find_last(
-                    lambda e, bs=baseline_seq: (
-                        (e.sequence_number or 0) > bs and ExecutionMatcher.match_perp(e, expected_order)
-                    )
-                )
+
+                def match_after_baseline(e, bs: int = effective_baseline) -> bool:
+                    return (e.sequence_number or 0) > bs and ExecutionMatcher.match_perp(e, expected_order)
+
+                ws_trade = self._t.ws.perp_executions.find_last(match_after_baseline)
                 if ws_trade:
                     elapsed_time = time.time() - start_time
                     logger.info(f" ✅ Trade confirmed via WS: {ws_trade.sequence_number} (took {elapsed_time:.2f}s)")
@@ -96,7 +95,7 @@ class Waiters:
             if (
                 rest_trade is None
                 and last_trade is not None
-                and (last_trade.sequence_number or 0) > baseline_seq
+                and (last_trade.sequence_number or 0) > effective_baseline
                 and ExecutionMatcher.match_perp(last_trade, expected_order)
             ):
                 elapsed_time = time.time() - start_time
@@ -160,8 +159,7 @@ class Waiters:
         rest_closed = False
 
         # Use provided baseline or default to 0 (no filtering)
-        if baseline_seq is None:
-            baseline_seq = 0
+        effective_baseline: int = baseline_seq if baseline_seq is not None else 0
 
         while time.time() - start_time < timeout:
             last_trade = await self._t.data.last_perp_execution()
@@ -169,11 +167,13 @@ class Waiters:
             # Search through perp executions, filtering to only those AFTER baseline sequence
             # This prevents matching stale executions from previous operations
             if ws_trade is None:
-                ws_trade = self._t.ws.perp_executions.find_last(
-                    lambda e, bs=baseline_seq: (
-                        (e.sequence_number or 0) > bs and ExecutionMatcher.match_perp(e, expected_order, expected_qty)
+
+                def match_closing_after_baseline(e, bs: int = effective_baseline) -> bool:
+                    return (e.sequence_number or 0) > bs and ExecutionMatcher.match_perp(
+                        e, expected_order, expected_qty
                     )
-                )
+
+                ws_trade = self._t.ws.perp_executions.find_last(match_closing_after_baseline)
                 if ws_trade:
                     elapsed_time = time.time() - start_time
                     logger.info(f" ✅ Trade confirmed via WS: {ws_trade.sequence_number} (took {elapsed_time:.2f}s)")
@@ -195,7 +195,7 @@ class Waiters:
             if (
                 rest_trade is None
                 and last_trade is not None
-                and (last_trade.sequence_number or 0) > baseline_seq
+                and (last_trade.sequence_number or 0) > effective_baseline
                 and ExecutionMatcher.match_perp(last_trade, expected_order, expected_qty)
             ):
                 elapsed_time = time.time() - start_time
@@ -224,18 +224,20 @@ class Waiters:
             f"ws_trade: {ws_trade is not None}, rest_closed: {rest_closed}, ws_position: {ws_position is not None}"
         )
 
-    async def for_spot_execution(self, order_id: str, expected_order: Order, timeout: int = 10) -> SpotExecution:
+    async def for_spot_execution(
+        self, order_id: Optional[str], expected_order: Order, timeout: int = 10
+    ) -> SpotExecution:
         """Wait for spot execution confirmation via both REST and WebSocket.
 
         Performs strict matching on order_id and validates all important fields.
 
         Args:
-            order_id: The order ID to match (required).
+            order_id: The order ID to match (required, raises if None).
             expected_order: The expected order to validate against.
             timeout: Maximum time to wait in seconds.
         """
-        if not order_id:
-            raise ValueError("order_id is required for reliable execution matching")
+        if order_id is None:
+            raise ValueError("order_id is required for reliable execution matching (got None)")
 
         logger.info(f"⏳ Waiting for spot execution (order_id={order_id})...")
 
@@ -295,7 +297,7 @@ class Waiters:
             f"order_id={order_id}, rest: {rest_execution is not None}, ws: {ws_execution is not None}"
         )
 
-    async def for_order_state(self, order_id: str, expected_status: OrderStatus, timeout: int = 10) -> str:
+    async def for_order_state(self, order_id: Optional[str], expected_status: OrderStatus, timeout: int = 10) -> str:
         """Wait for order to reach a specific state.
 
         Uses WS as the PRIMARY and AUTHORITATIVE source of truth for order status.
@@ -308,6 +310,8 @@ class Waiters:
         Returns the order_id if successful.
         Raises RuntimeError if order reaches unexpected state or times out.
         """
+        if order_id is None:
+            raise ValueError("order_id is required for for_order_state (got None)")
         logger.debug(f"⏳ Waiting for order {order_id} to reach state: {expected_status.value}...")
         assert expected_status != OrderStatus.OPEN, "use for_order_creation instead"
 
@@ -362,15 +366,17 @@ class Waiters:
         )
 
     async def for_order_creation(
-        self, order_id: str, expected_order: Optional[Order] = None, timeout: int = 10
+        self, order_id: Optional[str], expected_order: Optional[Order] = None, timeout: int = 10
     ) -> Union[Order, AsyncOrder]:
         """Wait for order creation confirmation via REST and WebSocket.
 
         Args:
-            order_id: The order ID to wait for (required).
+            order_id: The order ID to wait for (required, raises if None).
             expected_order: If provided, validates WS order fields match expected values.
             timeout: Maximum time to wait in seconds.
         """
+        if order_id is None:
+            raise ValueError("order_id is required for for_order_creation (got None)")
         logger.debug(f"⏳ Waiting for order creation (order_id={order_id})...")
 
         start_time = time.time()

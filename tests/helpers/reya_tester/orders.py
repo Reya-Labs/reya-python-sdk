@@ -35,7 +35,7 @@ class OrderOperations:
             f"📤 Creating {time_in_force_text} {side_text} order: symbol={params.symbol}, price=${params.limit_px}, qty={params.qty}"
         )
 
-        response = await with_retry(
+        response: CreateOrderResponse = await with_retry(
             lambda: self._t.client.create_limit_order(params),
             max_retries=3,
             retry_delay=1.0,
@@ -54,7 +54,7 @@ class OrderOperations:
             f"📤 Creating {trigger_type_text} {side_text} order: symbol={params.symbol}, trigger_px=${params.trigger_px}"
         )
 
-        response = await with_retry(
+        response: CreateOrderResponse = await with_retry(
             lambda: self._t.client.create_trigger_order(params),
             max_retries=3,
             retry_delay=1.0,
@@ -76,14 +76,14 @@ class OrderOperations:
         Args:
             fail_if_none: If True, assert failure when no orders to close
             wait_for_confirmation: If True, wait for cancellation confirmation (slower but safer)
-        
+
         Note:
             Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip order cancellation for SPOT_ACCOUNT_ID_1.
             This is useful when testing with external liquidity from a depth script.
         """
         # Check if we should preserve orders for SPOT account 1
         preserve_account1 = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
-        if preserve_account1 and self._t._spot_account_number == 1:
+        if preserve_account1 and self._t.spot_account_number == 1:
             logger.info("⚠️ SPOT_PRESERVE_ACCOUNT1_ORDERS=true: Skipping close_all for SPOT account 1")
             return None
 

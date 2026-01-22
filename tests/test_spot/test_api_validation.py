@@ -289,6 +289,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
     )
 
     order_id = await spot_tester.orders.create_limit(order_params)
+    assert order_id is not None, "Order creation should return order_id for GTC orders"
     await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"Created order: {order_id}")
 
@@ -946,6 +947,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     )
 
     first_order_id = await spot_tester.orders.create_limit(order_params)
+    assert first_order_id is not None, "Order creation should return order_id for GTC orders"
     await spot_tester.wait.for_order_creation(first_order_id)
     logger.info(f"Step 1: Created first order: {first_order_id}")
 
@@ -978,6 +980,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
 
     # Step 2: Create second order and try to cancel with reused nonce
     second_order_id = await spot_tester.orders.create_limit(order_params)
+    assert second_order_id is not None, "Order creation should return order_id for GTC orders"
     await spot_tester.wait.for_order_creation(second_order_id)
     logger.info(f"Step 2: Created second order: {second_order_id}")
 
@@ -1053,6 +1056,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     )
 
     first_order_id = await spot_tester.orders.create_limit(order_params)
+    assert first_order_id is not None, "Order creation should return order_id for GTC orders"
     await spot_tester.wait.for_order_creation(first_order_id)
     logger.info(f"Step 1: Created first order: {first_order_id}")
 
@@ -1085,6 +1089,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
 
     # Step 2: Create second order and try to cancel with nonce - 1
     second_order_id = await spot_tester.orders.create_limit(order_params)
+    assert second_order_id is not None, "Order creation should return order_id for GTC orders"
     await spot_tester.wait.for_order_creation(second_order_id)
     logger.info(f"Step 2: Created second order: {second_order_id}")
 
@@ -1412,6 +1417,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
     )
 
     order_id = await spot_tester.orders.create_limit(order_params)
+    assert order_id is not None, "Order creation should return order_id for GTC orders"
     await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"Created order: {order_id}")
 

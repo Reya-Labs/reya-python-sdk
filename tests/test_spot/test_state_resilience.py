@@ -70,8 +70,8 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     # Step 3: Disconnect WebSocket (real disconnect)
     logger.info("Disconnecting WebSocket...")
-    if spot_tester._websocket:
-        spot_tester._websocket.close()
+    if spot_tester.websocket:
+        spot_tester.websocket.close()
 
     # Wait for disconnect to complete
     await asyncio.sleep(0.5)
@@ -94,12 +94,12 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     # Create new WebSocket connection
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
-    spot_tester._websocket = ReyaSocket(
+    spot_tester.websocket = ReyaSocket(
         url=ws_url,
         on_open=spot_tester.ws.on_open,
         on_message=spot_tester.ws.on_message,
     )
-    spot_tester._websocket.connect()
+    spot_tester.websocket.connect()
 
     # Wait for connection and subscriptions to be established
     # WebSocket needs time to connect and subscribe to all channels
@@ -116,6 +116,7 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
     await spot_tester.wait.for_order_creation(order_id_2)
 
     # Verify new order appears in WebSocket state
+    assert order_id_2 is not None, "Order ID should not be None"
     assert (
         order_id_2 in spot_tester.ws.order_changes
     ), f"New order {order_id_2} should appear in WS order changes after reconnect"
@@ -363,6 +364,7 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     # Verify all orders show CANCELLED in WebSocket
     not_cancelled_in_ws = []
     for order_id in order_ids:
+        assert order_id is not None, "Order ID should not be None"
         ws_order = spot_tester.ws.order_changes.get(order_id)
         if ws_order:
             ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status

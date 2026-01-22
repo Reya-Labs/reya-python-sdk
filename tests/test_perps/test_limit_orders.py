@@ -316,7 +316,8 @@ async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
         await reya_tester.check.position_not_open(symbol)
         try:
             # Build params dict - use values from test case, no defaults for required fields
-            params: dict = test_case["params"]  # type: ignore[assignment]
+            params = test_case["params"]
+            assert isinstance(params, dict)
             order_params_test = LimitOrderParameters(
                 symbol=params["symbol"],
                 is_buy=params["is_buy"],

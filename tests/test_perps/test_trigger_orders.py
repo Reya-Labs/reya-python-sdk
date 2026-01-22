@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+from typing import Optional
+
 import asyncio
 
 import pytest
 
 from sdk.open_api import RequestError, RequestErrorCode, TimeInForce
-from sdk.open_api.exceptions import BadRequestException
+from sdk.open_api.exceptions import ApiException, BadRequestException
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
@@ -144,7 +146,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     logger.info(f"Created SL order with ID: {order_response.order_id}")
 
     assert order_response.order_id is not None
-    active_sl_order: Order = await reya_tester.wait.for_order_creation(order_id=order_response.order_id, timeout=10)
+    active_sl_order = await reya_tester.wait.for_order_creation(order_id=order_response.order_id, timeout=10)
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(order_response.order_id, expected_sl_order)
     # Get sequence after position was created (from initial limit order)
@@ -177,15 +179,17 @@ CO_MAX_RETRIES = 5
 CO_TIMEOUT_PER_ATTEMPT = 30
 
 
-async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: str) -> None:
+async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: Optional[str]) -> None:
     """Cancel an order if it's still open. Silently ignores errors."""
+    if order_id is None:
+        return
     try:
         ws_order = reya_tester.ws.orders.get(str(order_id))
         if ws_order and ws_order.status.value == "OPEN":
             await reya_tester.client.cancel_order(order_id=order_id)
             await reya_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=10)
-    except Exception:
-        pass
+    except (ApiException, OSError, RuntimeError, asyncio.TimeoutError):
+        pass  # Intentionally ignore errors during cleanup - order may already be cancelled/filled
 
 
 # Note: the CO bot may not be active on testnet

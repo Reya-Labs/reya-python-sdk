@@ -16,12 +16,12 @@ Usage:
         # execution is guaranteed to be the SAME trade on both REST and WS
 """
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional, Callable, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import asyncio
 import logging
 import time
+from dataclasses import dataclass, field
 
 from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
 from sdk.open_api.models.order import Order
@@ -90,7 +90,7 @@ class PerpTradeContext:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Clean up on context exit."""
-        pass
+        # No cleanup needed - context just tracks baseline sequence
 
     async def _get_current_max_sequence(self) -> int:
         """Get the current maximum sequence number from REST API."""
@@ -252,7 +252,7 @@ class PerpTradeContext:
                     )
 
                 # Step 4: Optionally verify position
-                if verify_position:
+                if verify_position and target_seq is not None:
                     position_verified = await self._verify_position(
                         expected_order.symbol, target_seq, timeout - (time.time() - start_time)
                     )
@@ -260,6 +260,8 @@ class PerpTradeContext:
                         logger.warning("Position verification timed out, but trade is confirmed")
 
                 elapsed = time.time() - start_time
+                # At this point target_seq is guaranteed to be set since we have ws_execution
+                assert target_seq is not None, "target_seq should be set when ws_execution is found"
                 return TradeVerificationResult(
                     rest_execution=rest_execution,
                     ws_execution=ws_execution,

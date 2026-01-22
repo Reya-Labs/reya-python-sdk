@@ -189,12 +189,8 @@ async def test_spot_cancel_already_filled_order(
     3. Attempt to cancel the filled order
     4. Verify error response (order already filled)
     """
-    # Skip if external liquidity exists - taker would match external orders instead of our maker
-    if spot_config.has_any_external_liquidity:
-        pytest.skip(
-            "Skipping cancel filled order test: external liquidity exists. "
-            "Taker orders would match external liquidity first."
-        )
+    # Check current order book state
+    await spot_config.refresh_order_book(taker_tester.data)
 
     logger.info("=" * 80)
     logger.info(f"SPOT CANCEL ALREADY FILLED ORDER TEST: {spot_config.symbol}")
@@ -203,39 +199,89 @@ async def test_spot_cancel_already_filled_order(
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
 
-    # Maker places GTC sell order (maker has more ETH)
-    maker_price = spot_config.price(1.04)
+    # Determine how to get a filled order based on liquidity
+    if spot_config.has_usable_ask_liquidity:
+        # External asks exist - taker buys from external
+        ask_price = spot_config.best_ask_price
+        assert ask_price is not None
+        trade_price = float(ask_price)
+        logger.info(f"Using external ask liquidity at ${trade_price:.2f}")
 
-    maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
+        # Place GTC buy order that will match external asks
+        taker_params = OrderBuilder.from_config(spot_config).buy().price(str(ask_price)).gtc().build()
+        filled_order_id = await taker_tester.orders.create_limit(taker_params)
+        logger.info(f"Taker placing GTC buy: {spot_config.min_qty} @ ${trade_price:.2f}")
 
-    logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
-    maker_order_id = await maker_tester.orders.create_limit(maker_params)
-    await maker_tester.wait.for_order_creation(maker_order_id)
-    logger.info(f"✅ Maker order created: {maker_order_id}")
+        # Wait for fill
+        await taker_tester.wait.for_order_state(filled_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Order filled by external liquidity")
 
-    # Taker buys with IOC (taker has more RUSD)
-    _ = maker_price  # taker_price - calculated for reference
+        # Now try to cancel the already-filled order
+        logger.info(f"Attempting to cancel already-filled order: {filled_order_id}")
 
-    taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
+        try:
+            await taker_tester.client.cancel_order(
+                order_id=filled_order_id, symbol=spot_config.symbol, account_id=taker_tester.account_id
+            )
+            logger.info("Cancel request accepted (order already filled)")
+        except ApiException as e:
+            logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+    elif spot_config.has_usable_bid_liquidity:
+        # External bids exist - taker sells to external
+        bid_price = spot_config.best_bid_price
+        assert bid_price is not None
+        trade_price = float(bid_price)
+        logger.info(f"Using external bid liquidity at ${trade_price:.2f}")
 
-    logger.info("Taker placing IOC buy to fill maker order...")
-    await taker_tester.orders.create_limit(taker_params)
+        # Place GTC sell order that will match external bids
+        taker_params = OrderBuilder.from_config(spot_config).sell().price(str(bid_price)).gtc().build()
+        filled_order_id = await taker_tester.orders.create_limit(taker_params)
+        logger.info(f"Taker placing GTC sell: {spot_config.min_qty} @ ${trade_price:.2f}")
 
-    # Wait for fill
-    await asyncio.sleep(0.05)
-    await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
-    logger.info("✅ Maker order filled")
+        # Wait for fill
+        await taker_tester.wait.for_order_state(filled_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Order filled by external liquidity")
 
-    # Now try to cancel the already-filled order
-    logger.info(f"Attempting to cancel already-filled order: {maker_order_id}")
+        # Now try to cancel the already-filled order
+        logger.info(f"Attempting to cancel already-filled order: {filled_order_id}")
 
-    try:
-        await maker_tester.client.cancel_order(
-            order_id=maker_order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
-        )
-        logger.info("Cancel request accepted (order already filled)")
-    except ApiException as e:
-        logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+        try:
+            await taker_tester.client.cancel_order(
+                order_id=filled_order_id, symbol=spot_config.symbol, account_id=taker_tester.account_id
+            )
+            logger.info("Cancel request accepted (order already filled)")
+        except ApiException as e:
+            logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+    else:
+        # No external liquidity - use maker-taker matching
+        maker_price = spot_config.price(1.04)
+
+        maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
+        logger.info(f"Maker placing GTC sell: {spot_config.min_qty} @ ${maker_price:.2f}")
+        filled_order_id = await maker_tester.orders.create_limit(maker_params)
+        await maker_tester.wait.for_order_creation(filled_order_id)
+        logger.info(f"✅ Maker order created: {filled_order_id}")
+
+        # Taker buys with IOC
+        taker_params = OrderBuilder.from_config(spot_config).buy().at_price(1.04).ioc().build()
+        logger.info("Taker placing IOC buy to fill maker order...")
+        await taker_tester.orders.create_limit(taker_params)
+
+        # Wait for fill
+        await asyncio.sleep(0.05)
+        await maker_tester.wait.for_order_state(filled_order_id, OrderStatus.FILLED, timeout=5)
+        logger.info("✅ Maker order filled")
+
+        # Now try to cancel the already-filled order
+        logger.info(f"Attempting to cancel already-filled order: {filled_order_id}")
+
+        try:
+            await maker_tester.client.cancel_order(
+                order_id=filled_order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
+            )
+            logger.info("Cancel request accepted (order already filled)")
+        except ApiException as e:
+            logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
 
     # Verify no open orders
     await maker_tester.check.no_open_orders()

@@ -13,6 +13,7 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.helpers import ReyaTester
@@ -77,8 +78,8 @@ async def reya_tester_session():
     logger.info("🧹 SESSION END: Closing connections")
     logger.info("=" * 60)
     try:
-        if tester._websocket:
-            tester._websocket.close()
+        if tester.websocket:
+            tester.websocket.close()
         await tester.positions.close_all(fail_if_none=False)
         await tester.orders.close_all(fail_if_none=False)
         await tester.client.close()
@@ -139,8 +140,8 @@ async def maker_tester_session():
 
     # Cleanup
     try:
-        if tester._websocket:
-            tester._websocket.close()
+        if tester.websocket:
+            tester.websocket.close()
         preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
         if not preserve_orders:
             await tester.orders.close_all(fail_if_none=False)
@@ -178,8 +179,8 @@ async def taker_tester_session():
 
     # Cleanup
     try:
-        if tester._websocket:
-            tester._websocket.close()
+        if tester.websocket:
+            tester.websocket.close()
         await tester.orders.close_all(fail_if_none=False)
         await tester.client.close()
         logger.info("✅ Taker session cleanup completed")
@@ -191,12 +192,12 @@ async def taker_tester_session():
 async def maker_tester(maker_tester_session):  # pylint: disable=redefined-outer-name
     """
     Function-scoped wrapper for maker that cleans state between tests.
-    
+
     Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip order cleanup for SPOT_ACCOUNT_ID_1.
     This is useful when testing with external liquidity from a depth script.
     """
     preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
-    
+
     if not preserve_orders:
         await maker_tester_session.orders.close_all(fail_if_none=False)
     else:
@@ -214,12 +215,12 @@ async def spot_tester(maker_tester_session):  # pylint: disable=redefined-outer-
     """
     Function-scoped wrapper for single-account spot tests.
     Uses SPOT account 1 (same as maker_tester).
-    
+
     Set SPOT_PRESERVE_ACCOUNT1_ORDERS=true to skip order cleanup for SPOT_ACCOUNT_ID_1.
     This is useful when testing with external liquidity from a depth script.
     """
     preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
-    
+
     if not preserve_orders:
         await maker_tester_session.orders.close_all(fail_if_none=False)
     else:
@@ -556,7 +557,7 @@ async def spot_balance_guard(
                     )
                     await tester.client.create_limit_order(buy_params)
                     await asyncio.sleep(0.5)
-                except Exception as e:
+                except (ApiException, OSError, RuntimeError) as e:
                     logger.warning(f"⚠️ {account_name}: Failed to buy ETH: {e}")
 
             else:
@@ -580,7 +581,7 @@ async def spot_balance_guard(
                     )
                     await tester.client.create_limit_order(sell_params)
                     await asyncio.sleep(0.5)
-                except Exception as e:
+                except (ApiException, OSError, RuntimeError) as e:
                     logger.warning(f"⚠️ {account_name}: Failed to sell ETH: {e}")
 
         # Restore both accounts

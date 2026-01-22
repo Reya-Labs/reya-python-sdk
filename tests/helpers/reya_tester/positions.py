@@ -44,7 +44,7 @@ class PositionOperations:
                 assert False
             return None
 
-        for symbol, position in positions.items():
+        for symbol, _ in positions.items():
             # Re-fetch position to get current qty (may have changed due to trigger orders)
             current_position = await self._t.data.position(symbol)
             if current_position is None:
