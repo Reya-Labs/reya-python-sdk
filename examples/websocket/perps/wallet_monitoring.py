@@ -5,12 +5,12 @@ This example connects to the Reya WebSocket API and subscribes to wallet data st
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- PERP_ACCOUNT_ID_1: Your Reya account ID
-- PERP_PRIVATE_KEY_1: Your Ethereum private key
 - PERP_WALLET_ADDRESS_1: The wallet address to monitor
-"""
+- REYA_WS_URL: (optional) WebSocket URL, defaults based on chain ID
 
-from typing import Any
+Usage:
+    python -m examples.websocket.perps.wallet_monitoring
+"""
 
 import asyncio
 import json
@@ -20,8 +20,12 @@ import time
 
 from dotenv import load_dotenv
 
+from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.ping_message_payload import PingMessagePayload
+from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
+from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_perp_execution_update_payload import (
     WalletPerpExecutionUpdatePayload,
 )
@@ -57,12 +61,8 @@ def on_open(ws):
     # ws.wallet.order_changes(wallet_address).subscribe()
 
 
-def handle_wallet_positions_data(message: dict[str, Any]) -> None:
-    """Handle /v2/wallet/:address/positions channel data with proper type conversion."""
-    logger.info("NEW POSITION DATA")
-
-    payload = PositionUpdatePayload.model_validate(message)
-
+def handle_wallet_positions_data(payload: PositionUpdatePayload) -> None:
+    """Handle /v2/wallet/:address/positions channel data."""
     logger.info("💼 Wallet Positions Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -83,12 +83,8 @@ def handle_wallet_positions_data(message: dict[str, Any]) -> None:
         logger.info(f"    ... and {len(payload.data) - 5} more positions")
 
 
-def handle_wallet_orders_data(message: dict[str, Any]) -> None:
-    """Handle /v2/wallet/:address/orderChanges channel data with proper type conversion."""
-
-    # Convert raw message to typed payload
-    payload = OrderChangeUpdatePayload.model_validate(message)
-
+def handle_wallet_orders_data(payload: OrderChangeUpdatePayload) -> None:
+    """Handle /v2/wallet/:address/orderChanges channel data."""
     logger.info("📋 Wallet Open Orders Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -108,11 +104,8 @@ def handle_wallet_orders_data(message: dict[str, Any]) -> None:
         logger.info(f"    ... and {len(payload.data) - 5} more orders")
 
 
-def handle_wallet_executions_data(message: dict[str, Any]) -> None:
-    """Handle /v2/wallet/:address/perpExecutions channel data with proper type conversion."""
-
-    payload = WalletPerpExecutionUpdatePayload.model_validate(message)
-
+def handle_wallet_executions_data(payload: WalletPerpExecutionUpdatePayload) -> None:
+    """Handle /v2/wallet/:address/perpExecutions channel data."""
     logger.info("⚡ Wallet Perpetual Executions Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -133,46 +126,44 @@ def handle_wallet_executions_data(message: dict[str, Any]) -> None:
 
 
 def on_message(ws, message):
-    """Handle WebSocket messages with proper type conversion and dedicated handlers."""
-    message_type = message.get("type")
+    """Handle WebSocket messages - receives typed Pydantic models from SDK."""
+    # Handle subscription confirmations
+    if isinstance(message, SubscribedMessagePayload):
+        logger.info(f"✅ Successfully subscribed to {message.channel}")
+        if message.contents:
+            logger.info(f"📦 Initial data received: {len(str(message.contents))} characters")
+        return
 
-    if message_type == "subscribed":
-        channel = message.get("channel", "unknown")
-        logger.info(f"✅ Successfully subscribed to {channel}")
+    # Handle wallet data updates
+    if isinstance(message, PositionUpdatePayload):
+        handle_wallet_positions_data(message)
+        return
 
-        # Log the initial data from subscription
-        if "contents" in message:
-            logger.info(f"📦 Initial data received: {len(str(message['contents']))} characters")
+    if isinstance(message, OrderChangeUpdatePayload):
+        handle_wallet_orders_data(message)
+        return
 
-    elif message_type == "channel_data":
-        channel = message.get("channel", "unknown")
+    if isinstance(message, WalletPerpExecutionUpdatePayload):
+        handle_wallet_executions_data(message)
+        return
 
-        # Route to appropriate handler based on channel pattern
-        if "/v2/wallet/" in channel:
-            if channel.endswith("/positions"):
-                handle_wallet_positions_data(message)
-            elif channel.endswith("/orderChanges"):
-                handle_wallet_orders_data(message)
-            elif channel.endswith("/perpExecutions"):
-                handle_wallet_executions_data(message)
-            else:
-                logger.warning(f"🔍 Unhandled wallet channel: {channel}")
-        else:
-            logger.warning(f"🔍 Unhandled channel data: {channel}")
-
-    elif message_type == "ping":
+    # Handle ping/pong
+    if isinstance(message, PingMessagePayload):
         logger.info("🏓 Received ping from server, sending pong response")
         ws.send(json.dumps({"type": "pong"}))
-        logger.debug("✅ Pong sent successfully")
+        return
 
-    elif message_type == "pong":
+    if isinstance(message, PongMessagePayload):
         logger.info("🏓 Connection confirmed via pong response")
+        return
 
-    elif message_type == "error":
-        logger.error(f"❌ Error: {message.get('message', 'unknown error')}")
+    # Handle errors
+    if isinstance(message, ErrorMessagePayload):
+        logger.error(f"❌ Error: {message.message}")
+        return
 
-    else:
-        logger.debug(f"🔍 Received message type: {message_type}")
+    # Unknown message type
+    logger.debug(f"🔍 Received unhandled message type: {type(message).__name__}")
 
 
 async def periodic_task(ws, wallet_address):

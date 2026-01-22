@@ -13,10 +13,14 @@ This script demonstrates:
 - Getting auto exchange settings
 - Getting wallet stats
 
-Before running this example, ensure you have a .env file with the following variables:
-- PRIVATE_KEY: Your Ethereum private key
-- ACCOUNT_ID: Your Reya account ID
+Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_ACCOUNT_ID_1: Your Reya account ID
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+- PERP_WALLET_ADDRESS_1: Your wallet address
+
+Usage:
+    python -m examples.rest_api.perps.wallet_example
 """
 import asyncio
 

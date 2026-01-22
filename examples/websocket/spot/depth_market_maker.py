@@ -16,6 +16,9 @@ Requirements:
 - SPOT_PRIVATE_KEY_1: Your Ethereum private key
 - SPOT_WALLET_ADDRESS_1: Your wallet address
 
+Usage:
+    python -m examples.websocket.spot.depth_market_maker
+
 Press Ctrl+C to stop (will cancel all orders on exit).
 """
 

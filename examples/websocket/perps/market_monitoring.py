@@ -1,14 +1,15 @@
-"""Basic example of using the resource-oriented WebSocket API client.
+"""
+Market Monitoring - Monitor market data streams via WebSocket.
 
 This example connects to the Reya WebSocket API and subscribes to market data streams.
 
-Before running this example, ensure you have a .env file with the following variables:
-- PRIVATE_KEY: Your Ethereum private key
-- ACCOUNT_ID: Your Reya account ID
+Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-"""
+- REYA_WS_URL: (optional) WebSocket URL, defaults based on chain ID
 
-from typing import Any
+Usage:
+    python -m examples.websocket.perps.market_monitoring
+"""
 
 import asyncio
 import json
@@ -18,9 +19,13 @@ import time
 
 from dotenv import load_dotenv
 
+from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
+from sdk.async_api.ping_message_payload import PingMessagePayload
+from sdk.async_api.pong_message_payload import PongMessagePayload
+from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.reya_websocket import ReyaSocket
 from sdk.reya_websocket.config import WebSocketConfig
 
@@ -45,11 +50,8 @@ def on_open(ws):
     ws.market.perp_executions("ETHRUSDPERP").subscribe()
 
 
-def handle_markets_summary_data(message: dict[str, Any]) -> None:
-    """Handle /v2/markets/summary channel data with proper type conversion."""
-
-    payload = MarketsSummaryUpdatePayload.model_validate(message)
-
+def handle_markets_summary_data(payload: MarketsSummaryUpdatePayload) -> None:
+    """Handle /v2/markets/summary channel data."""
     logger.info("📊 All Markets Summary Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -67,11 +69,8 @@ def handle_markets_summary_data(message: dict[str, Any]) -> None:
         logger.info(f"    ... and {len(payload.data) - 3} more markets")
 
 
-def handle_market_summary_data(message: dict[str, Any]) -> None:
-    """Handle /v2/market/:symbol/summary channel data with proper type conversion."""
-
-    # Convert raw message to typed payload
-    payload = MarketSummaryUpdatePayload.model_validate(message)
+def handle_market_summary_data(payload: MarketSummaryUpdatePayload) -> None:
+    """Handle /v2/market/:symbol/summary channel data."""
     market = payload.data
 
     logger.info(f"📈 Market Summary Update for {market.symbol}:")
@@ -88,11 +87,8 @@ def handle_market_summary_data(message: dict[str, Any]) -> None:
     logger.info(f"  └─ Pool Price: {market.throttled_pool_price or 'N/A'}")
 
 
-def handle_market_perp_executions_data(message: dict[str, Any]) -> None:
-    """Handle /v2/market/:symbol/perpExecutions channel data with proper type conversion."""
-
-    payload = MarketPerpExecutionUpdatePayload.model_validate(message)
-
+def handle_market_perp_executions_data(payload: MarketPerpExecutionUpdatePayload) -> None:
+    """Handle /v2/market/:symbol/perpExecutions channel data."""
     logger.info("⚡ Market Perpetual Executions Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -115,43 +111,44 @@ def handle_market_perp_executions_data(message: dict[str, Any]) -> None:
 
 
 def on_message(ws, message):
-    """Handle WebSocket messages with proper type conversion and dedicated handlers."""
-    message_type = message.get("type")
+    """Handle WebSocket messages - receives typed Pydantic models from SDK."""
+    # Handle subscription confirmations
+    if isinstance(message, SubscribedMessagePayload):
+        logger.info(f"✅ Successfully subscribed to {message.channel}")
+        if message.contents:
+            logger.info(f"📦 Initial data received: {len(str(message.contents))} characters")
+        return
 
-    if message_type == "subscribed":
-        channel = message.get("channel", "unknown")
-        logger.info(f"✅ Successfully subscribed to {channel}")
+    # Handle market data updates
+    if isinstance(message, MarketsSummaryUpdatePayload):
+        handle_markets_summary_data(message)
+        return
 
-        # Log the initial data from subscription
-        if "contents" in message:
-            logger.info(f"📦 Initial data received: {len(str(message['contents']))} characters")
+    if isinstance(message, MarketSummaryUpdatePayload):
+        handle_market_summary_data(message)
+        return
 
-    elif message_type == "channel_data":
-        channel = message.get("channel", "unknown")
+    if isinstance(message, MarketPerpExecutionUpdatePayload):
+        handle_market_perp_executions_data(message)
+        return
 
-        # Route to appropriate handler based on channel pattern
-        if channel == "/v2/markets/summary":
-            handle_markets_summary_data(message)
-        elif "/v2/market/" in channel and "/summary" in channel:
-            handle_market_summary_data(message)
-        elif "/v2/market/" in channel and "/perpExecutions" in channel:
-            handle_market_perp_executions_data(message)
-        else:
-            logger.warning(f"🔍 Unhandled channel data: {channel}")
-
-    elif message_type == "ping":
+    # Handle ping/pong
+    if isinstance(message, PingMessagePayload):
         logger.info("🏓 Received ping from server, sending pong response")
         ws.send(json.dumps({"type": "pong"}))
-        logger.debug("✅ Pong sent successfully")
+        return
 
-    elif message_type == "pong":
+    if isinstance(message, PongMessagePayload):
         logger.info("🏓 Connection confirmed via pong response")
+        return
 
-    elif message_type == "error":
-        logger.error(f"❌ Error: {message.get('message', 'unknown error')}")
+    # Handle errors
+    if isinstance(message, ErrorMessagePayload):
+        logger.error(f"❌ Error: {message.message}")
+        return
 
-    else:
-        logger.debug(f"🔍 Received message type: {message_type}")
+    # Unknown message type
+    logger.debug(f"🔍 Received unhandled message type: {type(message).__name__}")
 
 
 async def periodic_task(ws):

@@ -242,6 +242,10 @@ class ReyaSocket(WebSocketApp):
                 return PongMessagePayload.model_validate(message)
 
             elif message_type == "subscribed":
+                # Handle case where server returns contents as empty list instead of dict
+                # Convert list to None to match the expected model type
+                if "contents" in message and isinstance(message["contents"], list):
+                    message = {**message, "contents": None}
                 return SubscribedMessagePayload.model_validate(message)
 
             elif message_type == "unsubscribed":

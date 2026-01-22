@@ -1,11 +1,22 @@
+"""
+Passive Pool Funds Flow - Stake and unstake rUSD in the passive pool.
+
+This script demonstrates how to stake rUSD into the passive pool
+and subsequently unstake to retrieve rUSD.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+
+Usage:
+    python -m examples.rpc.passive_pool_funds_flow
+"""
+
 from sdk.reya_rpc import StakingParams, UnstakingParams, get_config, stake, unstake
 
 
 def main():
-    """
-    Example script demonstrating how to stake rUSD into the passive pool
-    and subsequently unstake to retrieve rUSD.
-    """
+    """Execute passive pool staking and unstaking example."""
 
     # Load configuration
     config = get_config()

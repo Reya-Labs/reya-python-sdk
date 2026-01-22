@@ -1,3 +1,17 @@
+"""
+Margin Account Funds Flow - Create accounts, deposit, transfer, and withdraw funds.
+
+This script demonstrates the full flow of creating margin accounts,
+depositing rUSD, transferring funds between accounts, and withdrawing funds.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PERP_PRIVATE_KEY_1: Your Ethereum private key
+
+Usage:
+    python -m examples.rpc.ma_funds_flow
+"""
+
 from sdk.reya_rpc import (
     DepositParams,
     TransferParams,
@@ -11,10 +25,7 @@ from sdk.reya_rpc import (
 
 
 def main():
-    """
-    Example script demonstrating the full flow of creating margin accounts,
-    depositing rUSD, transferring funds between accounts, and withdrawing funds.
-    """
+    """Execute margin account funds flow example."""
 
     # Load configuration
     config = get_config()

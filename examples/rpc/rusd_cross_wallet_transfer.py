@@ -12,6 +12,9 @@ Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 - PERP_PRIVATE_KEY_1: Private key for Wallet A (source wallet)
 - PERP_PRIVATE_KEY_2: Private key for Wallet B (destination wallet)
+
+Usage:
+    python -m examples.rpc.rusd_cross_wallet_transfer
 """
 
 import os

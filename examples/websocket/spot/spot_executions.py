@@ -12,8 +12,6 @@ Usage:
     python -m examples.websocket.spot.spot_executions
 """
 
-from typing import Any
-
 import asyncio
 import json
 import logging

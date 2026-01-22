@@ -8,6 +8,9 @@ Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
 - PERP_ACCOUNT_ID_1: Your Reya margin account ID
 - PERP_PRIVATE_KEY_1: Your Ethereum private key
+
+Usage:
+    python -m examples.rpc.withdraw_and_bridge_out
 """
 
 import os
