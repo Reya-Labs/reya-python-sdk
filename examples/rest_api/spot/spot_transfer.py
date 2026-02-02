@@ -47,8 +47,21 @@ handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)
 logger.addHandler(handler)
 logger.propagate = False
 
-ASSET_TO_SYMBOL = {"ETH": "WETHRUSD", "WETH": "WETHRUSD"}
-DEFAULT_TRANSFER_PRICE = "3156"  # Realistic ETH price for transfers
+ASSET_TO_SYMBOL = {
+    "ETH": "WETHRUSD",
+    "WETH": "WETHRUSD",
+    "BTC": "WBTCRUSD",
+    "WBTC": "WBTCRUSD",
+}
+
+# Mapping from asset to oracle symbol (perp symbol) for fetching oracle prices
+ASSET_TO_ORACLE_SYMBOL = {
+    "ETH": "ETHRUSDPERP",
+    "WETH": "ETHRUSDPERP",
+    "BTC": "BTCRUSDPERP",
+    "WBTC": "BTCRUSDPERP",
+}
+
 ORDER_SETTLEMENT_RETRIES = 3
 ORDER_SETTLEMENT_DELAY = 1.0
 
@@ -60,6 +73,43 @@ async def get_account_balance(client: ReyaTradingClient, account_id: int, asset:
         if balance.account_id == account_id and balance.asset == asset:
             return Decimal(balance.real_balance)
     return Decimal("0")
+
+
+async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
+    """
+    Fetch the current oracle price for an asset from the v2/prices API.
+
+    The oracle price is fetched from the corresponding perp market (e.g., ETHRUSDPERP for ETH).
+    This ensures transfers happen at a price within the ±5% circuit breaker limit.
+
+    Args:
+        client: ReyaTradingClient instance
+        asset: Asset symbol (e.g., "ETH", "BTC")
+
+    Returns:
+        Oracle price as Decimal
+
+    Raises:
+        SystemExit: If oracle price cannot be fetched
+    """
+    oracle_symbol = ASSET_TO_ORACLE_SYMBOL.get(asset.upper())
+
+    if not oracle_symbol:
+        logger.error(f"❌ No oracle symbol mapping for {asset}. Supported: {list(ASSET_TO_ORACLE_SYMBOL.keys())}")
+        sys.exit(1)
+
+    try:
+        price_data = await client.markets.get_price(symbol=oracle_symbol)
+        if price_data and price_data.oracle_price:
+            oracle_price = Decimal(price_data.oracle_price)
+            logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
+            return oracle_price
+        else:
+            logger.error(f"❌ No oracle price returned for {oracle_symbol}")
+            sys.exit(1)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.error(f"❌ Failed to fetch oracle price for {oracle_symbol}: {e}")
+        sys.exit(1)
 
 
 async def log_account_balances(
@@ -275,18 +325,21 @@ async def balance_accounts_mode() -> None:
             target_eth = total_eth / 2
             _ = total_rusd / 2  # target_rusd - calculated but not used directly
 
+            # Fetch current oracle price for ETH
+            oracle_price = await get_oracle_price(client_1, "ETH")
+
             logger.info("🎯 TARGET ETH BALANCE")
             logger.info(f"  Each account: {target_eth} ETH")
-            logger.info(f"  (RUSD will flow at market price ${DEFAULT_TRANSFER_PRICE})")
+            logger.info(f"  (RUSD will flow at oracle price ${oracle_price:.2f})")
 
             # Determine transfer direction and amounts
             eth_diff_1 = eth_1 - target_eth  # Positive = account 1 has excess
 
             # We transfer ETH from the account with excess
-            # Note: We use the market price (DEFAULT_TRANSFER_PRICE) for the transfer.
-            # This balances ETH between accounts but RUSD will flow at market price,
+            # Note: We use the oracle price for the transfer to stay within circuit breaker.
+            # This balances ETH between accounts but RUSD will flow at oracle price,
             # not at an arbitrary price to balance both assets simultaneously.
-            # On-chain price validation enforces orders must be within ~5% of oracle price.
+            # On-chain price validation enforces orders must be within ±5% of oracle price.
             if abs(eth_diff_1) < Decimal("0.001"):
                 logger.info("✅ Accounts already balanced (ETH difference < 0.001)")
                 return
@@ -306,8 +359,8 @@ async def balance_accounts_mode() -> None:
                 receiver_client = client_1
                 eth_to_transfer = -eth_diff_1
 
-            # Use market price for transfer (on-chain enforces price limits)
-            transfer_price = Decimal(DEFAULT_TRANSFER_PRICE)
+            # Use oracle price for transfer (on-chain enforces ±5% price limits)
+            transfer_price = oracle_price
 
             # Round to reasonable precision
             eth_qty = str(eth_to_transfer.quantize(Decimal("0.001")))
@@ -350,7 +403,7 @@ async def main():
     )
     parser.add_argument("--from-account", type=int, help="Account ID to transfer FROM (sender)")
     parser.add_argument("--to-account", type=int, help="Account ID to transfer TO (receiver)")
-    parser.add_argument("--asset", type=str, choices=["ETH", "WETH"], help="Asset to transfer")
+    parser.add_argument("--asset", type=str, choices=["ETH", "WETH", "BTC", "WBTC"], help="Asset to transfer")
     parser.add_argument("--qty", type=str, help="Quantity to transfer (e.g., 5)")
     parser.add_argument("--price", type=str, default=None, help="Custom price for transfer (default: 0.01)")
 
@@ -370,7 +423,7 @@ async def main():
     to_account_id = args.to_account
     asset = args.asset.upper()
     qty = args.qty
-    transfer_price = args.price if args.price else DEFAULT_TRANSFER_PRICE
+    custom_price = args.price  # None if not provided - will fetch oracle price dynamically
 
     symbol = ASSET_TO_SYMBOL.get(asset)
     if not symbol:
@@ -420,7 +473,10 @@ async def main():
     logger.info(f"  Asset:        {asset}")
     logger.info(f"  Quantity:     {qty}")
     logger.info(f"  Symbol:       {symbol}")
-    logger.info(f"  Price:        ${transfer_price}")
+    if custom_price:
+        logger.info(f"  Price:        ${custom_price} (custom)")
+    else:
+        logger.info("  Price:        (will fetch oracle price)")
 
     # Get base config to inherit api_url and chain_id
     base_client = ReyaTradingClient()
@@ -430,6 +486,15 @@ async def main():
     sender_config = create_trading_client_config(sender_key, from_account_id, base_config)
     async with ReyaTradingClient(config=sender_config) as sender_client:
         await sender_client.start()
+
+        # Fetch oracle price if no custom price provided
+        if custom_price:
+            transfer_price = custom_price
+        else:
+            oracle_price = await get_oracle_price(sender_client, asset)
+            # Round to 2 decimal places for transfer price
+            transfer_price = str(oracle_price.quantize(Decimal("0.01")))
+            logger.info(f"  Transfer Price: ${transfer_price} (from oracle)")
 
         # Validate sender has sufficient balance
         qty_decimal = Decimal(qty)

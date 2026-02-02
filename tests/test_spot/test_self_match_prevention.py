@@ -18,6 +18,7 @@ exists at crossing prices, these tests are skipped to avoid false failures.
 """
 
 import asyncio
+from decimal import Decimal
 
 import pytest
 
@@ -586,12 +587,14 @@ async def test_multiple_self_matches_in_sequence(spot_config: SpotTestConfig, sp
 
     # Place taker buy that would cross all makers
     taker_price = round(base_price * 1.10, 2)  # Above all makers
+    # Use Decimal arithmetic to avoid floating point precision issues
+    taker_qty = Decimal(spot_config.min_qty) * 3
     taker_params = (
         OrderBuilder()
         .symbol(spot_config.symbol)
         .buy()
         .price(str(taker_price))
-        .qty(str(float(spot_config.min_qty) * 3))  # Enough to match all
+        .qty(str(taker_qty))  # Enough to match all
         .gtc()
         .build()
     )

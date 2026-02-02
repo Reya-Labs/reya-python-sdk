@@ -31,10 +31,6 @@ from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import logger
 from tests.test_spot.spot_config import SpotTestConfig
 
-# Test configuration
-SPOT_MARKET_ID = 5
-
-
 # SIGNATURE VALIDATION TESTS
 # ============================================================================
 
@@ -139,7 +135,7 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
 
     signature = wrong_signer.sign_raw_order(
         account_id=spot_tester.account_id,  # Same account
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,  # LIMIT_ORDER_SPOT
@@ -221,7 +217,7 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
 
     signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,  # LIMIT_ORDER_SPOT
@@ -300,7 +296,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
     sig_gen = spot_tester.client.signature_generator
     signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         order_id=int(order_id),
         client_order_id=0,
         nonce=nonce,
@@ -378,7 +374,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
 
     first_signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -420,7 +416,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
 
     reused_signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -495,7 +491,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
 
     first_signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -538,7 +534,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
 
     old_signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -650,10 +646,10 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
 @pytest.mark.asyncio
 async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
-    Test that an IOC sell order exceeding ETH balance is rejected.
+    Test that an IOC sell order exceeding base asset balance is rejected.
 
     IOC orders have pre-trade balance validation to prevent failed executions.
-    Gets the actual ETH balance and tries to exceed it by a small amount.
+    Gets the actual base asset balance and tries to exceed it by a small amount.
     """
     logger.info("=" * 80)
     logger.info("SPOT IOC INSUFFICIENT BALANCE (SELL) TEST")
@@ -661,27 +657,30 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
 
     await spot_tester.orders.close_all(fail_if_none=False)
 
-    # Get the actual ETH balance for this account
+    # Get the actual base asset balance for this account
+    base_asset = spot_config.base_asset
     balances = await spot_tester.client.get_account_balances()
-    eth_balance = None
+    asset_balance = None
     for b in balances:
-        if b.account_id == spot_tester.account_id and b.asset == "ETH":
-            eth_balance = Decimal(b.real_balance)
+        if b.account_id == spot_tester.account_id and b.asset == base_asset:
+            asset_balance = Decimal(b.real_balance)
             break
 
-    if eth_balance is None or eth_balance <= 0:
-        pytest.skip("No ETH balance available for this test")
+    if asset_balance is None or asset_balance <= 0:
+        pytest.skip(f"No {base_asset} balance available for this test")
 
-    logger.info(f"Current ETH balance: {eth_balance}")
+    logger.info(f"Current {base_asset} balance: {asset_balance}")
 
-    # Request 10% more ETH than we have
-    exceeding_qty = str((eth_balance * Decimal("1.1")).quantize(Decimal("0.01")))
-    order_price = str(spot_config.oracle_price)
+    # Request 10% more than we have, quantized to qty_step_size
+    qty_step = Decimal(spot_config.qty_step_size) if hasattr(spot_config, "qty_step_size") else Decimal("0.01")
+    exceeding_qty = str((asset_balance * Decimal("1.1")).quantize(qty_step))
+    # Round price to tick size
+    order_price = str(spot_config.price(1.0))
 
     order_params = OrderBuilder().symbol(spot_config.symbol).sell().price(order_price).qty(exceeding_qty).ioc().build()
 
-    logger.info(f"Sending IOC sell for {exceeding_qty} ETH @ ${order_price}")
-    logger.info(f"Required ETH: {exceeding_qty}, Available: {eth_balance}")
+    logger.info(f"Sending IOC sell for {exceeding_qty} {base_asset} @ ${order_price}")
+    logger.info(f"Required {base_asset}: {exceeding_qty}, Available: {asset_balance}")
 
     try:
         order_id = await spot_tester.orders.create_limit(order_params)
@@ -710,7 +709,7 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
     """
     Test that an order with quantity below minimum is rejected.
 
-    Each market has a minimum order base (e.g., 0.001 for WETHRUSD).
+    Each market has a minimum order base (e.g., 0.001 for WETHRUSD, 0.0001 for WBTCRUSD).
     """
     logger.info("=" * 80)
     logger.info("SPOT ORDER QTY BELOW MINIMUM TEST")
@@ -718,9 +717,12 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
 
     await spot_tester.orders.close_all(fail_if_none=False)
 
-    # Use a quantity below the minimum (0.001 for WETHRUSD)
-    tiny_qty = "0.0001"  # Below minimum of 0.001
+    # Calculate a quantity below the minimum by using half of min_qty
+    min_qty = Decimal(spot_config.min_qty)
+    tiny_qty = str(min_qty / Decimal("2"))
     order_price = str(spot_config.price(0.96))
+
+    logger.info(f"Market min_qty: {spot_config.min_qty}, using qty: {tiny_qty}")
 
     order_params = OrderBuilder().symbol(spot_config.symbol).buy().price(order_price).qty(tiny_qty).gtc().build()
 
@@ -957,7 +959,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         order_id=int(first_order_id),
         client_order_id=0,
         nonce=first_nonce,
@@ -987,7 +989,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     reused_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     reused_signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         order_id=int(second_order_id),
         client_order_id=0,
         nonce=first_nonce,  # Reuse the same nonce
@@ -1066,7 +1068,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         order_id=int(first_order_id),
         client_order_id=0,
         nonce=first_nonce,
@@ -1097,7 +1099,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     old_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
     old_signature = sig_gen.sign_cancel_order_spot(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         order_id=int(second_order_id),
         client_order_id=0,
         nonce=old_nonce,  # Use nonce - 1
@@ -1205,7 +1207,7 @@ async def test_spot_mass_cancel_expired_deadline(spot_config: SpotTestConfig, sp
     sig_gen = spot_tester.client.signature_generator
     signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         nonce=nonce,
         deadline=expired_deadline,
     )
@@ -1260,7 +1262,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
     sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         nonce=first_nonce,
         deadline=first_deadline,
     )
@@ -1281,7 +1283,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
     reused_deadline = int(time.time()) + 60  # 1 minute from now
     reused_signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         nonce=first_nonce,  # Reuse the same nonce
         deadline=reused_deadline,
     )
@@ -1336,7 +1338,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
     sig_gen = spot_tester.client.signature_generator
     first_signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         nonce=first_nonce,
         deadline=first_deadline,
     )
@@ -1358,7 +1360,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
     old_deadline = int(time.time()) + 60  # 1 minute from now
     old_signature = sig_gen.sign_mass_cancel(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         nonce=old_nonce,
         deadline=old_deadline,
     )
@@ -1438,7 +1440,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
     # Sign cancel request with the wrong private key
     wrong_signature = wrong_signer.sign_cancel_order_spot(
         account_id=spot_tester.account_id,  # Same account
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         order_id=int(order_id),
         client_order_id=0,
         nonce=nonce,
@@ -1527,7 +1529,7 @@ async def test_spot_mass_cancel_wrong_signer(spot_config: SpotTestConfig, spot_t
     # Sign mass cancel request with the wrong private key
     wrong_signature = wrong_signer.sign_mass_cancel(
         account_id=spot_tester.account_id,  # Same account
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         nonce=nonce,
         deadline=deadline,
     )
@@ -1601,7 +1603,7 @@ async def test_spot_order_invalid_exchange_id(spot_config: SpotTestConfig, spot_
 
     signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -1671,7 +1673,7 @@ async def test_spot_order_invalid_symbol(spot_config: SpotTestConfig, spot_teste
 
     signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -1794,7 +1796,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
 
     signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -1864,7 +1866,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
 
     signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,
@@ -1941,7 +1943,7 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
 
     signature = sig_gen.sign_raw_order(
         account_id=spot_tester.account_id,
-        market_id=SPOT_MARKET_ID,
+        market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
         counterparty_account_ids=[],
         order_type=6,

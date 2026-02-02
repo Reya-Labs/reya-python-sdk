@@ -8,7 +8,7 @@ Tests for verifying balance changes after spot trades:
 - Maker/taker balance consistency
 
 Note: Spot trading has ZERO fees, so we can verify exact balance changes:
-- ETH change = trade quantity
+- Base asset change = trade quantity
 - RUSD change = trade quantity * execution price
 """
 
@@ -48,9 +48,9 @@ async def test_spot_balance_update_after_buy(
     between our maker and taker accounts. When external liquidity exists,
     we skip to avoid unpredictable balance changes.
 
-    When taker buys ETH:
-    - Taker: ETH balance increases, RUSD balance decreases
-    - Maker: ETH balance decreases, RUSD balance increases
+    When taker buys base asset:
+    - Taker: Base asset balance increases, RUSD balance decreases
+    - Maker: Base asset balance decreases, RUSD balance increases
 
     Flow:
     1. Check for external liquidity - skip if present
@@ -80,11 +80,12 @@ async def test_spot_balance_update_after_buy(
     maker_balances_before = await get_account_balances(maker_tester)
     taker_balances_before = await get_account_balances(taker_tester)
 
+    base_asset = spot_config.base_asset
     logger.info(
-        f"Maker initial: ETH={maker_balances_before.get('ETH', 0)}, RUSD={maker_balances_before.get('RUSD', 0)}"
+        f"Maker initial: {base_asset}={maker_balances_before.get(base_asset, 0)}, RUSD={maker_balances_before.get('RUSD', 0)}"
     )
     logger.info(
-        f"Taker initial: ETH={taker_balances_before.get('ETH', 0)}, RUSD={taker_balances_before.get('RUSD', 0)}"
+        f"Taker initial: {base_asset}={taker_balances_before.get(base_asset, 0)}, RUSD={taker_balances_before.get('RUSD', 0)}"
     )
 
     # Maker places GTC sell order
@@ -116,35 +117,43 @@ async def test_spot_balance_update_after_buy(
     maker_balances_after = await get_account_balances(maker_tester)
     taker_balances_after = await get_account_balances(taker_tester)
 
-    logger.info(f"Maker after: ETH={maker_balances_after.get('ETH', 0)}, RUSD={maker_balances_after.get('RUSD', 0)}")
-    logger.info(f"Taker after: ETH={taker_balances_after.get('ETH', 0)}, RUSD={taker_balances_after.get('RUSD', 0)}")
+    logger.info(
+        f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}"
+    )
+    logger.info(
+        f"Taker after: {base_asset}={taker_balances_after.get(base_asset, 0)}, RUSD={taker_balances_after.get('RUSD', 0)}"
+    )
 
     # Calculate changes
     qty = Decimal(spot_config.min_qty)
     execution_price = Decimal(str(maker_price))  # Trade executes at maker's price
     expected_rusd_change = qty * execution_price
 
-    # Maker sold ETH, received RUSD
-    maker_eth_change = maker_balances_after.get("ETH", Decimal(0)) - maker_balances_before.get("ETH", Decimal(0))
+    # Maker sold base asset, received RUSD
+    maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     maker_rusd_change = maker_balances_after.get("RUSD", Decimal(0)) - maker_balances_before.get("RUSD", Decimal(0))
 
-    # Taker bought ETH, paid RUSD
-    taker_eth_change = taker_balances_after.get("ETH", Decimal(0)) - taker_balances_before.get("ETH", Decimal(0))
+    # Taker bought base asset, paid RUSD
+    taker_base_change = taker_balances_after.get(base_asset, Decimal(0)) - taker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     taker_rusd_change = taker_balances_after.get("RUSD", Decimal(0)) - taker_balances_before.get("RUSD", Decimal(0))
 
-    logger.info(f"Maker changes: ETH={maker_eth_change}, RUSD={maker_rusd_change}")
-    logger.info(f"Taker changes: ETH={taker_eth_change}, RUSD={taker_rusd_change}")
+    logger.info(f"Maker changes: {base_asset}={maker_base_change}, RUSD={maker_rusd_change}")
+    logger.info(f"Taker changes: {base_asset}={taker_base_change}, RUSD={taker_rusd_change}")
     logger.info(f"Expected: qty={qty}, price={execution_price}, rusd_change={expected_rusd_change}")
 
     # Verify EXACT balance changes (spot has zero fees)
-    # Maker sold ETH: ETH decreases by qty, RUSD increases by qty * price
-    assert maker_eth_change == -qty, f"Maker ETH change should be exactly -{qty}, got: {maker_eth_change}"
+    # Maker sold base asset: base asset decreases by qty, RUSD increases by qty * price
+    assert maker_base_change == -qty, f"Maker {base_asset} change should be exactly -{qty}, got: {maker_base_change}"
     assert (
         maker_rusd_change == expected_rusd_change
     ), f"Maker RUSD change should be exactly +{expected_rusd_change}, got: {maker_rusd_change}"
 
-    # Taker bought ETH: ETH increases by qty, RUSD decreases by qty * price
-    assert taker_eth_change == qty, f"Taker ETH change should be exactly +{qty}, got: {taker_eth_change}"
+    # Taker bought base asset: base asset increases by qty, RUSD decreases by qty * price
+    assert taker_base_change == qty, f"Taker {base_asset} change should be exactly +{qty}, got: {taker_base_change}"
     assert (
         taker_rusd_change == -expected_rusd_change
     ), f"Taker RUSD change should be exactly -{expected_rusd_change}, got: {taker_rusd_change}"
@@ -167,9 +176,9 @@ async def test_spot_balance_update_after_sell(
     between our maker and taker accounts. When external liquidity exists,
     we skip to avoid unpredictable balance changes.
 
-    When maker sells ETH (maker has more ETH):
-    - Maker: ETH balance decreases, RUSD balance increases
-    - Taker: ETH balance increases, RUSD balance decreases
+    When maker sells base asset:
+    - Maker: Base asset balance decreases, RUSD balance increases
+    - Taker: Base asset balance increases, RUSD balance decreases
 
     Flow:
     1. Check for external liquidity - skip if present
@@ -199,14 +208,15 @@ async def test_spot_balance_update_after_sell(
     maker_balances_before = await get_account_balances(maker_tester)
     taker_balances_before = await get_account_balances(taker_tester)
 
+    base_asset = spot_config.base_asset
     logger.info(
-        f"Maker initial: ETH={maker_balances_before.get('ETH', 0)}, RUSD={maker_balances_before.get('RUSD', 0)}"
+        f"Maker initial: {base_asset}={maker_balances_before.get(base_asset, 0)}, RUSD={maker_balances_before.get('RUSD', 0)}"
     )
     logger.info(
-        f"Taker initial: ETH={taker_balances_before.get('ETH', 0)}, RUSD={taker_balances_before.get('RUSD', 0)}"
+        f"Taker initial: {base_asset}={taker_balances_before.get(base_asset, 0)}, RUSD={taker_balances_before.get('RUSD', 0)}"
     )
 
-    # Maker places GTC sell order (maker has more ETH)
+    # Maker places GTC sell order
     maker_price = spot_config.price(1.04)  # High price to avoid other matches
 
     maker_params = OrderBuilder.from_config(spot_config).sell().at_price(1.04).gtc().build()
@@ -235,35 +245,43 @@ async def test_spot_balance_update_after_sell(
     maker_balances_after = await get_account_balances(maker_tester)
     taker_balances_after = await get_account_balances(taker_tester)
 
-    logger.info(f"Maker after: ETH={maker_balances_after.get('ETH', 0)}, RUSD={maker_balances_after.get('RUSD', 0)}")
-    logger.info(f"Taker after: ETH={taker_balances_after.get('ETH', 0)}, RUSD={taker_balances_after.get('RUSD', 0)}")
+    logger.info(
+        f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}"
+    )
+    logger.info(
+        f"Taker after: {base_asset}={taker_balances_after.get(base_asset, 0)}, RUSD={taker_balances_after.get('RUSD', 0)}"
+    )
 
     # Calculate changes
     qty = Decimal(spot_config.min_qty)
     execution_price = Decimal(str(maker_price))  # Trade executes at maker's price
     expected_rusd_change = qty * execution_price
 
-    # Maker sold ETH, received RUSD
-    maker_eth_change = maker_balances_after.get("ETH", Decimal(0)) - maker_balances_before.get("ETH", Decimal(0))
+    # Maker sold base asset, received RUSD
+    maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     maker_rusd_change = maker_balances_after.get("RUSD", Decimal(0)) - maker_balances_before.get("RUSD", Decimal(0))
 
-    # Taker bought ETH, paid RUSD
-    taker_eth_change = taker_balances_after.get("ETH", Decimal(0)) - taker_balances_before.get("ETH", Decimal(0))
+    # Taker bought base asset, paid RUSD
+    taker_base_change = taker_balances_after.get(base_asset, Decimal(0)) - taker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     taker_rusd_change = taker_balances_after.get("RUSD", Decimal(0)) - taker_balances_before.get("RUSD", Decimal(0))
 
-    logger.info(f"Maker changes: ETH={maker_eth_change}, RUSD={maker_rusd_change}")
-    logger.info(f"Taker changes: ETH={taker_eth_change}, RUSD={taker_rusd_change}")
+    logger.info(f"Maker changes: {base_asset}={maker_base_change}, RUSD={maker_rusd_change}")
+    logger.info(f"Taker changes: {base_asset}={taker_base_change}, RUSD={taker_rusd_change}")
     logger.info(f"Expected: qty={qty}, price={execution_price}, rusd_change={expected_rusd_change}")
 
     # Verify EXACT balance changes (spot has zero fees)
-    # Maker sold ETH: ETH decreases by qty, RUSD increases by qty * price
-    assert maker_eth_change == -qty, f"Maker ETH change should be exactly -{qty}, got: {maker_eth_change}"
+    # Maker sold base asset: base asset decreases by qty, RUSD increases by qty * price
+    assert maker_base_change == -qty, f"Maker {base_asset} change should be exactly -{qty}, got: {maker_base_change}"
     assert (
         maker_rusd_change == expected_rusd_change
     ), f"Maker RUSD change should be exactly +{expected_rusd_change}, got: {maker_rusd_change}"
 
-    # Taker bought ETH: ETH increases by qty, RUSD decreases by qty * price
-    assert taker_eth_change == qty, f"Taker ETH change should be exactly +{qty}, got: {taker_eth_change}"
+    # Taker bought base asset: base asset increases by qty, RUSD decreases by qty * price
+    assert taker_base_change == qty, f"Taker {base_asset} change should be exactly +{qty}, got: {taker_base_change}"
     assert (
         taker_rusd_change == -expected_rusd_change
     ), f"Taker RUSD change should be exactly -{expected_rusd_change}, got: {taker_rusd_change}"
@@ -286,7 +304,7 @@ async def test_spot_balance_maker_taker_consistency(
     between our maker and taker accounts. When external liquidity exists,
     we skip to avoid unpredictable balance changes.
 
-    Since spot trading has ZERO fees, the total ETH and RUSD across both
+    Since spot trading has ZERO fees, the total base asset and RUSD across both
     accounts should be EXACTLY conserved.
 
     Flow:
@@ -316,10 +334,13 @@ async def test_spot_balance_maker_taker_consistency(
     maker_balances_before = await get_account_balances(maker_tester)
     taker_balances_before = await get_account_balances(taker_tester)
 
-    total_eth_before = maker_balances_before.get("ETH", Decimal(0)) + taker_balances_before.get("ETH", Decimal(0))
+    base_asset = spot_config.base_asset
+    total_base_before = maker_balances_before.get(base_asset, Decimal(0)) + taker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     total_rusd_before = maker_balances_before.get("RUSD", Decimal(0)) + taker_balances_before.get("RUSD", Decimal(0))
 
-    logger.info(f"Total before: ETH={total_eth_before}, RUSD={total_rusd_before}")
+    logger.info(f"Total before: {base_asset}={total_base_before}, RUSD={total_rusd_before}")
 
     # Execute a trade
     _ = spot_config.price(0.97)  # maker_price - calculated for reference
@@ -342,21 +363,23 @@ async def test_spot_balance_maker_taker_consistency(
     maker_balances_after = await get_account_balances(maker_tester)
     taker_balances_after = await get_account_balances(taker_tester)
 
-    total_eth_after = maker_balances_after.get("ETH", Decimal(0)) + taker_balances_after.get("ETH", Decimal(0))
+    total_base_after = maker_balances_after.get(base_asset, Decimal(0)) + taker_balances_after.get(
+        base_asset, Decimal(0)
+    )
     total_rusd_after = maker_balances_after.get("RUSD", Decimal(0)) + taker_balances_after.get("RUSD", Decimal(0))
 
-    logger.info(f"Total after: ETH={total_eth_after}, RUSD={total_rusd_after}")
+    logger.info(f"Total after: {base_asset}={total_base_after}, RUSD={total_rusd_after}")
 
     # Calculate differences
-    eth_diff = total_eth_after - total_eth_before
+    base_diff = total_base_after - total_base_before
     rusd_diff = total_rusd_after - total_rusd_before
 
-    logger.info(f"ETH difference: {eth_diff}")
+    logger.info(f"{base_asset} difference: {base_diff}")
     logger.info(f"RUSD difference: {rusd_diff}")
 
-    # Spot has ZERO fees - both ETH and RUSD should be EXACTLY conserved
-    assert eth_diff == Decimal(0), f"ETH not exactly conserved (zero fees expected): diff={eth_diff}"
-    logger.info("✅ ETH exactly conserved (zero fees)")
+    # Spot has ZERO fees - both base asset and RUSD should be EXACTLY conserved
+    assert base_diff == Decimal(0), f"{base_asset} not exactly conserved (zero fees expected): diff={base_diff}"
+    logger.info(f"✅ {base_asset} exactly conserved (zero fees)")
 
     assert rusd_diff == Decimal(0), f"RUSD not exactly conserved (zero fees expected): diff={rusd_diff}"
     logger.info("✅ RUSD exactly conserved (zero fees)")

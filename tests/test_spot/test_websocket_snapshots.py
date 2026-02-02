@@ -510,7 +510,8 @@ async def test_spot_balances_ws_initial_snapshot(
     logger.info("✅ REST balances available")
 
     # Verify key assets are present via REST
-    for asset in ["ETH", "RUSD"]:
+    base_asset = spot_config.base_asset
+    for asset in [base_asset, "RUSD"]:
         if asset in rest_balances:
             logger.info(f"✅ {asset} present in REST balances: {rest_balances[asset].real_balance}")
 
@@ -596,16 +597,17 @@ async def test_spot_balances_ws_update_after_trade(
 
     logger.info(f"Taker balance updates: {len(taker_updates)}")
 
-    # Taker should have received balance updates (ETH and RUSD)
+    # Taker should have received balance updates (base asset and RUSD)
+    base_asset = spot_config.base_asset
     assert len(taker_updates) >= 2, f"Taker should have at least 2 balance updates, got {len(taker_updates)}"
 
     # Verify assets updated
     taker_assets = {u.asset for u in taker_updates}
 
-    assert "ETH" in taker_assets, "Taker should have ETH balance update"
+    assert base_asset in taker_assets, f"Taker should have {base_asset} balance update"
     assert "RUSD" in taker_assets, "Taker should have RUSD balance update"
 
-    logger.info("✅ Taker balance updates received for both ETH and RUSD")
+    logger.info(f"✅ Taker balance updates received for both {base_asset} and RUSD")
 
     # Log balance values for debugging
     await asyncio.sleep(0.5)  # Wait for REST to catch up
@@ -613,7 +615,7 @@ async def test_spot_balances_ws_update_after_trade(
     taker_rest_balances = await taker_tester.data.balances()
     taker_ws_balances = taker_tester.ws.balances
 
-    for asset in ["ETH", "RUSD"]:
+    for asset in [base_asset, "RUSD"]:
         if asset in taker_rest_balances and asset in taker_ws_balances:
             rest_val = taker_rest_balances[asset].real_balance
             ws_val = taker_ws_balances[asset].real_balance
