@@ -154,8 +154,8 @@ async def test_spot_maker_taker_matching(
     maker_final_balances = await maker_tester.data.balances()
     taker_final_balances = await taker_tester.data.balances()
 
-    # For WETHRUSD: base=ETH, quote=RUSD
-    base_asset = spot_config.symbol.replace("W", "").replace("RUSD", "")  # "WETHRUSD" -> "ETH"
+    # Get base and quote assets from config
+    base_asset = spot_config.base_asset
     quote_asset = "RUSD"
 
     maker_tester.ws.verify_spot_trade_balance_changes(
@@ -181,18 +181,24 @@ async def test_spot_maker_taker_matching(
 
     assert (
         len(maker_balance_updates) == 2
-    ), f"Maker should receive exactly 2 balance updates (ETH + RUSD), got {len(maker_balance_updates)}"
+    ), f"Maker should receive exactly 2 balance updates ({base_asset} + RUSD), got {len(maker_balance_updates)}"
     assert (
         len(taker_balance_updates) == 2
-    ), f"Taker should receive exactly 2 balance updates (ETH + RUSD), got {len(taker_balance_updates)}"
+    ), f"Taker should receive exactly 2 balance updates ({base_asset} + RUSD), got {len(taker_balance_updates)}"
 
     maker_assets = {b.asset for b in maker_balance_updates}
     taker_assets = {b.asset for b in taker_balance_updates}
     logger.info(f"✅ Maker balance updates received for: {maker_assets}")
     logger.info(f"✅ Taker balance updates received for: {taker_assets}")
 
-    assert maker_assets == {"ETH", "RUSD"}, f"Maker should have both ETH and RUSD updates, got {maker_assets}"
-    assert taker_assets == {"ETH", "RUSD"}, f"Taker should have both ETH and RUSD updates, got {taker_assets}"
+    assert maker_assets == {
+        base_asset,
+        "RUSD",
+    }, f"Maker should have both {base_asset} and RUSD updates, got {maker_assets}"
+    assert taker_assets == {
+        base_asset,
+        "RUSD",
+    }, f"Taker should have both {base_asset} and RUSD updates, got {taker_assets}"
 
     logger.info("✅ Balance updates verified via WebSocket for both accounts")
 

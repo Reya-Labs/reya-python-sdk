@@ -458,7 +458,7 @@ async def test_ws_market_spot_executions_multiple_symbols(
     logger.info("WS MARKET SPOT EXECUTIONS MULTIPLE SYMBOLS TEST")
     logger.info("=" * 80)
 
-    symbols = ["WETHRUSD"]  # Add more symbols when available
+    symbols = [spot_config.symbol]  # Uses the configured spot market symbol
 
     # Subscribe to multiple symbols
     for symbol in symbols:
