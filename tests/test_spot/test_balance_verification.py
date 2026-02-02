@@ -117,8 +117,12 @@ async def test_spot_balance_update_after_buy(
     maker_balances_after = await get_account_balances(maker_tester)
     taker_balances_after = await get_account_balances(taker_tester)
 
-    logger.info(f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}")
-    logger.info(f"Taker after: {base_asset}={taker_balances_after.get(base_asset, 0)}, RUSD={taker_balances_after.get('RUSD', 0)}")
+    logger.info(
+        f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}"
+    )
+    logger.info(
+        f"Taker after: {base_asset}={taker_balances_after.get(base_asset, 0)}, RUSD={taker_balances_after.get('RUSD', 0)}"
+    )
 
     # Calculate changes
     qty = Decimal(spot_config.min_qty)
@@ -126,11 +130,15 @@ async def test_spot_balance_update_after_buy(
     expected_rusd_change = qty * execution_price
 
     # Maker sold base asset, received RUSD
-    maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(base_asset, Decimal(0))
+    maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     maker_rusd_change = maker_balances_after.get("RUSD", Decimal(0)) - maker_balances_before.get("RUSD", Decimal(0))
 
     # Taker bought base asset, paid RUSD
-    taker_base_change = taker_balances_after.get(base_asset, Decimal(0)) - taker_balances_before.get(base_asset, Decimal(0))
+    taker_base_change = taker_balances_after.get(base_asset, Decimal(0)) - taker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     taker_rusd_change = taker_balances_after.get("RUSD", Decimal(0)) - taker_balances_before.get("RUSD", Decimal(0))
 
     logger.info(f"Maker changes: {base_asset}={maker_base_change}, RUSD={maker_rusd_change}")
@@ -237,8 +245,12 @@ async def test_spot_balance_update_after_sell(
     maker_balances_after = await get_account_balances(maker_tester)
     taker_balances_after = await get_account_balances(taker_tester)
 
-    logger.info(f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}")
-    logger.info(f"Taker after: {base_asset}={taker_balances_after.get(base_asset, 0)}, RUSD={taker_balances_after.get('RUSD', 0)}")
+    logger.info(
+        f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}"
+    )
+    logger.info(
+        f"Taker after: {base_asset}={taker_balances_after.get(base_asset, 0)}, RUSD={taker_balances_after.get('RUSD', 0)}"
+    )
 
     # Calculate changes
     qty = Decimal(spot_config.min_qty)
@@ -246,11 +258,15 @@ async def test_spot_balance_update_after_sell(
     expected_rusd_change = qty * execution_price
 
     # Maker sold base asset, received RUSD
-    maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(base_asset, Decimal(0))
+    maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     maker_rusd_change = maker_balances_after.get("RUSD", Decimal(0)) - maker_balances_before.get("RUSD", Decimal(0))
 
     # Taker bought base asset, paid RUSD
-    taker_base_change = taker_balances_after.get(base_asset, Decimal(0)) - taker_balances_before.get(base_asset, Decimal(0))
+    taker_base_change = taker_balances_after.get(base_asset, Decimal(0)) - taker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     taker_rusd_change = taker_balances_after.get("RUSD", Decimal(0)) - taker_balances_before.get("RUSD", Decimal(0))
 
     logger.info(f"Maker changes: {base_asset}={maker_base_change}, RUSD={maker_rusd_change}")
@@ -319,7 +335,9 @@ async def test_spot_balance_maker_taker_consistency(
     taker_balances_before = await get_account_balances(taker_tester)
 
     base_asset = spot_config.base_asset
-    total_base_before = maker_balances_before.get(base_asset, Decimal(0)) + taker_balances_before.get(base_asset, Decimal(0))
+    total_base_before = maker_balances_before.get(base_asset, Decimal(0)) + taker_balances_before.get(
+        base_asset, Decimal(0)
+    )
     total_rusd_before = maker_balances_before.get("RUSD", Decimal(0)) + taker_balances_before.get("RUSD", Decimal(0))
 
     logger.info(f"Total before: {base_asset}={total_base_before}, RUSD={total_rusd_before}")
@@ -345,7 +363,9 @@ async def test_spot_balance_maker_taker_consistency(
     maker_balances_after = await get_account_balances(maker_tester)
     taker_balances_after = await get_account_balances(taker_tester)
 
-    total_base_after = maker_balances_after.get(base_asset, Decimal(0)) + taker_balances_after.get(base_asset, Decimal(0))
+    total_base_after = maker_balances_after.get(base_asset, Decimal(0)) + taker_balances_after.get(
+        base_asset, Decimal(0)
+    )
     total_rusd_after = maker_balances_after.get("RUSD", Decimal(0)) + taker_balances_after.get("RUSD", Decimal(0))
 
     logger.info(f"Total after: {base_asset}={total_base_after}, RUSD={total_rusd_after}")

@@ -23,10 +23,11 @@ Usage in test files:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
 
 from tests.helpers.liquidity_detector import (
     SAFE_NO_MATCH_BUY_PRICE,
@@ -84,7 +85,7 @@ class SpotMarketConfig:
 
 
 async def fetch_spot_market_configs(
-    client: "ReyaTradingClient",
+    client: ReyaTradingClient,
 ) -> dict[str, SpotMarketConfig]:
     """
     Fetch all spot market configurations from the API.
@@ -147,7 +148,7 @@ class SpotTestConfig:
     oracle_price: float
     base_asset: str
     min_balance: float
-    _order_book: Optional[OrderBookState] = field(default=None, repr=False)
+    _order_book: OrderBookState | None = field(default=None, repr=False)
 
     def price(self, multiplier: float = 1.0) -> float:
         """
@@ -169,7 +170,7 @@ class SpotTestConfig:
         """Get a sell price (default 101% of oracle - within deviation limit)."""
         return self.price(multiplier)
 
-    async def refresh_order_book(self, data_ops: "DataOperations") -> OrderBookState:
+    async def refresh_order_book(self, data_ops: DataOperations) -> OrderBookState:
         """
         Refresh the order book state from the API.
 
@@ -188,7 +189,7 @@ class SpotTestConfig:
         return self._order_book
 
     @property
-    def order_book(self) -> Optional[OrderBookState]:
+    def order_book(self) -> OrderBookState | None:
         """Get the current order book state (may be None if not refreshed)."""
         return self._order_book
 
@@ -214,14 +215,14 @@ class SpotTestConfig:
         return self._order_book.has_usable_ask_liquidity
 
     @property
-    def best_bid_price(self) -> Optional[Decimal]:
+    def best_bid_price(self) -> Decimal | None:
         """Get the best bid price, or None if no bids."""
         if self._order_book is None or not self._order_book.bids.has_liquidity:
             return None
         return self._order_book.bids.best_price
 
     @property
-    def best_ask_price(self) -> Optional[Decimal]:
+    def best_ask_price(self) -> Decimal | None:
         """Get the best ask price, or None if no asks."""
         if self._order_book is None or not self._order_book.asks.has_liquidity:
             return None
@@ -237,7 +238,7 @@ class SpotTestConfig:
         """Maximum allowed price (oracle + 5%)."""
         return (Decimal(str(self.oracle_price)) * Decimal("1.05")).quantize(Decimal("0.01"))
 
-    def get_usable_bid_price_for_qty(self, qty: str) -> Optional[Decimal]:
+    def get_usable_bid_price_for_qty(self, qty: str) -> Decimal | None:
         """
         Get best bid price with sufficient quantity for a sell order.
 
@@ -252,7 +253,7 @@ class SpotTestConfig:
         detector = LiquidityDetector(self.oracle_price)
         return detector.get_usable_bid_price(self._order_book, qty)
 
-    def get_usable_ask_price_for_qty(self, qty: str) -> Optional[Decimal]:
+    def get_usable_ask_price_for_qty(self, qty: str) -> Decimal | None:
         """
         Get best ask price with sufficient quantity for a buy order.
 

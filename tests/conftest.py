@@ -19,8 +19,8 @@ from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import logger
 from tests.test_spot.spot_config import (
-    SpotTestConfig,
     SpotMarketConfig,
+    SpotTestConfig,
     fetch_spot_market_configs,
 )
 
@@ -292,9 +292,7 @@ async def spot_market_configs(maker_tester_session):  # pylint: disable=redefine
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def spot_config(
-    maker_tester_session, spot_market_configs, spot_asset
-):  # pylint: disable=redefined-outer-name
+async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  # pylint: disable=redefined-outer-name
     """
     Session-scoped fixture that provides centralized SPOT test configuration.
 
@@ -314,9 +312,7 @@ async def spot_config(
     # Validate the selected asset is available
     if spot_asset not in spot_market_configs:
         available = sorted(spot_market_configs.keys())
-        pytest.skip(
-            f"Asset '{spot_asset}' not available. Available assets: {', '.join(available)}"
-        )
+        pytest.skip(f"Asset '{spot_asset}' not available. Available assets: {', '.join(available)}")
 
     market_config: SpotMarketConfig = spot_market_configs[spot_asset]
 
@@ -553,7 +549,9 @@ async def spot_balance_guard(
     maker_asset_needed = initial_balances["maker_asset"] - final_maker_asset  # positive = needs more
     taker_asset_needed = initial_balances["taker_asset"] - final_taker_asset  # positive = needs more
 
-    logger.info(f"📊 Maker needs: {maker_asset_needed:+} {base_asset}, Taker needs: {taker_asset_needed:+} {base_asset}")
+    logger.info(
+        f"📊 Maker needs: {maker_asset_needed:+} {base_asset}, Taker needs: {taker_asset_needed:+} {base_asset}"
+    )
 
     # Get current order book to determine restoration strategy
     depth = await taker_tester_session.data.market_depth(symbol)
@@ -646,7 +644,9 @@ async def spot_balance_guard(
             else:
                 # Account has excess asset - sell to external bids
                 if not has_external_bids:
-                    logger.warning(f"⚠️ {account_name} has excess {-asset_needed} {base_asset} but no external bids available")
+                    logger.warning(
+                        f"⚠️ {account_name} has excess {-asset_needed} {base_asset} but no external bids available"
+                    )
                     return
 
                 qty = str((-asset_needed).quantize(min_qty))

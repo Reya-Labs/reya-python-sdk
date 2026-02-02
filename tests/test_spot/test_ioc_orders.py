@@ -61,7 +61,9 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     taker_balances_before = await taker_tester.data.balances()
     base_balance_before = taker_balances_before.get(base_asset)
     rusd_balance_before = taker_balances_before.get("RUSD")
-    taker_base_before = Decimal(str(base_balance_before.real_balance)) if base_balance_before is not None else Decimal("0")
+    taker_base_before = (
+        Decimal(str(base_balance_before.real_balance)) if base_balance_before is not None else Decimal("0")
+    )
     taker_rusd_before = (
         Decimal(str(rusd_balance_before.real_balance)) if rusd_balance_before is not None else Decimal("0")
     )
@@ -144,7 +146,9 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     logger.info(f"Taker balance changes: {base_asset}={taker_base_change}, RUSD={taker_rusd_change}")
 
     # Verify base asset decreased (taker sold base asset)
-    assert taker_base_change < Decimal("0"), f"Taker {base_asset} should decrease after selling, got change: {taker_base_change}"
+    assert taker_base_change < Decimal(
+        "0"
+    ), f"Taker {base_asset} should decrease after selling, got change: {taker_base_change}"
     # Verify RUSD increased (taker received RUSD)
     assert taker_rusd_change > Decimal(
         "0"

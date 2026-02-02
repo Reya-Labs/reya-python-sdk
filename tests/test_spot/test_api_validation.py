@@ -31,8 +31,6 @@ from tests.helpers.builders import OrderBuilder
 from tests.helpers.reya_tester import logger
 from tests.test_spot.spot_config import SpotTestConfig
 
-
-
 # SIGNATURE VALIDATION TESTS
 # ============================================================================
 
@@ -674,7 +672,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
     logger.info(f"Current {base_asset} balance: {asset_balance}")
 
     # Request 10% more than we have, quantized to qty_step_size
-    qty_step = Decimal(spot_config.qty_step_size) if hasattr(spot_config, 'qty_step_size') else Decimal("0.01")
+    qty_step = Decimal(spot_config.qty_step_size) if hasattr(spot_config, "qty_step_size") else Decimal("0.01")
     exceeding_qty = str((asset_balance * Decimal("1.1")).quantize(qty_step))
     # Round price to tick size
     order_price = str(spot_config.price(1.0))

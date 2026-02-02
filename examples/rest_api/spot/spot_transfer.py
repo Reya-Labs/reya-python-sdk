@@ -107,7 +107,7 @@ async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
         else:
             logger.error(f"❌ No oracle price returned for {oracle_symbol}")
             sys.exit(1)
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.error(f"❌ Failed to fetch oracle price for {oracle_symbol}: {e}")
         sys.exit(1)
 

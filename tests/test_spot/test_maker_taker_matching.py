@@ -191,8 +191,14 @@ async def test_spot_maker_taker_matching(
     logger.info(f"✅ Maker balance updates received for: {maker_assets}")
     logger.info(f"✅ Taker balance updates received for: {taker_assets}")
 
-    assert maker_assets == {base_asset, "RUSD"}, f"Maker should have both {base_asset} and RUSD updates, got {maker_assets}"
-    assert taker_assets == {base_asset, "RUSD"}, f"Taker should have both {base_asset} and RUSD updates, got {taker_assets}"
+    assert maker_assets == {
+        base_asset,
+        "RUSD",
+    }, f"Maker should have both {base_asset} and RUSD updates, got {maker_assets}"
+    assert taker_assets == {
+        base_asset,
+        "RUSD",
+    }, f"Taker should have both {base_asset} and RUSD updates, got {taker_assets}"
 
     logger.info("✅ Balance updates verified via WebSocket for both accounts")
 
