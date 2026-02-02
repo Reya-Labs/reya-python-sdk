@@ -18,14 +18,36 @@ from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import logger
-from tests.test_spot.spot_config import SpotTestConfig
+from tests.test_spot.spot_config import (
+    SpotTestConfig,
+    SpotMarketConfig,
+    fetch_spot_market_configs,
+)
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
 
-# Minimum balance requirements for SPOT tests
-MIN_ETH_BALANCE = 0.05
+# Minimum RUSD balance requirements for SPOT tests (asset balance is dynamic per market)
 MIN_RUSD_BALANCE = 15.0
+
+# Default asset if not specified via CLI
+DEFAULT_SPOT_ASSET = "ETH"
+
+
+def pytest_addoption(parser):
+    """Add custom command-line options for spot tests."""
+    parser.addoption(
+        "--spot-asset",
+        action="store",
+        default=DEFAULT_SPOT_ASSET,
+        help="Asset to use for spot tests (e.g., ETH, BTC). Default: ETH",
+    )
+
+
+@pytest.fixture(scope="session")
+def spot_asset(request):
+    """Get the selected spot asset from CLI option."""
+    return request.config.getoption("--spot-asset").upper()
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)
@@ -252,32 +274,82 @@ async def taker_tester(taker_tester_session):  # pylint: disable=redefined-outer
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def spot_config(maker_tester_session):  # pylint: disable=redefined-outer-name
+async def spot_market_configs(maker_tester_session):  # pylint: disable=redefined-outer-name
+    """
+    Session-scoped fixture that fetches all spot market configurations from API.
+
+    Returns a dictionary mapping base asset (e.g., "ETH", "BTC") to SpotMarketConfig.
+    """
+    logger.info("📊 Fetching spot market configurations from API...")
+    try:
+        configs = await fetch_spot_market_configs(maker_tester_session.client)
+        available_assets = sorted(configs.keys())
+        logger.info(f"✅ Loaded spot market configs for: {', '.join(available_assets)}")
+        return configs
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.error(f"❌ Failed to fetch spot market configs: {e}")
+        raise
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def spot_config(
+    maker_tester_session, spot_market_configs, spot_asset
+):  # pylint: disable=redefined-outer-name
     """
     Session-scoped fixture that provides centralized SPOT test configuration.
 
-    Fetches the current ETH oracle price dynamically and provides a
-    SpotTestConfig object with all test parameters.
+    Fetches market config dynamically from API and the current oracle price.
+    The asset is selected via the --spot-asset CLI option (default: ETH).
 
     Usage in tests:
         async def test_something(spot_config, maker_tester):
             maker_price = spot_config.price(0.99)  # 99% of oracle
             qty = spot_config.min_qty
             symbol = spot_config.symbol
+
+    Run tests for different assets:
+        pytest tests/test_spot/ -v --spot-asset=ETH
+        pytest tests/test_spot/ -v --spot-asset=BTC
     """
-    # Use ETHRUSD spot market for oracle price
-    oracle_symbol = "ETHRUSD"
+    # Validate the selected asset is available
+    if spot_asset not in spot_market_configs:
+        available = sorted(spot_market_configs.keys())
+        pytest.skip(
+            f"Asset '{spot_asset}' not available. Available assets: {', '.join(available)}"
+        )
+
+    market_config: SpotMarketConfig = spot_market_configs[spot_asset]
+
+    logger.info("=" * 60)
+    logger.info(f"🎯 SPOT TESTS CONFIGURED FOR: {spot_asset}")
+    logger.info(f"   Symbol: {market_config.symbol}")
+    logger.info(f"   Min Order Qty: {market_config.min_order_qty}")
+    logger.info(f"   Min Balance: {market_config.min_balance}")
+    logger.info("=" * 60)
+
+    # Fetch oracle price using PERP symbol (e.g., ETHRUSDPERP, BTCRUSDPERP)
+    oracle_symbol = market_config.oracle_symbol
 
     try:
         price_str = await maker_tester_session.data.current_price(oracle_symbol)
         oracle_price = float(price_str)
-        logger.info(f"📊 Fetched ETH oracle price: ${oracle_price:.2f}")
+        logger.info(f"📊 Fetched {spot_asset} oracle price: ${oracle_price:.2f}")
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Failed to fetch oracle price for {oracle_symbol}: {e}")
-        oracle_price = 3000.0
+        # Fallback prices per asset
+        fallback_prices = {"ETH": 3000.0, "BTC": 80000.0}
+        oracle_price = fallback_prices.get(spot_asset, 1000.0)
         logger.warning(f"Using fallback oracle price: ${oracle_price:.2f}")
 
-    return SpotTestConfig(symbol="WETHRUSD", min_qty="0.001", oracle_price=oracle_price)
+    return SpotTestConfig(
+        symbol=market_config.symbol,
+        market_id=market_config.market_id,
+        min_qty=market_config.min_order_qty,
+        qty_step_size=market_config.qty_step_size,
+        oracle_price=oracle_price,
+        base_asset=market_config.base_asset,
+        min_balance=float(market_config.min_balance),
+    )
 
 
 # ============================================================================
@@ -363,8 +435,10 @@ async def spot_balance_guard(
 
     NOTE: This fixture is NOT autouse - it must be explicitly requested by spot tests.
 
+    The base asset is determined dynamically from spot_config (e.g., ETH, BTC).
+
     At session start:
-    - Checks both accounts have minimum required balances (0.05 ETH, 50 RUSD each)
+    - Checks both accounts have minimum required balances for the selected asset
     - Stores initial balances for restoration
     - Skips all SPOT tests if balances are insufficient
 
@@ -372,38 +446,45 @@ async def spot_balance_guard(
     - Calculates balance differences from initial state
     - Executes transfers to restore initial balances
     """
+    # Get asset info from spot_config
+    base_asset = spot_config.base_asset
+    min_asset_balance = Decimal(str(spot_config.min_balance))
+    symbol = spot_config.symbol
+
     logger.info("=" * 60)
-    logger.info("💰 SPOT BALANCE GUARD: Checking account balances")
+    logger.info(f"💰 SPOT BALANCE GUARD: Checking {base_asset} account balances")
     logger.info("=" * 60)
 
     # Get initial balances for both accounts
-    maker_eth = await _get_account_balance(maker_tester_session, "ETH")
+    maker_asset = await _get_account_balance(maker_tester_session, base_asset)
     maker_rusd = await _get_account_balance(maker_tester_session, "RUSD")
-    taker_eth = await _get_account_balance(taker_tester_session, "ETH")
+    taker_asset = await _get_account_balance(taker_tester_session, base_asset)
     taker_rusd = await _get_account_balance(taker_tester_session, "RUSD")
 
-    logger.info(f"📊 Account 1 (Maker): {maker_eth} ETH, {maker_rusd} RUSD")
-    logger.info(f"📊 Account 2 (Taker): {taker_eth} ETH, {taker_rusd} RUSD")
+    logger.info(f"📊 Account 1 (Maker): {maker_asset} {base_asset}, {maker_rusd} RUSD")
+    logger.info(f"📊 Account 2 (Taker): {taker_asset} {base_asset}, {taker_rusd} RUSD")
 
-    # Store initial balances for restoration
+    # Store initial balances for restoration (using generic keys)
     initial_balances = {
-        "maker_eth": maker_eth,
+        "maker_asset": maker_asset,
         "maker_rusd": maker_rusd,
-        "taker_eth": taker_eth,
+        "taker_asset": taker_asset,
         "taker_rusd": taker_rusd,
+        "base_asset": base_asset,
+        "symbol": symbol,
+        "min_qty": Decimal(spot_config.min_qty),
     }
 
     # Check minimum requirements
-    min_eth = Decimal(str(MIN_ETH_BALANCE))
     min_rusd = Decimal(str(MIN_RUSD_BALANCE))
 
     insufficient = []
-    if maker_eth < min_eth:
-        insufficient.append(f"Account 1 ETH: {maker_eth} < {min_eth}")
+    if maker_asset < min_asset_balance:
+        insufficient.append(f"Account 1 {base_asset}: {maker_asset} < {min_asset_balance}")
     if maker_rusd < min_rusd:
         insufficient.append(f"Account 1 RUSD: {maker_rusd} < {min_rusd}")
-    if taker_eth < min_eth:
-        insufficient.append(f"Account 2 ETH: {taker_eth} < {min_eth}")
+    if taker_asset < min_asset_balance:
+        insufficient.append(f"Account 2 {base_asset}: {taker_asset} < {min_asset_balance}")
     if taker_rusd < min_rusd:
         insufficient.append(f"Account 2 RUSD: {taker_rusd} < {min_rusd}")
 
@@ -411,7 +492,7 @@ async def spot_balance_guard(
         logger.error("❌ INSUFFICIENT BALANCES FOR SPOT TESTS:")
         for msg in insufficient:
             logger.error(f"   - {msg}")
-        logger.error(f"   Required minimums: {MIN_ETH_BALANCE} ETH, {MIN_RUSD_BALANCE} RUSD per account")
+        logger.error(f"   Required minimums: {min_asset_balance} {base_asset}, {MIN_RUSD_BALANCE} RUSD per account")
         pytest.skip(f"Insufficient balances for SPOT tests: {', '.join(insufficient)}")
 
     logger.info("✅ Balance check passed - proceeding with SPOT tests")
@@ -431,46 +512,48 @@ async def spot_balance_guard(
     # transfers. External liquidity trades will show as imbalances that we
     # correct by transferring between our accounts.
     # ========================================================================
+    # Extract stored values from initial_balances
+    base_asset = initial_balances["base_asset"]
+    symbol = initial_balances["symbol"]
+    min_qty = initial_balances["min_qty"]
+
     logger.info("=" * 60)
-    logger.info("💰 SPOT BALANCE GUARD: Restoring account balances")
+    logger.info(f"💰 SPOT BALANCE GUARD: Restoring {base_asset} account balances")
     logger.info("=" * 60)
 
     # Get final balances for both accounts
-    final_maker_eth = await _get_account_balance(maker_tester_session, "ETH")
+    final_maker_asset = await _get_account_balance(maker_tester_session, base_asset)
     final_maker_rusd = await _get_account_balance(maker_tester_session, "RUSD")
-    final_taker_eth = await _get_account_balance(taker_tester_session, "ETH")
+    final_taker_asset = await _get_account_balance(taker_tester_session, base_asset)
     final_taker_rusd = await _get_account_balance(taker_tester_session, "RUSD")
 
-    logger.info(f"📊 Final Account 1 (Maker): {final_maker_eth} ETH, {final_maker_rusd} RUSD")
-    logger.info(f"📊 Final Account 2 (Taker): {final_taker_eth} ETH, {final_taker_rusd} RUSD")
+    logger.info(f"📊 Final Account 1 (Maker): {final_maker_asset} {base_asset}, {final_maker_rusd} RUSD")
+    logger.info(f"📊 Final Account 2 (Taker): {final_taker_asset} {base_asset}, {final_taker_rusd} RUSD")
 
     # Calculate changes for EACH account independently
-    maker_eth_change = final_maker_eth - initial_balances["maker_eth"]
+    maker_asset_change = final_maker_asset - initial_balances["maker_asset"]
     maker_rusd_change = final_maker_rusd - initial_balances["maker_rusd"]
-    taker_eth_change = final_taker_eth - initial_balances["taker_eth"]
+    taker_asset_change = final_taker_asset - initial_balances["taker_asset"]
     taker_rusd_change = final_taker_rusd - initial_balances["taker_rusd"]
 
-    logger.info(f"📈 Maker changes: ETH {maker_eth_change:+}, RUSD {maker_rusd_change:+}")
-    logger.info(f"📈 Taker changes: ETH {taker_eth_change:+}, RUSD {taker_rusd_change:+}")
+    logger.info(f"📈 Maker changes: {base_asset} {maker_asset_change:+}, RUSD {maker_rusd_change:+}")
+    logger.info(f"📈 Taker changes: {base_asset} {taker_asset_change:+}, RUSD {taker_rusd_change:+}")
 
-    symbol = "WETHRUSD"
     oracle_price = Decimal(str(spot_config.oracle_price))
     min_price = oracle_price * Decimal("0.95")
     max_price = oracle_price * Decimal("1.05")
 
     # Determine restoration needs
-    # Net ETH change across both accounts (non-zero means external trades occurred)
-    net_eth_change = maker_eth_change + taker_eth_change
-    if abs(net_eth_change) >= Decimal("0.001"):
-        logger.info(f"📊 Net ETH change (external trades): {net_eth_change:+}")
-
-    min_qty = Decimal("0.001")
+    # Net asset change across both accounts (non-zero means external trades occurred)
+    net_asset_change = maker_asset_change + taker_asset_change
+    if abs(net_asset_change) >= min_qty:
+        logger.info(f"📊 Net {base_asset} change (external trades): {net_asset_change:+}")
 
     # Calculate what each account needs to reach initial balance
-    maker_eth_needed = initial_balances["maker_eth"] - final_maker_eth  # positive = needs more ETH
-    taker_eth_needed = initial_balances["taker_eth"] - final_taker_eth  # positive = needs more ETH
+    maker_asset_needed = initial_balances["maker_asset"] - final_maker_asset  # positive = needs more
+    taker_asset_needed = initial_balances["taker_asset"] - final_taker_asset  # positive = needs more
 
-    logger.info(f"📊 Maker needs: {maker_eth_needed:+} ETH, Taker needs: {taker_eth_needed:+} ETH")
+    logger.info(f"📊 Maker needs: {maker_asset_needed:+} {base_asset}, Taker needs: {taker_asset_needed:+} {base_asset}")
 
     # Get current order book to determine restoration strategy
     depth = await taker_tester_session.data.market_depth(symbol)
@@ -492,11 +575,11 @@ async def spot_balance_guard(
         logger.info("📋 Empty order book - using internal transfers")
 
         # Calculate restoration price based on RUSD changes
-        total_eth_moved = abs(maker_eth_change) + abs(taker_eth_change)
+        total_asset_moved = abs(maker_asset_change) + abs(taker_asset_change)
         total_rusd_moved = abs(maker_rusd_change) + abs(taker_rusd_change)
 
-        if total_eth_moved > Decimal("0") and total_rusd_moved > Decimal("0.01"):
-            effective_price = total_rusd_moved / total_eth_moved
+        if total_asset_moved > Decimal("0") and total_rusd_moved > Decimal("0.01"):
+            effective_price = total_rusd_moved / total_asset_moved
         else:
             effective_price = oracle_price
 
@@ -504,10 +587,10 @@ async def spot_balance_guard(
         restoration_price = restoration_price.quantize(Decimal("0.01"))
         logger.info(f"💱 Restoration price: ${restoration_price}")
 
-        if abs(maker_eth_needed) >= min_qty:
-            if maker_eth_needed > 0:
-                qty = str(maker_eth_needed.quantize(min_qty))
-                logger.info(f"🔄 Internal transfer: {qty} ETH from Taker → Maker @ ${restoration_price}")
+        if abs(maker_asset_needed) >= min_qty:
+            if maker_asset_needed > 0:
+                qty = str(maker_asset_needed.quantize(min_qty))
+                logger.info(f"🔄 Internal transfer: {qty} {base_asset} from Taker → Maker @ ${restoration_price}")
                 await _execute_spot_transfer(
                     sender=taker_tester_session,
                     receiver=maker_tester_session,
@@ -516,8 +599,8 @@ async def spot_balance_guard(
                     price=str(restoration_price),
                 )
             else:
-                qty = str((-maker_eth_needed).quantize(min_qty))
-                logger.info(f"🔄 Internal transfer: {qty} ETH from Maker → Taker @ ${restoration_price}")
+                qty = str((-maker_asset_needed).quantize(min_qty))
+                logger.info(f"🔄 Internal transfer: {qty} {base_asset} from Maker → Taker @ ${restoration_price}")
                 await _execute_spot_transfer(
                     sender=maker_tester_session,
                     receiver=taker_tester_session,
@@ -531,21 +614,21 @@ async def spot_balance_guard(
         # NON-EMPTY ORDER BOOK: Each account trades with external liquidity
         logger.info("📋 External liquidity present - each account trades with external")
 
-        # Helper function to restore an account's ETH balance via external liquidity
-        async def restore_account_eth(tester: ReyaTester, eth_needed: Decimal, account_name: str):
-            if abs(eth_needed) < min_qty:
+        # Helper function to restore an account's asset balance via external liquidity
+        async def restore_account_asset(tester: ReyaTester, asset_needed: Decimal, account_name: str):
+            if abs(asset_needed) < min_qty:
                 return
 
-            if eth_needed > 0:
-                # Account needs more ETH - buy from external asks
+            if asset_needed > 0:
+                # Account needs more asset - buy from external asks
                 if not has_external_asks:
-                    logger.warning(f"⚠️ {account_name} needs {eth_needed} ETH but no external asks available")
+                    logger.warning(f"⚠️ {account_name} needs {asset_needed} {base_asset} but no external asks available")
                     return
 
-                qty = str(eth_needed.quantize(min_qty))
+                qty = str(asset_needed.quantize(min_qty))
                 best_ask = Decimal(str(depth.asks[0].px))
                 buy_price = min(max_price, best_ask * Decimal("1.001")).quantize(Decimal("0.01"))
-                logger.info(f"🔄 {account_name}: Buying {qty} ETH @ ${buy_price} from external asks")
+                logger.info(f"🔄 {account_name}: Buying {qty} {base_asset} @ ${buy_price} from external asks")
 
                 try:
                     buy_params = LimitOrderParameters(
@@ -558,18 +641,18 @@ async def spot_balance_guard(
                     await tester.client.create_limit_order(buy_params)
                     await asyncio.sleep(0.5)
                 except (ApiException, OSError, RuntimeError) as e:
-                    logger.warning(f"⚠️ {account_name}: Failed to buy ETH: {e}")
+                    logger.warning(f"⚠️ {account_name}: Failed to buy {base_asset}: {e}")
 
             else:
-                # Account has excess ETH - sell to external bids
+                # Account has excess asset - sell to external bids
                 if not has_external_bids:
-                    logger.warning(f"⚠️ {account_name} has excess {-eth_needed} ETH but no external bids available")
+                    logger.warning(f"⚠️ {account_name} has excess {-asset_needed} {base_asset} but no external bids available")
                     return
 
-                qty = str((-eth_needed).quantize(min_qty))
+                qty = str((-asset_needed).quantize(min_qty))
                 best_bid = Decimal(str(depth.bids[0].px))
                 sell_price = max(min_price, best_bid * Decimal("0.999")).quantize(Decimal("0.01"))
-                logger.info(f"🔄 {account_name}: Selling {qty} ETH @ ${sell_price} to external bids")
+                logger.info(f"🔄 {account_name}: Selling {qty} {base_asset} @ ${sell_price} to external bids")
 
                 try:
                     sell_params = LimitOrderParameters(
@@ -582,29 +665,29 @@ async def spot_balance_guard(
                     await tester.client.create_limit_order(sell_params)
                     await asyncio.sleep(0.5)
                 except (ApiException, OSError, RuntimeError) as e:
-                    logger.warning(f"⚠️ {account_name}: Failed to sell ETH: {e}")
+                    logger.warning(f"⚠️ {account_name}: Failed to sell {base_asset}: {e}")
 
         # Restore both accounts
-        await restore_account_eth(maker_tester_session, maker_eth_needed, "Maker")
-        await restore_account_eth(taker_tester_session, taker_eth_needed, "Taker")
+        await restore_account_asset(maker_tester_session, maker_asset_needed, "Maker")
+        await restore_account_asset(taker_tester_session, taker_asset_needed, "Taker")
         await asyncio.sleep(1.0)
 
     # Log final restored balances
-    restored_maker_eth = await _get_account_balance(maker_tester_session, "ETH")
+    restored_maker_asset = await _get_account_balance(maker_tester_session, base_asset)
     restored_maker_rusd = await _get_account_balance(maker_tester_session, "RUSD")
-    restored_taker_eth = await _get_account_balance(taker_tester_session, "ETH")
+    restored_taker_asset = await _get_account_balance(taker_tester_session, base_asset)
     restored_taker_rusd = await _get_account_balance(taker_tester_session, "RUSD")
 
-    logger.info(f"✅ Final Account 1 (Maker): {restored_maker_eth} ETH, {restored_maker_rusd} RUSD")
-    logger.info(f"✅ Final Account 2 (Taker): {restored_taker_eth} ETH, {restored_taker_rusd} RUSD")
+    logger.info(f"✅ Final Account 1 (Maker): {restored_maker_asset} {base_asset}, {restored_maker_rusd} RUSD")
+    logger.info(f"✅ Final Account 2 (Taker): {restored_taker_asset} {base_asset}, {restored_taker_rusd} RUSD")
 
     # Log how close we got to initial balances for both accounts
-    maker_eth_diff = restored_maker_eth - initial_balances["maker_eth"]
+    maker_asset_diff = restored_maker_asset - initial_balances["maker_asset"]
     maker_rusd_diff = restored_maker_rusd - initial_balances["maker_rusd"]
-    taker_eth_diff = restored_taker_eth - initial_balances["taker_eth"]
+    taker_asset_diff = restored_taker_asset - initial_balances["taker_asset"]
     taker_rusd_diff = restored_taker_rusd - initial_balances["taker_rusd"]
 
-    logger.info(f"📊 Maker remaining diff from initial: ETH {maker_eth_diff:+}, RUSD {maker_rusd_diff:+}")
-    logger.info(f"📊 Taker remaining diff from initial: ETH {taker_eth_diff:+}, RUSD {taker_rusd_diff:+}")
+    logger.info(f"📊 Maker remaining diff from initial: {base_asset} {maker_asset_diff:+}, RUSD {maker_rusd_diff:+}")
+    logger.info(f"📊 Taker remaining diff from initial: {base_asset} {taker_asset_diff:+}, RUSD {taker_rusd_diff:+}")
 
     logger.info("=" * 60)

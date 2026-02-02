@@ -1,8 +1,10 @@
-"""
-Centralized SPOT test configuration with smart liquidity detection.
+"""Centralized SPOT test configuration with smart liquidity detection.
 
-This module provides a SpotTestConfig dataclass that holds all test configuration
-including dynamically fetched oracle prices and order book liquidity state.
+This module provides:
+1. SpotMarketConfig - Immutable market configuration fetched from API
+2. SpotTestConfig - Test configuration with dynamic state and liquidity detection
+3. fetch_spot_market_configs() - Fetches market configs from /v2/spotMarketDefinitions
+
 The config is injected via pytest fixtures - no global state is used.
 
 Usage in test files:
@@ -19,11 +21,12 @@ Usage in test files:
             ...
 """
 
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import TYPE_CHECKING, Optional
 
 from tests.helpers.liquidity_detector import (
     SAFE_NO_MATCH_BUY_PRICE,
@@ -34,9 +37,89 @@ from tests.helpers.liquidity_detector import (
 )
 
 if TYPE_CHECKING:
+    from sdk.reya_rest_api.client import ReyaTradingClient
     from tests.helpers.reya_tester.data import DataOperations
 
 logger = logging.getLogger("reya.integration_tests")
+
+# Buffer multiplier for minimum balance calculation
+# We need enough balance for ~10 trades at min_qty with safety margin
+BALANCE_BUFFER_MULTIPLIER = 50
+
+
+@dataclass(frozen=True)
+class SpotMarketConfig:
+    """
+    Configuration for a spot market fetched from the API.
+
+    This is immutable (frozen) to prevent accidental modification.
+    """
+
+    symbol: str
+    market_id: int
+    base_asset: str
+    quote_asset: str
+    min_order_qty: str
+    qty_step_size: str
+    tick_size: str
+
+    @property
+    def oracle_symbol(self) -> str:
+        """Derive the oracle price symbol (uses PERP symbol format)."""
+        return f"{self.base_asset}RUSDPERP"
+
+    @property
+    def min_balance(self) -> Decimal:
+        """
+        Calculate minimum balance needed for tests.
+
+        Uses min_order_qty * buffer to ensure enough balance for all trades.
+        """
+        return Decimal(self.min_order_qty) * BALANCE_BUFFER_MULTIPLIER
+
+    @property
+    def wrapped_base_asset(self) -> str:
+        """Get the wrapped token symbol (e.g., ETH -> WETH, BTC -> WBTC)."""
+        return f"W{self.base_asset}"
+
+
+async def fetch_spot_market_configs(
+    client: "ReyaTradingClient",
+) -> dict[str, SpotMarketConfig]:
+    """
+    Fetch all spot market configurations from the API.
+
+    Args:
+        client: ReyaTradingClient instance for making API calls.
+
+    Returns:
+        Dictionary mapping base_asset (e.g., "ETH", "BTC") to SpotMarketConfig.
+
+    Raises:
+        Exception: If API call fails or returns invalid data.
+    """
+    spot_definitions = await client.reference.get_spot_market_definitions()
+
+    configs: dict[str, SpotMarketConfig] = {}
+
+    for item in spot_definitions:
+        config = SpotMarketConfig(
+            symbol=item.symbol,
+            market_id=item.market_id,
+            base_asset=item.base_asset,
+            quote_asset=item.quote_asset,
+            min_order_qty=item.min_order_qty,
+            qty_step_size=item.qty_step_size,
+            tick_size=item.tick_size,
+        )
+        configs[config.base_asset] = config
+
+    return configs
+
+
+def get_available_assets(configs: dict[str, SpotMarketConfig]) -> list[str]:
+    """Get list of available asset names from configs."""
+    return sorted(configs.keys())
 
 
 @dataclass
@@ -48,14 +131,22 @@ class SpotTestConfig:
     ensuring all tests use consistent, dynamically-fetched values.
 
     Attributes:
-        symbol: The spot market symbol (e.g., "WETHRUSD")
-        min_qty: Minimum order quantity as string (e.g., "0.001")
+        symbol: The spot market symbol (e.g., "WETHRUSD", "WBTCRUSD")
+        market_id: The on-chain market ID (e.g., 5 for ETH, 11 for BTC)
+        min_qty: Minimum order quantity as string (e.g., "0.001" for ETH, "0.0001" for BTC)
+        qty_step_size: Quantity step size for orders
         oracle_price: Current oracle price for the underlying asset
+        base_asset: The base asset symbol (e.g., "ETH", "BTC") - used for balance checks
+        min_balance: Minimum balance required for tests (computed from min_qty * buffer)
     """
 
     symbol: str
+    market_id: int
     min_qty: str
+    qty_step_size: str
     oracle_price: float
+    base_asset: str
+    min_balance: float
     _order_book: Optional[OrderBookState] = field(default=None, repr=False)
 
     def price(self, multiplier: float = 1.0) -> float:

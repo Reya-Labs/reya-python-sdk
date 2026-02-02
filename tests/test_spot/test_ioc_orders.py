@@ -57,14 +57,15 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     await spot_config.refresh_order_book(maker_tester.data)
 
     # Record taker's initial balances for verification
+    base_asset = spot_config.base_asset
     taker_balances_before = await taker_tester.data.balances()
-    eth_balance_before = taker_balances_before.get("ETH")
+    base_balance_before = taker_balances_before.get(base_asset)
     rusd_balance_before = taker_balances_before.get("RUSD")
-    taker_eth_before = Decimal(str(eth_balance_before.real_balance)) if eth_balance_before is not None else Decimal("0")
+    taker_base_before = Decimal(str(base_balance_before.real_balance)) if base_balance_before is not None else Decimal("0")
     taker_rusd_before = (
         Decimal(str(rusd_balance_before.real_balance)) if rusd_balance_before is not None else Decimal("0")
     )
-    logger.info(f"Taker initial balances: ETH={taker_eth_before}, RUSD={taker_rusd_before}")
+    logger.info(f"Taker initial balances: {base_asset}={taker_base_before}, RUSD={taker_rusd_before}")
 
     maker_order_id: Optional[str] = None
     fill_price: Decimal
@@ -131,24 +132,24 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     # Wait for balances to update
     await asyncio.sleep(0.5)
     taker_balances_after = await taker_tester.data.balances()
-    eth_balance_after = taker_balances_after.get("ETH")
+    base_balance_after = taker_balances_after.get(base_asset)
     rusd_balance_after = taker_balances_after.get("RUSD")
-    taker_eth_after = Decimal(str(eth_balance_after.real_balance)) if eth_balance_after is not None else Decimal("0")
+    taker_base_after = Decimal(str(base_balance_after.real_balance)) if base_balance_after is not None else Decimal("0")
     taker_rusd_after = Decimal(str(rusd_balance_after.real_balance)) if rusd_balance_after is not None else Decimal("0")
-    logger.info(f"Taker final balances: ETH={taker_eth_after}, RUSD={taker_rusd_after}")
+    logger.info(f"Taker final balances: {base_asset}={taker_base_after}, RUSD={taker_rusd_after}")
 
-    # Taker sold ETH, so ETH should decrease and RUSD should increase
-    taker_eth_change = taker_eth_after - taker_eth_before
+    # Taker sold base asset, so base asset should decrease and RUSD should increase
+    taker_base_change = taker_base_after - taker_base_before
     taker_rusd_change = taker_rusd_after - taker_rusd_before
-    logger.info(f"Taker balance changes: ETH={taker_eth_change}, RUSD={taker_rusd_change}")
+    logger.info(f"Taker balance changes: {base_asset}={taker_base_change}, RUSD={taker_rusd_change}")
 
-    # Verify ETH decreased (taker sold ETH)
-    assert taker_eth_change < Decimal("0"), f"Taker ETH should decrease after selling, got change: {taker_eth_change}"
+    # Verify base asset decreased (taker sold base asset)
+    assert taker_base_change < Decimal("0"), f"Taker {base_asset} should decrease after selling, got change: {taker_base_change}"
     # Verify RUSD increased (taker received RUSD)
     assert taker_rusd_change > Decimal(
         "0"
     ), f"Taker RUSD should increase after selling, got change: {taker_rusd_change}"
-    logger.info("✅ Taker balance changes verified (ETH decreased, RUSD increased)")
+    logger.info(f"✅ Taker balance changes verified ({base_asset} decreased, RUSD increased)")
 
     logger.info("✅ SPOT IOC FULL FILL TEST COMPLETED")
 
