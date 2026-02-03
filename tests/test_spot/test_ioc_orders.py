@@ -50,8 +50,8 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     logger.info("=" * 80)
 
     # Clear any existing orders from our accounts
-    await maker_tester.check.no_open_orders()
-    await taker_tester.check.no_open_orders()
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Check for external liquidity
     await spot_config.refresh_order_book(maker_tester.data)
@@ -155,6 +155,10 @@ async def test_spot_ioc_full_fill(spot_config: SpotTestConfig, maker_tester: Rey
     ), f"Taker RUSD should increase after selling, got change: {taker_rusd_change}"
     logger.info(f"✅ Taker balance changes verified ({base_asset} decreased, RUSD increased)")
 
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ SPOT IOC FULL FILL TEST COMPLETED")
 
 
@@ -183,7 +187,7 @@ async def test_spot_ioc_no_match_cancels(spot_config: SpotTestConfig, spot_teste
     logger.info("=" * 80)
 
     # Clear any existing orders from our account
-    await spot_tester.check.no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Check current order book to determine safe no-match price
     await spot_config.refresh_order_book(spot_tester.data)

@@ -43,7 +43,7 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await spot_tester.check.no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Subscribe to market depth
     spot_tester.ws.subscribe_to_market_depth(spot_config.symbol)
@@ -112,6 +112,9 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     assert not order_still_present, f"Order at ${order_price:.2f} should be removed from depth"
     logger.info("✅ Order removed from depth after cancellation")
 
+    # Verify no open orders remain
+    await spot_tester.check.no_open_orders()
+
     logger.info("✅ SPOT ORDER BOOK TEST COMPLETED")
 
 
@@ -134,7 +137,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
     logger.info("=" * 80)
 
     # Clear any existing orders
-    await spot_tester.check.no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Get safe no-match price
     await spot_config.refresh_order_book(spot_tester.data)
