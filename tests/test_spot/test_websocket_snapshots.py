@@ -621,4 +621,8 @@ async def test_spot_balances_ws_update_after_trade(
             ws_val = taker_ws_balances[asset].real_balance
             logger.info(f"Taker {asset}: REST={rest_val}, WS={ws_val}")
 
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ SPOT BALANCES WS UPDATE AFTER TRADE TEST COMPLETED")

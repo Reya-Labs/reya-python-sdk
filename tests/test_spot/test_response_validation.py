@@ -86,6 +86,9 @@ async def test_order_response_fields_gtc(spot_config: SpotTestConfig, spot_teste
     )
     await asyncio.sleep(0.1)
 
+    # Verify no open orders remain
+    await spot_tester.check.no_open_orders()
+
     logger.info("✅ ORDER RESPONSE FIELDS VALIDATION - GTC COMPLETED")
 
 
@@ -165,6 +168,10 @@ async def test_order_response_fields_after_partial_fill(
         logger.info("Order fully filled (not in open orders)")
 
     await asyncio.sleep(0.1)
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ ORDER RESPONSE FIELDS VALIDATION - PARTIAL FILL COMPLETED")
 
@@ -249,6 +256,11 @@ async def test_spot_execution_response_fields(
     validate_spot_execution_fields(execution, expected_symbol=spot_config.symbol, log_details=True)
 
     logger.info("✅ All spot execution fields validated successfully")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ SPOT EXECUTION RESPONSE FIELDS VALIDATION COMPLETED")
 
 
@@ -310,6 +322,10 @@ async def test_spot_execution_side_correctness(
     # Taker was selling, so side should be A (Ask/Sell)
     assert latest.side.value == "A", f"Taker sold, expected side=A (Ask), got {latest.side}"
     logger.info(f"✅ Taker execution side is correct: {latest.side}")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT EXECUTION SIDE CORRECTNESS VALIDATION COMPLETED")
 
@@ -482,6 +498,10 @@ async def test_spot_execution_maker_vs_taker_fields(
     timestamp_diff = abs(taker_exec.timestamp - maker_exec.timestamp)
     assert timestamp_diff < 1000, f"Timestamp difference too large: {timestamp_diff}ms"  # 1000ms = 1 second
     logger.info(f"  ✅ timestamps match (diff={timestamp_diff}ms)")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("\n✅ SPOT EXECUTION MAKER VS TAKER FIELDS VALIDATION COMPLETED")
 
@@ -707,6 +727,9 @@ async def test_depth_quantity_aggregation(spot_config: SpotTestConfig, spot_test
             pass
 
     await asyncio.sleep(0.1)
+
+    # Verify no open orders remain
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ DEPTH QUANTITY AGGREGATION VALIDATION COMPLETED")
 

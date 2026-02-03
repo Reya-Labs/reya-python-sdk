@@ -159,6 +159,11 @@ async def test_spot_balance_update_after_buy(
     ), f"Taker RUSD change should be exactly -{expected_rusd_change}, got: {taker_rusd_change}"
 
     logger.info("✅ EXACT balance changes verified (zero fees confirmed)")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ SPOT BALANCE UPDATE AFTER BUY TEST COMPLETED")
 
 
@@ -287,6 +292,11 @@ async def test_spot_balance_update_after_sell(
     ), f"Taker RUSD change should be exactly -{expected_rusd_change}, got: {taker_rusd_change}"
 
     logger.info("✅ EXACT balance changes verified (zero fees confirmed)")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ SPOT BALANCE UPDATE AFTER SELL TEST COMPLETED")
 
 
@@ -383,5 +393,9 @@ async def test_spot_balance_maker_taker_consistency(
 
     assert rusd_diff == Decimal(0), f"RUSD not exactly conserved (zero fees expected): diff={rusd_diff}"
     logger.info("✅ RUSD exactly conserved (zero fees)")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ SPOT BALANCE MAKER/TAKER CONSISTENCY TEST COMPLETED")
