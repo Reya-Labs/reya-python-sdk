@@ -45,6 +45,9 @@ async def test_rest_get_market_spot_executions_empty(spot_config: SpotTestConfig
     logger.info(f"REST GET MARKET SPOT EXECUTIONS (EMPTY) TEST: {spot_config.symbol}")
     logger.info("=" * 80)
 
+    # Clear any existing orders
+    await spot_tester.orders.close_all(fail_if_none=False)
+
     # Query market spot executions
     executions = await spot_tester.client.markets.get_market_spot_executions(symbol=spot_config.symbol)
 
@@ -153,6 +156,10 @@ async def test_rest_get_market_spot_executions_after_trade(
     assert found_execution.qty is not None
     assert found_execution.price is not None
     assert found_execution.side is not None
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ REST GET MARKET SPOT EXECUTIONS AFTER TRADE TEST COMPLETED")
 
@@ -270,6 +277,10 @@ async def test_ws_market_spot_executions_realtime(
     assert ws_execution.symbol == spot_config.symbol
     logger.info(f"✅ WS execution: symbol={ws_execution.symbol}, qty={ws_execution.qty}, side={ws_execution.side}")
 
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ WS MARKET SPOT EXECUTIONS REALTIME TEST COMPLETED")
 
 
@@ -349,6 +360,10 @@ async def test_ws_market_spot_executions_snapshot(
     # Note: Snapshot may or may not include our specific execution depending on timing
     # The key test is that we can subscribe and receive data
     logger.info(f"✅ Received {len(market_executions)} execution(s) via WebSocket snapshot/updates")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ WS MARKET SPOT EXECUTIONS SNAPSHOT TEST COMPLETED")
 
@@ -439,6 +454,10 @@ async def test_ws_and_rest_market_spot_executions_consistency(
     # Both should be for the same symbol
     assert rest_latest.symbol == spot_config.symbol
     assert ws_latest.symbol == spot_config.symbol
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("✅ WS AND REST MARKET SPOT EXECUTIONS CONSISTENCY TEST COMPLETED")
 

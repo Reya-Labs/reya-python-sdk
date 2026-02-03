@@ -101,6 +101,11 @@ async def test_rest_get_wallet_spot_executions_structure(
     assert isinstance(latest, SpotExecution), f"Expected SpotExecution, got {type(latest)}"
 
     logger.info("✅ Response structure validated")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ WALLET SPOT EXECUTIONS STRUCTURE TEST COMPLETED")
 
 
@@ -179,6 +184,11 @@ async def test_rest_get_wallet_spot_executions_pagination(
         logger.info(f"Filtered executions (end_time={end_time}): {len(filtered_executions.data)}")
 
     logger.info("✅ Pagination parameters work correctly")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ WALLET SPOT EXECUTIONS PAGINATION TEST COMPLETED")
 
 
@@ -256,4 +266,9 @@ async def test_rest_get_wallet_spot_executions_filters_by_wallet(
         )
 
     logger.info(f"✅ All executions involve taker account {taker_account_id}")
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ WALLET SPOT EXECUTIONS FILTER BY WALLET TEST COMPLETED")
