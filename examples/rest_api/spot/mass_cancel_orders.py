@@ -6,8 +6,6 @@ import sys
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 from sdk.reya_rest_api import ReyaTradingClient, get_spot_config
 
 SYMBOLS = ["WETHRUSD", "WBTCRUSD"]
@@ -33,7 +31,7 @@ async def mass_cancel_account(account_number: int, name: str):
             try:
                 result = await client.mass_cancel(symbol=symbol, account_id=config.account_id)
                 print(f"✅ {name} ({config.account_id}): Mass cancelled {result.cancelled_count} orders for {symbol}")
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 if "No orders" in str(e) or "no active" in str(e).lower():
                     print(f"ℹ️  {name} ({config.account_id}): No orders to cancel for {symbol}")
                 else:
@@ -43,6 +41,8 @@ async def mass_cancel_account(account_number: int, name: str):
 
 
 async def main():
+    load_dotenv()
+
     print("=" * 60)
     print("MASS CANCEL ALL SPOT ORDERS")
     print("=" * 60)

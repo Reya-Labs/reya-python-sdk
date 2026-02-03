@@ -6,8 +6,6 @@ import sys
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 from sdk.reya_rest_api import ReyaTradingClient, get_spot_config
 
 # Order details (example)
@@ -17,6 +15,8 @@ ACCOUNT_ID = 10000000002
 
 
 async def main():
+    load_dotenv()
+
     print("=" * 60)
     print("CANCEL ORDER BY ID")
     print("=" * 60)
@@ -44,13 +44,9 @@ async def main():
 
     try:
         print(f"\n📤 Sending cancel request for order {ORDER_ID}...")
-        result = await client.cancel_order(
-            order_id=ORDER_ID,
-            symbol=SYMBOL,
-            account_id=ACCOUNT_ID
-        )
+        result = await client.cancel_order(order_id=ORDER_ID, symbol=SYMBOL, account_id=ACCOUNT_ID)
         print(f"✅ Cancel response: {result}")
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"❌ Error cancelling order: {e}")
     finally:
         await client.close()
