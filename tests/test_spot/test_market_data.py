@@ -314,4 +314,8 @@ async def test_spot_executions_multiple_trades(
 
     logger.info("✅ Execution data structure is correct")
 
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
+
     logger.info("✅ SPOT EXECUTIONS MULTIPLE TRADES TEST COMPLETED")
