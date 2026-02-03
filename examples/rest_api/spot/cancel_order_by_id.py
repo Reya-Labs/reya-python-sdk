@@ -1,43 +1,72 @@
 #!/usr/bin/env python3
-"""Cancel a specific order by ID to verify it exists and can be cancelled."""
+"""
+Cancel Order by ID - Cancel a specific order on the SPOT order book.
+
+This script demonstrates how to cancel a specific order by its order ID.
+Simply update the configuration variables below with your order details.
+
+Requirements:
+- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- PRIVATE_KEY: Your Ethereum private key
+
+Usage:
+    1. Update ORDER_ID, SYMBOL, and ACCOUNT_ID below
+    2. Run: python -m examples.rest_api.spot.cancel_order_by_id
+"""
 
 import asyncio
-import sys
+import os
 
 from dotenv import load_dotenv
+from eth_account import Account
 
-from sdk.reya_rest_api import ReyaTradingClient, get_spot_config
+from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.config import MAINNET_CHAIN_ID, TradingConfig
 
-# Order details (example)
-ORDER_ID = "18560524635424686088"
-SYMBOL = "WETHRUSD"
-ACCOUNT_ID = 10000000002
+ORDER_ID = "1856060584567504896"  # The order ID to cancel
+SYMBOL = "WETHRUSD"  # The trading symbol (WETHRUSD, WBTCRUSD)
+ACCOUNT_ID = 10000000002  # Your Reya account ID
 
 
-async def main():
+async def main() -> None:
+    """Cancel an order by ID."""
     load_dotenv()
+
+    # Get credentials from environment
+    private_key = os.getenv("PRIVATE_KEY", "")
+    chain_id = int(os.getenv("CHAIN_ID", str(MAINNET_CHAIN_ID)))
+
+    if not private_key:
+        print("❌ PRIVATE_KEY environment variable is required.")
+        return
+
+    if not ORDER_ID:
+        print("❌ ORDER_ID is required. Update the ORDER_ID variable in the script.")
+        return
+
+    # Derive wallet address from private key
+    wallet = Account.from_key(private_key)
+    wallet_address = wallet.address
+
+    # Determine API URL based on chain
+    api_url = "https://api.reya.xyz/v2" if chain_id == MAINNET_CHAIN_ID else "https://api-cronos.reya.xyz/v2"
 
     print("=" * 60)
     print("CANCEL ORDER BY ID")
     print("=" * 60)
-    print(f"Order ID: {ORDER_ID}")
-    print(f"Symbol: {SYMBOL}")
+    print(f"Order ID:   {ORDER_ID}")
+    print(f"Symbol:     {SYMBOL}")
     print(f"Account ID: {ACCOUNT_ID}")
     print("=" * 60)
 
-    # Use account 1 (Maker) since that's account 10000000002
-    config = get_spot_config(account_number=1)
-
-    if config.account_id is None:
-        print("❌ SPOT_ACCOUNT_ID_1 not set")
-        sys.exit(1)
-
-    if config.private_key is None:
-        print("❌ SPOT_PRIVATE_KEY_1 not set")
-        sys.exit(1)
-
-    if config.account_id != ACCOUNT_ID:
-        print(f"⚠️  Warning: Config account {config.account_id} != target account {ACCOUNT_ID}")
+    # Create config and client
+    config = TradingConfig(
+        api_url=api_url,
+        chain_id=chain_id,
+        owner_wallet_address=wallet_address,
+        private_key=private_key,
+        account_id=ACCOUNT_ID,
+    )
 
     client = ReyaTradingClient(config)
     await client.start()

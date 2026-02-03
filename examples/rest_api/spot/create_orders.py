@@ -32,7 +32,7 @@ from sdk.reya_rest_api.models.orders import LimitOrderParameters
 # =============================================================================
 
 SPOT_SYMBOL = "WETHRUSD"
-TRADE_QTY = "0.001"
+TRADE_QTY = "0.0001"
 BUY_PRICE = "10"
 SELL_PRICE = "1000000"
 
