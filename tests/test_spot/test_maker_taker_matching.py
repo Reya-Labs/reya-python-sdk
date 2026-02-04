@@ -54,8 +54,8 @@ async def test_spot_maker_taker_matching(
     logger.info(f"Using oracle price for orders: ${spot_config.oracle_price:.2f}")
 
     # Clear any existing orders for BOTH accounts
-    await maker_tester.check.no_open_orders()
-    await taker_tester.check.no_open_orders()
+    await maker_tester.orders.close_all(fail_if_none=False)
+    await taker_tester.orders.close_all(fail_if_none=False)
 
     # Check current order book state
     await spot_config.refresh_order_book(maker_tester.data)
@@ -220,6 +220,10 @@ async def test_spot_maker_taker_matching(
     logger.info("\n🧹 Cleanup: Cancelling any remaining orders...")
     await maker_tester.orders.close_all(fail_if_none=False)
     await taker_tester.orders.close_all(fail_if_none=False)
+
+    # Verify no open orders remain
+    await maker_tester.check.no_open_orders()
+    await taker_tester.check.no_open_orders()
 
     logger.info("\n%s", "=" * 80)
     logger.info("✅ SPOT TRADING E2E TEST COMPLETED SUCCESSFULLY")

@@ -31,7 +31,7 @@ async def test_spot_order_cancellation(spot_config: SpotTestConfig, spot_tester:
     logger.info(f"Using reference price for orders: ${spot_config.oracle_price}")
 
     # Clear any existing orders
-    await spot_tester.check.no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Place GTC order far from reference (won't fill)
     buy_price = spot_config.price(0.96)  # Far below reference
@@ -80,7 +80,7 @@ async def test_spot_mass_cancel(spot_config: SpotTestConfig, spot_tester: ReyaTe
     logger.info(f"Using reference price for orders: ${spot_config.oracle_price}")
 
     # Clear any existing orders
-    await spot_tester.check.no_open_orders()
+    await spot_tester.orders.close_all(fail_if_none=False)
 
     # Place multiple GTC orders at different prices (far from market, won't fill)
     order_ids = []
@@ -169,6 +169,9 @@ async def test_spot_cancel_nonexistent_order(spot_config: SpotTestConfig, spot_t
         logger.info("Cancel request accepted (order may not exist)")
     except ApiException as e:
         logger.info(f"✅ Cancel rejected as expected: {type(e).__name__}")
+
+    # Verify no open orders remain
+    await spot_tester.check.no_open_orders()
 
     logger.info("✅ SPOT CANCEL NONEXISTENT ORDER TEST COMPLETED")
 

@@ -119,6 +119,9 @@ async def test_rest_get_open_orders_empty(spot_config: SpotTestConfig, spot_test
     assert len(our_orders) == 0, f"Should have no open orders for {spot_config.symbol}, got {len(our_orders)}"
     logger.info(f"✅ No open orders for account {spot_tester.account_id} on {spot_config.symbol}")
 
+    # Verify no open orders remain
+    await spot_tester.check.no_open_orders()
+
     logger.info("✅ OPEN ORDERS REST - EMPTY TEST COMPLETED")
 
 
