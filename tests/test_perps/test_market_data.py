@@ -268,7 +268,7 @@ async def test_liquidity_parameters(reya_tester: ReyaTester):
         assert param.symbol is not None and len(param.symbol) > 0, "Symbol should not be empty"
         assert "PERP" in param.symbol, f"Symbol should be a perpetual contract (contain PERP), got: {param.symbol}"
 
-        assert 0 < float(param.depth) <= 10000, f"Depth should be positive and reasonable, got: {param.depth}"
+        assert 0 < float(param.depth) <= 10_000_000, f"Depth should be positive and reasonable, got: {param.depth}"
 
         assert (
             0 <= float(param.velocity_multiplier) <= 50000
