@@ -240,12 +240,17 @@ class TestDynamicPricingExecution:
         execution = await _execute_ioc_trade(reya_tester, is_buy=False)
         exec_price = float(execution.price)
 
-        assert exec_price < pool_price_before, (
-            f"Short exec_price ({exec_price}) should be < poolPrice_before ({pool_price_before})"
+        price_info_after: Price = await reya_tester.client.markets.get_price(SYMBOL)
+        pool_price_after = float(price_info_after.pool_price)
+        pool_price_upper = max(pool_price_before, pool_price_after)
+
+        assert exec_price < pool_price_upper, (
+            f"Short exec_price ({exec_price}) should be < poolPrice ({pool_price_upper}) "
+            f"(before={pool_price_before:.6f}, after={pool_price_after:.6f})"
         )
 
         logger.info(
-            f"✅ T2.2 passed: exec_price={exec_price:.2f} < poolPrice={pool_price_before:.2f}"
+            f"✅ T2.2 passed: exec_price={exec_price:.2f} < poolPrice={pool_price_upper:.2f}"
         )
 
     @pytest.mark.asyncio
@@ -283,18 +288,25 @@ class TestDynamicPricingExecution:
 
         This is approximate for small trades where logF change is negligible.
         """
-        price_info, trackers = await _get_price_and_trackers(reya_tester)
-        pool_price = float(price_info.pool_price)
+        api_url = _get_api_url()
+        price_info, trackers = await _get_price_and_trackers(api_url)
+        pool_price_before = float(price_info.pool_price)
         spread_normalized = float(trackers.price_spread) / 1e18
 
         execution = await _execute_ioc_trade(reya_tester, is_buy=True)
         exec_price = float(execution.price)
 
-        spread_floor = pool_price * (1 + spread_normalized)
+        price_info_after = await fetch_price(api_url, SYMBOL)
+        pool_price_after = float(price_info_after.pool_price)
+        pool_price_lower = min(pool_price_before, pool_price_after)
+
+        # Allow 0.1% tolerance for oracle price drift between API reads and trade execution
+        oracle_drift_tolerance = 0.001
+        spread_floor = pool_price_lower * (1 + spread_normalized) * (1 - oracle_drift_tolerance)
 
         assert exec_price >= spread_floor, (
             f"Long exec_price ({exec_price}) should be >= poolPrice * (1 + spread) = {spread_floor:.2f} "
-            f"(poolPrice={pool_price:.2f}, spread={spread_normalized:.6f})"
+            f"(poolPrice_min={pool_price_lower:.2f}, spread={spread_normalized:.6f})"
         )
 
         logger.info(
@@ -355,7 +367,7 @@ class TestDynamicPricingBehavior:
         """
         price_before: Price = await reya_tester.client.markets.get_price(SYMBOL)
         assert price_before.pool_price is not None, "pool_price should be available for ETHRUSDPERP"
-        pool_price_before = float(price_before.pool_price)
+        ratio_before = float(price_before.pool_price) / float(price_before.oracle_price)
 
         await _execute_ioc_trade(reya_tester, is_buy=True)
 
@@ -364,14 +376,14 @@ class TestDynamicPricingBehavior:
 
         price_after: Price = await reya_tester.client.markets.get_price(SYMBOL)
         assert price_after.pool_price is not None, "pool_price should be available for ETHRUSDPERP"
-        pool_price_after = float(price_after.pool_price)
+        ratio_after = float(price_after.pool_price) / float(price_after.oracle_price)
 
-        assert pool_price_after > pool_price_before, (
-            f"Pool price should increase after long trade: "
-            f"before={pool_price_before:.2f}, after={pool_price_after:.2f}"
+        assert ratio_after > ratio_before, (
+            f"Pool/oracle ratio should increase after long trade (logF increases): "
+            f"before={ratio_before:.8f}, after={ratio_after:.8f}"
         )
 
         logger.info(
-            f"✅ T3.2 passed: poolPrice increased from {pool_price_before:.2f} "
-            f"to {pool_price_after:.2f} (delta={pool_price_after - pool_price_before:.2f})"
+            f"✅ T3.2 passed: pool/oracle ratio increased from {ratio_before:.8f} "
+            f"to {ratio_after:.8f} (delta={ratio_after - ratio_before:.8f})"
         )
