@@ -44,15 +44,15 @@ class AccountBalance(BaseModel):
     @field_validator('real_balance')
     def real_balance_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
     @field_validator('balance_deprecated')
     def balance_deprecated_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
     model_config = ConfigDict(
