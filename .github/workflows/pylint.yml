@@ -42,8 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry config virtualenvs.in-project true
-          make install
-          poetry install --extras dev
+          poetry install -n --extras dev
 
       - name: Lint
         run: |

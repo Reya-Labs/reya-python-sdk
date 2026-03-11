@@ -222,9 +222,13 @@ jobs:
           git config --local user.email "${{ env.CI_COMMIT_EMAIL }}"
           git config --local user.name "${{ env.CI_COMMIT_AUTHOR }}"
           git add pyproject.toml
-          git commit -m "chore: bump SDK version to $NEW_VERSION"
-          git push origin HEAD:${{ github.head_ref }}
-          echo "✅ Committed and pushed version bump to $NEW_VERSION"
+          if git diff --cached --quiet; then
+            echo "✅ Version already at $NEW_VERSION, nothing to commit"
+          else
+            git commit -m "chore: bump SDK version to $NEW_VERSION"
+            git push origin HEAD:${{ github.head_ref }}
+            echo "✅ Committed and pushed version bump to $NEW_VERSION"
+          fi
 
       - name: Validate version progression (for manual changes)
         if: github.event_name == 'pull_request' && env.VERSION_MANUALLY_MODIFIED == 'true'
