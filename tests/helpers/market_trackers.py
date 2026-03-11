@@ -9,10 +9,11 @@ fields (logPriceMultiplier, priceSpread, depthFactor) that are critical
 for execution price calculations.
 """
 
+from typing import Optional
+
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 import aiohttp
 

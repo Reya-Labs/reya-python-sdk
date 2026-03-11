@@ -96,20 +96,16 @@ class TestDynamicPricingReadOnly:
         trackers = await fetch_market_trackers(api_url, ETH_MARKET_ID)
 
         # depth_factor must be non-negative (drives price impact scaling; 0 on unconfigured markets)
-        assert trackers.depth_factor >= 0, (
-            f"depth_factor should be >= 0, got {trackers.depth_factor}"
-        )
+        assert trackers.depth_factor >= 0, f"depth_factor should be >= 0, got {trackers.depth_factor}"
 
         # price_spread must be non-negative (symmetric spread around pool price)
-        assert trackers.price_spread >= 0, (
-            f"price_spread should be >= 0, got {trackers.price_spread}"
-        )
+        assert trackers.price_spread >= 0, f"price_spread should be >= 0, got {trackers.price_spread}"
 
         # log_price_multiplier is a valid signed number (can be 0, positive, or negative)
         # Just verify it's finite and within a reasonable range (< 1e18 in magnitude)
-        assert trackers.log_price_multiplier.is_finite(), (
-            f"log_price_multiplier should be finite, got {trackers.log_price_multiplier}"
-        )
+        assert (
+            trackers.log_price_multiplier.is_finite()
+        ), f"log_price_multiplier should be finite, got {trackers.log_price_multiplier}"
 
         logger.info(
             f"✅ T1.1 passed: depth_factor={trackers.depth_factor}, "
@@ -172,15 +168,15 @@ class TestDynamicPricingReadOnly:
         zero_threshold = 1e14
 
         if log_f > zero_threshold:
-            assert pool_price > oracle_price, (
-                f"logF > 0 ({log_f}) but poolPrice ({pool_price}) <= oraclePrice ({oracle_price})"
-            )
-            logger.info(f"✅ T1.3: logF > 0 → poolPrice > oraclePrice")
+            assert (
+                pool_price > oracle_price
+            ), f"logF > 0 ({log_f}) but poolPrice ({pool_price}) <= oraclePrice ({oracle_price})"
+            logger.info("✅ T1.3: logF > 0 → poolPrice > oraclePrice")
         elif log_f < -zero_threshold:
-            assert pool_price < oracle_price, (
-                f"logF < 0 ({log_f}) but poolPrice ({pool_price}) >= oraclePrice ({oracle_price})"
-            )
-            logger.info(f"✅ T1.3: logF < 0 → poolPrice < oraclePrice")
+            assert (
+                pool_price < oracle_price
+            ), f"logF < 0 ({log_f}) but poolPrice ({pool_price}) >= oraclePrice ({oracle_price})"
+            logger.info("✅ T1.3: logF < 0 → poolPrice < oraclePrice")
         else:
             # logF ≈ 0, pool price should be approximately equal to oracle
             relative_diff = abs(pool_price - oracle_price) / oracle_price
@@ -188,7 +184,7 @@ class TestDynamicPricingReadOnly:
                 f"logF ≈ 0 ({log_f}) but poolPrice ({pool_price}) differs from "
                 f"oraclePrice ({oracle_price}) by {relative_diff:.6f}"
             )
-            logger.info(f"✅ T1.3: logF ≈ 0 → poolPrice ≈ oraclePrice")
+            logger.info("✅ T1.3: logF ≈ 0 → poolPrice ≈ oraclePrice")
 
 
 # ============================================================================
@@ -217,13 +213,11 @@ class TestDynamicPricingExecution:
         execution = await _execute_ioc_trade(reya_tester, is_buy=True)
         exec_price = float(execution.price)
 
-        assert exec_price > pool_price_before, (
-            f"Long exec_price ({exec_price}) should be > poolPrice_before ({pool_price_before})"
-        )
+        assert (
+            exec_price > pool_price_before
+        ), f"Long exec_price ({exec_price}) should be > poolPrice_before ({pool_price_before})"
 
-        logger.info(
-            f"✅ T2.1 passed: exec_price={exec_price:.2f} > poolPrice={pool_price_before:.2f}"
-        )
+        logger.info(f"✅ T2.1 passed: exec_price={exec_price:.2f} > poolPrice={pool_price_before:.2f}")
 
     @pytest.mark.asyncio
     async def test_short_execution_price_below_pool_price(self, reya_tester: ReyaTester):
@@ -241,6 +235,7 @@ class TestDynamicPricingExecution:
         exec_price = float(execution.price)
 
         price_info_after: Price = await reya_tester.client.markets.get_price(SYMBOL)
+        assert price_info_after.pool_price is not None, "pool_price should be available for ETHRUSDPERP"
         pool_price_after = float(price_info_after.pool_price)
         pool_price_upper = max(pool_price_before, pool_price_after)
 
@@ -249,9 +244,7 @@ class TestDynamicPricingExecution:
             f"(before={pool_price_before:.6f}, after={pool_price_after:.6f})"
         )
 
-        logger.info(
-            f"✅ T2.2 passed: exec_price={exec_price:.2f} < poolPrice={pool_price_upper:.2f}"
-        )
+        logger.info(f"✅ T2.2 passed: exec_price={exec_price:.2f} < poolPrice={pool_price_upper:.2f}")
 
     @pytest.mark.asyncio
     async def test_execution_price_bounded_by_oracle(self, reya_tester: ReyaTester):
@@ -275,9 +268,7 @@ class TestDynamicPricingExecution:
             f"[{lower_bound:.2f}, {upper_bound:.2f}] (oracle={oracle_price:.2f})"
         )
 
-        logger.info(
-            f"✅ T2.3 passed: exec_price={exec_price:.2f} within 5% of oracle={oracle_price:.2f}"
-        )
+        logger.info(f"✅ T2.3 passed: exec_price={exec_price:.2f} within 5% of oracle={oracle_price:.2f}")
 
     @pytest.mark.asyncio
     async def test_spread_floor_on_execution_price(self, reya_tester: ReyaTester):
@@ -290,6 +281,7 @@ class TestDynamicPricingExecution:
         """
         api_url = _get_api_url()
         price_info, trackers = await _get_price_and_trackers(api_url)
+        assert price_info.pool_price is not None, "pool_price should be available for ETHRUSDPERP"
         pool_price_before = float(price_info.pool_price)
         spread_normalized = float(trackers.price_spread) / 1e18
 
@@ -297,6 +289,7 @@ class TestDynamicPricingExecution:
         exec_price = float(execution.price)
 
         price_info_after = await fetch_price(api_url, SYMBOL)
+        assert price_info_after.pool_price is not None, "pool_price should be available for ETHRUSDPERP"
         pool_price_after = float(price_info_after.pool_price)
         pool_price_lower = min(pool_price_before, pool_price_after)
 
@@ -309,9 +302,7 @@ class TestDynamicPricingExecution:
             f"(poolPrice_min={pool_price_lower:.2f}, spread={spread_normalized:.6f})"
         )
 
-        logger.info(
-            f"✅ T2.4 passed: exec_price={exec_price:.2f} >= spread_floor={spread_floor:.2f}"
-        )
+        logger.info(f"✅ T2.4 passed: exec_price={exec_price:.2f} >= spread_floor={spread_floor:.2f}")
 
 
 # ============================================================================
@@ -331,9 +322,7 @@ class TestDynamicPricingBehavior:
 
         Includes a delay to account for indexer lag.
         """
-        trackers_before = await fetch_market_trackers(
-            reya_tester.client.config.api_url, ETH_MARKET_ID
-        )
+        trackers_before = await fetch_market_trackers(reya_tester.client.config.api_url, ETH_MARKET_ID)
         log_f_before = trackers_before.log_price_multiplier
 
         await _execute_ioc_trade(reya_tester, is_buy=True)
@@ -341,14 +330,11 @@ class TestDynamicPricingBehavior:
         # Wait for indexer to pick up the on-chain state change
         await asyncio.sleep(3.0)
 
-        trackers_after = await fetch_market_trackers(
-            reya_tester.client.config.api_url, ETH_MARKET_ID
-        )
+        trackers_after = await fetch_market_trackers(reya_tester.client.config.api_url, ETH_MARKET_ID)
         log_f_after = trackers_after.log_price_multiplier
 
         assert log_f_after > log_f_before, (
-            f"logPriceMultiplier should increase after long trade: "
-            f"before={log_f_before}, after={log_f_after}"
+            f"logPriceMultiplier should increase after long trade: " f"before={log_f_before}, after={log_f_after}"
         )
 
         logger.info(
