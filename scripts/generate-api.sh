@@ -15,6 +15,14 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}🚀 Generating Python SDK from OpenAPI specifications...${NC}"
 
+# Read package version from pyproject.toml
+PACKAGE_VERSION=$(grep -m1 '^version' "$ROOT_DIR/pyproject.toml" | sed 's/version = "\(.*\)"/\1/')
+if [ -z "$PACKAGE_VERSION" ]; then
+    echo -e "${RED}❌ Could not read version from pyproject.toml${NC}"
+    exit 1
+fi
+echo -e "${GREEN}📦 Using package version: $PACKAGE_VERSION${NC}"
+
 # Check if OpenAPI Generator CLI is installed
 if ! command -v openapi-generator-cli &> /dev/null; then
     echo -e "${YELLOW}⚠️  OpenAPI Generator CLI not found. Installing...${NC}"
@@ -38,7 +46,7 @@ if [ -d "$PYTHON_SDK_REPO" ]; then
         -o "$PYTHON_SDK_REPO" \
         --skip-operation-example \
         --global-property=models,apis,modelDocs=false,modelTests=false,apiDocs=false,apiTests=false,supportingFiles=__init__.py:api_client.py:configuration.py:api_response.py:exceptions.py:rest.py \
-        --additional-properties=library=asyncio,packageName=sdk.open_api,projectName=open-api,packageVersion=2.0.0,packageUrl=https://github.com/reya-network/reya-python-sdk
+        --additional-properties=library=asyncio,packageName=sdk.open_api,projectName=open-api,packageVersion=$PACKAGE_VERSION,packageUrl=https://github.com/reya-network/reya-python-sdk
 
     
     if [ $? -ne 0 ]; then
