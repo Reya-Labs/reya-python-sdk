@@ -32,6 +32,7 @@ from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
+from sdk.open_api.models.spot_trade_bust_list import SpotTradeBustList
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import SignatureGenerator
@@ -703,6 +704,22 @@ class ReyaTradingClient:
             raise ValueError("No wallet address available. Private key must be provided.")
 
         return await self.wallet.get_wallet_spot_executions(address=wallet)
+
+    async def get_spot_trade_busts(self) -> SpotTradeBustList:
+        """
+        Get spot trade busts (failed spot fills) for the owner wallet asynchronously.
+
+        Returns:
+            Spot trade busts
+
+        Raises:
+            ValueError: If no wallet address is available or API returns an error
+        """
+        wallet = self.owner_wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available. Private key must be provided.")
+
+        return await self.wallet.get_wallet_spot_trade_busts(address=wallet)
 
     async def close(self) -> None:
         """
