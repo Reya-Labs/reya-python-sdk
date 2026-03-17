@@ -17,22 +17,51 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
+from sdk.open_api.models.side import Side
 from typing import Optional, Set
 from typing_extensions import Self
 
-class WalletConfiguration(BaseModel):
+class SpotExecutionBust(BaseModel):
     """
-    WalletConfiguration
+    SpotExecutionBust
     """ # noqa: E501
-    fee_tier_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="feeTierId")
-    og_status: StrictBool = Field(description="OG status", alias="ogStatus")
-    affiliate_status: StrictBool = Field(description="Affiliate status", alias="affiliateStatus")
-    referee_status: StrictBool = Field(description="Referee status", alias="refereeStatus")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
+    maker_account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="makerAccountId")
+    order_id: StrictStr = Field(description="Order ID for the taker", alias="orderId")
+    maker_order_id: StrictStr = Field(description="Order ID for the maker", alias="makerOrderId")
+    qty: Annotated[str, Field(strict=True)]
+    side: Side
+    price: Annotated[str, Field(strict=True)]
+    reason: StrictStr = Field(description="Hex-encoded revert reason bytes")
+    timestamp: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["feeTierId", "ogStatus", "affiliateStatus", "refereeStatus"]
+    __properties: ClassVar[List[str]] = ["symbol", "accountId", "exchangeId", "makerAccountId", "orderId", "makerOrderId", "qty", "side", "price", "reason", "timestamp"]
+
+    @field_validator('symbol')
+    def symbol_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^[A-Za-z0-9]+$", value):
+            raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
+        return value
+
+    @field_validator('qty')
+    def qty_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
+
+    @field_validator('price')
+    def price_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -52,7 +81,7 @@ class WalletConfiguration(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of WalletConfiguration from a JSON string"""
+        """Create an instance of SpotExecutionBust from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -84,7 +113,7 @@ class WalletConfiguration(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of WalletConfiguration from a dict"""
+        """Create an instance of SpotExecutionBust from a dict"""
         if obj is None:
             return None
 
@@ -92,10 +121,17 @@ class WalletConfiguration(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "feeTierId": obj.get("feeTierId"),
-            "ogStatus": obj.get("ogStatus"),
-            "affiliateStatus": obj.get("affiliateStatus"),
-            "refereeStatus": obj.get("refereeStatus")
+            "symbol": obj.get("symbol"),
+            "accountId": obj.get("accountId"),
+            "exchangeId": obj.get("exchangeId"),
+            "makerAccountId": obj.get("makerAccountId"),
+            "orderId": obj.get("orderId"),
+            "makerOrderId": obj.get("makerOrderId"),
+            "qty": obj.get("qty"),
+            "side": obj.get("side"),
+            "price": obj.get("price"),
+            "reason": obj.get("reason"),
+            "timestamp": obj.get("timestamp")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():
