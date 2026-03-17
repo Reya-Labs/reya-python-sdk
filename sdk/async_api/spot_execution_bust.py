@@ -2,16 +2,18 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
-class SpotTradeBust(BaseModel): 
+class SpotExecutionBust(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
-  counterparty_account_id: int = Field(alias='''counterpartyAccountId''')
+  exchange_id: int = Field(alias='''exchangeId''')
+  maker_account_id: int = Field(alias='''makerAccountId''')
+  order_id: str = Field(description='''Order ID for the taker''', alias='''orderId''')
+  maker_order_id: str = Field(description='''Order ID for the maker''', alias='''makerOrderId''')
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   price: str = Field()
   reason: str = Field(description='''Hex-encoded revert reason bytes''')
   timestamp: int = Field()
-  transaction_hash: str = Field(description='''Transaction hash''', alias='''transactionHash''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -32,13 +34,13 @@ class SpotTradeBust(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['symbol', 'account_id', 'counterparty_account_id', 'qty', 'side', 'price', 'reason', 'timestamp', 'transaction_hash', 'additional_properties']
+    known_object_properties = ['symbol', 'account_id', 'exchange_id', 'maker_account_id', 'order_id', 'maker_order_id', 'qty', 'side', 'price', 'reason', 'timestamp', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['symbol', 'accountId', 'counterpartyAccountId', 'qty', 'side', 'price', 'reason', 'timestamp', 'transactionHash', 'additionalProperties']
+    known_json_properties = ['symbol', 'accountId', 'exchangeId', 'makerAccountId', 'orderId', 'makerOrderId', 'qty', 'side', 'price', 'reason', 'timestamp', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
