@@ -14,6 +14,7 @@ from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
+from sdk.open_api.models.spot_execution_bust import SpotExecutionBust
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 from tests.helpers.validators import validate_order_fields, validate_spot_execution_fields
 
@@ -467,3 +468,68 @@ class Waiters:
 
         new_count = len(self._t.ws.balance_updates) - initial_count
         raise RuntimeError(f"Expected at least {min_updates} balance update(s), got {new_count} after {timeout}s")
+
+    async def for_spot_execution_bust(
+        self,
+        order_id: Optional[str] = None,
+        timeout: int = 15,
+    ) -> SpotExecutionBust:
+        """Wait for a spot execution bust event via both WS and REST.
+
+        Polls the WS EventStore for a bust matching the given order_id (as either
+        taker order_id or maker_order_id). Then confirms via REST.
+
+        Args:
+            order_id: Order ID to match (taker or maker side). If None, waits for any bust.
+            timeout: Maximum time to wait in seconds.
+
+        Returns:
+            The REST SpotExecutionBust object.
+        """
+        logger.info(f"⏳ Waiting for spot execution bust (order_id={order_id})...")
+
+        start_time = time.time()
+        ws_bust = None
+        rest_bust = None
+
+        while time.time() - start_time < timeout:
+            # Check WS bust store
+            if ws_bust is None:
+                if order_id is not None:
+                    # Try matching as taker order_id (primary key)
+                    found = self._t.ws.spot_execution_busts.get(str(order_id))
+                    if found is None:
+                        # Try matching as maker_order_id
+                        found = self._t.ws.spot_execution_busts.find_last(
+                            lambda b: str(b.maker_order_id) == str(order_id)
+                        )
+                    if found:
+                        elapsed = time.time() - start_time
+                        logger.info(f" ✅ Bust confirmed via WS: order_id={found.order_id} (took {elapsed:.2f}s)")
+                        ws_bust = found
+                else:
+                    # Wait for any bust
+                    if len(self._t.ws.spot_execution_busts) > 0:
+                        ws_bust = self._t.ws.spot_execution_busts.last
+                        elapsed = time.time() - start_time
+                        logger.info(f" ✅ Bust confirmed via WS: order_id={ws_bust.order_id} (took {elapsed:.2f}s)")
+
+            # Once WS confirms, verify via REST
+            if ws_bust is not None and rest_bust is None:
+                busts = await self._t.data.spot_execution_busts()
+                for bust in busts:
+                    if str(bust.order_id) == str(ws_bust.order_id):
+                        elapsed = time.time() - start_time
+                        logger.info(f" ✅ Bust confirmed via REST: order_id={bust.order_id} (took {elapsed:.2f}s)")
+                        rest_bust = bust
+                        break
+
+            if ws_bust and rest_bust:
+                return rest_bust
+
+            await asyncio.sleep(0.2)
+
+        raise RuntimeError(
+            f"Spot execution bust not confirmed after {timeout}s, "
+            f"order_id={order_id}, ws: {ws_bust is not None}, rest: {rest_bust is not None}"
+        )
