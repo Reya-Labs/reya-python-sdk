@@ -54,7 +54,9 @@ def validate_bust_fields(bust: SpotExecutionBust, expected_symbol: str | None = 
     assert isinstance(bust.exchange_id, int), f"Bust exchange_id should be int, got {type(bust.exchange_id)}"
 
     assert bust.maker_account_id is not None, "Bust maker_account_id should not be None"
-    assert isinstance(bust.maker_account_id, int), f"Bust maker_account_id should be int, got {type(bust.maker_account_id)}"
+    assert isinstance(
+        bust.maker_account_id, int
+    ), f"Bust maker_account_id should be int, got {type(bust.maker_account_id)}"
 
     assert bust.order_id is not None, "Bust order_id should not be None"
     assert isinstance(bust.order_id, str), f"Bust order_id should be str, got {type(bust.order_id)}"
@@ -91,7 +93,7 @@ def validate_bust_fields(bust: SpotExecutionBust, expected_symbol: str | None = 
 @pytest.mark.asyncio
 async def test_rest_get_wallet_spot_execution_busts_structure(
     spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+):  # pylint: disable=unused-argument
     """
     Test wallet spot execution busts REST endpoint returns correct structure.
 
@@ -137,7 +139,7 @@ async def test_rest_get_wallet_spot_execution_busts_structure(
 @pytest.mark.asyncio
 async def test_rest_get_wallet_spot_execution_busts_via_client_wrapper(
     spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+):  # pylint: disable=unused-argument
     """
     Test the convenience wrapper client.get_spot_execution_busts().
 
@@ -169,7 +171,7 @@ async def test_rest_get_wallet_spot_execution_busts_via_client_wrapper(
 @pytest.mark.asyncio
 async def test_rest_get_wallet_spot_execution_busts_via_data_ops(
     spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+):  # pylint: disable=unused-argument
     """
     Test the DataOperations.spot_execution_busts() helper.
 
@@ -198,9 +200,7 @@ async def test_rest_get_wallet_spot_execution_busts_via_data_ops(
 @pytest.mark.spot
 @pytest.mark.rest_api
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_execution_busts_structure(
-    spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+async def test_rest_get_market_spot_execution_busts_structure(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test market spot execution busts REST endpoint returns correct structure.
 
@@ -231,8 +231,7 @@ async def test_rest_get_market_spot_execution_busts_structure(
         assert isinstance(bust, SpotExecutionBust), f"Expected SpotExecutionBust, got {type(bust)}"
         validate_bust_fields(bust, expected_symbol=spot_config.symbol)
         logger.info(
-            f"   - qty={bust.qty}, price={bust.price}, "
-            f"order_id={bust.order_id}, reason={bust.reason[:20]}..."
+            f"   - qty={bust.qty}, price={bust.price}, " f"order_id={bust.order_id}, reason={bust.reason[:20]}..."
         )
 
     logger.info("✅ MARKET SPOT EXECUTION BUSTS STRUCTURE TEST COMPLETED")
@@ -241,9 +240,7 @@ async def test_rest_get_market_spot_execution_busts_structure(
 @pytest.mark.spot
 @pytest.mark.rest_api
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_execution_busts_via_data_ops(
-    spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+async def test_rest_get_market_spot_execution_busts_via_data_ops(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test the DataOperations.market_spot_execution_busts() helper.
 
@@ -268,9 +265,7 @@ async def test_rest_get_market_spot_execution_busts_via_data_ops(
 @pytest.mark.spot
 @pytest.mark.rest_api
 @pytest.mark.asyncio
-async def test_rest_wallet_and_market_busts_consistency(
-    spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+async def test_rest_wallet_and_market_busts_consistency(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test that wallet and market bust endpoints return consistent data.
 
@@ -306,9 +301,7 @@ async def test_rest_wallet_and_market_busts_consistency(
 @pytest.mark.spot
 @pytest.mark.rest_api
 @pytest.mark.asyncio
-async def test_rest_get_market_spot_execution_busts_pagination(
-    spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+async def test_rest_get_market_spot_execution_busts_pagination(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test market spot execution busts REST endpoint supports time-based pagination.
 
@@ -369,7 +362,7 @@ async def test_rest_get_market_spot_execution_busts_pagination(
 @pytest.mark.asyncio
 async def test_ws_wallet_spot_execution_busts_subscription(
     spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+):  # pylint: disable=unused-argument
     """
     Test WebSocket subscription to wallet spot execution busts channel.
 
@@ -400,9 +393,7 @@ async def test_ws_wallet_spot_execution_busts_subscription(
 @pytest.mark.spot
 @pytest.mark.websocket
 @pytest.mark.asyncio
-async def test_ws_market_spot_execution_busts_subscription(
-    spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+async def test_ws_market_spot_execution_busts_subscription(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test WebSocket subscription to market spot execution busts channel.
 
@@ -436,7 +427,7 @@ async def test_ws_market_spot_execution_busts_subscription(
 @pytest.mark.asyncio
 async def test_ws_bust_store_operations(
     spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+):  # pylint: disable=unused-argument
     """
     Test WebSocket bust EventStore operations.
 
@@ -457,9 +448,9 @@ async def test_ws_bust_store_operations(
     # Clear only busts - should not affect spot executions
     spot_tester.ws.clear_spot_execution_busts()
     assert len(spot_tester.ws.spot_execution_busts) == 0, "Bust store should be empty"
-    assert len(spot_tester.ws.spot_executions) == initial_spot_exec_count, (
-        "Spot executions should be unchanged after clearing busts"
-    )
+    assert (
+        len(spot_tester.ws.spot_executions) == initial_spot_exec_count
+    ), "Spot executions should be unchanged after clearing busts"
 
     # Clear all - should clear both
     spot_tester.ws.clear()
@@ -534,12 +525,12 @@ async def test_successful_trade_produces_no_busts(
     maker_busts_after = await maker_tester.data.spot_execution_busts()
     taker_busts_after = await taker_tester.data.spot_execution_busts()
 
-    assert len(maker_busts_after) == maker_bust_count_before, (
-        f"Maker REST bust count should not change: before={maker_bust_count_before}, after={len(maker_busts_after)}"
-    )
-    assert len(taker_busts_after) == taker_bust_count_before, (
-        f"Taker REST bust count should not change: before={taker_bust_count_before}, after={len(taker_busts_after)}"
-    )
+    assert (
+        len(maker_busts_after) == maker_bust_count_before
+    ), f"Maker REST bust count should not change: before={maker_bust_count_before}, after={len(maker_busts_after)}"
+    assert (
+        len(taker_busts_after) == taker_bust_count_before
+    ), f"Taker REST bust count should not change: before={taker_bust_count_before}, after={len(taker_busts_after)}"
 
     logger.info("✅ No busts produced - successful trade verified clean")
 
@@ -553,9 +544,7 @@ async def test_successful_trade_produces_no_busts(
 @pytest.mark.spot
 @pytest.mark.rest_api
 @pytest.mark.asyncio
-async def test_bust_data_is_historical_consistent(
-    spot_config: SpotTestConfig, spot_tester: ReyaTester
-):
+async def test_bust_data_is_historical_consistent(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
     Test that repeated queries to bust endpoints return consistent results.
 
@@ -570,9 +559,9 @@ async def test_bust_data_is_historical_consistent(
     busts_first = await spot_tester.data.spot_execution_busts()
     busts_second = await spot_tester.data.spot_execution_busts()
 
-    assert len(busts_first) == len(busts_second), (
-        f"Bust count should be consistent: first={len(busts_first)}, second={len(busts_second)}"
-    )
+    assert len(busts_first) == len(
+        busts_second
+    ), f"Bust count should be consistent: first={len(busts_first)}, second={len(busts_second)}"
 
     # If busts exist, verify order_ids match
     if busts_first:
@@ -584,9 +573,9 @@ async def test_bust_data_is_historical_consistent(
     market_busts_first = await spot_tester.data.market_spot_execution_busts(spot_config.symbol)
     market_busts_second = await spot_tester.data.market_spot_execution_busts(spot_config.symbol)
 
-    assert len(market_busts_first) == len(market_busts_second), (
-        f"Market bust count should be consistent: first={len(market_busts_first)}, second={len(market_busts_second)}"
-    )
+    assert len(market_busts_first) == len(
+        market_busts_second
+    ), f"Market bust count should be consistent: first={len(market_busts_first)}, second={len(market_busts_second)}"
 
     logger.info(
         f"Consistency verified: wallet={len(busts_first)} busts, "
@@ -692,10 +681,7 @@ async def test_deliberate_bust_via_insufficient_balance(
 
     bust_qty = str(round(bust_qty_f, 6))
     taker_rusd_needed = float(bust_qty) * bust_price_f
-    logger.info(
-        f"Bust params: qty={bust_qty}, price={bust_price}, "
-        f"taker rUSD needed={taker_rusd_needed:.2f}"
-    )
+    logger.info(f"Bust params: qty={bust_qty}, price={bust_price}, " f"taker rUSD needed={taker_rusd_needed:.2f}")
 
     # Record balances before to verify no change after bust
     maker_balances_before = await maker_tester.data.balances()
@@ -703,14 +689,7 @@ async def test_deliberate_bust_via_insufficient_balance(
 
     # Step 5: Maker posts GTC sell (no balance check — exceeds actual balance)
     logger.info(f"Placing maker GTC sell: qty={bust_qty} at price={bust_price}")
-    maker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .sell()
-        .qty(bust_qty)
-        .price(bust_price)
-        .gtc()
-        .build()
-    )
+    maker_order_params = OrderBuilder.from_config(spot_config).sell().qty(bust_qty).price(bust_price).gtc().build()
     maker_order_id = await maker_tester.orders.create_limit(maker_order_params)
     logger.info(f"Maker GTC sell placed: order_id={maker_order_id}")
 
@@ -721,14 +700,7 @@ async def test_deliberate_bust_via_insufficient_balance(
     # Step 6: Taker posts IOC buy to cross the GTC
     # The API may raise ApiException when on-chain settlement reverts — this is expected
     logger.info(f"Placing taker IOC buy: qty={bust_qty} at price={bust_price}")
-    taker_order_params = (
-        OrderBuilder.from_config(spot_config)
-        .buy()
-        .qty(bust_qty)
-        .price(bust_price)
-        .ioc()
-        .build()
-    )
+    taker_order_params = OrderBuilder.from_config(spot_config).buy().qty(bust_qty).price(bust_price).ioc().build()
     taker_order_id = None
     try:
         taker_order_id = await taker_tester.orders.create_limit(taker_order_params)
@@ -738,9 +710,7 @@ async def test_deliberate_bust_via_insufficient_balance(
 
     # Step 7: Wait for bust event via WS (use maker_order_id since bust references it)
     logger.info("Waiting for bust event...")
-    bust = await maker_tester.wait.for_spot_execution_bust(
-        order_id=maker_order_id, timeout=20
-    )
+    bust = await maker_tester.wait.for_spot_execution_bust(order_id=maker_order_id, timeout=20)
     logger.info(
         f"Bust received: order_id={bust.order_id}, maker_order_id={bust.maker_order_id}, "
         f"qty={bust.qty}, price={bust.price}, reason={bust.reason}"
@@ -756,15 +726,15 @@ async def test_deliberate_bust_via_insufficient_balance(
     taker_busts_after = await taker_tester.data.spot_execution_busts()
     market_busts_after = await maker_tester.data.market_spot_execution_busts(spot_config.symbol)
 
-    assert len(maker_busts_after) > maker_bust_count_before, (
-        f"Maker bust count should increase: before={maker_bust_count_before}, after={len(maker_busts_after)}"
-    )
-    assert len(taker_busts_after) > taker_bust_count_before, (
-        f"Taker bust count should increase: before={taker_bust_count_before}, after={len(taker_busts_after)}"
-    )
-    assert len(market_busts_after) > market_bust_count_before, (
-        f"Market bust count should increase: before={market_bust_count_before}, after={len(market_busts_after)}"
-    )
+    assert (
+        len(maker_busts_after) > maker_bust_count_before
+    ), f"Maker bust count should increase: before={maker_bust_count_before}, after={len(maker_busts_after)}"
+    assert (
+        len(taker_busts_after) > taker_bust_count_before
+    ), f"Taker bust count should increase: before={taker_bust_count_before}, after={len(taker_busts_after)}"
+    assert (
+        len(market_busts_after) > market_bust_count_before
+    ), f"Market bust count should increase: before={market_bust_count_before}, after={len(market_busts_after)}"
 
     logger.info(
         f"Bust counts after: maker={len(maker_busts_after)}, "

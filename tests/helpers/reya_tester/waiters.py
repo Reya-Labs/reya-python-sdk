@@ -512,7 +512,8 @@ class Waiters:
                     if len(self._t.ws.spot_execution_busts) > 0:
                         ws_bust = self._t.ws.spot_execution_busts.last
                         elapsed = time.time() - start_time
-                        logger.info(f" ✅ Bust confirmed via WS: order_id={ws_bust.order_id} (took {elapsed:.2f}s)")
+                        if ws_bust is not None:
+                            logger.info(f" ✅ Bust confirmed via WS: order_id={ws_bust.order_id} (took {elapsed:.2f}s)")
 
             # Once WS confirms, verify via REST
             if ws_bust is not None and rest_bust is None:

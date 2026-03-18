@@ -19,15 +19,9 @@ from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # p
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
-from sdk.async_api.market_perp_execution_update_payload import (
-    MarketPerpExecutionUpdatePayload,
-)
-from sdk.async_api.market_spot_execution_bust_update_payload import (
-    MarketSpotExecutionBustUpdatePayload,
-)
-from sdk.async_api.market_spot_execution_update_payload import (
-    MarketSpotExecutionUpdatePayload,
-)
+from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
+from sdk.async_api.market_spot_execution_bust_update_payload import MarketSpotExecutionBustUpdatePayload
+from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
@@ -38,15 +32,9 @@ from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.unsubscribed_message_payload import UnsubscribedMessagePayload
-from sdk.async_api.wallet_perp_execution_update_payload import (
-    WalletPerpExecutionUpdatePayload,
-)
-from sdk.async_api.wallet_spot_execution_bust_update_payload import (
-    WalletSpotExecutionBustUpdatePayload,
-)
-from sdk.async_api.wallet_spot_execution_update_payload import (
-    WalletSpotExecutionUpdatePayload,
-)
+from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
+from sdk.async_api.wallet_spot_execution_bust_update_payload import WalletSpotExecutionBustUpdatePayload
+from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
 from sdk.reya_websocket.config import WebSocketConfig, get_config
 from sdk.reya_websocket.resources.market import MarketResource
 from sdk.reya_websocket.resources.prices import PricesResource
