@@ -20,15 +20,15 @@ import json
 from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List
 from sdk.open_api.models.pagination_meta import PaginationMeta
-from sdk.open_api.models.perp_execution import PerpExecution
+from sdk.open_api.models.spot_execution_bust import SpotExecutionBust
 from typing import Optional, Set
 from typing_extensions import Self
 
-class PerpExecutionList(BaseModel):
+class SpotExecutionBustList(BaseModel):
     """
-    PerpExecutionList
+    SpotExecutionBustList
     """ # noqa: E501
-    data: List[PerpExecution]
+    data: List[SpotExecutionBust]
     meta: PaginationMeta
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["data", "meta"]
@@ -51,7 +51,7 @@ class PerpExecutionList(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of PerpExecutionList from a JSON string"""
+        """Create an instance of SpotExecutionBustList from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -93,7 +93,7 @@ class PerpExecutionList(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of PerpExecutionList from a dict"""
+        """Create an instance of SpotExecutionBustList from a dict"""
         if obj is None:
             return None
 
@@ -101,7 +101,7 @@ class PerpExecutionList(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "data": [PerpExecution.from_dict(_item) for _item in obj["data"]] if obj.get("data") is not None else None,
+            "data": [SpotExecutionBust.from_dict(_item) for _item in obj["data"]] if obj.get("data") is not None else None,
             "meta": PaginationMeta.from_dict(obj["meta"]) if obj.get("meta") is not None else None
         })
         # store additional fields in additional_properties

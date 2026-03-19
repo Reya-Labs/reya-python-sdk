@@ -18,11 +18,7 @@ from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import logger
-from tests.test_spot.spot_config import (
-    SpotMarketConfig,
-    SpotTestConfig,
-    fetch_spot_market_configs,
-)
+from tests.test_spot.spot_config import SpotMarketConfig, SpotTestConfig, fetch_spot_market_configs
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1

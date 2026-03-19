@@ -13,6 +13,8 @@ from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.price import Price
 from sdk.open_api.models.spot_execution import SpotExecution
+from sdk.open_api.models.spot_execution_bust import SpotExecutionBust
+from sdk.open_api.models.spot_execution_bust_list import SpotExecutionBustList
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 
 if TYPE_CHECKING:
@@ -127,3 +129,22 @@ class DataOperations:
     async def open_orders(self) -> list[Order]:
         """Get all open orders."""
         return await self._t.client.get_open_orders()
+
+    async def spot_execution_busts(self) -> list[SpotExecutionBust]:
+        """Get spot execution busts for this wallet.
+
+        Returns list of SpotExecutionBust objects (may be empty if no busts exist).
+        """
+        bust_list: SpotExecutionBustList = await self._t.client.get_spot_execution_busts()
+        return bust_list.data if bust_list.data else []
+
+    async def market_spot_execution_busts(self, symbol: str) -> list[SpotExecutionBust]:
+        """Get spot execution busts for a specific market.
+
+        Args:
+            symbol: Trading symbol (e.g., "WETHRUSD").
+
+        Returns list of SpotExecutionBust objects (may be empty if no busts exist).
+        """
+        bust_list: SpotExecutionBustList = await self._t.client.markets.get_market_spot_execution_busts(symbol=symbol)
+        return bust_list.data if bust_list.data else []

@@ -26,9 +26,7 @@ from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
-from sdk.async_api.wallet_perp_execution_update_payload import (
-    WalletPerpExecutionUpdatePayload,
-)
+from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
 from sdk.reya_websocket import ReyaSocket
 from sdk.reya_websocket.config import WebSocketConfig
 
