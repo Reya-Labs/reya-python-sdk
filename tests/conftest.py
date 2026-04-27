@@ -265,6 +265,91 @@ async def taker_tester(taker_tester_session):  # pylint: disable=redefined-outer
 
 
 # ============================================================================
+# Perp orderbook maker/taker fixtures
+# ============================================================================
+# Under perpOB every fill needs a maker and a taker. PERP_ACCOUNT_ID_1 acts as
+# the maker (resting GTC orders); PERP_ACCOUNT_ID_2 acts as the taker (IOC fills).
+# Tests that don't need a counterparty can keep using the single-account
+# ``reya_tester`` fixture defined above.
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def perp_maker_tester_session():
+    """Session-scoped perp maker — uses PERP_ACCOUNT_ID_1 (default ReyaTester credentials)."""
+    load_dotenv()
+
+    tester = ReyaTester(perp_account_number=1)
+    if not tester.owner_wallet_address or not tester.account_id:
+        pytest.skip(
+            "Missing perp account 1 configuration "
+            "(PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1) for perp tests"
+        )
+
+    logger.info(f"🔧 SESSION: Perp maker initialized: account_id={tester.account_id}")
+    await tester.setup()
+    yield tester
+
+    try:
+        if tester.websocket:
+            tester.websocket.close()
+        await tester.positions.close_all(fail_if_none=False)
+        await tester.orders.close_all(fail_if_none=False)
+        await tester.client.close()
+        logger.info("✅ Perp maker session cleanup completed")
+    except (OSError, RuntimeError, asyncio.CancelledError) as e:
+        logger.warning(f"Error during perp maker cleanup: {e}")
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def perp_taker_tester_session():
+    """Session-scoped perp taker — uses PERP_ACCOUNT_ID_2."""
+    load_dotenv()
+
+    tester = ReyaTester(perp_account_number=2)
+    if not tester.owner_wallet_address or not tester.account_id:
+        pytest.skip(
+            "Missing perp account 2 configuration "
+            "(PERP_ACCOUNT_ID_2, PERP_PRIVATE_KEY_2, PERP_WALLET_ADDRESS_2) for perp orderbook tests"
+        )
+
+    logger.info(f"🔧 SESSION: Perp taker initialized: account_id={tester.account_id}")
+    await tester.setup()
+    yield tester
+
+    try:
+        if tester.websocket:
+            tester.websocket.close()
+        await tester.positions.close_all(fail_if_none=False)
+        await tester.orders.close_all(fail_if_none=False)
+        await tester.client.close()
+        logger.info("✅ Perp taker session cleanup completed")
+    except (OSError, RuntimeError, asyncio.CancelledError) as e:
+        logger.warning(f"Error during perp taker cleanup: {e}")
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="function")
+async def perp_maker_tester(perp_maker_tester_session):  # pylint: disable=redefined-outer-name
+    """Function-scoped perp maker — clears orders/positions/WS state between tests."""
+    await perp_maker_tester_session.orders.close_all(fail_if_none=False)
+    await perp_maker_tester_session.positions.close_all(fail_if_none=False)
+    perp_maker_tester_session.ws.clear()
+    yield perp_maker_tester_session
+    await perp_maker_tester_session.orders.close_all(fail_if_none=False)
+    await perp_maker_tester_session.positions.close_all(fail_if_none=False)
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="function")
+async def perp_taker_tester(perp_taker_tester_session):  # pylint: disable=redefined-outer-name
+    """Function-scoped perp taker — clears orders/positions/WS state between tests."""
+    await perp_taker_tester_session.orders.close_all(fail_if_none=False)
+    await perp_taker_tester_session.positions.close_all(fail_if_none=False)
+    perp_taker_tester_session.ws.clear()
+    yield perp_taker_tester_session
+    await perp_taker_tester_session.orders.close_all(fail_if_none=False)
+    await perp_taker_tester_session.positions.close_all(fail_if_none=False)
+
+
+# ============================================================================
 # SPOT Test Configuration Fixture
 # ============================================================================
 

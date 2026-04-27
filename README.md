@@ -165,8 +165,8 @@ Create a `.env` file in the project root with the following variables:
 ACCOUNT_ID=your_account_id
 PRIVATE_KEY=your_private_key
 CHAIN_ID=1729                   # Use 89346162 for testnet
-REYA_WS_URL=wss://ws.reya.xyz/  # Use wss://websocket-testnet.reya.xyz/ for testnet
-REYA_API_BASE_URL=https://api.reya.xyz/v2  # Use https://api-cronos.reya.xyz/v2 for testnet
+REYA_WS_URL=wss://ws.reya.xyz/  # Use wss://websocket-devnet.reya-cronos.network/ for devnet1 (perpOB testnet)
+REYA_API_BASE_URL=https://api.reya.xyz/v2  # Use https://api-devnet.reya-cronos.network/v2 for devnet1
 OWNER_WALLET_ADDRESS=your_wallet_address    # Required: wallet address for data queries
 ```
 

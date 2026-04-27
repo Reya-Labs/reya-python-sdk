@@ -8,40 +8,27 @@ These tests verify that the API properly validates:
 - Balance validity (IOC orders)
 - Price/Qty step size validity
 
-High and Medium priority validation tests for spot market orders.
+High and Medium priority validation tests for spot market orders."""
 
-TODO(perpOB): rewrite for the unified Order envelope.
-This module pre-dates the v2.3.0 perpOB migration. It builds CreateOrder /
-CancelOrder / MassCancel requests by hand, calling the (now removed)
-SignatureGenerator.encode_inputs_limit_order and SignatureGenerator.sign_raw_order
-helpers, and uses the old `expiresAfter` field as the signature deadline
-(now renamed to `deadline`). Re-enable on a per-test basis as the validation
-suite is ported to the new sign_order / sign_cancel_order / sign_mass_cancel
-APIs and the unified CreateOrderRequest schema. Tracking issue: TBD.
-"""
+import asyncio
+import time
+from decimal import Decimal
 
+import aiohttp
 import pytest
 
-pytestmark = pytest.mark.skip(reason="pending rewrite for v2.3.0 perpOB Order envelope; see module docstring")
-
-import asyncio  # noqa: E402  pylint: disable=wrong-import-position
-import time  # noqa: E402  pylint: disable=wrong-import-position
-from decimal import Decimal  # noqa: E402  pylint: disable=wrong-import-position
-
-import aiohttp  # noqa: E402  pylint: disable=wrong-import-position
-
-from sdk.open_api.exceptions import ApiException  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.cancel_order_request import CancelOrderRequest  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.create_order_request import CreateOrderRequest  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.mass_cancel_request import MassCancelRequest  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.order_type import OrderType  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.time_in_force import TimeInForce  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.reya_rest_api.auth.signatures import SignatureGenerator  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.reya_rest_api.config import TradingConfig  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers import ReyaTester  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers.builders import OrderBuilder  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers.reya_tester import logger  # noqa: E402  pylint: disable=wrong-import-position
-from tests.test_spot.spot_config import SpotTestConfig  # noqa: E402  pylint: disable=wrong-import-position
+from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.cancel_order_request import CancelOrderRequest
+from sdk.open_api.models.create_order_request import CreateOrderRequest
+from sdk.open_api.models.mass_cancel_request import MassCancelRequest
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api.auth.signatures import SignatureGenerator
+from sdk.reya_rest_api.config import TradingConfig
+from tests.helpers import ReyaTester
+from tests.helpers.builders import OrderBuilder
+from tests.helpers.reya_tester import logger
+from tests.test_spot.spot_config import SpotTestConfig
 
 # SIGNATURE VALIDATION TESTS
 # ============================================================================
@@ -80,7 +67,7 @@ async def test_spot_order_invalid_signature(spot_config: SpotTestConfig, spot_te
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=deadline,
+        deadline=deadline,
         reduceOnly=None,
         signature=fake_signature,
         nonce=str(nonce),
@@ -139,21 +126,21 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
     nonce = spot_tester.get_next_nonce()
 
     # Sign with the wrong private key
-    inputs = wrong_signer.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(str(order_price)),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = wrong_signer.sign_raw_order(
-        account_id=spot_tester.account_id,  # Same account
+    signature = wrong_signer.sign_order(
+        account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,  # LIMIT_ORDER_SPOT
-        inputs=inputs,
-        deadline=deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(str(order_price)))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=deadline,
     )
 
     order_request = CreateOrderRequest(
@@ -165,7 +152,7 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=deadline,
+        deadline=deadline,
         reduceOnly=None,
         signature=signature,
         nonce=str(nonce),
@@ -221,21 +208,21 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
     # Get signature generator from client
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(str(order_price)),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = sig_gen.sign_raw_order(
+    signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,  # LIMIT_ORDER_SPOT
-        inputs=inputs,
-        deadline=expired_deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(str(order_price)))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=expired_deadline,
     )
 
     order_request = CreateOrderRequest(
@@ -247,7 +234,7 @@ async def test_spot_order_expired_deadline(spot_config: SpotTestConfig, spot_tes
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=expired_deadline,
+        deadline=expired_deadline,
         reduceOnly=None,
         signature=signature,
         nonce=str(nonce),
@@ -306,7 +293,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
     nonce = spot_tester.get_next_nonce()
 
     sig_gen = spot_tester.client.signature_generator
-    signature = sig_gen.sign_cancel_order_spot(
+    signature = sig_gen.sign_cancel_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         order_id=int(order_id),
@@ -321,7 +308,7 @@ async def test_spot_cancel_expired_deadline(spot_config: SpotTestConfig, spot_te
         accountId=spot_tester.account_id,
         signature=signature,
         nonce=str(nonce),
-        expiresAfter=expired_deadline,
+        deadline=expired_deadline,
     )
 
     logger.info(f"Sending cancel with expired deadline: {expired_deadline}")
@@ -378,21 +365,21 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
 
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(str(order_price)),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    first_signature = sig_gen.sign_raw_order(
+    first_signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=first_deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(str(order_price)))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=first_nonce,
+        deadline=first_deadline,
     )
 
     first_order_request = CreateOrderRequest(
@@ -404,7 +391,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=first_deadline,
+        deadline=first_deadline,
         reduceOnly=None,
         signature=first_signature,
         nonce=str(first_nonce),
@@ -426,15 +413,21 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
     # Step 2: Try to reuse the same nonce - should fail
     reused_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    reused_signature = sig_gen.sign_raw_order(
+    reused_signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(str(order_price)))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
+        nonce=first_nonce,
         deadline=reused_deadline,
-        nonce=first_nonce,  # Reuse the same nonce
     )
 
     reused_order_request = CreateOrderRequest(
@@ -446,7 +439,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=reused_deadline,
+        deadline=reused_deadline,
         reduceOnly=None,
         signature=reused_signature,
         nonce=str(first_nonce),  # Reuse the same nonce
@@ -495,21 +488,21 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
 
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(str(order_price)),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    first_signature = sig_gen.sign_raw_order(
+    first_signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=first_deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(str(order_price)))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=first_nonce,
+        deadline=first_deadline,
     )
 
     first_order_request = CreateOrderRequest(
@@ -521,7 +514,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=first_deadline,
+        deadline=first_deadline,
         reduceOnly=None,
         signature=first_signature,
         nonce=str(first_nonce),
@@ -544,15 +537,21 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
     old_nonce = first_nonce - 1
     old_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
-    old_signature = sig_gen.sign_raw_order(
+    old_signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(str(order_price)))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
+        nonce=old_nonce,
         deadline=old_deadline,
-        nonce=old_nonce,  # Use nonce - 1
     )
 
     old_order_request = CreateOrderRequest(
@@ -564,7 +563,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         qty=spot_config.min_qty,
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
-        expiresAfter=old_deadline,
+        deadline=old_deadline,
         reduceOnly=None,
         signature=old_signature,
         nonce=str(old_nonce),  # Use nonce - 1
@@ -904,7 +903,7 @@ async def test_spot_cancel_invalid_signature(spot_config: SpotTestConfig, spot_t
         accountId=spot_tester.account_id,
         signature=fake_signature,
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
     )
 
     logger.info("Sending cancel with invalid signature...")
@@ -969,7 +968,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     first_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
     sig_gen = spot_tester.client.signature_generator
-    first_signature = sig_gen.sign_cancel_order_spot(
+    first_signature = sig_gen.sign_cancel_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         order_id=int(first_order_id),
@@ -984,7 +983,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
         accountId=spot_tester.account_id,
         signature=first_signature,
         nonce=str(first_nonce),
-        expiresAfter=first_deadline,
+        deadline=first_deadline,
     )
 
     logger.info(f"Step 1: Cancelling first order with nonce: {first_nonce}")
@@ -999,7 +998,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
     logger.info(f"Step 2: Created second order: {second_order_id}")
 
     reused_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
-    reused_signature = sig_gen.sign_cancel_order_spot(
+    reused_signature = sig_gen.sign_cancel_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         order_id=int(second_order_id),
@@ -1014,7 +1013,7 @@ async def test_spot_cancel_reused_nonce(spot_config: SpotTestConfig, spot_tester
         accountId=spot_tester.account_id,
         signature=reused_signature,
         nonce=str(first_nonce),  # Reuse the same nonce
-        expiresAfter=reused_deadline,
+        deadline=reused_deadline,
     )
 
     logger.info(f"Step 2: Trying to cancel with reused nonce: {first_nonce}")
@@ -1078,7 +1077,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
     first_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
 
     sig_gen = spot_tester.client.signature_generator
-    first_signature = sig_gen.sign_cancel_order_spot(
+    first_signature = sig_gen.sign_cancel_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         order_id=int(first_order_id),
@@ -1093,7 +1092,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
         accountId=spot_tester.account_id,
         signature=first_signature,
         nonce=str(first_nonce),
-        expiresAfter=first_deadline,
+        deadline=first_deadline,
     )
 
     logger.info(f"Step 1: Cancelling first order with nonce: {first_nonce}")
@@ -1109,7 +1108,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
 
     old_nonce = first_nonce - 1
     old_deadline = int(time.time()) + 60  # 1 minute from now (in seconds)
-    old_signature = sig_gen.sign_cancel_order_spot(
+    old_signature = sig_gen.sign_cancel_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         order_id=int(second_order_id),
@@ -1124,7 +1123,7 @@ async def test_spot_cancel_old_nonce(spot_config: SpotTestConfig, spot_tester: R
         accountId=spot_tester.account_id,
         signature=old_signature,
         nonce=str(old_nonce),  # Use nonce - 1
-        expiresAfter=old_deadline,
+        deadline=old_deadline,
     )
 
     logger.info(f"Step 2: Trying to cancel with old nonce (nonce-1): {old_nonce}")
@@ -1180,7 +1179,7 @@ async def test_spot_mass_cancel_invalid_signature(spot_config: SpotTestConfig, s
         symbol=spot_config.symbol,
         signature=fake_signature,
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
     )
 
     logger.info("Sending mass cancel with invalid signature...")
@@ -1229,7 +1228,7 @@ async def test_spot_mass_cancel_expired_deadline(spot_config: SpotTestConfig, sp
         symbol=spot_config.symbol,
         signature=signature,
         nonce=str(nonce),
-        expiresAfter=expired_deadline,
+        deadline=expired_deadline,
     )
 
     logger.info(f"Sending mass cancel with expired deadline: {expired_deadline}")
@@ -1284,7 +1283,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
         symbol=spot_config.symbol,
         signature=first_signature,
         nonce=str(first_nonce),
-        expiresAfter=first_deadline,
+        deadline=first_deadline,
     )
 
     logger.info(f"Step 1: Performing mass cancel with nonce: {first_nonce}")
@@ -1305,7 +1304,7 @@ async def test_spot_mass_cancel_reused_nonce(spot_config: SpotTestConfig, spot_t
         symbol=spot_config.symbol,
         signature=reused_signature,
         nonce=str(first_nonce),  # Reuse the same nonce
-        expiresAfter=reused_deadline,
+        deadline=reused_deadline,
     )
 
     logger.info(f"Step 2: Trying mass cancel with reused nonce: {first_nonce}")
@@ -1360,7 +1359,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
         symbol=spot_config.symbol,
         signature=first_signature,
         nonce=str(first_nonce),
-        expiresAfter=first_deadline,
+        deadline=first_deadline,
     )
 
     logger.info(f"Step 1: Performing mass cancel with nonce: {first_nonce}")
@@ -1382,7 +1381,7 @@ async def test_spot_mass_cancel_old_nonce(spot_config: SpotTestConfig, spot_test
         symbol=spot_config.symbol,
         signature=old_signature,
         nonce=str(old_nonce),
-        expiresAfter=old_deadline,
+        deadline=old_deadline,
     )
 
     logger.info(f"Step 2: Trying mass cancel with old nonce (nonce-1): {old_nonce}")
@@ -1450,7 +1449,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
     nonce = spot_tester.get_next_nonce()
 
     # Sign cancel request with the wrong private key
-    wrong_signature = wrong_signer.sign_cancel_order_spot(
+    wrong_signature = wrong_signer.sign_cancel_order(
         account_id=spot_tester.account_id,  # Same account
         market_id=spot_config.market_id,
         order_id=int(order_id),
@@ -1465,7 +1464,7 @@ async def test_spot_cancel_wrong_signer(spot_config: SpotTestConfig, spot_tester
         accountId=spot_tester.account_id,
         signature=wrong_signature,
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
     )
 
     logger.info(f"Sending cancel signed by wrong wallet: {wrong_signer.signer_wallet_address}")
@@ -1551,7 +1550,7 @@ async def test_spot_mass_cancel_wrong_signer(spot_config: SpotTestConfig, spot_t
         symbol=spot_config.symbol,
         signature=wrong_signature,
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
     )
 
     logger.info(f"Sending mass cancel signed by wrong wallet: {wrong_signer.signer_wallet_address}")
@@ -1607,21 +1606,21 @@ async def test_spot_order_invalid_exchange_id(spot_config: SpotTestConfig, spot_
     sig_gen = spot_tester.client.signature_generator
 
     # Create inputs for signing
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(price),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = sig_gen.sign_raw_order(
+    signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(price))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=deadline,
     )
 
     # Create request with invalid exchangeId (0 or negative)
@@ -1636,7 +1635,7 @@ async def test_spot_order_invalid_exchange_id(spot_config: SpotTestConfig, spot_
         timeInForce=TimeInForce.GTC,
         signature=signature,
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
         signerWallet=sig_gen.signer_wallet_address,
     )
 
@@ -1677,21 +1676,21 @@ async def test_spot_order_invalid_symbol(spot_config: SpotTestConfig, spot_teste
 
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(price),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = sig_gen.sign_raw_order(
+    signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(price))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=deadline,
     )
 
     # Create request with invalid symbol
@@ -1706,7 +1705,7 @@ async def test_spot_order_invalid_symbol(spot_config: SpotTestConfig, spot_teste
         timeInForce=TimeInForce.GTC,
         signature=signature,
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
         signerWallet=sig_gen.signer_wallet_address,
     )
 
@@ -1759,7 +1758,7 @@ async def test_spot_order_missing_signature(spot_config: SpotTestConfig, spot_te
         timeInForce=TimeInForce.GTC,
         signature="",  # Empty signature
         nonce=str(nonce),
-        expiresAfter=deadline,
+        deadline=deadline,
         signerWallet=sig_gen.signer_wallet_address,
     )
 
@@ -1800,21 +1799,21 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
 
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(price),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = sig_gen.sign_raw_order(
+    signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(price))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=deadline,
     )
 
     # Create request without nonce (empty string)
@@ -1829,7 +1828,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
         timeInForce=TimeInForce.GTC,
         signature=signature,
         nonce="",  # Empty nonce
-        expiresAfter=deadline,
+        deadline=deadline,
         signerWallet=sig_gen.signer_wallet_address,
     )
 
@@ -1870,21 +1869,21 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
 
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(price),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = sig_gen.sign_raw_order(
+    signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(price))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=deadline,
     )
 
     # Create request dict with invalid timeInForce (bypass enum validation)
@@ -1899,7 +1898,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
         "timeInForce": "INVALID_TIF",  # Invalid value
         "signature": signature,
         "nonce": str(nonce),
-        "expiresAfter": deadline,
+        "deadline": deadline,
         "signerWallet": sig_gen.signer_wallet_address,
     }
 
@@ -1929,11 +1928,11 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
 @pytest.mark.spot
 @pytest.mark.validation
 @pytest.mark.asyncio
-async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+async def test_spot_order_missing_deadline(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """
-    Test that a spot order without expiresAfter is rejected.
+    Test that a spot order without deadline is rejected.
 
-    The API should validate that expiresAfter is required for spot orders.
+    The API should validate that deadline is required for orders under v2.3.0.
     """
     logger.info("=" * 80)
     logger.info("SPOT ORDER MISSING EXPIRATION TEST")
@@ -1947,24 +1946,24 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
 
     sig_gen = spot_tester.client.signature_generator
 
-    inputs = sig_gen.encode_inputs_limit_order(
-        is_buy=True,
-        limit_px=Decimal(price),
-        qty=Decimal(spot_config.min_qty),
-    )
-
-    signature = sig_gen.sign_raw_order(
+    signature = sig_gen.sign_order(
         account_id=spot_tester.account_id,
         market_id=spot_config.market_id,
         exchange_id=spot_tester.client.config.dex_id,
-        counterparty_account_ids=[],
-        order_type=6,
-        inputs=inputs,
-        deadline=deadline,
+        order_type=0,  # LIMIT
+        is_buy=True,
+        qty=Decimal(str(Decimal(spot_config.min_qty))),
+        limit_price=Decimal(str(Decimal(price))),
+        trigger_price=Decimal(0),
+        time_in_force=0,  # GTC
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
         nonce=nonce,
+        deadline=deadline,
     )
 
-    # Create request dict without expiresAfter
+    # Create request dict without deadline
     order_dict = {
         "exchangeId": spot_tester.client.config.dex_id,
         "symbol": spot_config.symbol,
@@ -1976,22 +1975,22 @@ async def test_spot_order_missing_expiration(spot_config: SpotTestConfig, spot_t
         "timeInForce": "GTC",
         "signature": signature,
         "nonce": str(nonce),
-        # expiresAfter intentionally omitted
+        # deadline intentionally omitted
         "signerWallet": sig_gen.signer_wallet_address,
     }
 
-    logger.info("Sending order without expiresAfter...")
+    logger.info("Sending order without deadline...")
 
     try:
         async with aiohttp.ClientSession() as session:
             url = f"{spot_tester.client.config.api_url}/createOrder"
             async with session.post(url, json=order_dict) as resp:
                 if resp.status == 200:
-                    pytest.fail("Order without expiresAfter should have been rejected")
+                    pytest.fail("Order without deadline should have been rejected")
                 response_text = await resp.text()
                 assert (
-                    "expiresAfter" in response_text.lower() or "expires" in response_text.lower() or resp.status == 400
-                ), f"Expected expiresAfter validation error, got: {response_text}"
+                    "deadline" in response_text.lower() or "expires" in response_text.lower() or resp.status == 400
+                ), f"Expected deadline validation error, got: {response_text}"
                 logger.info(f"✅ Order rejected as expected: HTTP {resp.status}")
                 logger.info(f"   Error: {response_text[:150]}")
     except ApiException as e:

@@ -1,537 +1,168 @@
-#!/usr/bin/env python3
 """
-TODO(perpOB): rewrite for the unified orderbook flow.
+Perp orderbook limit-order tests using the maker/taker pattern.
 
-This module pre-dates the v2.3.0 perpOB migration. The tests assume an
-AMM counterparty (single-account `reya_tester` fixture trades against the
-passive pool); under perp orderbook, every fill requires a maker on the
-opposite side. Re-enable as part of the new tests/test_orderbook/ shared
-lifecycle suite, parametrized over [spot, perp] symbols with maker/taker
-fixtures.
+Under v2.3.0 every perp fill needs a counterparty on the opposite side. These
+tests put a GTC resting order on the book via PERP_ACCOUNT_ID_1 (maker) and
+hit it with an IOC from PERP_ACCOUNT_ID_2 (taker), exercising perp-specific
+semantics that don't apply to spot:
+
+- IOC matched against a real OB resting order produces a position on the taker
+  side (whereas spot produces a balance change).
+- ``reduce_only`` flag is perp-only; the API rejects it on spot.
+- A GTC perp order rests on the book and is observable via
+  ``GET /v2/wallet/{address}/openOrders``.
+
+The shared place/cancel/match-in-isolation lifecycle for both market types
+lives in tests/test_orderbook/; this module covers what's genuinely
+perp-specific.
 """
+
+from __future__ import annotations
+
+import asyncio
 
 import pytest
 
-pytestmark = pytest.mark.skip(reason="pending rewrite for v2.3.0 perpOB matching engine; see module docstring")
+from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.side import Side
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api.config import REYA_DEX_ID
+from sdk.reya_rest_api.models import LimitOrderParameters
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import logger
 
-from decimal import InvalidOperation  # noqa: E402  pylint: disable=wrong-import-position
-
-from sdk.open_api import OrderStatus, RequestError, RequestErrorCode  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.exceptions import ApiException, BadRequestException  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.perp_execution import PerpExecution  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.position import Position  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.side import Side  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.time_in_force import TimeInForce  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.reya_rest_api.models import LimitOrderParameters  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers import ReyaTester  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers.reya_tester import limit_order_params_to_order, logger  # noqa: E402  pylint: disable=wrong-import-position
+PERP_SYMBOL = "ETHRUSDPERP"
+PERP_QTY = "0.01"
 
 
-async def assert_position_changes(
-    execution_details: PerpExecution,
-    reya_tester: ReyaTester,
-    position_before: Position | None = None,
-):
-    """Assert that positions have changed as expected"""
-    if position_before is None:
-        position_before = Position(
-            exchangeId=execution_details.exchange_id,
-            symbol=execution_details.symbol,
-            accountId=execution_details.account_id,
-            qty="0",
-            side=Side.B,
-            avgEntryPrice="0",
-            avgEntryFundingValue="0",
-            lastTradeSequenceNumber=int(execution_details.sequence_number) - 1,
+def _maker_buy_price(market_price: float) -> str:
+    """Generous bid: maker willing to pay 1% above oracle so IOC sells from taker hit."""
+    return str(round(market_price * 1.01, 2))
+
+
+def _maker_sell_price(market_price: float) -> str:
+    """Generous ask: maker willing to sell 1% below oracle so IOC buys from taker hit."""
+    return str(round(market_price * 0.99, 2))
+
+
+@pytest.mark.asyncio
+async def test_perp_ioc_taker_buy_matches_maker_sell(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Maker rests a GTC sell, taker IOC buys, taker accrues a long position."""
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+
+    # Maker posts a sell order below market — taker IOC will lift it.
+    maker_order_id = await perp_maker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=_maker_sell_price(market_price),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.GTC,
         )
-    position_after_qty = float(position_before.qty) + float(execution_details.qty)
-
-    expected_average_entry_price = float(position_before.avg_entry_price)
-    if float(position_before.qty) == 0 or (execution_details.side == position_before.side):
-        expected_average_entry_price = (
-            float(position_before.avg_entry_price) * float(position_before.qty)
-            + float(execution_details.qty) * float(execution_details.price)
-        ) / position_after_qty
-    # Wait for position to be confirmed via both REST and WebSocket
-    # await reya_tester.wait_for_position(execution_details.symbol)
-
-    await reya_tester.check.position(
-        symbol=execution_details.symbol,
-        expected_exchange_id=execution_details.exchange_id,
-        expected_account_id=execution_details.account_id,
-        expected_qty=execution_details.qty,
-        expected_side=execution_details.side,
-        expected_avg_entry_price=str(expected_average_entry_price),
-        expected_last_trade_sequence_number=int(execution_details.sequence_number),
     )
-    logger.info("✅ New position recorded correctly")
+    assert maker_order_id is not None, "maker GTC was not accepted"
+    await perp_maker_tester.wait.for_order_creation(order_id=maker_order_id)
+
+    # Taker IOC buy crosses against the maker.
+    taker_order_id = await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),  # cross all the way
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+    assert taker_order_id is not None
+
+    # Taker now holds a long position of size PERP_QTY.
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
+        expected_exchange_id=REYA_DEX_ID,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=PERP_QTY,
+        expected_side=Side.B,
+    )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "test_qty, test_is_buy",
-    [
-        (0.01, True),
-        (0.01, False),
-    ],
-)
-async def test_success_ioc(reya_tester: ReyaTester, test_qty, test_is_buy):
-    """Test creating an order and confirming execution"""
-    symbol = "ETHRUSDPERP"
+async def test_perp_gtc_rests_on_book(perp_maker_tester: ReyaTester) -> None:
+    """A GTC perp order placed away from market rests on the book and is queryable."""
+    market_price = float(await perp_maker_tester.data.current_price(PERP_SYMBOL))
+    safe_resting_price = str(round(market_price * 0.5, 2))  # far below market — won't match
 
-    # Get current prices to determine order parameters
-    market_price = await reya_tester.data.current_price()
-    logger.info(f"Market price: {market_price}")
-
-    # Get positions before order
-    await reya_tester.check.position_not_open(symbol)
-    await reya_tester.check.no_open_orders()
-
-    price_with_offset = float(market_price) * 1.1 if test_is_buy else float(market_price) * 0.9
-    limit_order_params = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=test_is_buy,
-        limit_px=str(price_with_offset),
-        qty=str(test_qty),
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
+    order_id = await perp_maker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=safe_resting_price,
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.GTC,
+        )
     )
+    assert order_id is not None
 
-    logger.info("Trade confirmation task")
-
-    await reya_tester.orders.create_limit(limit_order_params)
-
-    # Validate
-    expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-    execution = await reya_tester.wait.for_order_execution(expected_order)
-    assert execution is not None
-    await reya_tester.check.no_open_orders()
-    order_execution_details = await reya_tester.check.order_execution(execution, expected_order)
-    await assert_position_changes(order_execution_details, reya_tester)
-
-    logger.info("Order execution test complete")
+    open_order = await perp_maker_tester.data.open_order(order_id)
+    assert open_order is not None, "GTC perp order should be visible in open orders"
+    assert open_order.status == OrderStatus.OPEN
+    assert open_order.symbol == PERP_SYMBOL
 
 
 @pytest.mark.asyncio
-async def test_failure_ioc_with_reduce_only_on_empty_position(reya_tester: ReyaTester):
-    """Test 1: Try IOC with reduce_only flag but the position is actually expanding (should error)"""
-    symbol = "ETHRUSDPERP"
+async def test_perp_reduce_only_rejected_without_position(perp_taker_tester: ReyaTester) -> None:
+    """``reduce_only=True`` IOC must not open a fresh position from zero."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
 
-    # SETUP
-    market_price = await reya_tester.data.current_price()
-    logger.info(f"Market price: {market_price}")
-
-    test_qty = 0.01
-    test_is_buy = True
-    price_with_offset = float(market_price) * 1.1 if test_is_buy else float(market_price) * 0.9
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    order_params_reduce = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=test_is_buy,
-        limit_px=str(price_with_offset),
-        qty=str(test_qty),
-        time_in_force=TimeInForce.IOC,
-        reduce_only=True,
-    )
-    try:
-        await reya_tester.orders.create_limit(order_params_reduce)
-        assert False, "Order should not have been accepted with reduce_only flag on no position"
-    except BadRequestException as e:
-        assert e.data is not None
-        requestError: RequestError = e.data
-        # API returns human-readable error message
-        assert "Reduce-Only" in requestError.message or "ReduceOnly" in requestError.message
-        assert requestError.error == RequestErrorCode.CREATE_ORDER_OTHER_ERROR
-
-
-@pytest.mark.asyncio
-async def test_failure_ioc_with_invalid_limit_px(reya_tester: ReyaTester):
-    """Try IOC with limit price on the opposite side of the market, should revert"""
-    symbol = "ETHRUSDPERP"
-
-    # SETUP
-    market_price = await reya_tester.data.current_price()
-    logger.info(f"Market price: {market_price}")
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    test_qty = 0.01
-    test_is_buy = True
-    invalid_price = float(market_price) * 0.9  # Price below market for buy order (should be rejected)
-    order_params_invalid = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=test_is_buy,
-        limit_px=str(invalid_price),
-        qty=str(test_qty),
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
-    )
-    try:
-        response = await reya_tester.orders.create_limit(order_params_invalid)
-        # If we get here, the test failed - order should not have been accepted
-        assert not response, f"Order should not have been accepted with invalid price {invalid_price} for buy order"
-    except BadRequestException as e:
-        assert e.data is not None
-        requestError: RequestError = e.data
-        assert requestError.message == "UnacceptableOrderPrice"
-        assert requestError.error == RequestErrorCode.CREATE_ORDER_OTHER_ERROR
-
-
-@pytest.mark.asyncio
-async def test_failure_ioc_with_input_validation(reya_tester: ReyaTester):
-    """Try various invalid inputs"""
-    symbol = "ETHRUSDPERP"
-
-    test_cases = [
-        {
-            "name": "Invalid symbol",
-            "params": {
-                "symbol": 100000,
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Wrong symbol",
-            "params": {
-                "symbol": "wrong",
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Empty symbol",
-            "params": {
-                "symbol": "",  # Empty symbol should fail validation
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Missing symbol",
-            "params": {
-                # symbol is missing - should raise KeyError
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Missing is_buy",
-            "params": {
-                "symbol": symbol,
-                # is_buy is missing - should raise KeyError
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Invalid is_buy",
-            "params": {
-                "symbol": symbol,
-                "is_buy": "invalid",
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Missing qty",
-            "params": {
-                "symbol": symbol,
-                "is_buy": True,
-                "limit_px": "100",
-                # qty is missing - should raise KeyError
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Invalid qty",
-            "params": {
-                "symbol": symbol,
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "invalid",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Zero qty",
-            "params": {
-                "symbol": symbol,
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Negative qty",
-            "params": {
-                "symbol": symbol,
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "-0.01",
-                "time_in_force": TimeInForce.GTC,
-                "reduce_only": False,
-            },
-        },
-        {
-            "name": "Missing time_in_force",
-            "params": {
-                "symbol": symbol,
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0.01",
-                # time_in_force is missing - should raise KeyError
-                "reduce_only": False,
-            },
-        },
-        # IOC-specific validation (reduceOnly IS sent for IOC orders)
-        {
-            "name": "Invalid reduce_only for IOC",
-            "params": {
-                "symbol": symbol,
-                "is_buy": True,
-                "limit_px": "100",
-                "qty": "0.01",
-                "time_in_force": TimeInForce.IOC,
-                "reduce_only": "invalid",  # Invalid type - should fail validation
-            },
-        },
-    ]
-
-    for test_case in test_cases:
-        logger.info(f"Testing: {test_case['name']}")
-        await reya_tester.check.no_open_orders()
-        await reya_tester.check.position_not_open(symbol)
-        try:
-            # Build params dict - use values from test case, no defaults for required fields
-            params = test_case["params"]
-            assert isinstance(params, dict)
-            order_params_test = LimitOrderParameters(
-                symbol=params["symbol"],
-                is_buy=params["is_buy"],
-                limit_px=params["limit_px"],
-                qty=params["qty"],
-                time_in_force=params["time_in_force"],
-                reduce_only=params.get("reduce_only"),
+    with pytest.raises(ApiException) as exc_info:
+        await perp_taker_tester.client.create_limit_order(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px=str(round(market_price * 1.05, 2)),
+                qty=PERP_QTY,
+                time_in_force=TimeInForce.IOC,
+                reduce_only=True,
             )
-            await reya_tester.orders.create_limit(order_params_test)
-            assert False, f"{test_case['name']} should have failed"
-        except (KeyError, TypeError, ValueError, InvalidOperation) as e:
-            # Missing required field, SDK validation error, or decimal conversion error
-            logger.info(f"Pass: Expected error for {test_case['name']}: {type(e).__name__}: {e}")
-        except ApiException as e:
-            await reya_tester.check.no_open_orders()
-            await reya_tester.check.position_not_open(symbol)
-            logger.info(f"Pass: Expected error for {test_case['name']}: {e}")
-
-    logger.info("input_validation test completed successfully")
-    await reya_tester.orders.close_all(fail_if_none=False)
-
-
-@pytest.mark.asyncio
-async def test_success_gtc_with_order_and_cancel(reya_tester: ReyaTester):
-    """1 GTC order, long, close right after creation"""
-    symbol = "ETHRUSDPERP"
-
-    # SETUP - capture sequence number BEFORE any actions
-    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
-
-    market_price = await reya_tester.data.current_price()
-    logger.info(f"Market price: {market_price}")
-    test_qty = 0.01
-
-    order_params_buy = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(0),  # wide price
-        qty=str(test_qty),
-        time_in_force=TimeInForce.GTC,
-    )
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    # Buy order slightly above market price to ensure it gets filled
-    assert order_params_buy.limit_px is not None
-    buy_order_id = await reya_tester.orders.create_limit(order_params_buy)
-
-    assert buy_order_id is not None
-
-    # Wait for order creation to be confirmed via both REST and WebSocket
-    await reya_tester.wait.for_order_creation(buy_order_id)
-    expected_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)
-    await reya_tester.check.open_order_created(buy_order_id, expected_order)
-    await reya_tester.check.position_not_open(symbol)
-
-    # cancel order
-    await reya_tester.client.cancel_order(order_id=buy_order_id)
-
-    # Note: this confirms trade has been registered, not neccesarely position
-    cancelled_order_id = await reya_tester.wait.for_order_state(buy_order_id, OrderStatus.CANCELLED)
-    assert cancelled_order_id == buy_order_id, "GTC order was not cancelled"
-
-    await reya_tester.check.position_not_open(symbol)
-    await reya_tester.check_no_order_execution_since(last_sequence_before)
-    await reya_tester.check.no_open_orders()
-
-    logger.info("GTC order cancel test completed successfully")
-
-
-@pytest.mark.asyncio
-async def test_success_gtc_orders_with_execution(reya_tester: ReyaTester):
-    """Single GTC order filled against the pool (perp AMM)"""
-    symbol = "ETHRUSDPERP"
-
-    # Get current prices to determine order parameters
-    market_price = await reya_tester.data.current_price()
-
-    # For perp markets, GTC orders can fill against the pool (AMM)
-    # Set limit price above market to ensure it crosses the spread and fills
-    order_params_buy = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.01),  # 1% above market to cross spread
-        qty=str(0.01),
-        time_in_force=TimeInForce.GTC,
-    )
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    # BUY
-    assert order_params_buy.limit_px is not None
-    buy_order_id = await reya_tester.orders.create_limit(order_params_buy)
-    logger.info(f"Created GTC BUY order with ID: {buy_order_id} at price {order_params_buy.limit_px}")
-
-    await reya_tester.wait.for_order_state(buy_order_id, OrderStatus.FILLED)
-    expected_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)
-    execution = await reya_tester.wait.for_order_execution(expected_order)
-    order_execution_details = await reya_tester.check.order_execution(execution, expected_order)
-    await assert_position_changes(order_execution_details, reya_tester)
-
-    logger.info("GTC market execution test completed successfully")
-    await reya_tester.orders.close_all(fail_if_none=False)
-
-
-@pytest.mark.asyncio
-async def test_integration_gtc_with_market_execution(reya_tester: ReyaTester):
-    """2 GTC orders, long and short, very close to market price and wait for execution"""
-    symbol = "ETHRUSDPERP"
-
-    # Get the last execution BEFORE creating orders to compare later
-    last_execution_before = await reya_tester.get_last_wallet_perp_execution()
-    last_sequence_before = last_execution_before.sequence_number if last_execution_before else 0
-    logger.info(f"Last execution sequence before test: {last_sequence_before}")
-
-    # Get current prices to determine order parameters
-    market_price = await reya_tester.data.current_price()
-
-    order_params_buy = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 0.999),
-        qty=str(0.01),
-        time_in_force=TimeInForce.GTC,
-    )
-
-    # BUY
-    assert order_params_buy.limit_px is not None
-    buy_order_id = await reya_tester.orders.create_limit(order_params_buy)
-
-    order_params_sell = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 1.0001),
-        qty=str(order_params_buy.qty),
-        time_in_force=TimeInForce.GTC,
-    )
-
-    assert order_params_sell.limit_px is not None
-    sell_order_id = await reya_tester.orders.create_limit(order_params_sell)
-
-    assert buy_order_id is not None
-    assert sell_order_id is not None
-
-    # Wait for trade confirmation on either order (whichever fills first)
-    # Check if there's a NEW execution (with higher sequence_number than before)
-    order_execution_details = await reya_tester.get_last_wallet_perp_execution()
-    logger.info(f"Last execution after orders: {order_execution_details}")
-
-    # Only consider it filled if there's a NEW execution (sequence_number increased)
-    is_new_execution = (
-        order_execution_details is not None and order_execution_details.sequence_number > last_sequence_before
-    )
-
-    if is_new_execution:
-        logger.info(
-            f"Order was filled (new sequence: {order_execution_details.sequence_number} > {last_sequence_before})"
         )
-        if order_execution_details.side == Side.B:
-            await assert_position_changes(order_execution_details, reya_tester)
-            expected_buy_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)
-            execution = await reya_tester.wait.for_order_execution(expected_buy_order)
-            await reya_tester.check.order_execution(execution, expected_buy_order)
-        else:
-            await assert_position_changes(order_execution_details, reya_tester)
-            expected_sell_order = limit_order_params_to_order(order_params_sell, reya_tester.account_id)
-            execution = await reya_tester.wait.for_order_execution(expected_sell_order)
-            await reya_tester.check.order_execution(execution, expected_sell_order)
 
-        await reya_tester.wait.for_order_state(buy_order_id, OrderStatus.CANCELLED)
-        await reya_tester.wait.for_order_state(sell_order_id, OrderStatus.CANCELLED)
-    else:
-        logger.info("Order was not filled (no new execution)")
-        await reya_tester.wait.for_order_creation(buy_order_id)
-        await reya_tester.wait.for_order_creation(sell_order_id)
-        expected_buy_order = limit_order_params_to_order(order_params_buy, reya_tester.account_id)
-        expected_sell_order = limit_order_params_to_order(order_params_sell, reya_tester.account_id)
-        await reya_tester.check.open_order_created(buy_order_id, expected_buy_order)
-        await reya_tester.check.open_order_created(sell_order_id, expected_sell_order)
-
-    logger.info("GTC market execution test completed successfully")
-    await reya_tester.orders.close_all()
+    err = str(exc_info.value).lower()
+    assert (
+        "reduce" in err or "position" in err or "400" in err
+    ), f"expected reduce-only rejection, got: {exc_info.value}"
+    logger.info(f"✅ reduce_only without position correctly rejected: {type(exc_info.value).__name__}")
 
 
 @pytest.mark.asyncio
-async def test_failure_cancel_gtc_when_order_is_not_found(reya_tester: ReyaTester):
-    """Test cancelling a non-existent order returns appropriate error"""
-    await reya_tester.check.no_open_orders()
+async def test_perp_gtc_cancel_via_mass_cancel(perp_maker_tester: ReyaTester) -> None:
+    """Mass-cancel works on perp markets under v2.3.0 (was spot-only pre-perpOB)."""
+    market_price = float(await perp_maker_tester.data.current_price(PERP_SYMBOL))
+    safe_buy_px = str(round(market_price * 0.5, 2))
 
-    try:
-        await reya_tester.client.cancel_order(order_id="non_existent_order_id_12345")
-        assert False, "Cancel should have failed for non-existent order"
-    except BadRequestException as e:
-        assert e.data is not None
-        request_error: RequestError = e.data
-        assert request_error.message is not None
-        assert request_error.message.startswith(
-            "Missing order with id non_existent_order_id_12345"
-        ), f"Expected message to start with 'Missing order with id', got: {request_error.message}"
-        assert request_error.error == RequestErrorCode.CANCEL_ORDER_OTHER_ERROR
+    placed_ids = []
+    for _ in range(2):
+        order_id = await perp_maker_tester.orders.create_limit(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px=safe_buy_px,
+                qty=PERP_QTY,
+                time_in_force=TimeInForce.GTC,
+            )
+        )
+        assert order_id is not None
+        placed_ids.append(order_id)
 
-    await reya_tester.check.no_open_orders()
-    logger.info("✅ Cancel non-existent order test completed successfully")
+    await perp_maker_tester.client.mass_cancel(
+        symbol=PERP_SYMBOL,
+        account_id=perp_maker_tester.account_id,
+    )
+
+    # Allow a moment for ME to propagate; then assert all cancelled.
+    await asyncio.sleep(1.0)
+    for order_id in placed_ids:
+        await perp_maker_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED)

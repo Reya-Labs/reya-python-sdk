@@ -121,7 +121,7 @@ async def fetch_price(
     This avoids needing a full SDK client / reya_tester session.
 
     Args:
-        v2_api_url: The v2 API URL (e.g. https://api-cronos.reya.xyz/v2).
+        v2_api_url: The v2 API URL (e.g. https://api-devnet.reya-cronos.network/v2).
         symbol: Trading symbol (e.g. ETHRUSDPERP).
         timeout: Request timeout in seconds.
 

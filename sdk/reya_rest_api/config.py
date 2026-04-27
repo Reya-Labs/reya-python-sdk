@@ -48,11 +48,11 @@ class TradingConfig:
 
         chain_id = int(os.environ.get("CHAIN_ID", MAINNET_CHAIN_ID))
 
-        # Get API URL based on environment (mainnet or testnet)
+        # Get API URL based on environment (mainnet or devnet1, the perpOB testnet)
         if chain_id == MAINNET_CHAIN_ID:
             default_api_url = "https://api.reya.xyz/v2"
         else:
-            default_api_url = "https://api-cronos.reya.xyz/v2"
+            default_api_url = "https://api-devnet.reya-cronos.network/v2"
 
         # Require PERP_WALLET_ADDRESS_1
         owner_wallet_address = os.environ.get("PERP_WALLET_ADDRESS_1")
@@ -90,11 +90,11 @@ class TradingConfig:
 
         chain_id = int(os.environ.get("CHAIN_ID", MAINNET_CHAIN_ID))
 
-        # Get API URL based on environment (mainnet or testnet)
+        # Get API URL based on environment (mainnet or devnet1, the perpOB testnet)
         if chain_id == MAINNET_CHAIN_ID:
             default_api_url = "https://api.reya.xyz/v2"
         else:
-            default_api_url = "https://api-cronos.reya.xyz/v2"
+            default_api_url = "https://api-devnet.reya-cronos.network/v2"
 
         # Get SPOT account credentials
         owner_wallet_address = os.environ.get(f"SPOT_WALLET_ADDRESS_{account_number}")

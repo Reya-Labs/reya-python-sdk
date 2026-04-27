@@ -1,360 +1,204 @@
-#!/usr/bin/env python3
-"""Tests for perp position management edge cases (increase, decrease, partial close).
-
-TODO(perpOB): rewrite for the unified orderbook flow.
-These tests use a single-account fixture that previously matched against the
-AMM passive pool. Under perpOB every fill needs a maker; rewrite using the
-maker/taker fixtures planned for tests/test_orderbook/.
 """
+Perp position-management tests using the maker/taker pattern.
+
+Under perp orderbook every fill needs a counterparty, so position-formation
+tests can no longer use a single account that hits the AMM pool. These tests
+have ``perp_maker_tester`` rest GTC liquidity and ``perp_taker_tester`` cross
+against it via IOC, then assert position state on the taker.
+
+Scenarios covered:
+- Open a long via taker IOC against maker sell.
+- Open a short via taker IOC against maker buy.
+- Increase an existing position with a same-side IOC.
+- Close a position fully with an opposite-side reduce-only IOC.
+"""
+
+from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.skip(reason="pending rewrite for v2.3.0 perpOB matching engine; see module docstring")
+from sdk.open_api.models.side import Side
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api.config import REYA_DEX_ID
+from sdk.reya_rest_api.models import LimitOrderParameters
+from tests.helpers import ReyaTester
+from tests.helpers.reya_tester import logger
 
-from sdk.open_api.models.side import Side  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.open_api.models.time_in_force import TimeInForce  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.reya_rest_api.config import REYA_DEX_ID  # noqa: E402  pylint: disable=wrong-import-position
-from sdk.reya_rest_api.models import LimitOrderParameters  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers import ReyaTester  # noqa: E402  pylint: disable=wrong-import-position
-from tests.helpers.reya_tester import limit_order_params_to_order, logger  # noqa: E402  pylint: disable=wrong-import-position
+PERP_SYMBOL = "ETHRUSDPERP"
+PERP_QTY = "0.01"
+
+
+async def _rest_maker_sell(maker: ReyaTester, market_price: float, qty: str = PERP_QTY) -> str:
+    """Place a maker sell at 1% below oracle. Returns the maker order_id."""
+    price = str(round(market_price * 0.99, 2))
+    order_id = await maker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=price,
+            qty=qty,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert order_id is not None
+    await maker.wait.for_order_creation(order_id=order_id)
+    return order_id
+
+
+async def _rest_maker_buy(maker: ReyaTester, market_price: float, qty: str = PERP_QTY) -> str:
+    """Place a maker buy at 1% above oracle. Returns the maker order_id."""
+    price = str(round(market_price * 1.01, 2))
+    order_id = await maker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=price,
+            qty=qty,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert order_id is not None
+    await maker.wait.for_order_creation(order_id=order_id)
+    return order_id
 
 
 @pytest.mark.asyncio
-async def test_position_increase_long(reya_tester: ReyaTester):
-    """Test increasing a long position by adding more"""
-    symbol = "ETHRUSDPERP"
+async def test_position_open_long_via_taker_ioc(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Taker IOC buy lifts maker sell — taker accumulates a long."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
 
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
+    await _rest_maker_sell(perp_maker_tester, market_price)
 
-    market_price = await reya_tester.data.current_price()
-    initial_qty = "0.01"
-
-    initial_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.1),
-        qty=initial_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
     )
 
-    await reya_tester.orders.create_limit(initial_order)
-    expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_order)
-
-    await reya_tester.check.position(
-        symbol=symbol,
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
         expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=initial_qty,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=PERP_QTY,
         expected_side=Side.B,
     )
-
-    add_qty = "0.01"
-    add_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.1),
-        qty=add_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
-    )
-
-    await reya_tester.orders.create_limit(add_order)
-    expected_add_order = limit_order_params_to_order(add_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_add_order)
-
-    expected_total_qty = str(float(initial_qty) + float(add_qty))
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=expected_total_qty,
-        expected_side=Side.B,
-    )
-
-    logger.info("✅ Position increase (long) test completed successfully")
+    logger.info("✅ taker holds a long after lifting maker sell")
 
 
 @pytest.mark.asyncio
-async def test_position_increase_short(reya_tester: ReyaTester):
-    """Test increasing a short position by adding more"""
-    symbol = "ETHRUSDPERP"
+async def test_position_open_short_via_taker_ioc(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Taker IOC sell hits maker buy — taker accumulates a short."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
 
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
+    await _rest_maker_buy(perp_maker_tester, market_price)
 
-    market_price = await reya_tester.data.current_price()
-    initial_qty = "0.01"
-
-    initial_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 0.9),
-        qty=initial_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
     )
 
-    await reya_tester.orders.create_limit(initial_order)
-    expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_order)
-
-    await reya_tester.check.position(
-        symbol=symbol,
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
         expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=initial_qty,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=PERP_QTY,
         expected_side=Side.A,
     )
 
-    add_qty = "0.01"
-    add_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 0.9),
-        qty=add_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
+
+@pytest.mark.asyncio
+async def test_position_increase_long(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Two same-side taker IOCs against fresh maker liquidity stack into a 2x position."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+
+    # First leg
+    await _rest_maker_sell(perp_maker_tester, market_price)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
     )
 
-    await reya_tester.orders.create_limit(add_order)
-    expected_add_order = limit_order_params_to_order(add_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_add_order)
+    # Second leg (more maker liquidity, then more taker IOC)
+    await _rest_maker_sell(perp_maker_tester, market_price)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
 
-    expected_total_qty = str(float(initial_qty) + float(add_qty))
-    await reya_tester.check.position(
-        symbol=symbol,
+    expected_total = str(float(PERP_QTY) * 2)
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
         expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=expected_total_qty,
-        expected_side=Side.A,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=expected_total,
+        expected_side=Side.B,
     )
-
-    logger.info("✅ Position increase (short) test completed successfully")
 
 
 @pytest.mark.asyncio
-async def test_position_partial_close_long(reya_tester: ReyaTester):
-    """Test partially closing a long position"""
-    symbol = "ETHRUSDPERP"
+async def test_position_close_via_reduce_only_ioc(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Open a long, then close it fully with an opposite-side reduce-only IOC."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
 
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    market_price = await reya_tester.data.current_price()
-    initial_qty = "0.02"
-
-    initial_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.1),
-        qty=initial_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
+    # Open: maker sell + taker buy
+    await _rest_maker_sell(perp_maker_tester, market_price)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
     )
 
-    await reya_tester.orders.create_limit(initial_order)
-    expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_order)
-
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=initial_qty,
-        expected_side=Side.B,
+    # Close: maker buy + taker reduce-only sell
+    await _rest_maker_buy(perp_maker_tester, market_price)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=True,
+        )
     )
 
-    close_qty = "0.01"
-    close_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 0.9),
-        qty=close_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=True,
-    )
-
-    await reya_tester.orders.create_limit(close_order)
-    expected_close_order = limit_order_params_to_order(close_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_close_order)
-
-    expected_remaining_qty = str(float(initial_qty) - float(close_qty))
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=expected_remaining_qty,
-        expected_side=Side.B,
-    )
-
-    logger.info("✅ Position partial close (long) test completed successfully")
-
-
-@pytest.mark.asyncio
-async def test_position_partial_close_short(reya_tester: ReyaTester):
-    """Test partially closing a short position"""
-    symbol = "ETHRUSDPERP"
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    market_price = await reya_tester.data.current_price()
-    initial_qty = "0.02"
-
-    initial_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 0.9),
-        qty=initial_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
-    )
-
-    await reya_tester.orders.create_limit(initial_order)
-    expected_order = limit_order_params_to_order(initial_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_order)
-
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=initial_qty,
-        expected_side=Side.A,
-    )
-
-    close_qty = "0.01"
-    close_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.1),
-        qty=close_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=True,
-    )
-
-    await reya_tester.orders.create_limit(close_order)
-    expected_close_order = limit_order_params_to_order(close_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_close_order)
-
-    expected_remaining_qty = str(float(initial_qty) - float(close_qty))
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=expected_remaining_qty,
-        expected_side=Side.A,
-    )
-
-    logger.info("✅ Position partial close (short) test completed successfully")
-
-
-@pytest.mark.asyncio
-async def test_position_full_close_with_reduce_only(reya_tester: ReyaTester):
-    """Test fully closing a position using reduce_only flag"""
-    symbol = "ETHRUSDPERP"
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    market_price = await reya_tester.data.current_price()
-    position_qty = "0.01"
-
-    open_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.1),
-        qty=position_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
-    )
-
-    await reya_tester.orders.create_limit(open_order)
-    expected_open_order = limit_order_params_to_order(open_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_open_order)
-
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=position_qty,
-        expected_side=Side.B,
-    )
-
-    close_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 0.9),
-        qty=position_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=True,
-    )
-
-    await reya_tester.orders.create_limit(close_order)
-    expected_close_order = limit_order_params_to_order(close_order, reya_tester.account_id)
-    # Use wait_for_closing_order_execution since position will be fully closed
-    await reya_tester.wait_for_closing_order_execution(expected_close_order, position_qty)
-
-    await reya_tester.check.position_not_open(symbol)
-
-    logger.info("✅ Position full close with reduce_only test completed successfully")
-
-
-@pytest.mark.asyncio
-async def test_position_decrease_without_reduce_only(reya_tester: ReyaTester):
-    """Test decreasing a position without reduce_only flag (counter-trade)"""
-    symbol = "ETHRUSDPERP"
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position_not_open(symbol)
-
-    market_price = await reya_tester.data.current_price()
-    initial_qty = "0.02"
-
-    open_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=True,
-        limit_px=str(float(market_price) * 1.1),
-        qty=initial_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
-    )
-
-    await reya_tester.orders.create_limit(open_order)
-    expected_open_order = limit_order_params_to_order(open_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_open_order)
-
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=initial_qty,
-        expected_side=Side.B,
-    )
-
-    counter_qty = "0.01"
-    counter_order = LimitOrderParameters(
-        symbol=symbol,
-        is_buy=False,
-        limit_px=str(float(market_price) * 0.9),
-        qty=counter_qty,
-        time_in_force=TimeInForce.IOC,
-        reduce_only=False,
-    )
-
-    await reya_tester.orders.create_limit(counter_order)
-    expected_counter_order = limit_order_params_to_order(counter_order, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_counter_order)
-
-    expected_remaining_qty = str(float(initial_qty) - float(counter_qty))
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=expected_remaining_qty,
-        expected_side=Side.B,
-    )
-
-    logger.info("✅ Position decrease without reduce_only test completed successfully")
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
