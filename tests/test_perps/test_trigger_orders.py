@@ -77,7 +77,7 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,  # on long
         trigger_px=str(float(market_price) * 2),  # lower than IOC limit price
-        trigger_type=OrderType.TP,
+        trigger_type=OrderType.TAKE_PROFIT,
     )
     tp_order: CreateOrderResponse = await reya_tester.orders.create_trigger(tp_params)
     logger.info(f"Created TP order with ID: {tp_order.order_id}")
@@ -140,7 +140,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,  # on long
         trigger_px=str(float(market_price) * 0.9),  # higher than IOC limit price
-        trigger_type=OrderType.SL,
+        trigger_type=OrderType.STOP_LOSS,
     )
     order_response = await reya_tester.orders.create_trigger(sl_params)
     logger.info(f"Created SL order with ID: {order_response.order_id}")
@@ -243,7 +243,7 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
                 symbol=symbol,
                 is_buy=True,
                 trigger_px=str(float(market_price) * 1.1),
-                trigger_type=OrderType.TP,
+                trigger_type=OrderType.TAKE_PROFIT,
             )
             tp_order = await reya_tester.orders.create_trigger(tp_params)
             logger.info(f"Created TP order: {tp_order.order_id}")
@@ -322,7 +322,7 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
                 symbol=symbol,
                 is_buy=True,
                 trigger_px=str(float(market_price) * 0.9),
-                trigger_type=OrderType.SL,
+                trigger_type=OrderType.STOP_LOSS,
             )
             sl_order = await reya_tester.orders.create_trigger(sl_params)
             logger.info(f"Created SL order: {sl_order.order_id}")
@@ -370,7 +370,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,  # on short position
         trigger_px=str(float(market_price) * 0.9),  # in the money
-        trigger_type=OrderType.SL,
+        trigger_type=OrderType.STOP_LOSS,
     )
     order_response_sl: CreateOrderResponse = await reya_tester.orders.create_trigger(sl_params)
     # ENSURE IT WAS NOT FILLED NOR STILL OPENED
@@ -387,7 +387,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,  # on short position
         trigger_px=str(float(market_price) * 0.9),  # in the money
-        trigger_type=OrderType.TP,
+        trigger_type=OrderType.TAKE_PROFIT,
     )
     order_response_tp: CreateOrderResponse = await reya_tester.orders.create_trigger(tp_params)
     # ENSURE IT WAS NOT FILLED NOR STILL OPENED
@@ -472,7 +472,7 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 0.95),
-        trigger_type=OrderType.SL,
+        trigger_type=OrderType.STOP_LOSS,
     )
     sl_response = await reya_tester.orders.create_trigger(sl_params)
     logger.info(f"Created SL order: {sl_response.order_id}")
@@ -482,7 +482,7 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 1.05),
-        trigger_type=OrderType.TP,
+        trigger_type=OrderType.TAKE_PROFIT,
     )
     tp_response = await reya_tester.orders.create_trigger(tp_params)
     logger.info(f"Created TP order: {tp_response.order_id}")
@@ -560,7 +560,7 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 0.95),
-        trigger_type=OrderType.SL,
+        trigger_type=OrderType.STOP_LOSS,
     )
     sl_response = await reya_tester.orders.create_trigger(sl_params)
     logger.info(f"Created SL order: {sl_response.order_id}")
@@ -570,7 +570,7 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 1.05),
-        trigger_type=OrderType.TP,
+        trigger_type=OrderType.TAKE_PROFIT,
     )
     tp_response = await reya_tester.orders.create_trigger(tp_params)
     logger.info(f"Created TP order: {tp_response.order_id}")
@@ -658,7 +658,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 1.01),
-                trigger_type=OrderType.SL,
+                trigger_type=OrderType.STOP_LOSS,
             )
             sl_order = await reya_tester.orders.create_trigger(sl_params)
             logger.info(f"Created SL order: {sl_order.order_id}")
@@ -668,7 +668,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 1.10),
-                trigger_type=OrderType.TP,
+                trigger_type=OrderType.TAKE_PROFIT,
             )
             tp_order = await reya_tester.orders.create_trigger(tp_params)
             logger.info(f"Created TP order: {tp_order.order_id}")
@@ -747,7 +747,7 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 0.90),
-                trigger_type=OrderType.SL,
+                trigger_type=OrderType.STOP_LOSS,
             )
             sl_order = await reya_tester.orders.create_trigger(sl_params)
             logger.info(f"Created SL order: {sl_order.order_id}")
@@ -757,7 +757,7 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 0.99),
-                trigger_type=OrderType.TP,
+                trigger_type=OrderType.TAKE_PROFIT,
             )
             tp_order = await reya_tester.orders.create_trigger(tp_params)
             logger.info(f"Created TP order: {tp_order.order_id}")

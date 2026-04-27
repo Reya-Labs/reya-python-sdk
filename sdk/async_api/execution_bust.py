@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
-class SpotExecutionBust(BaseModel): 
+class ExecutionBust(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   exchange_id: int = Field(alias='''exchangeId''')
@@ -12,7 +12,7 @@ class SpotExecutionBust(BaseModel):
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   price: str = Field()
-  reason: str = Field(description='''Hex-encoded revert reason bytes''')
+  reason: str = Field(description='''Human Readable Reason String (decoded revert reason bytes)''')
   timestamp: int = Field()
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 

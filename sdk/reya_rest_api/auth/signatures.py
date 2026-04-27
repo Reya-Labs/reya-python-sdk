@@ -1,30 +1,40 @@
 """
 Signature generation utilities for Reya Trading API authentication.
 
-This module provides tools for creating EIP-712 signatures for order creation
-and message signatures for order cancellation.
+Implements EIP-712 signing for the unified spot+perp Order envelope, plus
+matching-engine-layer OrderCancel and MassCancel envelopes. See
+specs/docs/eip712.md for the canonical typehash strings and field semantics.
 """
 
-import json
+from enum import IntEnum
+
 from decimal import Decimal
 
-from eth_abi import encode
 from eth_account import Account
-from eth_account.messages import encode_defunct
 
 from sdk.reya_rest_api.config import TradingConfig
 
 
+class OrderTypeInt(IntEnum):
+    """On-chain `OrderDetails.orderType` values. Mirrors the API string enum
+    but encodes the uint8 expected by the EIP-712 typed data."""
+
+    LIMIT = 0
+    STOP_LOSS = 1
+    TAKE_PROFIT = 2
+
+
+class TimeInForceInt(IntEnum):
+    """On-chain `OrderDetails.timeInForce` values."""
+
+    GTC = 0
+    IOC = 1
+
+
 class SignatureGenerator:
-    """Generate signatures for Reya Trading API requests."""
+    """Generate EIP-712 signatures for Reya Trading API requests."""
 
     def __init__(self, config: TradingConfig):
-        """
-        Initialize the signature generator with configuration.
-
-        Args:
-            config: Trading API configuration
-        """
         self.config = config
         self._private_key = config.private_key
         self._chain_id = config.chain_id
@@ -32,124 +42,77 @@ class SignatureGenerator:
         if not self._private_key:
             raise ValueError("Private key is required for signing")
 
-        # Calculate signer wallet address from private key
         self._signer_wallet_address: str = str(Account.from_key(self._private_key).address)
 
     @property
     def signer_wallet_address(self) -> str:
-        """Get the signer wallet address derived from the private key."""
         return self._signer_wallet_address
 
-    def scale(self, decimals: int):
-        """Returns a function that scales a number (str, int, float, or Decimal) to an integer."""
-        factor = 10**decimals
+    @staticmethod
+    def _scale_e18(value) -> int:
+        """Scale a decimal/string/int/float to an E18 integer."""
+        return int(Decimal(str(value)) * (10**18))
 
-        def _scale(value):
-            return int(Decimal(value) * factor)
+    @property
+    def _domain(self) -> dict:
+        """EIP-712 domain shared by Order, OrderCancel, MassCancel.
 
-        return _scale
-
-    def encode_inputs_limit_order(
-        self,
-        is_buy: bool,
-        limit_px: Decimal,
-        qty: Decimal,
-    ) -> str:
-        scaler = self.scale(18)
-
-        # Negate qty if it's a sell order
-        signed_qty = qty if is_buy else -qty
-
-        encoded = encode(["int256", "uint256"], [scaler(signed_qty), scaler(limit_px)])
-        return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
-
-    def encode_inputs_trigger_order(
-        self,
-        is_buy: bool,
-        trigger_px: Decimal,
-        limit_px: Decimal,
-    ) -> str:
-        scaler = self.scale(18)
-
-        encoded = encode(
-            ["bool", "uint256", "uint256"],
-            [bool(is_buy), scaler(trigger_px), scaler(limit_px)],
-        )
-        return encoded.hex() if encoded.hex().startswith("0x") else f"0x{encoded.hex()}"
-
-    def create_orders_gateway_nonce(
-        self,
-        account_id: int,
-        market_id: int,
-        timestamp_ms: int,
-    ) -> int:
-        """Create a nonce for Orders Gateway orders."""
-        # Validate the input ranges
-        if market_id < 0 or market_id >= 2**32:
-            raise ValueError("marketId is out of range")
-        if account_id < 0 or account_id >= 2**128:
-            raise ValueError("accountId is out of range")
-        if timestamp_ms < 0 or timestamp_ms >= 2**64:
-            raise ValueError("timestamp is out of range")
-
-        hash_uint256 = (account_id << 98) | (timestamp_ms << 32) | market_id
-
-        return hash_uint256
-
-    def sign_raw_order(
-        self,
-        account_id: int,
-        market_id: int,
-        exchange_id: int,
-        counterparty_account_ids: list,
-        order_type: int,
-        inputs: str,  # hex-encoded ABI data
-        deadline: int,
-        nonce: int,
-    ) -> str:
-        """
-        Sign an Orders Gateway order using EIP-712.
-
-        Args:
-            account_id: The Reya account ID
-            market_id: The market ID for this order
-            exchange_id: Exchange ID (usually 2)
-            counterparty_account_ids: List of counterparty account IDs
-            order_type: Order type enum value
-            inputs: ABI-encoded order inputs
-            deadline: Signature expiration timestamp
-            nonce: The nonce to use for this order (must match the nonce passed to the API)
-
-        Returns:
-            Hex-encoded signature
-        """
-        # Define EIP-712 domain
-        domain = {
+        Note: chainId is intentionally absent from the domain — it travels in
+        the envelope as `verifyingChainId` so signatures stay portable across
+        forks where the domain separator would diverge."""
+        return {
             "name": "Reya",
             "version": "1",
             "verifyingContract": self.config.default_orders_gateway_address,
         }
 
-        # Define the message types for EIP-712 (conditional order format)
+    def sign_order(
+        self,
+        account_id: int,
+        market_id: int,
+        exchange_id: int,
+        order_type: int,
+        is_buy: bool,
+        qty: Decimal,
+        limit_price: Decimal,
+        trigger_price: Decimal,
+        time_in_force: int,
+        client_order_id: int,
+        reduce_only: bool,
+        expires_after: int,
+        nonce: int,
+        deadline: int,
+    ) -> str:
+        """Sign an Order envelope per docs/eip712.md.
+
+        Reconstructs the signed `OrderDetails.quantity` (int256) from
+        `is_buy` + unsigned `qty` as `is_buy ? +qty : -qty`.
+        """
+        signed_qty = qty if is_buy else -qty
+
         types = {
-            "ConditionalOrder": [
+            "Order": [
                 {"name": "verifyingChainId", "type": "uint256"},
                 {"name": "deadline", "type": "uint256"},
-                {"name": "order", "type": "ConditionalOrderDetails"},
+                {"name": "order", "type": "OrderDetails"},
             ],
-            "ConditionalOrderDetails": [
+            "OrderDetails": [
                 {"name": "accountId", "type": "uint128"},
                 {"name": "marketId", "type": "uint128"},
                 {"name": "exchangeId", "type": "uint128"},
-                {"name": "counterpartyAccountIds", "type": "uint128[]"},
                 {"name": "orderType", "type": "uint8"},
-                {"name": "inputs", "type": "bytes"},
+                {"name": "quantity", "type": "int256"},
+                {"name": "limitPrice", "type": "uint256"},
+                {"name": "triggerPrice", "type": "uint256"},
+                {"name": "timeInForce", "type": "uint8"},
+                {"name": "clientOrderId", "type": "uint64"},
+                {"name": "reduceOnly", "type": "bool"},
+                {"name": "expiresAfter", "type": "uint256"},
                 {"name": "signer", "type": "address"},
                 {"name": "nonce", "type": "uint256"},
             ],
         }
 
-        # Create the message to sign
         message = {
             "verifyingChainId": self._chain_id,
             "deadline": deadline,
@@ -157,56 +120,23 @@ class SignatureGenerator:
                 "accountId": account_id,
                 "marketId": market_id,
                 "exchangeId": exchange_id,
-                "counterpartyAccountIds": counterparty_account_ids,
                 "orderType": order_type,
-                "inputs": inputs,
+                "quantity": self._scale_e18(signed_qty),
+                "limitPrice": self._scale_e18(limit_price),
+                "triggerPrice": self._scale_e18(trigger_price),
+                "timeInForce": time_in_force,
+                "clientOrderId": client_order_id,
+                "reduceOnly": reduce_only,
+                "expiresAfter": expires_after,
                 "signer": self._signer_wallet_address,
                 "nonce": nonce,
             },
         }
 
-        # Sign the message using the correct eth-account format
-        signed_message = Account.sign_typed_data(self._private_key, domain, types, message)
+        signed_message = Account.sign_typed_data(self._private_key, self._domain, types, message)
+        return _to_hex_signature(signed_message.signature.hex())
 
-        return (
-            signed_message.signature.hex()
-            if signed_message.signature.hex().startswith("0x")
-            else f"0x{signed_message.signature.hex()}"
-        )
-
-    def sign_cancel_order_perps(self, order_id: str) -> str:
-        """
-        Sign an order cancellation message using personal_sign.
-
-        Args:
-            order_id: ID of the order to cancel
-
-        Returns:
-            Hex-encoded signature
-        """
-        # Create cancellation message
-        cancel_message = {
-            "orderId": order_id,
-            "status": "cancelled",
-            "actionType": "changeStatus",
-        }
-
-        # Convert to JSON string
-        message_str = json.dumps(cancel_message, separators=(",", ":"))
-
-        # Prepare an EIP-191 message
-        signable_message = encode_defunct(text=message_str)
-
-        # Sign the message
-        signed_message = Account.sign_message(signable_message, private_key=self._private_key)
-
-        return (
-            signed_message.signature.hex()
-            if signed_message.signature.hex().startswith("0x")
-            else f"0x{signed_message.signature.hex()}"
-        )
-
-    def sign_cancel_order_spot(
+    def sign_cancel_order(
         self,
         account_id: int,
         market_id: int,
@@ -215,31 +145,11 @@ class SignatureGenerator:
         nonce: int,
         deadline: int,
     ) -> str:
+        """Sign an OrderCancel envelope (matching-engine layer).
+
+        Works for both spot and perp markets. `order_id` and `client_order_id`
+        are mutually exclusive on the API; pass 0 for the unused field.
         """
-        Sign an order cancellation message using EIP-712 (for SPOT orders).
-
-        This method generates an EIP-712 signature for cancelling a specific order.
-        For SPOT market orders, both orderId and clientOrderId must be provided.
-
-        Args:
-            account_id: The Reya account ID
-            market_id: The market ID for this order
-            order_id: Internal matching engine order ID to cancel
-            client_order_id: Client-provided order ID
-            nonce: Unique nonce for this cancellation (microsecond timestamp)
-            deadline: Signature expiration timestamp (milliseconds)
-
-        Returns:
-            Hex-encoded signature
-        """
-        # Define EIP-712 domain
-        domain = {
-            "name": "Reya",
-            "version": "1",
-            "verifyingContract": self.config.default_orders_gateway_address,
-        }
-
-        # Define the message types for EIP-712 (OrderCancel format for SPOT)
         types = {
             "OrderCancel": [
                 {"name": "verifyingChainId", "type": "uint64"},
@@ -255,7 +165,6 @@ class SignatureGenerator:
             ],
         }
 
-        # Create the message to sign
         message = {
             "verifyingChainId": self._chain_id,
             "deadline": deadline,
@@ -268,14 +177,8 @@ class SignatureGenerator:
             },
         }
 
-        # Sign the message using EIP-712
-        signed_message = Account.sign_typed_data(self._private_key, domain, types, message)
-
-        return (
-            signed_message.signature.hex()
-            if signed_message.signature.hex().startswith("0x")
-            else f"0x{signed_message.signature.hex()}"
-        )
+        signed_message = Account.sign_typed_data(self._private_key, self._domain, types, message)
+        return _to_hex_signature(signed_message.signature.hex())
 
     def sign_mass_cancel(
         self,
@@ -284,29 +187,10 @@ class SignatureGenerator:
         nonce: int,
         deadline: int,
     ) -> str:
-        """
-        Sign a mass cancel request using EIP-712 (for SPOT orders).
+        """Sign a MassCancel envelope (matching-engine layer).
 
-        This method generates an EIP-712 signature for cancelling all orders
-        for a specific account and market.
-
-        Args:
-            account_id: The Reya account ID
-            market_id: The market ID
-            nonce: Unique nonce for this mass cancel (microsecond timestamp)
-            deadline: Signature expiration timestamp (milliseconds)
-
-        Returns:
-            Hex-encoded signature
-        """
-        # Define EIP-712 domain
-        domain = {
-            "name": "Reya",
-            "version": "1",
-            "verifyingContract": self.config.default_orders_gateway_address,
-        }
-
-        # Define the message types for EIP-712 (MassCancel format for SPOT)
+        Works for both spot and perp markets. Pass `market_id=0` to cancel
+        across all markets (the API treats omitted `symbol` as wildcard)."""
         types = {
             "MassCancel": [
                 {"name": "verifyingChainId", "type": "uint64"},
@@ -320,7 +204,6 @@ class SignatureGenerator:
             ],
         }
 
-        # Create the message to sign
         message = {
             "verifyingChainId": self._chain_id,
             "deadline": deadline,
@@ -331,11 +214,10 @@ class SignatureGenerator:
             },
         }
 
-        # Sign the message using EIP-712
-        signed_message = Account.sign_typed_data(self._private_key, domain, types, message)
+        signed_message = Account.sign_typed_data(self._private_key, self._domain, types, message)
+        return _to_hex_signature(signed_message.signature.hex())
 
-        return (
-            signed_message.signature.hex()
-            if signed_message.signature.hex().startswith("0x")
-            else f"0x{signed_message.signature.hex()}"
-        )
+
+def _to_hex_signature(sig_hex: str) -> str:
+    """Normalize an eth_account signature hex to a 0x-prefixed string."""
+    return sig_hex if sig_hex.startswith("0x") else f"0x{sig_hex}"

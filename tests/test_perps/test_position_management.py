@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-"""Tests for perp position management edge cases (increase, decrease, partial close)."""
+"""Tests for perp position management edge cases (increase, decrease, partial close).
+
+TODO(perpOB): rewrite for the unified orderbook flow.
+These tests use a single-account fixture that previously matched against the
+AMM passive pool. Under perpOB every fill needs a maker; rewrite using the
+maker/taker fixtures planned for tests/test_orderbook/.
+"""
 
 import pytest
 
-from sdk.open_api.models.side import Side
-from sdk.open_api.models.time_in_force import TimeInForce
-from sdk.reya_rest_api.config import REYA_DEX_ID
-from sdk.reya_rest_api.models import LimitOrderParameters
-from tests.helpers import ReyaTester
-from tests.helpers.reya_tester import limit_order_params_to_order, logger
+pytestmark = pytest.mark.skip(reason="pending rewrite for v2.3.0 perpOB matching engine; see module docstring")
+
+from sdk.open_api.models.side import Side  # noqa: E402  pylint: disable=wrong-import-position
+from sdk.open_api.models.time_in_force import TimeInForce  # noqa: E402  pylint: disable=wrong-import-position
+from sdk.reya_rest_api.config import REYA_DEX_ID  # noqa: E402  pylint: disable=wrong-import-position
+from sdk.reya_rest_api.models import LimitOrderParameters  # noqa: E402  pylint: disable=wrong-import-position
+from tests.helpers import ReyaTester  # noqa: E402  pylint: disable=wrong-import-position
+from tests.helpers.reya_tester import limit_order_params_to_order, logger  # noqa: E402  pylint: disable=wrong-import-position
 
 
 @pytest.mark.asyncio

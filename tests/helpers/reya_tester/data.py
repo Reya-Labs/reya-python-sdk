@@ -6,6 +6,8 @@ import logging
 
 from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.execution_bust import ExecutionBust
+from sdk.open_api.models.execution_bust_list import ExecutionBustList
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.perp_execution import PerpExecution
@@ -13,8 +15,6 @@ from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.price import Price
 from sdk.open_api.models.spot_execution import SpotExecution
-from sdk.open_api.models.spot_execution_bust import SpotExecutionBust
-from sdk.open_api.models.spot_execution_bust_list import SpotExecutionBustList
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 
 if TYPE_CHECKING:
@@ -130,21 +130,19 @@ class DataOperations:
         """Get all open orders."""
         return await self._t.client.get_open_orders()
 
-    async def spot_execution_busts(self) -> list[SpotExecutionBust]:
-        """Get spot execution busts for this wallet.
+    async def execution_busts(self) -> list[ExecutionBust]:
+        """Get execution busts (failed fills) for this wallet, across spot and perp.
 
-        Returns list of SpotExecutionBust objects (may be empty if no busts exist).
+        Returns list of ExecutionBust objects (may be empty).
         """
-        bust_list: SpotExecutionBustList = await self._t.client.get_spot_execution_busts()
+        bust_list: ExecutionBustList = await self._t.client.get_execution_busts()
         return bust_list.data if bust_list.data else []
 
-    async def market_spot_execution_busts(self, symbol: str) -> list[SpotExecutionBust]:
-        """Get spot execution busts for a specific market.
+    async def market_execution_busts(self, symbol: str) -> list[ExecutionBust]:
+        """Get execution busts for a specific market (spot or perp).
 
         Args:
-            symbol: Trading symbol (e.g., "WETHRUSD").
-
-        Returns list of SpotExecutionBust objects (may be empty if no busts exist).
+            symbol: Trading symbol (e.g., ``WETHRUSD`` or ``ETHRUSDPERP``).
         """
-        bust_list: SpotExecutionBustList = await self._t.client.markets.get_market_spot_execution_busts(symbol=symbol)
+        bust_list: ExecutionBustList = await self._t.client.markets.get_market_execution_busts(symbol=symbol)
         return bust_list.data if bust_list.data else []

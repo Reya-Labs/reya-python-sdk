@@ -231,8 +231,12 @@ class TriggerOrderBuilder:
 
     _symbol: str = "ETHRUSDPERP"
     _is_buy: bool = True
+    _qty: str = "0.01"
     _trigger_px: str = "4000.0"
-    _trigger_type: OrderType = field(default_factory=lambda: OrderType.TP)
+    _limit_px: str = "4000.0"
+    _trigger_type: OrderType = field(default_factory=lambda: OrderType.TAKE_PROFIT)
+    _reduce_only: bool | None = None
+    _client_order_id: int | None = None
 
     def symbol(self, symbol: str) -> TriggerOrderBuilder:
         """Set the trading symbol."""
@@ -254,6 +258,11 @@ class TriggerOrderBuilder:
         self._is_buy = False
         return self
 
+    def qty(self, qty: str) -> TriggerOrderBuilder:
+        """Set the quantity to execute when the trigger fires."""
+        self._qty = qty
+        return self
+
     def trigger_price(self, price: str) -> TriggerOrderBuilder:
         """Set the trigger price."""
         self._trigger_px = price
@@ -264,14 +273,19 @@ class TriggerOrderBuilder:
         self._trigger_px = price
         return self
 
+    def limit_px(self, price: str) -> TriggerOrderBuilder:
+        """Set the worst-acceptable execution price after the trigger fires."""
+        self._limit_px = price
+        return self
+
     def take_profit(self) -> TriggerOrderBuilder:
         """Set trigger type to Take Profit."""
-        self._trigger_type = OrderType.TP
+        self._trigger_type = OrderType.TAKE_PROFIT
         return self
 
     def stop_loss(self) -> TriggerOrderBuilder:
         """Set trigger type to Stop Loss."""
-        self._trigger_type = OrderType.SL
+        self._trigger_type = OrderType.STOP_LOSS
         return self
 
     def tp(self) -> TriggerOrderBuilder:
@@ -282,18 +296,39 @@ class TriggerOrderBuilder:
         """Alias for stop_loss()."""
         return self.stop_loss()
 
+    def reduce_only(self, value: bool = True) -> TriggerOrderBuilder:
+        self._reduce_only = value
+        return self
+
+    def client_order_id(self, client_order_id: int) -> TriggerOrderBuilder:
+        self._client_order_id = client_order_id
+        return self
+
     def build(self) -> TriggerOrderParameters:
         """Build and return the TriggerOrderParameters."""
         return TriggerOrderParameters(
             symbol=self._symbol,
             is_buy=self._is_buy,
+            qty=self._qty,
             trigger_px=self._trigger_px,
+            limit_px=self._limit_px,
             trigger_type=self._trigger_type,
+            reduce_only=self._reduce_only,
+            client_order_id=self._client_order_id,
         )
 
     def copy(self) -> TriggerOrderBuilder:
         """Create a copy of this builder."""
         builder = TriggerOrderBuilder()
-        for field_name in ["_symbol", "_is_buy", "_trigger_px", "_trigger_type"]:
+        for field_name in [
+            "_symbol",
+            "_is_buy",
+            "_qty",
+            "_trigger_px",
+            "_limit_px",
+            "_trigger_type",
+            "_reduce_only",
+            "_client_order_id",
+        ]:
             setattr(builder, field_name, getattr(self, field_name))
         return builder

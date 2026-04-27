@@ -17,27 +17,30 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
+from sdk.open_api.models.side import Side
 from typing import Optional, Set
 from typing_extensions import Self
 
-class MarketDefinition(BaseModel):
+class ExecutionBust(BaseModel):
     """
-    MarketDefinition
+    ExecutionBust
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
-    market_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="marketId")
-    min_order_qty: Annotated[str, Field(strict=True)] = Field(alias="minOrderQty")
-    qty_step_size: Annotated[str, Field(strict=True)] = Field(alias="qtyStepSize")
-    tick_size: Annotated[str, Field(strict=True)] = Field(alias="tickSize")
-    liquidation_margin_parameter: Annotated[str, Field(strict=True)] = Field(alias="liquidationMarginParameter")
-    initial_margin_parameter: Annotated[str, Field(strict=True)] = Field(alias="initialMarginParameter")
-    max_leverage: Annotated[int, Field(strict=True, ge=0)] = Field(alias="maxLeverage")
-    oi_cap: Annotated[str, Field(strict=True)] = Field(alias="oiCap")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
+    maker_account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="makerAccountId")
+    order_id: StrictStr = Field(description="Order ID for the taker", alias="orderId")
+    maker_order_id: StrictStr = Field(description="Order ID for the maker", alias="makerOrderId")
+    qty: Annotated[str, Field(strict=True)]
+    side: Side
+    price: Annotated[str, Field(strict=True)]
+    reason: StrictStr = Field(description="Human Readable Reason String (decoded revert reason bytes)")
+    timestamp: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
+    __properties: ClassVar[List[str]] = ["symbol", "accountId", "exchangeId", "makerAccountId", "orderId", "makerOrderId", "qty", "side", "price", "reason", "timestamp"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -46,46 +49,18 @@ class MarketDefinition(BaseModel):
             raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
         return value
 
-    @field_validator('min_order_qty')
-    def min_order_qty_validate_regular_expression(cls, value):
+    @field_validator('qty')
+    def qty_validate_regular_expression(cls, value):
         """Validates the regular expression"""
         if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
             raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
-    @field_validator('qty_step_size')
-    def qty_step_size_validate_regular_expression(cls, value):
+    @field_validator('price')
+    def price_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('tick_size')
-    def tick_size_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('liquidation_margin_parameter')
-    def liquidation_margin_parameter_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('initial_margin_parameter')
-    def initial_margin_parameter_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('oi_cap')
-    def oi_cap_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
     model_config = ConfigDict(
@@ -106,7 +81,7 @@ class MarketDefinition(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of MarketDefinition from a JSON string"""
+        """Create an instance of ExecutionBust from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -138,7 +113,7 @@ class MarketDefinition(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of MarketDefinition from a dict"""
+        """Create an instance of ExecutionBust from a dict"""
         if obj is None:
             return None
 
@@ -147,14 +122,16 @@ class MarketDefinition(BaseModel):
 
         _obj = cls.model_validate({
             "symbol": obj.get("symbol"),
-            "marketId": obj.get("marketId"),
-            "minOrderQty": obj.get("minOrderQty"),
-            "qtyStepSize": obj.get("qtyStepSize"),
-            "tickSize": obj.get("tickSize"),
-            "liquidationMarginParameter": obj.get("liquidationMarginParameter"),
-            "initialMarginParameter": obj.get("initialMarginParameter"),
-            "maxLeverage": obj.get("maxLeverage"),
-            "oiCap": obj.get("oiCap")
+            "accountId": obj.get("accountId"),
+            "exchangeId": obj.get("exchangeId"),
+            "makerAccountId": obj.get("makerAccountId"),
+            "orderId": obj.get("orderId"),
+            "makerOrderId": obj.get("makerOrderId"),
+            "qty": obj.get("qty"),
+            "side": obj.get("side"),
+            "price": obj.get("price"),
+            "reason": obj.get("reason"),
+            "timestamp": obj.get("timestamp")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

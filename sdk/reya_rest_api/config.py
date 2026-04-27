@@ -41,11 +41,6 @@ class TradingConfig:
         else:
             return "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"  # Testnet address
 
-    @property
-    def pool_account_id(self) -> int:
-        """Get pool account ID based on chain ID"""
-        return 2 if self.is_mainnet else 4
-
     @classmethod
     def from_env(cls) -> "TradingConfig":
         """Create a config instance from environment variables."""

@@ -2,9 +2,9 @@ from __future__ import annotations
 from typing import Any, List, Dict, Optional
 from pydantic import BaseModel, Field
 from sdk.async_api.channel_data_message_type import ChannelDataMessageType
-from sdk.async_api.spot_execution_bust import SpotExecutionBust
-class MarketSpotExecutionBustUpdatePayload(BaseModel): 
+from sdk.async_api.execution_bust import ExecutionBust
+class WalletExecutionBustUpdatePayload(BaseModel): 
   type: ChannelDataMessageType = Field(description='''Message type for channel data updates''')
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
-  channel: str = Field(description='''Channel pattern for market spot execution busts''')
-  data: List[SpotExecutionBust] = Field()
+  channel: str = Field(description='''Channel pattern for wallet execution busts (spot + perp)''')
+  data: List[ExecutionBust] = Field()
