@@ -34,7 +34,6 @@ from tests.helpers.liquidity_detector import (
 from tests.test_spot.spot_config import SpotTestConfig
 
 if TYPE_CHECKING:
-    from tests.helpers.reya_tester import ReyaTester
     from tests.helpers.reya_tester.data import DataOperations
 
 logger = logging.getLogger("reya.integration_tests")
@@ -190,7 +189,7 @@ def market_type(request) -> str:
 
 
 @pytest.fixture
-def market_config(
+def market_config(  # pylint: disable=redefined-outer-name
     market_type: str, spot_config: SpotTestConfig, perp_market_config: PerpTestConfig
 ) -> MarketConfig:
     """Yield the right per-market config for the active parametrization.
@@ -203,7 +202,7 @@ def market_config(
 
 
 @pytest.fixture
-def maker(
+def maker(  # pylint: disable=redefined-outer-name
     market_type: str,
     maker_tester,  # spot maker (PERP_ACCOUNT_ID_1 / SPOT_ACCOUNT_ID_1)
     perp_maker_tester,
@@ -213,7 +212,7 @@ def maker(
 
 
 @pytest.fixture
-def taker(
+def taker(  # pylint: disable=redefined-outer-name
     market_type: str,
     taker_tester,
     perp_taker_tester,

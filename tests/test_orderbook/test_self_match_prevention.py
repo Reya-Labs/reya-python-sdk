@@ -30,15 +30,11 @@ from tests.test_orderbook.conftest import PerpTestConfig
 from tests.test_spot.spot_config import SpotTestConfig
 
 
-async def _skip_if_external_liquidity(
-    market_config: Union[SpotTestConfig, PerpTestConfig], tester: ReyaTester
-) -> None:
+async def _skip_if_external_liquidity(market_config: Union[SpotTestConfig, PerpTestConfig], tester: ReyaTester) -> None:
     """Skip if external liquidity is on the book — would interfere with self-match assertions."""
     await market_config.refresh_order_book(tester.data)
     if market_config.has_any_external_liquidity:
-        pytest.skip(
-            "external liquidity present — self-match tests need a controlled book"
-        )
+        pytest.skip("external liquidity present — self-match tests need a controlled book")
 
 
 @pytest.mark.asyncio

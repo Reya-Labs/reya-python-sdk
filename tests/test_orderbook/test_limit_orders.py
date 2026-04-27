@@ -82,4 +82,6 @@ async def test_mass_cancel_clears_open_orders(
     )
 
     for order_id in placed_ids:
-        await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED)
+        await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=10)
+    # market_type is consumed by the parametrization; tag log lines so failures are easier to triage.
+    _ = market_type

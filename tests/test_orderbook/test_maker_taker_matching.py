@@ -51,9 +51,7 @@ async def test_maker_taker_match_e2e(
     await taker.orders.close_all(fail_if_none=False)
 
     if market_config.has_any_external_liquidity:
-        pytest.skip(
-            "external liquidity present — match could go to an external counterparty"
-        )
+        pytest.skip("external liquidity present — match could go to an external counterparty")
 
     cross_px_float = market_config.price(0.99)
     cross_px = str(cross_px_float)
@@ -101,8 +99,7 @@ async def test_maker_taker_match_e2e(
 
     # Step 5: WS order-changes event for maker.
     assert maker_order_id in maker.ws.order_changes, (
-        f"[{market_type}] expected maker order in WS order_changes; "
-        f"got: {list(maker.ws.order_changes.keys())[:5]}"
+        f"[{market_type}] expected maker order in WS order_changes; " f"got: {list(maker.ws.order_changes.keys())[:5]}"
     )
 
     # Step 6: WS execution event for taker — perp goes via perp_executions, spot via spot_executions.

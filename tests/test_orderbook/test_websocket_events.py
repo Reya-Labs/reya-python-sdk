@@ -31,6 +31,7 @@ async def test_ws_order_change_on_create(
     maker: ReyaTester,
 ) -> None:
     """A new GTC order surfaces on the wallet ``orderChanges`` WS channel."""
+    _ = market_type  # consumed by the [spot, perp] parametrization
     maker.ws.order_changes.clear()
 
     far_buy_px = str(round(market_config.oracle_price * 0.5, 2))
@@ -53,9 +54,7 @@ async def test_ws_order_change_on_create(
     )
 
     # Cleanup
-    await maker.client.cancel_order(
-        order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id
-    )
+    await maker.client.cancel_order(order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id)
     await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED)
 
 
@@ -78,9 +77,7 @@ async def test_ws_order_change_on_cancel(
     assert order_id is not None
     await maker.wait.for_order_creation(order_id)
 
-    await maker.client.cancel_order(
-        order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id
-    )
+    await maker.client.cancel_order(order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id)
 
     # ``for_order_state`` waits for WS confirmation as the primary signal.
     await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED)
@@ -125,7 +122,5 @@ async def test_ws_depth_subscription_alive(
     assert depth is not None, f"[{market_type}] expected depth update for {market_config.symbol}"
 
     # Cleanup
-    await maker.client.cancel_order(
-        order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id
-    )
+    await maker.client.cancel_order(order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id)
     await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED)

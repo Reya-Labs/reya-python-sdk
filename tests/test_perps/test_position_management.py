@@ -63,9 +63,7 @@ async def _rest_maker_buy(maker: ReyaTester, market_price: float, qty: str = PER
 
 
 @pytest.mark.asyncio
-async def test_position_open_long_via_taker_ioc(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_open_long_via_taker_ioc(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Taker IOC buy lifts maker sell — taker accumulates a long."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
@@ -94,9 +92,7 @@ async def test_position_open_long_via_taker_ioc(
 
 
 @pytest.mark.asyncio
-async def test_position_open_short_via_taker_ioc(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_open_short_via_taker_ioc(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Taker IOC sell hits maker buy — taker accumulates a short."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
@@ -124,9 +120,7 @@ async def test_position_open_short_via_taker_ioc(
 
 
 @pytest.mark.asyncio
-async def test_position_increase_long(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_increase_long(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Two same-side taker IOCs against fresh maker liquidity stack into a 2x position."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
@@ -168,9 +162,7 @@ async def test_position_increase_long(
 
 
 @pytest.mark.asyncio
-async def test_position_increase_short(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_increase_short(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Mirror of test_position_increase_long: two same-side IOC sells against fresh maker buys."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
@@ -210,9 +202,7 @@ async def test_position_increase_short(
 
 
 @pytest.mark.asyncio
-async def test_position_partial_close_long(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_partial_close_long(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Open a 2x long, then close half via reduce-only IOC sell — half the position remains."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
@@ -256,9 +246,7 @@ async def test_position_partial_close_long(
 
 
 @pytest.mark.asyncio
-async def test_position_partial_close_short(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_partial_close_short(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Mirror of partial_close_long: open 2x short, close half via reduce-only IOC buy."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
@@ -344,9 +332,7 @@ async def test_position_decrease_without_reduce_only(
 
 
 @pytest.mark.asyncio
-async def test_position_close_via_reduce_only_ioc(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-) -> None:
+async def test_position_close_via_reduce_only_ioc(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester) -> None:
     """Open a long, then close it fully with an opposite-side reduce-only IOC."""
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))

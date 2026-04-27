@@ -19,7 +19,6 @@ from decimal import Decimal
 
 import pytest
 
-from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
@@ -40,9 +39,7 @@ async def test_ioc_full_fill_against_resting_maker(
     await taker.orders.close_all(fail_if_none=False)
 
     if market_config.has_any_external_liquidity:
-        pytest.skip(
-            "external liquidity present — IOC fill could match externally instead of our maker"
-        )
+        pytest.skip("external liquidity present — IOC fill could match externally instead of our maker")
 
     cross_px = str(market_config.price(0.99))
 

@@ -96,9 +96,7 @@ class ReyaTester:
         elif perp_account_number == 2:
             self.client = self._create_client_for_perp_account(perp_account_number)
         else:
-            raise ValueError(
-                f"Invalid account selection: spot={spot_account_number} perp={perp_account_number}"
-            )
+            raise ValueError(f"Invalid account selection: spot={spot_account_number} perp={perp_account_number}")
 
         # Store account properties - these must be set for tests to work
         assert self.client is not None, "Client must be initialized"

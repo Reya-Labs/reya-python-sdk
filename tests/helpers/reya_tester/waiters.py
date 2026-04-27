@@ -497,9 +497,7 @@ class Waiters:
                     found = self._t.ws.execution_busts.get(str(order_id))
                     if found is None:
                         # Try matching as maker_order_id
-                        found = self._t.ws.execution_busts.find_last(
-                            lambda b: str(b.maker_order_id) == str(order_id)
-                        )
+                        found = self._t.ws.execution_busts.find_last(lambda b: str(b.maker_order_id) == str(order_id))
                     if found:
                         elapsed = time.time() - start_time
                         logger.info(f" ✅ Bust confirmed via WS: order_id={found.order_id} (took {elapsed:.2f}s)")

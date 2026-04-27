@@ -6,9 +6,8 @@ matching-engine-layer OrderCancel and MassCancel envelopes. See
 specs/docs/eip712.md for the canonical typehash strings and field semantics.
 """
 
-from enum import IntEnum
-
 from decimal import Decimal
+from enum import IntEnum
 
 from eth_account import Account
 
