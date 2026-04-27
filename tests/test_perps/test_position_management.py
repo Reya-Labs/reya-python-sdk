@@ -168,6 +168,182 @@ async def test_position_increase_long(
 
 
 @pytest.mark.asyncio
+async def test_position_increase_short(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Mirror of test_position_increase_long: two same-side IOC sells against fresh maker buys."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+
+    await _rest_maker_buy(perp_maker_tester, market_price)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+
+    await _rest_maker_buy(perp_maker_tester, market_price)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+
+    expected_total = str(float(PERP_QTY) * 2)
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
+        expected_exchange_id=REYA_DEX_ID,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=expected_total,
+        expected_side=Side.A,
+    )
+
+
+@pytest.mark.asyncio
+async def test_position_partial_close_long(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Open a 2x long, then close half via reduce-only IOC sell — half the position remains."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+    initial_qty = "0.02"
+    close_qty = "0.01"
+
+    # Open 0.02 long
+    await _rest_maker_sell(perp_maker_tester, market_price, qty=initial_qty)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=initial_qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+
+    # Partial close 0.01
+    await _rest_maker_buy(perp_maker_tester, market_price, qty=close_qty)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=close_qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=True,
+        )
+    )
+
+    expected_remaining = str(float(initial_qty) - float(close_qty))
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
+        expected_exchange_id=REYA_DEX_ID,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=expected_remaining,
+        expected_side=Side.B,
+    )
+
+
+@pytest.mark.asyncio
+async def test_position_partial_close_short(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Mirror of partial_close_long: open 2x short, close half via reduce-only IOC buy."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+    initial_qty = "0.02"
+    close_qty = "0.01"
+
+    await _rest_maker_buy(perp_maker_tester, market_price, qty=initial_qty)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=initial_qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+
+    await _rest_maker_sell(perp_maker_tester, market_price, qty=close_qty)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=close_qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=True,
+        )
+    )
+
+    expected_remaining = str(float(initial_qty) - float(close_qty))
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
+        expected_exchange_id=REYA_DEX_ID,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=expected_remaining,
+        expected_side=Side.A,
+    )
+
+
+@pytest.mark.asyncio
+async def test_position_decrease_without_reduce_only(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
+) -> None:
+    """Counter-trade an existing position with reduce_only=False — position should still net down."""
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
+    market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+    initial_qty = "0.02"
+    counter_qty = "0.01"
+
+    await _rest_maker_sell(perp_maker_tester, market_price, qty=initial_qty)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=initial_qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+
+    await _rest_maker_buy(perp_maker_tester, market_price, qty=counter_qty)
+    await perp_taker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 0.95, 2)),
+            qty=counter_qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,  # explicitly NOT reduce-only
+        )
+    )
+
+    expected_remaining = str(float(initial_qty) - float(counter_qty))
+    await perp_taker_tester.check.position(
+        symbol=PERP_SYMBOL,
+        expected_exchange_id=REYA_DEX_ID,
+        expected_account_id=perp_taker_tester.account_id,
+        expected_qty=expected_remaining,
+        expected_side=Side.B,
+    )
+
+
+@pytest.mark.asyncio
 async def test_position_close_via_reduce_only_ioc(
     perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
 ) -> None:

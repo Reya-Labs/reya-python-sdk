@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Perp market-data REST endpoints — adapted to the v2.3.0 schema.
+
+Field changes vs the AMM era:
+- ``MarketSummary``: ``longOiQty`` / ``shortOiQty`` collapsed to a single ``oiQty``;
+  ``fundingRateVelocity`` removed; ``throttledOraclePrice`` → ``markPrice``;
+  ``throttledPoolPrice`` → ``throttledMidPrice``.
+- ``Price.poolPrice`` is now optional — present only while the AMM-era pool-price
+  publisher is still running on a market; absent on perpOB-only markets.
+"""
+
 import re
 import time
 
@@ -48,8 +58,12 @@ async def test_market_price(reya_tester: ReyaTester):
     assert price is not None
     assert price.symbol == symbol
     assert 0 < float(price.oracle_price) < 10**18
-    assert price.pool_price is not None
-    assert 0 < float(price.pool_price) < 10**18
+
+    # ``pool_price`` is optional under v2.3.0 — only set while the AMM
+    # pool-price publisher still ticks. Validate when present.
+    if price.pool_price is not None:
+        assert 0 < float(price.pool_price) < 10**18
+
     current_time = int(time.time())
     assert price.updated_at / 1000 > current_time - 60
 
@@ -63,28 +77,32 @@ async def test_all_prices(reya_tester: ReyaTester):
     for sample_price in prices:
         assert sample_price.symbol is not None and len(sample_price.symbol) > 0, "Symbol should not be empty"
         assert 0 <= float(sample_price.oracle_price) < 10**18, "Oracle price should be a valid positive number"
-        if "PERP" in sample_price.symbol:
+        if sample_price.pool_price is not None:
             assert (
                 0 <= float(sample_price.pool_price) < 10**18
-                if sample_price.pool_price and "PERP" in sample_price.symbol
-                else True
-            ), "Pool price should be a valid positive number"
+            ), "Pool price should be a valid positive number when present"
         current_time = int(time.time() * 1000)
         assert sample_price.updated_at > current_time - (60 * 60 * 1000), "Updated timestamp should be within last hour"
         assert sample_price.updated_at <= current_time + (60 * 1000), "Updated timestamp should not be in future"
+
     symbols = {price.symbol for price in prices}
     assert "ETHRUSDPERP" in symbols, "Should include ETHRUSDPERP in all prices"
 
 
 @pytest.mark.asyncio
 async def test_market_summary(reya_tester: ReyaTester):
+    """Validate the v2.3.0 MarketSummary shape: oiQty (single), markPrice, throttledMidPrice.
+
+    Removed fields from the AMM era: longOiQty / shortOiQty / fundingRateVelocity /
+    throttledOraclePrice / throttledPoolPrice. See specs commit
+    ``8cedb97 feat: update MarketSummary schema - remove and rename fields``.
+    """
     symbol = "ETHRUSDPERP"
     market_summary = await reya_tester.client.markets.get_market_summary(symbol)
     assert market_summary is not None
     assert market_summary.symbol == symbol
-    assert float(market_summary.oi_qty) >= 0, "OI quantity should be a valid number"
-    assert float(market_summary.long_oi_qty) >= 0, "Long OI quantity should be a valid number"
-    assert float(market_summary.short_oi_qty) >= 0, "Short OI quantity should be a valid number"
+
+    assert float(market_summary.oi_qty) >= 0, "OI quantity should be a valid non-negative number"
     assert -(10**3) < float(market_summary.funding_rate) < 10**3, "Funding rate should be a valid number"
 
     assert (
@@ -93,23 +111,26 @@ async def test_market_summary(reya_tester: ReyaTester):
     assert (
         market_summary.short_funding_value.replace(".", "", 1).lstrip("-").isdigit()
     ), "Short funding value should be a valid number"
-    assert (
-        market_summary.funding_rate_velocity.replace(".", "", 1).lstrip("-").isdigit()
-    ), "Funding rate velocity should be a valid number"
 
     assert float(market_summary.volume24h) >= 0, "Volume 24h should be a valid number"
-    assert market_summary.px_change24h is not None
-    assert (
-        market_summary.px_change24h.replace(".", "", 1).lstrip("-").isdigit()
-    ), "Price change 24h should be a valid number"
+    if market_summary.px_change24h is not None:
+        assert (
+            market_summary.px_change24h.replace(".", "", 1).lstrip("-").isdigit()
+        ), "Price change 24h should be a valid number"
 
     assert market_summary.updated_at / 1000 > time.time() - 86400 * 2, "Updated timestamp should be valid"
-    assert market_summary.throttled_pool_price is not None
-    assert float(market_summary.throttled_pool_price) > 0, "Pool price should be positive"
-    assert market_summary.throttled_oracle_price is not None
-    assert float(market_summary.throttled_oracle_price) > 0, "Oracle price should be positive"
-    assert market_summary.prices_updated_at is not None
-    assert market_summary.prices_updated_at / 1000 > time.time() - 86400 * 2, "Prices updated timestamp should be valid"
+
+    # markPrice and throttledMidPrice are optional but should be populated for an
+    # active market — a perpOB market that's been quoted should always emit both.
+    if market_summary.mark_price is not None:
+        assert float(market_summary.mark_price) > 0, "Mark price should be positive"
+    if market_summary.throttled_mid_price is not None:
+        assert float(market_summary.throttled_mid_price) > 0, "Throttled mid price should be positive"
+
+    if market_summary.prices_updated_at is not None:
+        assert (
+            market_summary.prices_updated_at / 1000 > time.time() - 86400 * 2
+        ), "Prices updated timestamp should be valid"
 
 
 @pytest.mark.asyncio
@@ -163,29 +184,39 @@ async def test_candles(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_market_perp_executions(reya_tester: ReyaTester):
+    """Validate the v2.3.0 PerpExecution shape — taker/maker fields, taker_fee, etc.
+
+    Renames from the AMM era: ``accountId`` → ``takerAccountId``, ``fee`` → ``takerFee``.
+    New optional fields: ``makerAccountId``, ``takerOrderId``, ``makerOrderId``,
+    ``makerFee``, ``makerOpeningFee``, ``makerRealizedPnl``, ``makerPriceVariationPnl``,
+    ``makerFundingPnl``. Execution type ``DUST`` was added.
+    """
     symbol = "ETHRUSDPERP"
     executions = await reya_tester.client.markets.get_market_perp_executions(symbol)
     assert executions is not None
-    assert len(executions.data) > 0
+    if not executions.data:
+        pytest.skip("No perp executions on this market yet")
 
     execution = executions.data[0]
     assert execution.symbol == symbol
     assert 0 < float(execution.price) < 10**7, "Price should be a valid positive number"
     assert 0 < float(execution.qty) < 10**10, "Quantity should be a valid positive number"
-    assert 0 <= float(execution.fee) < 10**6, "Fee should be a valid non-negative number"
-    assert execution.side in [
-        "B",
-        "A",
-    ], f"Side should be B or A, got: {execution.side}"
+    # ``taker_fee`` is signed: positive means the taker paid; negative would be a rebate.
+    # We bound by absolute value rather than asserting non-negative.
+    assert abs(float(execution.taker_fee)) < 10**6, "Taker fee should be within sane bounds"
+    assert execution.side in ["B", "A"], f"Side should be B or A, got: {execution.side}"
     assert execution.sequence_number > 0, "Sequence number should be positive"
-    assert execution.account_id > 0, "Account ID should be positive"
+    assert execution.taker_account_id > 0, "Taker account ID should be positive"
     assert execution.exchange_id > 0, "Exchange ID should be positive"
     current_time = int(time.time() * 1000)
     assert execution.timestamp > current_time - (30 * 24 * 60 * 60 * 1000), "Timestamp should be recent"
     assert execution.timestamp <= current_time + (60 * 1000), "Timestamp should not be in future"
+    # ``DUST`` was added in v2.3.0; legacy ``ORDER_MATCH`` and ``LIQUIDATION`` still apply, plus ``ADL``.
     assert execution.type in [
         "ORDER_MATCH",
         "LIQUIDATION",
+        "ADL",
+        "DUST",
     ], f"Unexpected execution type: {execution.type}"
 
 

@@ -14,20 +14,28 @@ Market-specific tests (spot busts, perp triggers/positions/funding) live in
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 import pytest
 import pytest_asyncio
 
-from tests.test_spot.spot_config import SpotTestConfig, fetch_spot_market_configs
+from tests.helpers.liquidity_detector import (
+    SAFE_NO_MATCH_BUY_PRICE,
+    SAFE_NO_MATCH_SELL_PRICE,
+    LiquidityDetector,
+    OrderBookState,
+    log_order_book_state,
+)
+from tests.test_spot.spot_config import SpotTestConfig
 
 if TYPE_CHECKING:
     from tests.helpers.reya_tester import ReyaTester
+    from tests.helpers.reya_tester.data import DataOperations
 
 logger = logging.getLogger("reya.integration_tests")
 
@@ -51,8 +59,9 @@ def pytest_addoption(parser):
 class PerpTestConfig:
     """Mirrors SpotTestConfig's shape so OrderBuilder + helpers can consume either.
 
-    Fields not relevant to perp (e.g. base_asset for balance accounting) carry
-    sensible defaults.
+    Implements the same liquidity-detection surface (``refresh_order_book``,
+    ``has_*_liquidity``, ``best_*_price``, etc.) as SpotTestConfig so the shared
+    test_orderbook tests can treat the two configs interchangeably.
     """
 
     symbol: str
@@ -62,6 +71,7 @@ class PerpTestConfig:
     oracle_price: float
     base_asset: str
     min_balance: float
+    _order_book: OrderBookState | None = field(default=None, repr=False)
 
     def price(self, multiplier: float = 1.0) -> float:
         return round(self.oracle_price * multiplier, 2)
@@ -71,6 +81,68 @@ class PerpTestConfig:
 
     def sell_price(self, multiplier: float = 1.01) -> float:
         return self.price(multiplier)
+
+    async def refresh_order_book(self, data_ops: DataOperations) -> OrderBookState:
+        detector = LiquidityDetector(self.oracle_price)
+        self._order_book = await detector.get_order_book_state(data_ops, self.symbol)
+        log_order_book_state(self._order_book)
+        return self._order_book
+
+    @property
+    def order_book(self) -> OrderBookState | None:
+        return self._order_book
+
+    @property
+    def has_any_external_liquidity(self) -> bool:
+        return False if self._order_book is None else self._order_book.has_any_liquidity
+
+    @property
+    def has_usable_bid_liquidity(self) -> bool:
+        return False if self._order_book is None else self._order_book.has_usable_bid_liquidity
+
+    @property
+    def has_usable_ask_liquidity(self) -> bool:
+        return False if self._order_book is None else self._order_book.has_usable_ask_liquidity
+
+    @property
+    def best_bid_price(self) -> Decimal | None:
+        if self._order_book is None or not self._order_book.bids.has_liquidity:
+            return None
+        return self._order_book.bids.best_price
+
+    @property
+    def best_ask_price(self) -> Decimal | None:
+        if self._order_book is None or not self._order_book.asks.has_liquidity:
+            return None
+        return self._order_book.asks.best_price
+
+    @property
+    def circuit_breaker_floor(self) -> Decimal:
+        return (Decimal(str(self.oracle_price)) * Decimal("0.95")).quantize(Decimal("0.01"))
+
+    @property
+    def circuit_breaker_ceiling(self) -> Decimal:
+        return (Decimal(str(self.oracle_price)) * Decimal("1.05")).quantize(Decimal("0.01"))
+
+    def get_usable_bid_price_for_qty(self, qty: str) -> Decimal | None:
+        if self._order_book is None:
+            return None
+        return LiquidityDetector(self.oracle_price).get_usable_bid_price(self._order_book, qty)
+
+    def get_usable_ask_price_for_qty(self, qty: str) -> Decimal | None:
+        if self._order_book is None:
+            return None
+        return LiquidityDetector(self.oracle_price).get_usable_ask_price(self._order_book, qty)
+
+    def get_safe_no_match_buy_price(self) -> Decimal:
+        return SAFE_NO_MATCH_BUY_PRICE
+
+    def get_safe_no_match_sell_price(self) -> Decimal:
+        return SAFE_NO_MATCH_SELL_PRICE
+
+
+# Type alias for tests that accept either config — duck-typed via the shared surface above.
+MarketConfig = Union[SpotTestConfig, PerpTestConfig]
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
@@ -118,11 +190,33 @@ def market_type(request) -> str:
 
 
 @pytest.fixture
-def market_config(market_type: str, spot_config: SpotTestConfig, perp_market_config: PerpTestConfig):
+def market_config(
+    market_type: str, spot_config: SpotTestConfig, perp_market_config: PerpTestConfig
+) -> MarketConfig:
     """Yield the right per-market config for the active parametrization.
 
     Tests use this fixture as the single source of symbol/min_qty/oracle_price,
     regardless of whether the parametrization picked spot or perp. The two
-    config types share the surface OrderBuilder needs.
+    config types share the surface OrderBuilder + liquidity helpers need.
     """
     return spot_config if market_type == "spot" else perp_market_config
+
+
+@pytest.fixture
+def maker(
+    market_type: str,
+    maker_tester,  # spot maker (PERP_ACCOUNT_ID_1 / SPOT_ACCOUNT_ID_1)
+    perp_maker_tester,
+):
+    """Yield the maker tester for the active parametrization."""
+    return maker_tester if market_type == "spot" else perp_maker_tester
+
+
+@pytest.fixture
+def taker(
+    market_type: str,
+    taker_tester,
+    perp_taker_tester,
+):
+    """Yield the taker tester for the active parametrization."""
+    return taker_tester if market_type == "spot" else perp_taker_tester
