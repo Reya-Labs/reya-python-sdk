@@ -12,8 +12,6 @@ matching engine resolves the order to its book, applies the EIP-712-signed
 
 from __future__ import annotations
 
-from typing import Union
-
 import asyncio
 
 import pytest
@@ -27,14 +25,14 @@ from tests.test_orderbook.conftest import PerpTestConfig
 from tests.test_spot.spot_config import SpotTestConfig
 
 
-def _safe_resting_price(market_config: Union[SpotTestConfig, PerpTestConfig]) -> str:
+def _safe_resting_price(market_config: SpotTestConfig | PerpTestConfig) -> str:
     """Price far below oracle so a buy GTC will rest without crossing."""
     return str(round(market_config.oracle_price * 0.5, 2))
 
 
 @pytest.mark.asyncio
 async def test_cancel_single_open_order(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -63,7 +61,7 @@ async def test_cancel_single_open_order(
 
 @pytest.mark.asyncio
 async def test_mass_cancel_clears_multiple_orders(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -97,7 +95,7 @@ async def test_mass_cancel_clears_multiple_orders(
 
 @pytest.mark.asyncio
 async def test_cancel_unknown_order_id_rejects(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -119,7 +117,7 @@ async def test_cancel_unknown_order_id_rejects(
 
 @pytest.mark.asyncio
 async def test_cancel_already_cancelled_rejects(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:

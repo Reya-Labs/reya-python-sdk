@@ -10,8 +10,6 @@ match (positions accrue instead).
 
 from __future__ import annotations
 
-from typing import Union
-
 import asyncio
 
 import pytest
@@ -26,7 +24,7 @@ from tests.test_spot.spot_config import SpotTestConfig
 
 @pytest.mark.asyncio
 async def test_ws_order_change_on_create(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -60,7 +58,7 @@ async def test_ws_order_change_on_create(
 
 @pytest.mark.asyncio
 async def test_ws_order_change_on_cancel(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -90,7 +88,7 @@ async def test_ws_order_change_on_cancel(
 
 @pytest.mark.asyncio
 async def test_ws_depth_subscription_alive(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:

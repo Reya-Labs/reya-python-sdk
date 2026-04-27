@@ -97,7 +97,11 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     )
 
     # CANCEL order
-    await reya_tester.client.cancel_order(order_id=active_tp_order.order_id)
+    await reya_tester.client.cancel_order(
+        symbol=symbol,
+        account_id=reya_tester.account_id,
+        order_id=active_tp_order.order_id,
+    )
 
     await reya_tester.wait.for_order_state(active_tp_order.order_id, OrderStatus.CANCELLED)
     await reya_tester.check_no_order_execution_since(sequence_after_position)
@@ -160,7 +164,11 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     )
 
     # CANCEL
-    await reya_tester.client.cancel_order(order_id=active_sl_order.order_id)
+    await reya_tester.client.cancel_order(
+        symbol=symbol,
+        account_id=reya_tester.account_id,
+        order_id=active_sl_order.order_id,
+    )
     await reya_tester.wait.for_order_state(active_sl_order.order_id, OrderStatus.CANCELLED)
     await reya_tester.check_no_order_execution_since(sequence_after_position)
     await reya_tester.check.position(
@@ -179,14 +187,18 @@ CO_MAX_RETRIES = 5
 CO_TIMEOUT_PER_ATTEMPT = 30
 
 
-async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: Optional[str]) -> None:
+async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: Optional[str], symbol: str = "ETHRUSDPERP") -> None:
     """Cancel an order if it's still open. Silently ignores errors."""
     if order_id is None:
         return
     try:
         ws_order = reya_tester.ws.orders.get(str(order_id))
         if ws_order and ws_order.status.value == "OPEN":
-            await reya_tester.client.cancel_order(order_id=order_id)
+            await reya_tester.client.cancel_order(
+                symbol=symbol,
+                account_id=reya_tester.account_id,
+                order_id=order_id,
+            )
             await reya_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=10)
     except (ApiException, OSError, RuntimeError, asyncio.TimeoutError):
         pass  # Intentionally ignore errors during cleanup - order may already be cancelled/filled
@@ -411,7 +423,11 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """
     await reya_tester.check.no_open_orders()
     try:
-        await reya_tester.client.cancel_order(order_id="unknown_id")
+        await reya_tester.client.cancel_order(
+            symbol="ETHRUSDPERP",
+            account_id=reya_tester.account_id,
+            order_id="unknown_id",
+        )
         raise RuntimeError("Should have failed")
     except BadRequestException as e:
         assert e.data is not None

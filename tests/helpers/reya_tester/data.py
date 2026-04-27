@@ -1,6 +1,6 @@
 """Data retrieval operations for ReyaTester."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 import logging
 
@@ -108,7 +108,7 @@ class DataOperations:
 
     async def market_depth(self, symbol: str) -> Depth:
         """Get L2 market depth (orderbook) for a given symbol via REST API."""
-        return await self._t.client.markets.get_market_depth(symbol=symbol)
+        return cast(Depth, await self._t.client.markets.get_market_depth(symbol=symbol))
 
     async def market_definition(self, symbol: str) -> MarketDefinition:
         """Get market configuration for a specific symbol."""

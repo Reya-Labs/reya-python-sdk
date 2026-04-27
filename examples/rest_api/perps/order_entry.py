@@ -209,7 +209,11 @@ async def run_order_cancellation_test(client: ReyaTradingClient, order_ids: list
     order_id = valid_order_ids[0]
     logger.info(f"Attempting to cancel order: {order_id}")
 
-    response = await client.cancel_order(order_id=order_id)
+    response = await client.cancel_order(
+        symbol="ETHRUSDPERP",
+        account_id=client.config.account_id,
+        order_id=order_id,
+    )
     handle_order_response("Order Cancellation", response)
 
 

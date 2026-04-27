@@ -26,4 +26,4 @@ def execute_core_commands(config: dict[str, Any], account_id: int, commands: lis
     # Wait for the transaction receipt
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
-    return tx_receipt  # type: ignore[no-any-return]
+    return tx_receipt

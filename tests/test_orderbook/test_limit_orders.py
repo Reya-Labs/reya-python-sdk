@@ -9,8 +9,6 @@ behaviours (triggers, funding, positions) live in tests/test_perps/.
 
 from __future__ import annotations
 
-from typing import Union
-
 import pytest
 
 from sdk.open_api.models.order_status import OrderStatus
@@ -23,7 +21,7 @@ from tests.test_spot.spot_config import SpotTestConfig
 
 @pytest.mark.asyncio
 async def test_gtc_place_and_cancel(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -56,7 +54,7 @@ async def test_gtc_place_and_cancel(
 
 @pytest.mark.asyncio
 async def test_mass_cancel_clears_open_orders(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:

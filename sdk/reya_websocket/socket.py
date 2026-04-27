@@ -14,7 +14,7 @@ import ssl
 import threading
 
 from pydantic import BaseModel, ValidationError
-from websocket import WebSocket, WebSocketApp  # pylint: disable=no-name-in-module
+from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
@@ -141,15 +141,12 @@ class ReyaSocket(WebSocketApp):
         # Track subscriptions
         self.active_subscriptions: set[str] = set()
 
-        # Public callbacks are typed against `WebSocket` for callsite ergonomics;
-        # websocket-client's WebSocketApp expects `WebSocketApp` as the first arg.
-        # The two are interchangeable at runtime — silence the static mismatch.
         super().__init__(
             url=url,
-            on_open=on_open,  # type: ignore[arg-type]
-            on_message=self._wrap_message_handler(),  # type: ignore[arg-type]
-            on_error=on_error,  # type: ignore[arg-type]
-            on_close=on_close,  # type: ignore[arg-type]
+            on_open=on_open,
+            on_message=self._wrap_message_handler(),
+            on_error=on_error,
+            on_close=on_close,
             **kwargs,
         )
 
@@ -239,23 +236,23 @@ class ReyaSocket(WebSocketApp):
 
         try:
             if message_type == "ping":
-                return PingMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, PingMessagePayload.model_validate(message))
 
             elif message_type == "pong":
-                return PongMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, PongMessagePayload.model_validate(message))
 
             elif message_type == "subscribed":
                 # Handle case where server returns contents as empty list instead of dict
                 # Convert list to None to match the expected model type
                 if "contents" in message and isinstance(message["contents"], list):
                     message = {**message, "contents": None}
-                return SubscribedMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, SubscribedMessagePayload.model_validate(message))
 
             elif message_type == "unsubscribed":
-                return UnsubscribedMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, UnsubscribedMessagePayload.model_validate(message))
 
             elif message_type == "error":
-                return ErrorMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, ErrorMessagePayload.model_validate(message))
 
             elif message_type == "channel_data":
                 channel = message.get("channel", "")

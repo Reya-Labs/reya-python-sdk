@@ -58,6 +58,7 @@ async def test_spot_order_survives_ws_reconnect(spot_config: SpotTestConfig, spo
 
     logger.info(f"Placing GTC buy at ${order_price:.2f}...")
     order_id = await spot_tester.orders.create_limit(order_params)
+    assert order_id is not None, "create_limit must return an order_id for this test"
     await spot_tester.wait.for_order_creation(order_id)
     logger.info(f"✅ Order created: {order_id}")
 
@@ -260,6 +261,7 @@ async def test_spot_ws_rest_consistency_after_activity(
 
     # WS should show CANCELLED for remaining orders
     for order_id in remaining_order_ids:
+        assert order_id is not None, "remaining order_id should be set"
         ws_order = maker_tester.ws.order_changes.get(order_id)
         assert ws_order is not None, f"Order {order_id} should be in WS"
         ws_status = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status

@@ -12,8 +12,6 @@ balances) lives in ``tests/test_spot/test_ioc_orders.py`` and ``test_balance_ver
 
 from __future__ import annotations
 
-from typing import Union
-
 import asyncio
 from decimal import Decimal
 
@@ -28,7 +26,7 @@ from tests.test_spot.spot_config import SpotTestConfig
 
 @pytest.mark.asyncio
 async def test_ioc_full_fill_against_resting_maker(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
     taker: ReyaTester,
@@ -74,7 +72,7 @@ async def test_ioc_full_fill_against_resting_maker(
 
 @pytest.mark.asyncio
 async def test_ioc_no_liquidity_unfills_immediately(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     taker: ReyaTester,
 ) -> None:
@@ -106,7 +104,7 @@ async def test_ioc_no_liquidity_unfills_immediately(
 
 @pytest.mark.asyncio
 async def test_ioc_partial_fill_when_maker_smaller(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
     taker: ReyaTester,

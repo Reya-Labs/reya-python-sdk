@@ -15,8 +15,6 @@ present at crossing prices.
 
 from __future__ import annotations
 
-from typing import Union
-
 import asyncio
 
 import pytest
@@ -30,7 +28,7 @@ from tests.test_orderbook.conftest import PerpTestConfig
 from tests.test_spot.spot_config import SpotTestConfig
 
 
-async def _skip_if_external_liquidity(market_config: Union[SpotTestConfig, PerpTestConfig], tester: ReyaTester) -> None:
+async def _skip_if_external_liquidity(market_config: SpotTestConfig | PerpTestConfig, tester: ReyaTester) -> None:
     """Skip if external liquidity is on the book — would interfere with self-match assertions."""
     await market_config.refresh_order_book(tester.data)
     if market_config.has_any_external_liquidity:
@@ -39,7 +37,7 @@ async def _skip_if_external_liquidity(market_config: Union[SpotTestConfig, PerpT
 
 @pytest.mark.asyncio
 async def test_self_match_gtc_taker_sell_cancelled(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -93,7 +91,7 @@ async def test_self_match_gtc_taker_sell_cancelled(
 
 @pytest.mark.asyncio
 async def test_self_match_ioc_taker_buy_cancelled(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
 ) -> None:
@@ -142,7 +140,7 @@ async def test_self_match_ioc_taker_buy_cancelled(
 
 @pytest.mark.asyncio
 async def test_cross_account_match_fills_normally(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
     taker: ReyaTester,

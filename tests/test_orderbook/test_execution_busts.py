@@ -57,18 +57,19 @@ async def test_wallet_execution_busts_websocket_subscribes(reya_tester: ReyaTest
     ``ReyaTester.setup`` already subscribes via ``ws.wallet.execution_busts(addr).subscribe()``;
     this test just verifies the channel is in the active set without forcing a bust event.
     """
-    if reya_tester.websocket is None:
+    websocket = reya_tester.websocket
+    if websocket is None:
         pytest.skip("WebSocket not connected")
+    assert websocket is not None  # narrow after the skip above
 
     expected_channel = f"/v2/wallet/{reya_tester.owner_wallet_address}/executionBusts"
 
     # Give the subscribe message a brief moment to register if a fresh ws is in flight.
     for _ in range(5):
-        if expected_channel in reya_tester.websocket.active_subscriptions:
+        if expected_channel in websocket.active_subscriptions:
             return
         await asyncio.sleep(0.1)
 
-    assert expected_channel in reya_tester.websocket.active_subscriptions, (
-        f"Expected {expected_channel} in active subscriptions, got "
-        f"{sorted(reya_tester.websocket.active_subscriptions)}"
+    assert expected_channel in websocket.active_subscriptions, (
+        f"Expected {expected_channel} in active subscriptions, got " f"{sorted(websocket.active_subscriptions)}"
     )

@@ -13,8 +13,6 @@ quote asset deltas, which only make sense on spot.
 
 from __future__ import annotations
 
-from typing import Union
-
 import asyncio
 
 import pytest
@@ -31,7 +29,7 @@ from tests.test_spot.spot_config import SpotTestConfig
 
 @pytest.mark.asyncio
 async def test_maker_taker_match_e2e(
-    market_config: Union[SpotTestConfig, PerpTestConfig],
+    market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
     taker: ReyaTester,

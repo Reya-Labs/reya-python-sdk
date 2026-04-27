@@ -145,7 +145,7 @@ MarketConfig = Union[SpotTestConfig, PerpTestConfig]
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def perp_market_config(maker_tester_session) -> PerpTestConfig:  # type: ignore[no-untyped-def]
+async def perp_market_config(maker_tester_session) -> PerpTestConfig:
     """Fetch a perp market config for parametrized orderbook tests.
 
     Uses ``--orderbook-perp-asset`` (default ETH). Skips if the testnet/perpOB
@@ -164,6 +164,7 @@ async def perp_market_config(maker_tester_session) -> PerpTestConfig:  # type: i
 
     if market_def is None:
         pytest.skip(f"Perp market {symbol} not present in /v2/marketDefinitions")
+    assert market_def is not None  # narrows the Optional after the skip above
 
     try:
         oracle_price = float(await maker_tester_session.data.current_price(symbol))
@@ -185,7 +186,8 @@ async def perp_market_config(maker_tester_session) -> PerpTestConfig:  # type: i
 @pytest.fixture(params=_DEFAULT_MARKET_TYPES)
 def market_type(request) -> str:
     """Parametrize over [spot, perp] — the param drives ``market_config``."""
-    return request.param
+    param: str = request.param
+    return param
 
 
 @pytest.fixture

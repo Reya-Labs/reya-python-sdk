@@ -619,6 +619,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
 
     if rusd_balance is None or rusd_balance <= 0:
         pytest.skip("No RUSD balance available for this test")
+    assert rusd_balance is not None  # narrow after the skip above
 
     logger.info(f"Current RUSD balance: {rusd_balance}")
 
@@ -679,6 +680,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
 
     if asset_balance is None or asset_balance <= 0:
         pytest.skip(f"No {base_asset} balance available for this test")
+    assert asset_balance is not None  # narrow after the skip above
 
     logger.info(f"Current {base_asset} balance: {asset_balance}")
 
