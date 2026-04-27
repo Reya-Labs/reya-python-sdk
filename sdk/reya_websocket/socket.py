@@ -30,6 +30,8 @@ from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
+from sdk.async_api.spot_market_summary_update_payload import SpotMarketSummaryUpdatePayload
+from sdk.async_api.spot_markets_summary_update_payload import SpotMarketsSummaryUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.unsubscribed_message_payload import UnsubscribedMessagePayload
 from sdk.async_api.wallet_execution_bust_update_payload import WalletExecutionBustUpdatePayload
@@ -56,6 +58,8 @@ WebSocketMessage = Union[
     # Market channels
     MarketsSummaryUpdatePayload,  # /v2/markets/summary
     MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+    SpotMarketsSummaryUpdatePayload,  # /v2/spotMarkets/summary
+    SpotMarketSummaryUpdatePayload,  # /v2/spotMarket/{symbol}/summary
     MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
     MarketSpotExecutionUpdatePayload,  # /v2/market/{symbol}/spotExecutions
     MarketExecutionBustUpdatePayload,  # /v2/market/{symbol}/executionBusts
@@ -89,6 +93,7 @@ class ReyaSocket(WebSocketApp):
         "pong": PongMessagePayload,
         # All markets summary (exact match)
         "/v2/markets/summary": MarketsSummaryUpdatePayload,
+        "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
         # All prices (exact match)
         "/v2/prices": PricesUpdatePayload,
     }
@@ -199,6 +204,8 @@ class ReyaSocket(WebSocketApp):
                 return MarketExecutionBustUpdatePayload
             elif channel.endswith("/depth"):
                 return MarketDepthUpdatePayload
+        elif "/v2/spotMarket/" in channel and channel.endswith("/summary"):
+            return SpotMarketSummaryUpdatePayload
         elif "/v2/wallet/" in channel:
             if channel.endswith("/positions"):
                 return PositionUpdatePayload

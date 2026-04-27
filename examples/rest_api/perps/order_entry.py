@@ -143,6 +143,7 @@ async def run_stop_loss_orders_test(client: ReyaTradingClient):
         TriggerOrderParameters(
             symbol="ETHRUSDPERP",
             is_buy=False,
+            qty="0.01",
             trigger_px="1000",
             trigger_type=OrderType.STOP_LOSS,
         )
@@ -155,6 +156,7 @@ async def run_stop_loss_orders_test(client: ReyaTradingClient):
         TriggerOrderParameters(
             symbol="ETHRUSDPERP",
             is_buy=True,
+            qty="0.01",
             trigger_px="9000",
             trigger_type=OrderType.STOP_LOSS,
         )
@@ -174,6 +176,7 @@ async def run_take_profit_orders_test(client: ReyaTradingClient):
         TriggerOrderParameters(
             symbol="ETHRUSDPERP",
             is_buy=False,
+            qty="0.01",
             trigger_px="10000",
             trigger_type=OrderType.TAKE_PROFIT,
         )
@@ -186,6 +189,7 @@ async def run_take_profit_orders_test(client: ReyaTradingClient):
         TriggerOrderParameters(
             symbol="ETHRUSDPERP",
             is_buy=True,
+            qty="0.01",
             trigger_px="1500",
             trigger_type=OrderType.TAKE_PROFIT,
         )

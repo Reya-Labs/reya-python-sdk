@@ -38,18 +38,22 @@ class LimitOrderParameters:
 class TriggerOrderParameters:
     """Parameters for a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
 
-    `qty` is the signed quantity to execute when the trigger fires (defaults to
-    "0.01"). `limit_px` is the worst-acceptable execution price after the trigger
-    fires; if omitted the client signs a sentinel — a very high value for buys, a
-    very low non-zero value for sells — so the order executes at any price
-    available after the trigger.
+    `qty` is the signed quantity to execute when the trigger fires — it must be
+    set explicitly. There is no safe default: signing a smaller-than-expected qty
+    silently produces a partial close, which can leave the user with the wrong
+    risk after a stop hits.
+
+    `limit_px` is the worst-acceptable execution price after the trigger fires;
+    if omitted the client signs a sentinel — a very high value for buys, a very
+    low non-zero value for sells — so the order executes at any price available
+    after the trigger.
     """
 
     symbol: str
     is_buy: bool
+    qty: str
     trigger_px: str
     trigger_type: OrderType
-    qty: str = "0.01"
     limit_px: Optional[str] = None
     reduce_only: Optional[bool] = None
     client_order_id: Optional[int] = None
