@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Union
 
-import logging
 import os
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -35,8 +34,6 @@ from tests.test_spot.spot_config import SpotTestConfig
 
 if TYPE_CHECKING:
     from tests.helpers.reya_tester.data import DataOperations
-
-logger = logging.getLogger("reya.integration_tests")
 
 # Tests in this directory are parametrized over both spot and perp; tests that
 # only make sense for one market type can filter via params=["spot"] or
@@ -145,15 +142,17 @@ MarketConfig = Union[SpotTestConfig, PerpTestConfig]
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def perp_market_config(maker_tester_session) -> PerpTestConfig:
+async def perp_market_config(request, maker_tester_session) -> PerpTestConfig:
     """Fetch a perp market config for parametrized orderbook tests.
 
-    Uses ``--orderbook-perp-asset`` (default ETH). Skips if the testnet/perpOB
-    deployment hasn't enabled this market on the matching engine
+    Resolves the asset from (in order): the ``--orderbook-perp-asset`` CLI flag,
+    the ``ORDERBOOK_PERP_ASSET`` env var, then the default ``ETH``. Skips if the
+    testnet/perpOB deployment hasn't enabled this market on the matching engine
     (see ``PERP_OB_MARKET_IDS`` launch gate in
     https://github.com/Reya-Labs/reya-off-chain-monorepo/pull/2588).
     """
-    asset = os.environ.get("ORDERBOOK_PERP_ASSET", "ETH").upper()
+    cli_asset = request.config.getoption("--orderbook-perp-asset", default=None)
+    asset = (cli_asset or os.environ.get("ORDERBOOK_PERP_ASSET", "ETH")).upper()
     symbol = f"{asset}RUSDPERP"
 
     market_def = None
@@ -166,11 +165,10 @@ async def perp_market_config(maker_tester_session) -> PerpTestConfig:
         pytest.skip(f"Perp market {symbol} not present in /v2/marketDefinitions")
     assert market_def is not None  # narrows the Optional after the skip above
 
-    try:
-        oracle_price = float(await maker_tester_session.data.current_price(symbol))
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.warning(f"Failed to fetch oracle price for {symbol}: {e}")
-        oracle_price = 3000.0
+    # Fail loud rather than swallow the error with a fake price — a wrong oracle
+    # price silently invalidates every downstream test (limits, liquidity checks,
+    # circuit-breaker bands).
+    oracle_price = float(await maker_tester_session.data.current_price(symbol))
 
     return PerpTestConfig(
         symbol=symbol,

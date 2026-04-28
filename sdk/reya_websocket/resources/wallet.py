@@ -298,9 +298,22 @@ class WalletExecutionBustsResource(SubscribableParameterizedResource):
     """Resource for accessing wallet execution busts (unified spot + perp)."""
 
     def __init__(self, socket: "ReyaSocket"):
+        """Initialize the wallet execution busts resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
         super().__init__(socket, "/v2/wallet/{address}/executionBusts")
 
     def for_wallet(self, address: str) -> "WalletExecutionBustsSubscription":
+        """Create a subscription for a specific wallet's execution busts.
+
+        Args:
+            address: The wallet address.
+
+        Returns:
+            A subscription object for the wallet's execution busts.
+        """
         return WalletExecutionBustsSubscription(self.socket, address)
 
 
@@ -308,14 +321,26 @@ class WalletExecutionBustsSubscription:
     """Manages a subscription to execution busts for a specific wallet."""
 
     def __init__(self, socket: "ReyaSocket", address: str):
+        """Initialize a wallet execution busts subscription.
+
+        Args:
+            socket: The WebSocket connection to use for this subscription.
+            address: The wallet address.
+        """
         self.socket = socket
         self.address = address
         self.path = f"/v2/wallet/{address}/executionBusts"
 
     def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to wallet execution busts.
+
+        Args:
+            batched: Whether to receive updates in batches.
+        """
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self) -> None:
+        """Unsubscribe from wallet execution busts."""
         self.socket.send_unsubscribe(channel=self.path)
 
 

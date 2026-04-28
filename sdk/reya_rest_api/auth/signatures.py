@@ -85,8 +85,11 @@ class SignatureGenerator:
         """Sign an Order envelope per docs/eip712.md.
 
         Reconstructs the signed `OrderDetails.quantity` (int256) from
-        `is_buy` + unsigned `qty` as `is_buy ? +qty : -qty`.
+        `is_buy` + unsigned `qty` as `is_buy ? +qty : -qty`. A negative `qty`
+        would silently flip the trade direction, so reject it up front.
         """
+        if qty < 0:
+            raise ValueError(f"sign_order requires unsigned qty (got {qty}); use is_buy to set direction")
         signed_qty = qty if is_buy else -qty
 
         types = {

@@ -273,9 +273,22 @@ class MarketExecutionBustsResource(SubscribableParameterizedResource):
     """Resource for accessing market execution busts (unified spot + perp)."""
 
     def __init__(self, socket: "ReyaSocket"):
+        """Initialize the market execution busts resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
         super().__init__(socket, "/v2/market/{symbol}/executionBusts")
 
     def for_symbol(self, symbol: str) -> "MarketExecutionBustsSubscription":
+        """Create a subscription for a specific market's execution busts.
+
+        Args:
+            symbol: The trading symbol (spot or perp, e.g. "WETHRUSD", "ETHRUSDPERP").
+
+        Returns:
+            A subscription object for the specified market's execution busts.
+        """
         return MarketExecutionBustsSubscription(self.socket, symbol)
 
 
@@ -283,14 +296,26 @@ class MarketExecutionBustsSubscription:
     """Manages a subscription to market execution busts for a specific symbol."""
 
     def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a market execution busts subscription.
+
+        Args:
+            socket: The WebSocket connection to use for this subscription.
+            symbol: The trading symbol (spot or perp).
+        """
         self.socket = socket
         self.symbol = symbol
         self.path = f"/v2/market/{symbol}/executionBusts"
 
     def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to market execution busts.
+
+        Args:
+            batched: Whether to receive updates in batches.
+        """
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self) -> None:
+        """Unsubscribe from market execution busts."""
         self.socket.send_unsubscribe(channel=self.path)
 
 

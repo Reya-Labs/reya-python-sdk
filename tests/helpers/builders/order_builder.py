@@ -297,10 +297,12 @@ class TriggerOrderBuilder:
         return self.stop_loss()
 
     def reduce_only(self, value: bool = True) -> TriggerOrderBuilder:
+        """Mark the trigger order as reduce-only (cannot increase position size)."""
         self._reduce_only = value
         return self
 
     def client_order_id(self, client_order_id: int) -> TriggerOrderBuilder:
+        """Set the caller-side order id used to dedupe + correlate cancels."""
         self._client_order_id = client_order_id
         return self
 
