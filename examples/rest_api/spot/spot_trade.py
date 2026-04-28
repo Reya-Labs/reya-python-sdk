@@ -17,6 +17,8 @@ Usage:
     python -m examples.rest_api.spot.spot_trade
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys

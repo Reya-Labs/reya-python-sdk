@@ -22,6 +22,8 @@ Usage:
 Press Ctrl+C to stop (will cancel all orders on exit).
 """
 
+from __future__ import annotations
+
 from typing import Optional
 
 import argparse
