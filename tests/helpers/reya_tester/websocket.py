@@ -6,6 +6,8 @@ These types match the AsyncAPI spec and are auto-generated.
 Uses EventStore for unified state tracking across all event types.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Optional, Union
 
 import logging
@@ -286,7 +288,8 @@ class WebSocketState:
         for trade in message.data:
             logger.info(
                 f"📊 Perp execution received: seq={trade.sequence_number}, "
-                f"account_id={trade.account_id}, symbol={trade.symbol}, "
+                f"taker/maker_account_id=({trade.taker_account_id}, {trade.maker_account_id}), "
+                f"symbol={trade.symbol}, "
                 f"side={trade.side.value if hasattr(trade.side, 'value') else trade.side}, qty={trade.qty}"
             )
             self.perp_executions.add(trade)

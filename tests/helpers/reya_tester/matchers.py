@@ -47,7 +47,7 @@ class ExecutionMatcher:
         """Match a perp execution against expected order values.
 
         Note: PerpExecution does NOT have order_id, so we match by:
-        - account_id, symbol, side, qty
+        - account_id (taker or maker side), symbol, side, qty
 
         Args:
             execution: The perp execution to check.
@@ -57,7 +57,8 @@ class ExecutionMatcher:
         Returns:
             True if execution matches expected values.
         """
-        if execution.account_id != expected.account_id:
+        # Expected order's account is on one side of the trade — match either side.
+        if expected.account_id not in (execution.taker_account_id, execution.maker_account_id):
             return False
         if execution.symbol != expected.symbol:
             return False

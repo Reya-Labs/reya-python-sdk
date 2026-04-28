@@ -186,9 +186,10 @@ class Checks:
         assert (
             order_execution.symbol == expected_order.symbol
         ), "check_order_execution: Order execution symbol does not match"
-        assert (
-            order_execution.account_id == expected_order.account_id
-        ), "check_order_execution: Order execution account ID does not match"
+        assert expected_order.account_id in (
+            order_execution.taker_account_id,
+            order_execution.maker_account_id,
+        ), "check_order_execution: Order execution account ID does not match either taker or maker"
         assert (
             order_execution.qty == expected_order.qty if expected_qty is None else expected_qty
         ), "check_order_execution: Order execution qty does not match"

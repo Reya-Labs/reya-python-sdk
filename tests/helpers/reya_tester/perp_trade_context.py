@@ -141,7 +141,8 @@ class PerpTradeContext:
                 # Debug: log why it didn't match
                 logger.debug(
                     f"Execution seq={seq} didn't match: "
-                    f"account_id={execution.account_id} vs {expected_order.account_id}, "
+                    f"taker/maker_account_id=({execution.taker_account_id}, {execution.maker_account_id}) "
+                    f"vs {expected_order.account_id}, "
                     f"symbol={execution.symbol} vs {expected_order.symbol}, "
                     f"side={_get_enum_value(execution.side)} vs {_get_enum_value(expected_order.side)}, "
                     f"qty={execution.qty} vs {expected_qty or expected_order.qty}"
@@ -172,7 +173,8 @@ class PerpTradeContext:
         expected_qty: Optional[str] = None,
     ) -> bool:
         """Check if execution matches expected order parameters."""
-        if execution.account_id != expected.account_id:
+        # Expected order's account is on one side of the trade — accept either.
+        if expected.account_id not in (execution.taker_account_id, execution.maker_account_id):
             return False
         if execution.symbol != expected.symbol:
             return False
