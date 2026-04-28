@@ -6,7 +6,7 @@ The order entry surface is unified across spot and perp markets — all orders
 flow through the same `Order` EIP-712 envelope and matching-engine pipeline.
 """
 
-from typing import Optional, cast
+from typing import Optional
 
 import logging
 import threading
@@ -237,7 +237,7 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        return cast(CreateOrderResponse, await self.orders.create_order(create_order_request=order_request))
+        return await self.orders.create_order(create_order_request=order_request)
 
     async def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
         """
@@ -302,7 +302,7 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        return cast(CreateOrderResponse, await self.orders.create_order(create_order_request=order_request))
+        return await self.orders.create_order(create_order_request=order_request)
 
     async def cancel_order(
         self,
@@ -351,7 +351,7 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        return cast(CancelOrderResponse, await self.orders.cancel_order(cancel_request))
+        return await self.orders.cancel_order(cancel_request)
 
     async def mass_cancel(
         self,
@@ -386,49 +386,49 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        return cast(MassCancelResponse, await self.orders.cancel_all(mass_cancel_request))
+        return await self.orders.cancel_all(mass_cancel_request)
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         wallet = wallet_address or self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(list[Position], await self.wallet.get_wallet_positions(address=wallet))
+        return await self.wallet.get_wallet_positions(address=wallet)
 
     async def get_open_orders(self) -> list[Order]:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(list[Order], await self.wallet.get_wallet_open_orders(address=wallet))
+        return await self.wallet.get_wallet_open_orders(address=wallet)
 
     async def get_configuration(self) -> WalletConfiguration:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(WalletConfiguration, await self.wallet.get_wallet_configuration(address=wallet))
+        return await self.wallet.get_wallet_configuration(address=wallet)
 
     async def get_perp_executions(self) -> PerpExecutionList:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(PerpExecutionList, await self.wallet.get_wallet_perp_executions(address=wallet))
+        return await self.wallet.get_wallet_perp_executions(address=wallet)
 
     async def get_accounts(self) -> list[Account]:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(list[Account], await self.wallet.get_wallet_accounts(address=wallet))
+        return await self.wallet.get_wallet_accounts(address=wallet)
 
     async def get_account_balances(self) -> list[AccountBalance]:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(list[AccountBalance], await self.wallet.get_wallet_account_balances(address=wallet))
+        return await self.wallet.get_wallet_account_balances(address=wallet)
 
     async def get_spot_executions(self) -> SpotExecutionList:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(SpotExecutionList, await self.wallet.get_wallet_spot_executions(address=wallet))
+        return await self.wallet.get_wallet_spot_executions(address=wallet)
 
     async def get_execution_busts(self) -> ExecutionBustList:
         """Get execution busts (failed fills) across spot and perp markets
@@ -436,7 +436,7 @@ class ReyaTradingClient:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
-        return cast(ExecutionBustList, await self.wallet.get_wallet_execution_busts(address=wallet))
+        return await self.wallet.get_wallet_execution_busts(address=wallet)
 
     async def close(self) -> None:
         if hasattr(self._api_client, "rest_client") and self._api_client.rest_client:

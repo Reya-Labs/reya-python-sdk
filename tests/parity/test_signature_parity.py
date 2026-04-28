@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 """
 TS↔Py signature parity test.
 
@@ -94,9 +95,9 @@ def test_order_signature_parity(signer: SignatureGenerator) -> None:
         nonce=1700000000000000,
         deadline=1745000000,
     )
-    assert sig == EXPECTED_SIGNATURES["order"], (
-        f"Order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order']}"
-    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order"]
+    ), f"Order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order']}"
 
 
 def test_order_cancel_signature_parity(signer: SignatureGenerator) -> None:
@@ -109,9 +110,9 @@ def test_order_cancel_signature_parity(signer: SignatureGenerator) -> None:
         nonce=1700000000000001,
         deadline=1745000060,
     )
-    assert sig == EXPECTED_SIGNATURES["order_cancel"], (
-        f"OrderCancel signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_cancel']}"
-    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order_cancel"]
+    ), f"OrderCancel signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_cancel']}"
 
 
 def test_mass_cancel_signature_parity(signer: SignatureGenerator) -> None:
@@ -125,6 +126,6 @@ def test_mass_cancel_signature_parity(signer: SignatureGenerator) -> None:
         nonce=1700000000000002,
         deadline=1745000120,
     )
-    assert sig == EXPECTED_SIGNATURES["mass_cancel"], (
-        f"MassCancel signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['mass_cancel']}"
-    )
+    assert (
+        sig == EXPECTED_SIGNATURES["mass_cancel"]
+    ), f"MassCancel signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['mass_cancel']}"

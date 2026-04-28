@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from web3.types import TxReceipt
 
@@ -23,7 +23,7 @@ def execute_core_commands(config: dict[str, Any], account_id: int, commands: lis
     # Send the raw transaction
     tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
-    # Wait for the transaction receipt
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    # Wait for the transaction receipt (web3 returns Any for the dynamic eth namespace).
+    tx_receipt: TxReceipt = cast(TxReceipt, w3.eth.wait_for_transaction_receipt(tx_hash))
 
     return tx_receipt
