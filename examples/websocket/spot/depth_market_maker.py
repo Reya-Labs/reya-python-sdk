@@ -24,8 +24,6 @@ Press Ctrl+C to stop (will cancel all orders on exit).
 
 from __future__ import annotations
 
-from typing import Optional
-
 import argparse
 import asyncio
 import logging
@@ -98,9 +96,9 @@ class MarketMakerState:
     max_spread_pct: Decimal = DEFAULT_MAX_SPREAD_PCT  # Configurable max bid-ask spread
 
     # Market parameters (set once on startup)
-    market_params: Optional[MarketParams] = None
-    account_id: Optional[int] = None
-    wallet_address: Optional[str] = None
+    market_params: MarketParams | None = None
+    account_id: int | None = None
+    wallet_address: str | None = None
 
     # Dynamic state (updated via WebSocket)
     reference_price: Decimal = Decimal("0")

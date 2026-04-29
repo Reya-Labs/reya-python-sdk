@@ -8,7 +8,7 @@ Uses EventStore for unified state tracking across all event types.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 import logging
 from collections.abc import Mapping
@@ -49,7 +49,7 @@ class WebSocketState:
     All stores use the same pattern for consistency between perp/spot.
     """
 
-    def __init__(self, tester: "ReyaTester"):
+    def __init__(self, tester: ReyaTester):
         self._t = tester
 
         # Unified state tracking using EventStore
@@ -81,12 +81,12 @@ class WebSocketState:
         return self.orders
 
     @property
-    def last_trade(self) -> Optional[AsyncPerpExecution]:
+    def last_trade(self) -> AsyncPerpExecution | None:
         """Backward compatibility: get last perp execution."""
         return self.perp_executions.last
 
     @last_trade.setter
-    def last_trade(self, value: Optional[AsyncPerpExecution]) -> None:
+    def last_trade(self, value: AsyncPerpExecution | None) -> None:
         """Backward compatibility: setting last_trade clears and adds."""
         if value is None:
             self.perp_executions.clear()
@@ -94,12 +94,12 @@ class WebSocketState:
             self.perp_executions.add(value)
 
     @property
-    def last_spot_execution(self) -> Optional[AsyncSpotExecution]:
+    def last_spot_execution(self) -> AsyncSpotExecution | None:
         """Backward compatibility: get last spot execution."""
         return self.spot_executions.last
 
     @last_spot_execution.setter
-    def last_spot_execution(self, value: Optional[AsyncSpotExecution]) -> None:
+    def last_spot_execution(self, value: AsyncSpotExecution | None) -> None:
         """Backward compatibility: setting last_spot_execution clears and adds."""
         if value is None:
             self.spot_executions.clear()
@@ -178,7 +178,7 @@ class WebSocketState:
         self.execution_busts.clear()
         logger.debug("Cleared WebSocket execution busts")
 
-    def clear_market_execution_busts(self, symbol: Optional[str] = None) -> None:
+    def clear_market_execution_busts(self, symbol: str | None = None) -> None:
         """Clear market execution busts. If symbol provided, clear only that symbol."""
         if symbol:
             if symbol in self.market_execution_busts:
@@ -188,7 +188,7 @@ class WebSocketState:
             self.market_execution_busts.clear()
             logger.debug("Cleared all market execution busts")
 
-    def clear_market_spot_executions(self, symbol: Optional[str] = None) -> None:
+    def clear_market_spot_executions(self, symbol: str | None = None) -> None:
         """Clear market spot executions. If symbol provided, clear only that symbol."""
         if symbol:
             if symbol in self.market_spot_executions:
@@ -393,10 +393,10 @@ class WebSocketState:
 
     def verify_spot_trade_balance_changes(
         self,
-        maker_initial_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
-        maker_final_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
-        taker_initial_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
-        taker_final_balances: Mapping[str, Union[AsyncAccountBalance, OpenApiAccountBalance]],
+        maker_initial_balances: Mapping[str, AsyncAccountBalance | OpenApiAccountBalance],
+        maker_final_balances: Mapping[str, AsyncAccountBalance | OpenApiAccountBalance],
+        taker_initial_balances: Mapping[str, AsyncAccountBalance | OpenApiAccountBalance],
+        taker_final_balances: Mapping[str, AsyncAccountBalance | OpenApiAccountBalance],
         base_asset: str,
         quote_asset: str,
         qty: str,

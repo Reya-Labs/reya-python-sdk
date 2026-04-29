@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import asyncio
 
 import pytest
@@ -191,7 +189,7 @@ CO_MAX_RETRIES = 5
 CO_TIMEOUT_PER_ATTEMPT = 30
 
 
-async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: Optional[str], symbol: str = "ETHRUSDPERP") -> None:
+async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: str | None, symbol: str = "ETHRUSDPERP") -> None:
     """Cancel an order if it's still open. Silently ignores errors."""
     if order_id is None:
         return
