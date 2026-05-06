@@ -22,6 +22,8 @@ class TradingConfig:
     owner_wallet_address: str
     private_key: Optional[str] = None
     account_id: Optional[int] = None
+    orders_gateway_address: Optional[str] = None
+    dex_id_override: Optional[int] = None
 
     @property
     def is_mainnet(self) -> bool:
@@ -30,12 +32,33 @@ class TradingConfig:
 
     @property
     def dex_id(self) -> int:
-        """Get DEX ID"""
+        """Exchange id used as `OrderDetails.exchangeId` in signed orders.
+
+        Resolves to the ``REYA_DEX_ID`` env var when set (via
+        ``from_env``/``from_env_spot``), otherwise the canonical default.
+        The override exists because non-mainnet deployments (devnet1,
+        future testnets) may not have registered the canonical id-2
+        exchange yet — using id 1 (passive pool) lets order-entry tests
+        run end-to-end on those environments. Switch back to the
+        default once the target deployment registers id 2.
+        """
+        if self.dex_id_override is not None:
+            return self.dex_id_override
         return REYA_DEX_ID
 
     @property
     def default_orders_gateway_address(self) -> str:
-        """Get default OrdersGateway proxy contract address based on chain ID"""
+        """OrdersGateway proxy contract address used as the EIP-712 verifyingContract.
+
+        Resolution order: explicit ``orders_gateway_address`` (set via the
+        ``REYA_ORDERS_GATEWAY`` env var in ``from_env``/``from_env_spot``) wins,
+        otherwise fall back to the chain-id default. The override exists because
+        non-mainnet deployments (devnet1, future testnets) redeploy the
+        OrdersGateway proxy and a stale baked-in address makes the matching
+        engine reject every signature.
+        """
+        if self.orders_gateway_address:
+            return self.orders_gateway_address
         if self.is_mainnet:
             return "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"  # Mainnet address
         else:
@@ -62,12 +85,15 @@ class TradingConfig:
                 "This should be the wallet address whose data you want to query."
             )
 
+        dex_id_env = os.environ.get("REYA_DEX_ID")
         return cls(
             api_url=os.environ.get("REYA_API_URL", default_api_url),
             chain_id=chain_id,
             owner_wallet_address=owner_wallet_address,
             private_key=os.environ.get("PERP_PRIVATE_KEY_1"),
             account_id=(int(os.environ["PERP_ACCOUNT_ID_1"]) if "PERP_ACCOUNT_ID_1" in os.environ else None),
+            orders_gateway_address=os.environ.get("REYA_ORDERS_GATEWAY"),
+            dex_id_override=int(dex_id_env) if dex_id_env else None,
         )
 
     @classmethod
@@ -108,12 +134,15 @@ class TradingConfig:
         account_id_str = os.environ.get(f"SPOT_ACCOUNT_ID_{account_number}")
         account_id = int(account_id_str) if account_id_str else None
 
+        dex_id_env = os.environ.get("REYA_DEX_ID")
         return cls(
             api_url=os.environ.get("REYA_API_URL", default_api_url),
             chain_id=chain_id,
             owner_wallet_address=owner_wallet_address,
             private_key=private_key,
             account_id=account_id,
+            orders_gateway_address=os.environ.get("REYA_ORDERS_GATEWAY"),
+            dex_id_override=int(dex_id_env) if dex_id_env else None,
         )
 
 

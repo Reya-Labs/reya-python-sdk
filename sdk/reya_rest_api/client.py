@@ -198,7 +198,13 @@ class ReyaTradingClient:
         market_id = self._get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
-        expires_after = params.expires_after if params.expires_after is not None else 0
+        # `expires_after` is signed and sent on every order regardless of TIF.
+        # IOC carries it as defense-in-depth so the settlement contract can
+        # independently reject stale orders even if the off-chain layer
+        # misroutes one. When the caller doesn't pin a lifetime we mirror
+        # `deadline` to match the documented `deadline <= expires_after`
+        # convention.
+        expires_after = params.expires_after if params.expires_after is not None else deadline
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
         reduce_only = bool(params.reduce_only) if params.reduce_only is not None else False
 
@@ -229,7 +235,7 @@ class ReyaTradingClient:
             orderType=OrderType.LIMIT,
             timeInForce=params.time_in_force,
             reduceOnly=reduce_only if params.reduce_only is not None else None,
-            expiresAfter=params.expires_after,
+            expiresAfter=expires_after,
             clientOrderId=params.client_order_id,
             signature=signature,
             nonce=str(nonce),
@@ -268,6 +274,10 @@ class ReyaTradingClient:
 
         order_type_int = _ORDER_TYPE_TO_INT[params.trigger_type]
 
+        # See note in create_limit_order: the matching engine rejects expires_after=0,
+        # so we default to `deadline` to keep the trigger live for the same window.
+        expires_after = deadline
+
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
             market_id=market_id,
@@ -280,7 +290,7 @@ class ReyaTradingClient:
             time_in_force=int(TimeInForceInt.GTC),
             client_order_id=client_order_id,
             reduce_only=bool(params.reduce_only) if params.reduce_only is not None else False,
-            expires_after=0,
+            expires_after=expires_after,
             nonce=nonce,
             deadline=deadline,
         )
@@ -295,6 +305,7 @@ class ReyaTradingClient:
             triggerPx=str(params.trigger_px),
             orderType=params.trigger_type,
             reduceOnly=params.reduce_only,
+            expiresAfter=expires_after,
             clientOrderId=params.client_order_id,
             signature=signature,
             nonce=str(nonce),

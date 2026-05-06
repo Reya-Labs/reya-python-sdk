@@ -161,6 +161,12 @@ class ReyaTester:
             owner_wallet_address=wallet_address,
             private_key=private_key,
             account_id=int(account_id),
+            # Carry env-var-driven overrides from the base config so secondary
+            # accounts sign with the same OrdersGateway domain and exchange id
+            # as account 1 — otherwise they fall back to chain-id defaults that
+            # may not match the deployment (e.g. devnet1).
+            orders_gateway_address=base_config.orders_gateway_address,
+            dex_id_override=base_config.dex_id_override,
         )
         return ReyaTradingClient(config=config)
 

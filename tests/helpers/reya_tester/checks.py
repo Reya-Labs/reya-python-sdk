@@ -143,8 +143,22 @@ class Checks:
         expected_avg_entry_price: Optional[str] = None,
         expected_last_trade_sequence_number: Optional[int] = None,
     ) -> None:
-        """Verify position exists with expected values."""
+        """Verify position exists with expected values.
+
+        Briefly polls the API view to absorb the indexer-write lag between
+        on-chain settlement and the position appearing in
+        `/v2/wallet/{addr}/positions`. The position itself is on-chain
+        immediately after the fill response, but the off-chain position
+        view trails by ~hundreds of ms while the indexer processes the
+        `PassivePerpExecutionV3` event. Without this retry, fast tests
+        race the indexer and see no position.
+        """
         pos = await self._t.data.position(symbol)
+        if pos is None:
+            deadline = asyncio.get_event_loop().time() + 3.0
+            while pos is None and asyncio.get_event_loop().time() < deadline:
+                await asyncio.sleep(0.1)
+                pos = await self._t.data.position(symbol)
         if pos is None:
             raise RuntimeError("check_position: Position not found")
 
