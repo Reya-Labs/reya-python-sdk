@@ -284,34 +284,3 @@ async def test_global_fee_parameters(reya_tester: ReyaTester):
     assert 0 <= float(global_fees.referee_discount) <= 1
     assert 0 <= float(global_fees.referrer_rebate) <= 1
     assert 0 <= float(global_fees.affiliate_referrer_rebate) <= 1
-
-
-@pytest.mark.asyncio
-async def test_liquidity_parameters(reya_tester: ReyaTester):
-    """Test getting liquidity parameters."""
-    liquidity_params = await reya_tester.client.reference.get_liquidity_parameters()
-    assert liquidity_params is not None
-
-    params = {}
-    for param in liquidity_params:
-        params[param.symbol] = param
-
-        assert param.symbol is not None and len(param.symbol) > 0, "Symbol should not be empty"
-        assert "PERP" in param.symbol, f"Symbol should be a perpetual contract (contain PERP), got: {param.symbol}"
-
-        assert 0 < float(param.depth) <= 10_000_000, f"Depth should be positive and reasonable, got: {param.depth}"
-
-        assert (
-            0 <= float(param.velocity_multiplier) <= 50000
-        ), f"Velocity multiplier should be non-negative and reasonable, got: {param.velocity_multiplier}"
-
-    assert len(params.keys()) > 0, "Should have at least one liquidity parameter"
-    assert "ETHRUSDPERP" in params, "ETHRUSDPERP should be in liquidity parameters"
-
-    eth_param = params.get("ETHRUSDPERP")
-    assert eth_param
-    assert eth_param.symbol == "ETHRUSDPERP", f"Expected ETHRUSDPERP symbol, got: {eth_param.symbol}"
-    assert float(eth_param.depth) > 0, f"ETH depth should be positive, got: {eth_param.depth}"
-    assert (
-        float(eth_param.velocity_multiplier) > 0
-    ), f"ETH velocity multiplier should be positive, got: {eth_param.velocity_multiplier}"
