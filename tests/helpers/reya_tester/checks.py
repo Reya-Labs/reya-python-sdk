@@ -101,7 +101,12 @@ class Checks:
                 logger.warning(f"Order {order.order_id} exists in matching engine, waiting for cancellation...")
                 legitimate_orders.append(order)
             except ApiException as e:
-                if "Missing order" in str(e):
+                # Both messages mean "the matching engine has no record of this order":
+                # - "Missing order" — legacy AMM-era message
+                # - "Order not found" — perpOB-era message (CANCEL_ORDER_OTHER_ERROR)
+                # In either case, the order is settled/cancelled on chain but the
+                # API DB hasn't caught up — treat as stale, not legitimate.
+                if "Missing order" in str(e) or "Order not found" in str(e):
                     logger.info(f"Order {order.order_id} is stale (doesn't exist in matching engine), ignoring")
                 else:
                     logger.warning(f"Unexpected error cancelling order {order.order_id}: {e}")

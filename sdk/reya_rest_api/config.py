@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 MAINNET_CHAIN_ID = 1729
-REYA_DEX_ID = 2
+
+# Default exchange id resolved at import time. Set REYA_DEX_ID in the
+# environment to override (e.g., devnet1 only registers exchange id 1).
+# `TradingConfig.dex_id_override` still wins per-instance if set.
+REYA_DEX_ID = int(os.environ.get("REYA_DEX_ID", "2"))
 
 
 @dataclass

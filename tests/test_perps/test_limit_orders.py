@@ -106,7 +106,15 @@ async def test_perp_gtc_rests_on_book(perp_maker_tester: ReyaTester) -> None:
     )
     assert order_id is not None
 
-    open_order = await perp_maker_tester.data.open_order(order_id)
+    # Indexer can lag the create-order response by a few hundred ms before
+    # the GTC shows up in `get_open_orders`. Retry briefly so we don't
+    # false-fail on propagation timing.
+    open_order = None
+    for _ in range(20):
+        open_order = await perp_maker_tester.data.open_order(order_id)
+        if open_order is not None:
+            break
+        await asyncio.sleep(0.1)
     assert open_order is not None, "GTC perp order should be visible in open orders"
     assert open_order.status == OrderStatus.OPEN
     assert open_order.symbol == PERP_SYMBOL
@@ -114,12 +122,21 @@ async def test_perp_gtc_rests_on_book(perp_maker_tester: ReyaTester) -> None:
 
 @pytest.mark.asyncio
 async def test_perp_reduce_only_rejected_without_position(perp_taker_tester: ReyaTester) -> None:
-    """``reduce_only=True`` IOC must not open a fresh position from zero."""
+    """``reduce_only=True`` IOC must not open a fresh position from zero.
+
+    AMM-era behavior: API rejected with a 4xx at submission. PerpOB-era: the
+    API accepts the order, the matching engine processes it and marks it
+    CANCELLED (because there's no position to reduce). Either way, no
+    position can form from a reduce-only-without-position IOC — that's the
+    invariant being tested.
+    """
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
 
-    with pytest.raises(ApiException) as exc_info:
-        await perp_taker_tester.client.create_limit_order(
+    response = None
+    raised: ApiException | None = None
+    try:
+        response = await perp_taker_tester.client.create_limit_order(
             LimitOrderParameters(
                 symbol=PERP_SYMBOL,
                 is_buy=True,
@@ -129,12 +146,29 @@ async def test_perp_reduce_only_rejected_without_position(perp_taker_tester: Rey
                 reduce_only=True,
             )
         )
+    except ApiException as e:
+        raised = e
 
-    err = str(exc_info.value).lower()
-    assert (
-        "reduce" in err or "position" in err or "400" in err
-    ), f"expected reduce-only rejection, got: {exc_info.value}"
-    logger.info(f"✅ reduce_only without position correctly rejected: {type(exc_info.value).__name__}")
+    if raised is not None:
+        err = str(raised).lower()
+        assert (
+            "reduce" in err or "position" in err or "400" in err
+        ), f"expected reduce-only rejection, got: {raised}"
+        logger.info(f"✅ reduce_only without position rejected synchronously: {type(raised).__name__}")
+    else:
+        assert response is not None
+        # Under perpOB the order is accepted but the ME refuses to fill it.
+        assert response.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED), (
+            f"expected CANCELLED/REJECTED for reduce-only without position, got: {response.status}"
+        )
+        assert float(response.exec_qty or "0") == 0.0, (
+            f"reduce-only without position should not fill, got exec_qty={response.exec_qty}"
+        )
+        logger.info(f"✅ reduce_only without position rejected by ME: status={response.status}")
+
+    # Final invariant either way: no position formed.
+    await asyncio.sleep(0.5)
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
 
 
 @pytest.mark.asyncio

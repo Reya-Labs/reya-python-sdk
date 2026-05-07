@@ -5,20 +5,31 @@ Uses pytest-asyncio's loop_scope feature (v0.24+) to share a single event loop
 across all tests in a session, enabling session-scoped async fixtures.
 """
 
-import asyncio
-import os
-from decimal import Decimal
-
-import pytest
-import pytest_asyncio
+# Load .env BEFORE importing the SDK so module-level constants in
+# `sdk.reya_rest_api.config` (e.g. `REYA_DEX_ID`) pick up devnet/staging
+# overrides. Imports happen at conftest load time, so calling load_dotenv
+# inside fixtures would be too late.
 from dotenv import load_dotenv
 
-from sdk.open_api.exceptions import ApiException
-from sdk.open_api.models import TimeInForce
-from sdk.reya_rest_api.models.orders import LimitOrderParameters
-from tests.helpers import ReyaTester
-from tests.helpers.reya_tester import logger
-from tests.test_spot.spot_config import SpotMarketConfig, SpotTestConfig, fetch_spot_market_configs
+load_dotenv()
+
+import asyncio  # noqa: E402
+import os  # noqa: E402
+from decimal import Decimal  # noqa: E402
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+
+from sdk.open_api.exceptions import ApiException  # noqa: E402
+from sdk.open_api.models import TimeInForce  # noqa: E402
+from sdk.reya_rest_api.models.orders import LimitOrderParameters  # noqa: E402
+from tests.helpers import ReyaTester  # noqa: E402
+from tests.helpers.reya_tester import logger  # noqa: E402
+from tests.test_spot.spot_config import (  # noqa: E402
+    SpotMarketConfig,
+    SpotTestConfig,
+    fetch_spot_market_configs,
+)
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
@@ -328,8 +339,58 @@ async def perp_taker_tester_session():
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def perp_maker_tester(perp_maker_tester_session):  # pylint: disable=redefined-outer-name
-    """Function-scoped perp maker — clears orders/positions/WS state between tests."""
+async def perp_flatten_between_tests(  # pylint: disable=redefined-outer-name,unused-argument
+    perp_maker_tester_session, perp_taker_tester_session, perp_position_guard
+):
+    """Function-scoped orchestrated flatten run before & after every perp test.
+
+    Mirrors what `perp_position_guard` does at session boundaries, but at
+    per-test scope. Required because under perpOB a one-sided reduce-only IOC
+    has no AMM counterparty, so the per-test `close_all` legitimately skips and
+    leaves mirrored debris from a previous test that the next test may need
+    cleared (most position-management tests assert on an empty starting
+    position via `check.position_not_open`).
+
+    Activated transitively through `perp_maker_tester` / `perp_taker_tester`.
+    `_flatten_to_zero` short-circuits when nothing needs flattening, so the
+    overhead on tests that don't accumulate debris is just two position
+    queries (~100ms).
+    """
+    market_def = await perp_maker_tester_session.get_market_definition(PERP_GUARD_SYMBOL)
+    min_qty = Decimal(str(market_def.min_order_qty))
+    qty_step = Decimal(str(market_def.qty_step_size))
+
+    await _flatten_to_zero(
+        maker=perp_maker_tester_session,
+        taker=perp_taker_tester_session,
+        symbol=PERP_GUARD_SYMBOL,
+        min_qty=min_qty,
+        qty_step=qty_step,
+        label="pre-test",
+    )
+
+    yield
+
+    await _flatten_to_zero(
+        maker=perp_maker_tester_session,
+        taker=perp_taker_tester_session,
+        symbol=PERP_GUARD_SYMBOL,
+        min_qty=min_qty,
+        qty_step=qty_step,
+        label="post-test",
+    )
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="function")
+async def perp_maker_tester(  # pylint: disable=redefined-outer-name,unused-argument
+    perp_maker_tester_session, perp_flatten_between_tests
+):
+    """Function-scoped perp maker — clears orders/positions/WS state between tests.
+
+    Requests `perp_flatten_between_tests` (transitively activates
+    `perp_position_guard`) so per-test debris is orchestrated-flattened
+    rather than left to a best-effort one-sided IOC.
+    """
     await perp_maker_tester_session.orders.close_all(fail_if_none=False)
     await perp_maker_tester_session.positions.close_all(fail_if_none=False)
     perp_maker_tester_session.ws.clear()
@@ -339,14 +400,264 @@ async def perp_maker_tester(perp_maker_tester_session):  # pylint: disable=redef
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def perp_taker_tester(perp_taker_tester_session):  # pylint: disable=redefined-outer-name
-    """Function-scoped perp taker — clears orders/positions/WS state between tests."""
+async def perp_taker_tester(  # pylint: disable=redefined-outer-name,unused-argument
+    perp_taker_tester_session, perp_flatten_between_tests
+):
+    """Function-scoped perp taker — clears orders/positions/WS state between tests.
+
+    Requests `perp_flatten_between_tests` (transitively activates
+    `perp_position_guard`) so per-test debris is orchestrated-flattened
+    rather than left to a best-effort one-sided IOC.
+    """
     await perp_taker_tester_session.orders.close_all(fail_if_none=False)
     await perp_taker_tester_session.positions.close_all(fail_if_none=False)
     perp_taker_tester_session.ws.clear()
     yield perp_taker_tester_session
     await perp_taker_tester_session.orders.close_all(fail_if_none=False)
     await perp_taker_tester_session.positions.close_all(fail_if_none=False)
+
+
+# ============================================================================
+# Perp Position Guard (session-level orchestrated flatten)
+# ============================================================================
+# Mirrors the `_execute_spot_transfer` + `spot_balance_guard` pattern (lines
+# 445+ below) but for perp positions. Under perpOB there's no AMM counterparty,
+# so a single-account reduce-only IOC has nothing to match against. Tests need
+# orchestrated maker/taker close: one tester rests a GTC, the other crosses it
+# with an IOC, and both positions move consistently.
+
+
+async def _get_perp_position_qty(tester: ReyaTester, symbol: str) -> Decimal:
+    """Return the signed position size (+ long, − short) on `symbol`, or 0."""
+    pos = await tester.data.position(symbol)
+    if pos is None or pos.qty is None:
+        return Decimal("0")
+    qty = Decimal(str(pos.qty))
+    # Sides on the API: 'B' = Bid/long (positive), 'A' = Ask/short (negative).
+    return qty if str(pos.side) in ("Side.B", "B") else -qty
+
+
+async def _execute_perp_flatten(
+    side_a: ReyaTester,
+    side_b: ReyaTester,
+    symbol: str,
+    qty: str,
+    price: str,
+    side_a_is_buy: bool,
+) -> bool:
+    """Cross a GTC on one side with a matching IOC on the other to move
+    both testers' positions by ±qty in opposite directions.
+
+    Mirrors `_execute_spot_transfer`:
+    - `side_a` (with `side_a_is_buy=True/False`) places a GTC.
+    - `side_b` places the opposite-direction IOC at the same price.
+    - On match, side_a moves +qty (if buy) / -qty (if sell), side_b mirrors.
+
+    Used by `perp_position_guard` to converge accumulated positions back
+    toward zero at session end. For mirrored positions (5: -X, 6: +X — the
+    common case after a maker/taker test) this restores both to zero.
+    For unmirrored residue (e.g. accumulated drift), it reduces by qty.
+    """
+    # API rejects `reduceOnly` on GTC (only valid for IOC and TP/SL). The
+    # GTC is left as a regular limit; it's reduce-by-construction because the
+    # caller passed `qty <= |side_a position|`. The IOC sets reduce_only=True
+    # because the API requires it on perp IOCs.
+    gtc_params = LimitOrderParameters(
+        symbol=symbol,
+        is_buy=side_a_is_buy,
+        limit_px=price,
+        qty=qty,
+        time_in_force=TimeInForce.GTC,
+    )
+    gtc_response = await side_a.client.create_limit_order(gtc_params)
+    gtc_order_id = gtc_response.order_id
+    if not gtc_order_id:
+        logger.error("perp_flatten: GTC creation returned no order_id")
+        return False
+
+    await asyncio.sleep(0.3)
+
+    ioc_params = LimitOrderParameters(
+        symbol=symbol,
+        is_buy=not side_a_is_buy,
+        limit_px=price,
+        qty=qty,
+        time_in_force=TimeInForce.IOC,
+        reduce_only=True,
+    )
+    await side_b.client.create_limit_order(ioc_params)
+
+    await asyncio.sleep(1.0)
+
+    # Cancel any unmatched residual on the GTC side (shouldn't happen if the
+    # IOC fully crossed, but defensive).
+    try:
+        open_orders = await side_a.client.get_open_orders()
+        for order in open_orders:
+            if hasattr(order, "order_id") and order.order_id == gtc_order_id:
+                await side_a.client.cancel_order(
+                    order_id=gtc_order_id,
+                    symbol=symbol,
+                    account_id=side_a.account_id,
+                )
+                break
+    except (OSError, RuntimeError) as e:  # nosec B110
+        logger.debug(f"perp_flatten: GTC cancel failed (may have been fully filled): {e}")
+
+    return True
+
+
+PERP_GUARD_SYMBOL = "ETHRUSDPERP"
+
+
+async def _flatten_to_zero(
+    maker: ReyaTester,
+    taker: ReyaTester,
+    symbol: str,
+    min_qty: Decimal,
+    qty_step: Decimal,
+    label: str,
+) -> None:
+    """Drive both accounts' positions on `symbol` toward zero via an
+    orchestrated maker↔taker cross.
+
+    Crosses at oracle, sized to `min(|maker_qty|, |taker_qty|)` — the
+    overlap that can be flattened with a single peer-to-peer match.
+    Unmirrored excess (one side has more than the other) is logged but
+    not auto-corrected, since closing it would require a third
+    counterparty that we don't orchestrate.
+
+    `label` is just for log readability ("session start" / "session end").
+    """
+    maker_qty = await _get_perp_position_qty(maker, symbol)
+    taker_qty = await _get_perp_position_qty(taker, symbol)
+    logger.info(f"  [{label}] maker (account {maker.account_id}): {maker_qty} {symbol}")
+    logger.info(f"  [{label}] taker (account {taker.account_id}): {taker_qty} {symbol}")
+
+    # Peer-to-peer flatten only works when one side is long and the other
+    # is short — only then can the cross reduce both positions simultaneously.
+    # Same-sign or zero-on-one-side cases need an external counterparty we
+    # don't orchestrate; skip them.
+    if maker_qty == 0 or taker_qty == 0:
+        logger.info(f"  [{label}] one side already flat; nothing to cross")
+        return
+    if (maker_qty > 0) == (taker_qty > 0):
+        logger.warning(
+            f"  [{label}] both accounts on the same side "
+            f"(maker {maker_qty:+}, taker {taker_qty:+}); cannot orchestrate flatten"
+        )
+        return
+
+    flatten_qty_raw = min(abs(maker_qty), abs(taker_qty))
+    if flatten_qty_raw < min_qty:
+        logger.info(f"  [{label}] overlap below min_qty; nothing to cross")
+        return
+    flatten_qty = flatten_qty_raw.quantize(qty_step)
+
+    if maker_qty + taker_qty != Decimal("0"):
+        logger.warning(
+            f"  [{label}] positions not perfectly mirrored "
+            f"(sum {maker_qty + taker_qty:+}); flattening overlap of {flatten_qty}"
+        )
+
+    # Long side places GTC SELL; short side crosses with IOC BUY (reduce_only).
+    if maker_qty > 0:
+        side_a, side_b = maker, taker
+    else:
+        side_a, side_b = taker, maker
+
+    oracle_price = Decimal(str(await maker.data.current_price(symbol)))
+    cross_price = oracle_price.quantize(Decimal("0.01"))
+
+    logger.info(
+        f"  [{label}] flatten: account {side_a.account_id} GTC SELL {flatten_qty} @ ${cross_price}, "
+        f"account {side_b.account_id} IOC BUY"
+    )
+
+    try:
+        ok = await _execute_perp_flatten(
+            side_a=side_a,
+            side_b=side_b,
+            symbol=symbol,
+            qty=str(flatten_qty),
+            price=str(cross_price),
+            side_a_is_buy=False,
+        )
+        if ok:
+            logger.info(f"  [{label}] ✅ flatten completed")
+        else:
+            logger.warning(f"  [{label}] flatten did not complete cleanly")
+    except (ApiException, OSError, RuntimeError) as e:
+        logger.warning(f"  [{label}] flatten threw {type(e).__name__}: {e}")
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def perp_position_guard(  # pylint: disable=redefined-outer-name
+    perp_maker_tester_session, perp_taker_tester_session
+):
+    """Session-scoped guard that drives both perp accounts' positions to
+    zero at session start AND session end via orchestrated maker↔taker
+    crosses.
+
+    Inspired by `spot_balance_guard` but with a perp-specific baseline:
+    spot wants to *preserve* asset balances (delta-restoration), perps
+    want positions=0 (since open positions accrue funding and bear
+    market risk between runs). So this guard flattens to zero rather
+    than restoring deltas.
+
+    Opt-in via `perp_maker_tester` / `perp_taker_tester` (the function-
+    scoped wrappers), which transitively request this guard. Spot-only
+    sessions don't trigger it, so missing PERP_ACCOUNT_ID_* env vars
+    don't tank the suite.
+
+    Cleanup uses orchestrated GTC/IOC pairs because perpOB has no AMM
+    counterparty for one-sided closes. Mirrored debris (maker -X, taker
+    +X — the common case after maker/taker fills) flattens cleanly.
+    Unmirrored excess is logged but not corrected.
+
+    Running at BOTH start and end is intentional: end cleanup may not
+    run if the session crashes, so the start sweep guarantees that
+    every run begins from a known-clean state regardless of how the
+    previous run terminated.
+    """
+    symbol = PERP_GUARD_SYMBOL
+
+    # Pull market metadata from the maker tester so we don't depend on the
+    # perp_market_config fixture (which lives in tests/test_orderbook/conftest).
+    market_def = await perp_maker_tester_session.get_market_definition(symbol)
+    min_qty = Decimal(str(market_def.min_order_qty))
+    qty_step = Decimal(str(market_def.qty_step_size))
+
+    logger.info("=" * 60)
+    logger.info(f"📍 PERP POSITION GUARD: pre-session flatten of {symbol}")
+    logger.info("=" * 60)
+
+    await _flatten_to_zero(
+        maker=perp_maker_tester_session,
+        taker=perp_taker_tester_session,
+        symbol=symbol,
+        min_qty=min_qty,
+        qty_step=qty_step,
+        label="session start",
+    )
+
+    yield
+
+    logger.info("=" * 60)
+    logger.info(f"📍 PERP POSITION GUARD: post-session flatten of {symbol}")
+    logger.info("=" * 60)
+
+    try:
+        await _flatten_to_zero(
+            maker=perp_maker_tester_session,
+            taker=perp_taker_tester_session,
+            symbol=symbol,
+            min_qty=min_qty,
+            qty_step=qty_step,
+            label="session end",
+        )
+    except (ApiException, OSError, RuntimeError) as e:
+        logger.warning(f"perp_position_guard: flatten threw {type(e).__name__}: {e}")
 
 
 # ============================================================================

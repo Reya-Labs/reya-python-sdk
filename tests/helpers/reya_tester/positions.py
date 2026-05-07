@@ -56,6 +56,27 @@ class PositionOperations:
                 logger.info(f"Position {symbol} already closed, skipping")
                 continue
 
+            # Depth check: under perpOB, a reduce-only IOC only fills against
+            # resting counterparties. If the side we'd cross is empty, sending
+            # the IOC just burns a nonce and produces a CANCELLED order. Skip
+            # in that case — the orchestrated `perp_position_guard` fixture is
+            # responsible for cleaning up genuine residue between sessions.
+            close_is_buy = not (current_position.side == Side.B)
+            try:
+                depth = await self._t.data.market_depth(symbol)
+            except ApiException as e:
+                logger.warning(f"Failed to fetch market depth for {symbol}: {e} — attempting IOC anyway")
+                depth = None
+
+            if depth is not None:
+                opposite_levels = depth.asks if close_is_buy else depth.bids
+                if not opposite_levels:
+                    logger.info(
+                        f"close_all: skipping reduce-only IOC for {symbol} — "
+                        f"no resting {'asks' if close_is_buy else 'bids'} to cross"
+                    )
+                    continue
+
             # Sentinel prices anchored to oracle so the reduce-only IOC always
             # crosses any resting order without violating ME bounds. The ME
             # rejects `limit_px <= 0` and `limit_px > 2^64 / 1e9 ≈ 1.844e10`,
@@ -67,7 +88,7 @@ class PositionOperations:
 
             limit_order_params = LimitOrderParameters(
                 symbol=symbol,
-                is_buy=not (current_position.side == Side.B),
+                is_buy=close_is_buy,
                 limit_px=str(round(close_price, 2)),
                 qty=str(current_position.qty),
                 time_in_force=TimeInForce.IOC,
