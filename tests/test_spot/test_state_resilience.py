@@ -19,6 +19,7 @@ import pytest
 from sdk.reya_websocket import ReyaSocket
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
+from tests.helpers.reya_tester.retry import with_retry
 from tests.test_spot.spot_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
@@ -340,8 +341,17 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     logger.info(f"Cancelling {num_orders} orders rapidly...")
 
     for i, order_id in enumerate(order_ids):
-        await spot_tester.client.cancel_order(
-            order_id=order_id, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        # Wrap in with_retry so a rate-limit hit (premium-tier wallet has 120
+        # ops/60s on api-executor; cumulative quota from prior tests in the
+        # suite can push us over the limit on the last few cancels) backs off
+        # and retries instead of hard-failing the test.
+        await with_retry(
+            lambda oid=order_id: spot_tester.client.cancel_order(
+                order_id=oid, symbol=spot_config.symbol, account_id=spot_tester.account_id
+            ),
+            max_retries=5,
+            retry_delay=2.0,
+            operation_name=f"cancel_order({order_id})",
         )
         logger.debug(f"  Cancelled order {i + 1}/{num_orders}: {order_id}")
 
