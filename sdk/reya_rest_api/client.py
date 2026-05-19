@@ -254,7 +254,8 @@ class ReyaTradingClient:
             raise ValueError("Private key is required for creating orders")
 
         if params.expires_after is not None and params.time_in_force != TimeInForce.IOC:
-            raise ValueError("Parameter expires_after is only allowed for IOC orders")
+            if not self._is_spot_market(params.symbol):
+                raise ValueError("Parameter expires_after is only allowed for IOC orders on perp markets")
 
         if params.time_in_force == TimeInForce.GTC and params.reduce_only is True:
             raise ValueError("Unexpected True value for parameter reduce_only for GTC orders")
@@ -284,7 +285,10 @@ class ReyaTradingClient:
         if params.time_in_force != TimeInForce.IOC:
             # For GTC orders: use real timestamp for spot markets, 10^18 for perp markets
             if self._is_spot_market(params.symbol):
-                deadline = int(time.time()) + GTC_DEADLINE_S  # 24 hours for GTC spot orders
+                if params.expires_after is not None:
+                    deadline = params.expires_after
+                else:
+                    deadline = int(time.time()) + GTC_DEADLINE_S  # 24 hours for GTC spot orders
             else:
                 deadline = CONDITIONAL_ORDER_DEADLINE
         elif params.expires_after is None:

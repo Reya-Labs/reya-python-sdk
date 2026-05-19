@@ -10,16 +10,18 @@ Both orders are for 0.001 ETH.
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- SPOT_ACCOUNT_ID_1: Your Reya account ID
-- SPOT_PRIVATE_KEY_1: Your Ethereum private key
+- SPOT_ACCOUNT_ID_1 (or _2): Your Reya account ID
+- SPOT_PRIVATE_KEY_1 (or _2): Your Ethereum private key
 
 Usage:
-    python -m examples.rest_api.spot.create_orders
+    python -m examples.rest_api.spot.create_orders        # uses account 1
+    python -m examples.rest_api.spot.create_orders 2      # uses account 2
 """
 
 import asyncio
 import logging
 import sys
+import time
 
 from dotenv import load_dotenv
 
@@ -32,9 +34,10 @@ from sdk.reya_rest_api.models.orders import LimitOrderParameters
 # =============================================================================
 
 SPOT_SYMBOL = "WETHRUSD"
-TRADE_QTY = "0.0001"
-BUY_PRICE = "10"
-SELL_PRICE = "1000000"
+TRADE_QTY = "0.001"
+BUY_PRICE = "1900"
+SELL_PRICE = "2200"
+ORDER_EXPIRY_SECONDS = 10  # Orders expire after 2 minutes (set to None for default 24h)
 
 # =============================================================================
 # LOGGING SETUP
@@ -59,19 +62,22 @@ async def main() -> None:
     """Main entry point for the create orders example."""
     load_dotenv()
 
+    # Pick account from CLI argument (default: 1)
+    account_number = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+
     # Get config from environment
     try:
-        config = get_spot_config(account_number=1)
+        config = get_spot_config(account_number=account_number)
     except ValueError as e:
         logger.error(f"❌ Configuration error: {e}")
         sys.exit(1)
 
     if config.account_id is None:
-        logger.error("❌ SPOT_ACCOUNT_ID_1 environment variable is required")
+        logger.error(f"❌ SPOT_ACCOUNT_ID_{account_number} environment variable is required")
         sys.exit(1)
 
     if config.private_key is None:
-        logger.error("❌ SPOT_PRIVATE_KEY_1 environment variable is required")
+        logger.error(f"❌ SPOT_PRIVATE_KEY_{account_number} environment variable is required")
         sys.exit(1)
 
     account_id = config.account_id
@@ -79,11 +85,17 @@ async def main() -> None:
     logger.info("=" * 60)
     logger.info("CREATE ORDERS EXAMPLE")
     logger.info("=" * 60)
+    expires_after = int(time.time()) + ORDER_EXPIRY_SECONDS if ORDER_EXPIRY_SECONDS else None
+
     logger.info(f"Symbol: {SPOT_SYMBOL}")
     logger.info(f"Quantity: {TRADE_QTY} ETH")
     logger.info(f"Buy Price: ${BUY_PRICE}")
     logger.info(f"Sell Price: ${SELL_PRICE}")
     logger.info(f"Account ID: {account_id}")
+    if ORDER_EXPIRY_SECONDS:
+        logger.info(f"Order Expiry: {ORDER_EXPIRY_SECONDS}s (deadline: {expires_after})")
+    else:
+        logger.info("Order Expiry: default (24h)")
     logger.info("=" * 60)
 
     # Create trading client
@@ -104,6 +116,7 @@ async def main() -> None:
             qty=TRADE_QTY,
             limit_px=BUY_PRICE,
             time_in_force=TimeInForce.GTC,
+            expires_after=expires_after,
         )
 
         buy_response = await client.create_limit_order(buy_params)
@@ -119,6 +132,7 @@ async def main() -> None:
             qty=TRADE_QTY,
             limit_px=SELL_PRICE,
             time_in_force=TimeInForce.GTC,
+            expires_after=expires_after,
         )
 
         sell_response = await client.create_limit_order(sell_params)

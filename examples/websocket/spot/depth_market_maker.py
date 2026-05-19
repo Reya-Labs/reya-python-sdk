@@ -19,10 +19,10 @@ Requirements:
 Usage:
     python -m examples.websocket.spot.depth_market_maker
 
-Press Ctrl+C to stop (will cancel all orders on exit).
+Press Ctrl+C to stop (liquidity is left in the market on exit).
 """
 
-from typing import Optional
+from typing import Awaitable, Callable, Optional, TypeVar
 
 import argparse
 import asyncio
@@ -33,6 +33,7 @@ import threading
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
+import aiohttp
 from dotenv import load_dotenv  # pip install python-dotenv
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
@@ -40,6 +41,7 @@ from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
+from sdk.open_api.exceptions import ApiException, ServiceException
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
@@ -57,11 +59,61 @@ logging.getLogger("urllib3").setLevel(logging.DEBUG)
 DEFAULT_SYMBOL = "WETHRUSD"  # Default spot trading pair symbol
 DEFAULT_ORACLE_SYMBOL = "ETHRUSD"  # Default oracle price symbol for reference pricing
 DEFAULT_MAX_SPREAD_PCT = Decimal("0.01")  # ±1% from reference price (configurable via --max-spread)
-MAX_ORDER_QTY = Decimal("0.01")  # Maximum order quantity
+MAX_ORDER_QTY = Decimal("1")  # Maximum order quantity
 NUM_LEVELS = 10  # Number of price levels on each side
 REFRESH_INTERVAL = 5  # Seconds between quote adjustments
 STATE_REFRESH_CYCLES = 30  # Refresh state from REST every N cycles to handle WS disconnects
 MIN_BASE_BALANCE = Decimal("0.1")  # Minimum ETH balance - stop MM if below this
+FALLBACK_PRICE = Decimal("0.1")  # Fallback reference price (USD) when oracle has no price for a new asset
+
+# HTTP statuses we consider transient and worth retrying.
+_TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+
+T = TypeVar("T")
+
+
+async def with_http_retry(
+    func: Callable[[], Awaitable[T]],
+    *,
+    op_name: str,
+    max_retries: int = 4,
+    initial_backoff: float = 0.5,
+    backoff_factor: float = 2.0,
+) -> T:
+    """Run an async REST call with exponential-backoff retry on transient errors.
+
+    Retries on: ServiceException (5xx), ApiException with status in 408/425/429/500/502/503/504,
+    aiohttp.ClientError, asyncio.TimeoutError, OSError.
+    Lets through (no retry): ApiException with 4xx status, so the caller's branch logic
+    (e.g. "Order not found", "CANCEL_ORDER_OTHER_ERROR") still runs.
+    """
+    backoff = initial_backoff
+    last_exc: Exception
+    for attempt in range(max_retries + 1):
+        try:
+            return await func()
+        except ServiceException as e:
+            last_exc = e
+            status = getattr(e, "status", 0)
+        except ApiException as e:
+            status = getattr(e, "status", 0) or 0
+            if status not in _TRANSIENT_HTTP_STATUSES:
+                raise
+            last_exc = e
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+            last_exc = e
+            status = 0
+        if attempt < max_retries:
+            logger.warning(
+                f"{op_name}: transient error (status={status}, {type(last_exc).__name__}: {last_exc}) "
+                f"— retry {attempt + 1}/{max_retries} in {backoff:.1f}s"
+            )
+            await asyncio.sleep(backoff)
+            backoff *= backoff_factor
+        else:
+            logger.error(f"{op_name}: gave up after {max_retries + 1} attempts ({last_exc})")
+            raise last_exc
+    raise last_exc  # unreachable
 
 
 @dataclass
@@ -340,9 +392,10 @@ class WebSocketHandler:
         if isinstance(message, PriceUpdatePayload):
             if message.data and message.data.oracle_price:
                 price = Decimal(message.data.oracle_price)
-                if self.state.market_params:
-                    price = round_to_tick(price, self.state.market_params.tick_size)
-                self.state.update_price(price)
+                if price > 0:
+                    if self.state.market_params:
+                        price = round_to_tick(price, self.state.market_params.tick_size)
+                    self.state.update_price(price)
             return
 
         # Handle balance updates
@@ -429,9 +482,19 @@ async def fetch_initial_state(
 
     # Fetch oracle price
     logger.info(f"   Fetching oracle price for {state.oracle_symbol}...")
-    price_info = await client.markets.get_price(state.oracle_symbol)
-    if price_info and price_info.oracle_price:
-        state.reference_price = round_to_tick(Decimal(price_info.oracle_price), market_params.tick_size)
+    try:
+        price_info = await client.markets.get_price(state.oracle_symbol)
+        if price_info and price_info.oracle_price and Decimal(price_info.oracle_price) > 0:
+            state.reference_price = round_to_tick(Decimal(price_info.oracle_price), market_params.tick_size)
+    except Exception as e:
+        logger.warning(f"   Failed to fetch oracle price for {state.oracle_symbol}: {e}")
+
+    if state.reference_price == Decimal("0"):
+        state.reference_price = round_to_tick(FALLBACK_PRICE, market_params.tick_size)
+        logger.warning(
+            f"   No oracle price available for {state.oracle_symbol}, "
+            f"using fallback price: ${state.reference_price}"
+        )
 
     # Fetch account balances
     logger.info("   Fetching account balances...")
@@ -489,7 +552,7 @@ async def refresh_state_from_rest(
             )
 
         state.sync_orders(fresh_orders)
-    except (OSError, RuntimeError) as e:
+    except (OSError, RuntimeError, ApiException) as e:
         logger.warning(f"Failed to refresh state from REST: {e}")
 
 
@@ -530,19 +593,22 @@ async def place_single_order(
 
     for attempt in range(max_retries):
         try:
-            await client.create_limit_order(
-                LimitOrderParameters(
-                    symbol=symbol,
-                    is_buy=is_buy,
-                    limit_px=price,
-                    qty=qty,
-                    time_in_force=TimeInForce.GTC,
-                )
+            await with_http_retry(
+                lambda: client.create_limit_order(
+                    LimitOrderParameters(
+                        symbol=symbol,
+                        is_buy=is_buy,
+                        limit_px=price,
+                        qty=qty,
+                        time_in_force=TimeInForce.GTC,
+                    )
+                ),
+                op_name=f"create_limit_order {side} @ ${price}",
             )
             logger.info(f"   Adding {side} @ ${price} qty={qty}")
             qty_used = price_decimal * Decimal(qty) if is_buy else Decimal(qty)
             return True, qty_used
-        except (OSError, RuntimeError) as e:
+        except (OSError, RuntimeError, ApiException) as e:
             error_str = str(e).lower()
             # Check if it's a balance-related error
             if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
@@ -669,9 +735,12 @@ async def cancel_and_replace_order(
     if max_qty < market_params.min_order_qty:
         logger.warning(f"[{cycle:04d}] Skipping {side} replacement - insufficient balance")
         try:
-            await client.cancel_order(order_id=order.order_id, symbol=symbol, account_id=account_id)
+            await with_http_retry(
+                lambda: client.cancel_order(order_id=order.order_id, symbol=symbol, account_id=account_id),
+                op_name=f"cancel_order {side} @ ${order.price}",
+            )
             logger.info(f"[{cycle:04d}] Cancelled {side} @ ${order.price} (no replacement - low balance)")
-        except (OSError, RuntimeError) as e:
+        except (OSError, RuntimeError, ApiException) as e:
             error_str = str(e)
             if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
                 state.remove_order(order.order_id)
@@ -684,17 +753,20 @@ async def cancel_and_replace_order(
 
     # Cancel the existing order first
     try:
-        await client.cancel_order(
-            order_id=order.order_id,
-            symbol=symbol,
-            account_id=account_id,
+        await with_http_retry(
+            lambda: client.cancel_order(
+                order_id=order.order_id,
+                symbol=symbol,
+                account_id=account_id,
+            ),
+            op_name=f"cancel_order {side} @ ${order.price}",
         )
         reason_str = f" ({reason})" if reason else ""
         logger.info(
             f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} "
             f"→ Adding new {side} @ ${new_price} qty={new_qty}"
         )
-    except (OSError, RuntimeError) as e:
+    except (OSError, RuntimeError, ApiException) as e:
         error_str = str(e)
         if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
             state.remove_order(order.order_id)
@@ -709,17 +781,20 @@ async def cancel_and_replace_order(
     qty_to_use = new_qty
     for attempt in range(max_retries):
         try:
-            await client.create_limit_order(
-                LimitOrderParameters(
-                    symbol=symbol,
-                    is_buy=order.is_buy,
-                    limit_px=str(new_price),
-                    qty=qty_to_use,
-                    time_in_force=TimeInForce.GTC,
-                )
+            await with_http_retry(
+                lambda: client.create_limit_order(
+                    LimitOrderParameters(
+                        symbol=symbol,
+                        is_buy=order.is_buy,
+                        limit_px=str(new_price),
+                        qty=qty_to_use,
+                        time_in_force=TimeInForce.GTC,
+                    )
+                ),
+                op_name=f"create_limit_order {side} @ ${new_price}",
             )
             return True
-        except (OSError, RuntimeError) as e:
+        except (OSError, RuntimeError, ApiException) as e:
             error_str = str(e).lower()
             # Check if it's a balance-related error - retry with min qty
             if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
@@ -749,8 +824,12 @@ async def adjust_orders(
     reference_price, base_balance, quote_balance, bids, asks = state.get_snapshot()
 
     if reference_price == Decimal("0"):
-        logger.warning(f"[{cycle:04d}] No reference price available, skipping adjustment")
-        return
+        fallback = FALLBACK_PRICE
+        if market_params:
+            fallback = round_to_tick(FALLBACK_PRICE, market_params.tick_size)
+        state.update_price(fallback)
+        reference_price = fallback
+        logger.warning(f"[{cycle:04d}] No reference price available, using fallback: ${fallback}")
 
     # Calculate available balance
     available_base, available_quote = calculate_available_balance(base_balance, quote_balance, bids, asks)
@@ -964,12 +1043,18 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal):
             logger.info("Closing WebSocket...")
             websocket.close()
 
+            # NOTE: Cancelling all liquidity on shutdown.
+            # Comment out the block below and uncomment the last line to leave liquidity in market on exit.
             logger.info("Cancelling all orders...")
             try:
-                await client.mass_cancel(symbol=symbol, account_id=account_id)
-                logger.info("✅ Market maker stopped")
-            except (OSError, RuntimeError) as e:
+                await with_http_retry(
+                    lambda: client.mass_cancel(symbol=symbol, account_id=account_id),
+                    op_name="mass_cancel (cleanup)",
+                )
+                logger.info("✅ All orders cancelled")
+            except (OSError, RuntimeError, ApiException) as e:
                 logger.warning(f"Cleanup failed: {e}")
+            # logger.info("✅ Market maker stopped (liquidity left in market)")
 
 
 def parse_args():

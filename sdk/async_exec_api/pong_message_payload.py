@@ -1,0 +1,7 @@
+from __future__ import annotations
+from typing import Dict, Optional, Any
+from pydantic import BaseModel, Field
+from sdk.async_exec_api.pong_message_type import PongMessageType
+class PongMessagePayload(BaseModel): 
+  type: PongMessageType = Field(description='''Message type for pong messages''')
+  id: Optional[str] = Field(description='''Echoes the corresponding ping's `id` if any.''', default=None)
