@@ -200,11 +200,29 @@ def _fmt_response(label: str, resp: CreateOrderResponse) -> str:
     return f"{label}: orderId={resp.order_id}"
 
 
+async def clear_resting_orders(client: ReyaTradingClient, symbol: str, who: str) -> None:
+    """Mass-cancel the account's resting orders for ``symbol``.
+
+    Each run must start from a clean book. The matching engine fills takes
+    by price-time priority across the *whole* book, so without this a run's
+    IOC/aggressor takes match leftover resters from earlier runs instead of
+    the order this run just placed — and the run's own rester piles up
+    unfilled. mass_cancel is spot-only and signed by the account.
+    """
+    await client.mass_cancel(symbol=symbol)
+    logger.info("Cleared resting orders for %s on %s", who, symbol)
+
+
 async def run_idea_one(params: TestParams, price: Decimal) -> None:
     """A rests one big GTC; B sweeps it with normal then stale IOCs."""
     account_a = await make_client(1)
     account_b = await make_client(2)
     try:
+        # Clean slate — drop resters left by earlier runs so the IOC takes
+        # can only match the rester this run is about to place.
+        await clear_resting_orders(account_a, params.symbol, "account A")
+        await clear_resting_orders(account_b, params.symbol, "account B")
+
         rester_price = (price * params.sell_limit_multiplier).quantize(Decimal("0.01"))
         taker_price = (price * params.sell_limit_multiplier * Decimal("1.001")).quantize(Decimal("0.01"))
         logger.info("=" * 72)
@@ -269,8 +287,14 @@ async def run_idea_one(params: TestParams, price: Decimal) -> None:
 
 async def run_idea_two(params: TestParams, price: Decimal) -> None:
     """B plants 6 resting GTCs (half stale); A takes from the UI."""
+    account_a = await make_client(1)
     account_b = await make_client(2)
     try:
+        # Clean slate — clear leftover resters on both accounts so the
+        # UI-driven aggressor only meets the 6 GTCs this run plants.
+        await clear_resting_orders(account_a, params.symbol, "account A")
+        await clear_resting_orders(account_b, params.symbol, "account B")
+
         sell_price = (price * params.sell_limit_multiplier).quantize(Decimal("0.01"))
         logger.info("=" * 72)
         logger.info("IDEA 2 — half-stale resting book waiting on a UI-driven take")
@@ -318,6 +342,7 @@ async def run_idea_two(params: TestParams, price: Decimal) -> None:
             bust_count,
         )
     finally:
+        await account_a.close()
         await account_b.close()
 
 
