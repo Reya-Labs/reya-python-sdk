@@ -41,8 +41,9 @@ class SpotExecution(BaseModel):
     fee: Annotated[str, Field(strict=True)]
     type: ExecutionType
     timestamp: Annotated[int, Field(strict=True, ge=0)]
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(alias="sequenceNumber")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "makerAccountId", "orderId", "makerOrderId", "side", "qty", "price", "fee", "type", "timestamp"]
+    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "makerAccountId", "orderId", "makerOrderId", "side", "qty", "price", "fee", "type", "timestamp", "sequenceNumber"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -141,7 +142,8 @@ class SpotExecution(BaseModel):
             "price": obj.get("price"),
             "fee": obj.get("fee"),
             "type": obj.get("type"),
-            "timestamp": obj.get("timestamp")
+            "timestamp": obj.get("timestamp"),
+            "sequenceNumber": obj.get("sequenceNumber")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

@@ -340,7 +340,7 @@ class OrderEntryApi:
     ) -> CancelOrderResponse:
         """Cancel order
 
-        Cancel an existing order. Supports both spot and perp markets.  For perp markets, the presence of `nonce` distinguishes a matching-engine cancel (with nonce) from a conditional-order cancel (TP/SL, without nonce). This distinction is also expected to change once SL/TP becomes a native ME order type. 
+        Cancel an existing order. Supports both spot and perp markets. All single cancels — spot and perp, including TP/SL — route through the matching engine on a unified `marketId` namespace. `accountId`, `nonce`, and `deadline` are required and bound into the EIP-712 signature. 
 
         :param cancel_order_request: (required)
         :type cancel_order_request: CancelOrderRequest
@@ -409,7 +409,7 @@ class OrderEntryApi:
     ) -> ApiResponse[CancelOrderResponse]:
         """Cancel order
 
-        Cancel an existing order. Supports both spot and perp markets.  For perp markets, the presence of `nonce` distinguishes a matching-engine cancel (with nonce) from a conditional-order cancel (TP/SL, without nonce). This distinction is also expected to change once SL/TP becomes a native ME order type. 
+        Cancel an existing order. Supports both spot and perp markets. All single cancels — spot and perp, including TP/SL — route through the matching engine on a unified `marketId` namespace. `accountId`, `nonce`, and `deadline` are required and bound into the EIP-712 signature. 
 
         :param cancel_order_request: (required)
         :type cancel_order_request: CancelOrderRequest
@@ -478,7 +478,7 @@ class OrderEntryApi:
     ) -> RESTResponseType:
         """Cancel order
 
-        Cancel an existing order. Supports both spot and perp markets.  For perp markets, the presence of `nonce` distinguishes a matching-engine cancel (with nonce) from a conditional-order cancel (TP/SL, without nonce). This distinction is also expected to change once SL/TP becomes a native ME order type. 
+        Cancel an existing order. Supports both spot and perp markets. All single cancels — spot and perp, including TP/SL — route through the matching engine on a unified `marketId` namespace. `accountId`, `nonce`, and `deadline` are required and bound into the EIP-712 signature. 
 
         :param cancel_order_request: (required)
         :type cancel_order_request: CancelOrderRequest

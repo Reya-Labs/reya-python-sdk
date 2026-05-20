@@ -29,11 +29,11 @@ class CancelOrderRequest(BaseModel):
     """ # noqa: E501
     order_id: Optional[StrictStr] = Field(default=None, description="Internal matching engine order ID to cancel. Provide either orderId OR clientOrderId, not both. For spot markets, this is the order ID returned in the CreateOrderResponse.", alias="orderId")
     client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
-    account_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="accountId")
+    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     signature: StrictStr = Field(description="See signatures section for more details on how to generate.")
-    nonce: Optional[StrictStr] = Field(default=None, description="See signatures and nonces section for more details. Compulsory for spot orders.")
-    deadline: Optional[Annotated[int, Field(strict=True, ge=0)]] = None
+    nonce: StrictStr = Field(description="See signatures and nonces section for more details.")
+    deadline: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "accountId", "symbol", "signature", "nonce", "deadline"]
 
