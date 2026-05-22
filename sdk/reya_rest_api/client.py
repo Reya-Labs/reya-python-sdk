@@ -323,14 +323,23 @@ class ReyaTradingClient:
         client_order_id: Optional[int] = None,
     ) -> CancelOrderResponse:
         """
-        Cancel a single open order. Provide either `order_id` or
-        `client_order_id` (not both — the API enforces mutual exclusivity).
-        Works on both spot and perp markets.
+        Cancel a single open order. At least one of `order_id` or
+        `client_order_id` must be provided. Works on both spot and perp
+        markets.
+
+        Precedence note: the off-chain matching-engine controller accepts
+        both fields and prefers `order_id` as the canonical identifier
+        (falling back to `client_order_id` only when `order_id` is
+        absent). See ``tradingPrivateV2.controller.matching-engine.ts`` in
+        reya-off-chain-monorepo. The OpenAPI docstring on
+        ``CancelOrderRequest.orderId`` historically says "not both", but
+        that's a recommended client contract — the server tolerates both
+        and resolves deterministically. We therefore only enforce
+        "at least one" here, matching the on-the-wire behaviour rather
+        than the stricter docstring.
         """
         if order_id is None and client_order_id is None:
             raise ValueError("Provide either order_id or client_order_id")
-        if order_id is not None and client_order_id is not None:
-            raise ValueError("Provide only one of order_id or client_order_id")
 
         resolved_account_id = account_id if account_id is not None else self.config.account_id
         if resolved_account_id is None:
