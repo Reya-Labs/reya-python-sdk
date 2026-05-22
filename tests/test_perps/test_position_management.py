@@ -22,14 +22,34 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
+from tests.helpers.liquidity_detector import skip_if_external_liquidity
 from tests.helpers.reya_tester import logger
 
 PERP_SYMBOL = "ETHRUSDPERP"
 PERP_QTY = "0.01"
 
 
+# All tests in this module rest a maker order at oracle ±1% and then cross it
+# with an opposite-side taker IOC at oracle ±5%. That pattern assumes nobody
+# else is on the book — see the docstring of `skip_if_external_liquidity` for
+# the rationale and the mirroring spot-suite precedent. The helpers below call
+# the guard once before placing the maker order; if external liquidity is
+# present, the test is skipped with a clear message rather than failing with
+# an opaque ``RuntimeError: Order X not created after 10 seconds`` (which is
+# what happens when the maker crosses external MM liquidity and gets
+# instantly filled instead of resting).
+
+
 async def _rest_maker_sell(maker: ReyaTester, market_price: float, qty: str = PERP_QTY) -> str:
-    """Place a maker sell at 1% below oracle. Returns the maker order_id."""
+    """Place a maker sell at 1% below oracle. Returns the maker order_id.
+
+    Skips the calling test if external bid/ask liquidity is on the book —
+    the −1% sell would cross any bid within the ±5% circuit-breaker band
+    and never rest.
+    """
+    await skip_if_external_liquidity(
+        maker.data, PERP_SYMBOL, market_price, reason_prefix="_rest_maker_sell"
+    )
     price = str(round(market_price * 0.99, 2))
     order_id = await maker.orders.create_limit(
         LimitOrderParameters(
@@ -46,7 +66,15 @@ async def _rest_maker_sell(maker: ReyaTester, market_price: float, qty: str = PE
 
 
 async def _rest_maker_buy(maker: ReyaTester, market_price: float, qty: str = PERP_QTY) -> str:
-    """Place a maker buy at 1% above oracle. Returns the maker order_id."""
+    """Place a maker buy at 1% above oracle. Returns the maker order_id.
+
+    Skips the calling test if external bid/ask liquidity is on the book —
+    the +1% buy would cross any ask within the ±5% circuit-breaker band
+    and never rest.
+    """
+    await skip_if_external_liquidity(
+        maker.data, PERP_SYMBOL, market_price, reason_prefix="_rest_maker_buy"
+    )
     price = str(round(market_price * 1.01, 2))
     order_id = await maker.orders.create_limit(
         LimitOrderParameters(

@@ -30,6 +30,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
+from tests.helpers.liquidity_detector import skip_if_external_liquidity
 from tests.helpers.reya_tester import logger
 
 PERP_SYMBOL = "ETHRUSDPERP"
@@ -52,6 +53,17 @@ async def test_perp_ioc_taker_buy_matches_maker_sell(
 ) -> None:
     """Maker rests a GTC sell, taker IOC buys, taker accrues a long position."""
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+
+    # Skip if an external MM is on the book — the maker's −1% sell would
+    # cross any bid within the ±5% circuit-breaker band and never rest, so
+    # the IOC taker would have nothing to match against. Mirrors the spot
+    # maker/taker e2e test in `tests/test_spot/test_maker_taker_matching.py`.
+    await skip_if_external_liquidity(
+        perp_taker_tester.data,
+        PERP_SYMBOL,
+        market_price,
+        reason_prefix="test_perp_ioc_taker_buy_matches_maker_sell",
+    )
 
     # Maker posts a sell order below market — taker IOC will lift it.
     maker_order_id = await perp_maker_tester.orders.create_limit(
