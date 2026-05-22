@@ -106,11 +106,17 @@ async def test_perp_gtc_rests_on_book(perp_maker_tester: ReyaTester) -> None:
     )
     assert order_id is not None
 
-    # Indexer can lag the create-order response by a few hundred ms before
-    # the GTC shows up in `get_open_orders`. Retry briefly so we don't
-    # false-fail on propagation timing.
+    # The API pod's `OrdersProvider` stream consumer (in
+    # packages/common-backend/src/providers/redis-stream-reader.ts) calls
+    # `XREAD BLOCK 5000` against the `{orders}:changes` Redis Stream, and
+    # measurement showed the BLOCK isn't being woken up by new messages —
+    # propagation to `/v2/wallet/{address}/openOrders` is clamped at the
+    # 5,000 ms timeout. The 6 s retry budget below covers that worst case
+    # with a small margin; once the underlying lag is fixed (off-chain
+    # repo issue Reya-Labs/reya-off-chain-monorepo#2663) we can drop this
+    # back to ~500 ms.
     open_order = None
-    for _ in range(20):
+    for _ in range(60):
         open_order = await perp_maker_tester.data.open_order(order_id)
         if open_order is not None:
             break
