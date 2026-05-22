@@ -30,6 +30,7 @@ import logging
 import os
 import random
 import threading
+import time
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
@@ -40,11 +41,19 @@ from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from sdk.reya_websocket import ReyaSocket, WebSocketMessage
+
+# Exceptions worth swallowing inside the MM loop. We want the bot to stay
+# alive on transient REST hiccups (network blips → OSError) and SDK-side
+# 4xx/5xx responses (ApiException + subclasses like BadRequestException) —
+# the most common one in spot MM is "Order not found" when our cancel
+# races a fill or expiry. Mirrors the perp script's pattern.
+RECOVERABLE_EXC: tuple = (OSError, RuntimeError, ApiException)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("market_maker_ws")
@@ -55,13 +64,19 @@ logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
 # Market configuration (defaults, can be overridden via command line)
 DEFAULT_SYMBOL = "WETHRUSD"  # Default spot trading pair symbol
-DEFAULT_ORACLE_SYMBOL = "ETHRUSD"  # Default oracle price symbol for reference pricing
+DEFAULT_ORACLE_SYMBOL = "WETHRUSD"  # Default oracle price symbol for reference pricing
 DEFAULT_MAX_SPREAD_PCT = Decimal("0.01")  # ±1% from reference price (configurable via --max-spread)
 MAX_ORDER_QTY = Decimal("0.01")  # Maximum order quantity
 NUM_LEVELS = 10  # Number of price levels on each side
 REFRESH_INTERVAL = 5  # Seconds between quote adjustments
 STATE_REFRESH_CYCLES = 30  # Refresh state from REST every N cycles to handle WS disconnects
 MIN_BASE_BALANCE = Decimal("0.1")  # Minimum ETH balance - stop MM if below this
+
+# GTC orders are signed with a long-lived `expires_after` so the matching
+# engine doesn't quietly cancel resting depth before the next replace cycle.
+# 10 minutes is well above any single cycle's batch of placements + WS
+# round-trip slack, and at the off-chain api's documented deadline cap.
+GTC_LIFETIME_S = 60 * 10
 
 
 @dataclass
@@ -489,7 +504,7 @@ async def refresh_state_from_rest(
             )
 
         state.sync_orders(fresh_orders)
-    except (OSError, RuntimeError) as e:
+    except RECOVERABLE_EXC as e:
         logger.warning(f"Failed to refresh state from REST: {e}")
 
 
@@ -530,6 +545,7 @@ async def place_single_order(
 
     for attempt in range(max_retries):
         try:
+            deadline = int(time.time()) + GTC_LIFETIME_S
             await client.create_limit_order(
                 LimitOrderParameters(
                     symbol=symbol,
@@ -537,12 +553,14 @@ async def place_single_order(
                     limit_px=price,
                     qty=qty,
                     time_in_force=TimeInForce.GTC,
+                    expires_after=deadline,
+                    deadline=deadline,
                 )
             )
             logger.info(f"   Adding {side} @ ${price} qty={qty}")
             qty_used = price_decimal * Decimal(qty) if is_buy else Decimal(qty)
             return True, qty_used
-        except (OSError, RuntimeError) as e:
+        except RECOVERABLE_EXC as e:
             error_str = str(e).lower()
             # Check if it's a balance-related error
             if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
@@ -671,7 +689,7 @@ async def cancel_and_replace_order(
         try:
             await client.cancel_order(order_id=order.order_id, symbol=symbol, account_id=account_id)
             logger.info(f"[{cycle:04d}] Cancelled {side} @ ${order.price} (no replacement - low balance)")
-        except (OSError, RuntimeError) as e:
+        except RECOVERABLE_EXC as e:
             error_str = str(e)
             if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
                 state.remove_order(order.order_id)
@@ -694,7 +712,7 @@ async def cancel_and_replace_order(
             f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} "
             f"→ Adding new {side} @ ${new_price} qty={new_qty}"
         )
-    except (OSError, RuntimeError) as e:
+    except RECOVERABLE_EXC as e:
         error_str = str(e)
         if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
             state.remove_order(order.order_id)
@@ -709,6 +727,7 @@ async def cancel_and_replace_order(
     qty_to_use = new_qty
     for attempt in range(max_retries):
         try:
+            deadline = int(time.time()) + GTC_LIFETIME_S
             await client.create_limit_order(
                 LimitOrderParameters(
                     symbol=symbol,
@@ -716,10 +735,12 @@ async def cancel_and_replace_order(
                     limit_px=str(new_price),
                     qty=qty_to_use,
                     time_in_force=TimeInForce.GTC,
+                    expires_after=deadline,
+                    deadline=deadline,
                 )
             )
             return True
-        except (OSError, RuntimeError) as e:
+        except RECOVERABLE_EXC as e:
             error_str = str(e).lower()
             # Check if it's a balance-related error - retry with min qty
             if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
@@ -757,6 +778,52 @@ async def adjust_orders(
 
     min_price = reference_price * (1 - state.max_spread_pct)
     max_price = reference_price * (1 + state.max_spread_pct)
+
+    # Pass 0: refill missing levels (self-healing — handles orders that
+    # disappeared without us cancelling them: expiry, ME restart, fills,
+    # anything outside the bot's view). Keeps both sides at NUM_LEVELS.
+    needed_bids = NUM_LEVELS - len(bids)
+    needed_asks = NUM_LEVELS - len(asks)
+    if needed_bids > 0 or needed_asks > 0:
+        logger.info(
+            f"[{cycle:04d}] 📉 Refilling: have {len(bids)} bids / {len(asks)} asks "
+            f"(target {NUM_LEVELS} each) — placing {needed_bids} bid(s) + {needed_asks} ask(s)"
+        )
+        best_bid = bids[0].price if bids else None
+        best_ask = asks[0].price if asks else None
+        for _ in range(max(needed_bids, 0)):
+            new_price = generate_single_price(
+                is_buy=True,
+                reference=reference_price,
+                max_deviation_pct=state.max_spread_pct,
+                tick_size=market_params.tick_size,
+                best_bid=best_bid,
+                best_ask=best_ask,
+            )
+            success, qty_used = await place_single_order(
+                client, state.symbol, str(new_price), True, market_params, available_quote
+            )
+            if success:
+                available_quote -= qty_used
+                if best_bid is None or new_price > best_bid:
+                    best_bid = new_price
+        for _ in range(max(needed_asks, 0)):
+            new_price = generate_single_price(
+                is_buy=False,
+                reference=reference_price,
+                max_deviation_pct=state.max_spread_pct,
+                tick_size=market_params.tick_size,
+                best_bid=best_bid,
+                best_ask=best_ask,
+            )
+            success, qty_used = await place_single_order(
+                client, state.symbol, str(new_price), False, market_params, available_base
+            )
+            if success:
+                available_base -= qty_used
+                if best_ask is None or new_price < best_ask:
+                    best_ask = new_price
+        return
 
     # Check for out-of-range orders first
     out_of_range = find_out_of_range_orders(bids, asks, reference_price, state.max_spread_pct)
@@ -968,7 +1035,7 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal):
             try:
                 await client.mass_cancel(symbol=symbol, account_id=account_id)
                 logger.info("✅ Market maker stopped")
-            except (OSError, RuntimeError) as e:
+            except RECOVERABLE_EXC as e:
                 logger.warning(f"Cleanup failed: {e}")
 
 

@@ -44,6 +44,7 @@ import logging
 import os
 import random
 import threading
+import time
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
@@ -96,6 +97,12 @@ MAX_ORDER_QTY = Decimal("0.01")
 
 # Settle asset on Reya is rUSD across all envs at the time of writing.
 COLLATERAL_ASSET = "RUSD"
+
+# GTC orders are signed with a long-lived `expires_after` so the matching
+# engine doesn't quietly cancel resting depth before the next replace cycle.
+# 10 minutes is well above any single cycle's batch of placements + WS
+# round-trip slack, and at the off-chain api's documented deadline cap.
+GTC_LIFETIME_S = 60 * 10
 
 
 @dataclass
@@ -504,6 +511,7 @@ async def place_single_order(
 
     for attempt in range(max_retries):
         try:
+            deadline = int(time.time()) + GTC_LIFETIME_S
             await client.create_limit_order(
                 LimitOrderParameters(
                     symbol=symbol,
@@ -511,6 +519,8 @@ async def place_single_order(
                     limit_px=price,
                     qty=qty,
                     time_in_force=TimeInForce.GTC,
+                    expires_after=deadline,
+                    deadline=deadline,
                 )
             )
             logger.info(f"   Placed {side} @ ${price} qty={qty}")
@@ -618,6 +628,7 @@ async def cancel_and_replace_order(
     qty_to_use = new_qty
     for attempt in range(max_retries):
         try:
+            deadline = int(time.time()) + GTC_LIFETIME_S
             await client.create_limit_order(
                 LimitOrderParameters(
                     symbol=symbol,
@@ -625,6 +636,8 @@ async def cancel_and_replace_order(
                     limit_px=str(new_price),
                     qty=qty_to_use,
                     time_in_force=TimeInForce.GTC,
+                    expires_after=deadline,
+                    deadline=deadline,
                 )
             )
             return True
@@ -681,6 +694,53 @@ async def adjust_orders(client: ReyaTradingClient, state: MarketMakerState, cycl
     available_margin = compute_available_margin(collateral_balance, bids + asks, market_params)
     min_price = reference_price * (1 - state.max_spread_pct)
     max_price = reference_price * (1 + state.max_spread_pct)
+
+    # Pass 0: refill missing levels (self-healing — handles orders that
+    # disappeared without us cancelling them: expiry, ME restart, fills,
+    # anything outside the bot's view). Keeps both sides at NUM_LEVELS.
+    needed_bids = NUM_LEVELS - len(bids)
+    needed_asks = NUM_LEVELS - len(asks)
+    if needed_bids > 0 or needed_asks > 0:
+        logger.info(
+            f"[{cycle:04d}] 📉 Refilling: have {len(bids)} bids / {len(asks)} asks "
+            f"(target {NUM_LEVELS} each) — placing {needed_bids} bid(s) + {needed_asks} ask(s)"
+        )
+        best_bid = bids[0].price if bids else None
+        best_ask = asks[0].price if asks else None
+        remaining_margin = available_margin
+        for _ in range(max(needed_bids, 0)):
+            new_price = generate_single_price(
+                is_buy=True,
+                reference=reference_price,
+                max_deviation_pct=state.max_spread_pct,
+                tick_size=market_params.tick_size,
+                best_bid=best_bid,
+                best_ask=best_ask,
+            )
+            success, margin_used = await place_single_order(
+                client, state.symbol, str(new_price), True, market_params, remaining_margin
+            )
+            if success:
+                remaining_margin -= margin_used
+                if best_bid is None or new_price > best_bid:
+                    best_bid = new_price
+        for _ in range(max(needed_asks, 0)):
+            new_price = generate_single_price(
+                is_buy=False,
+                reference=reference_price,
+                max_deviation_pct=state.max_spread_pct,
+                tick_size=market_params.tick_size,
+                best_bid=best_bid,
+                best_ask=best_ask,
+            )
+            success, margin_used = await place_single_order(
+                client, state.symbol, str(new_price), False, market_params, remaining_margin
+            )
+            if success:
+                remaining_margin -= margin_used
+                if best_ask is None or new_price < best_ask:
+                    best_ask = new_price
+        return
 
     # Pass 1: evict orders sitting outside the band.
     out_of_range = find_out_of_range_orders(bids, asks, reference_price, state.max_spread_pct)
