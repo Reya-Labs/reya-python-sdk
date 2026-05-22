@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+import pytest
+
 if TYPE_CHECKING:
     from sdk.open_api.models.depth import Depth
     from sdk.open_api.models.level import Level
@@ -336,9 +338,6 @@ async def skip_if_external_liquidity(
             callers can identify which leg of the test caused the skip
             (e.g. ``"_rest_maker_sell"``).
     """
-    # Local import keeps `liquidity_detector` importable from non-test code.
-    import pytest  # noqa: PLC0415
-
     detector = LiquidityDetector(oracle_price)
     state = await detector.get_order_book_state(data_ops, symbol)
     if not state.has_any_liquidity:

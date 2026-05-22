@@ -164,9 +164,7 @@ class MarketMakerState:
                     del self.open_orders[order_id]
                     logger.debug(f"📋 Order {order_id} removed (status: {status})")
             else:
-                self.open_orders[order_id] = OpenOrder(
-                    order_id=order_id, price=price, qty=remaining_qty, is_buy=is_buy
-                )
+                self.open_orders[order_id] = OpenOrder(order_id=order_id, price=price, qty=remaining_qty, is_buy=is_buy)
                 logger.debug(f"📋 Order {order_id} updated: {status}, remaining={remaining_qty}")
 
     def log_execution(self, order_id: str, qty: str, price: str, side: str) -> None:
@@ -189,9 +187,7 @@ class MarketMakerState:
     def get_snapshot(self) -> tuple[Decimal, Decimal, list[OpenOrder], list[OpenOrder]]:
         """Atomic snapshot of current state for the adjustment loop."""
         with self._lock:
-            bids = sorted(
-                (o for o in self.open_orders.values() if o.is_buy), key=lambda o: o.price, reverse=True
-            )
+            bids = sorted((o for o in self.open_orders.values() if o.is_buy), key=lambda o: o.price, reverse=True)
             asks = sorted((o for o in self.open_orders.values() if not o.is_buy), key=lambda o: o.price)
             return self.reference_price, self.collateral_balance, bids, asks
 
@@ -219,9 +215,7 @@ def required_margin(price: Decimal, qty: Decimal, max_leverage: int) -> Decimal:
     return (price * qty) / Decimal(max_leverage)
 
 
-def affordable_qty(
-    price: Decimal, available_margin: Decimal, market_params: MarketParams
-) -> Decimal:
+def affordable_qty(price: Decimal, available_margin: Decimal, market_params: MarketParams) -> Decimal:
     """Largest qty within MAX_ORDER_QTY that fits in ``available_margin``."""
     if available_margin <= 0 or price <= 0:
         return Decimal("0")
@@ -547,16 +541,12 @@ async def place_initial_ladder(
     order_count = 0
     remaining_margin = available_margin
     for price in bids:
-        success, margin_used = await place_single_order(
-            client, symbol, price, True, market_params, remaining_margin
-        )
+        success, margin_used = await place_single_order(client, symbol, price, True, market_params, remaining_margin)
         if success:
             order_count += 1
             remaining_margin -= margin_used
     for price in asks:
-        success, margin_used = await place_single_order(
-            client, symbol, price, False, market_params, remaining_margin
-        )
+        success, margin_used = await place_single_order(client, symbol, price, False, market_params, remaining_margin)
         if success:
             order_count += 1
             remaining_margin -= margin_used
@@ -876,9 +866,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Perp Market Maker — maintains a thin always-on depth ladder around the oracle price."
     )
-    parser.add_argument(
-        "--symbol", type=str, default=DEFAULT_SYMBOL, help=f"Perp symbol (default: {DEFAULT_SYMBOL})"
-    )
+    parser.add_argument("--symbol", type=str, default=DEFAULT_SYMBOL, help=f"Perp symbol (default: {DEFAULT_SYMBOL})")
     parser.add_argument(
         "--oracle-symbol",
         type=str,

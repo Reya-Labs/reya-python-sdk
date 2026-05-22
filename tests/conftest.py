@@ -5,10 +5,14 @@ Uses pytest-asyncio's loop_scope feature (v0.24+) to share a single event loop
 across all tests in a session, enabling session-scoped async fixtures.
 """
 
+# pylint: disable=wrong-import-position,wrong-import-order
 # Load .env BEFORE importing the SDK so module-level constants in
 # `sdk.reya_rest_api.config` (e.g. `REYA_DEX_ID`) pick up devnet/staging
 # overrides. Imports happen at conftest load time, so calling load_dotenv
-# inside fixtures would be too late.
+# inside fixtures would be too late. The pylint disable above suppresses
+# the `wrong-import-position` / `wrong-import-order` warnings this
+# intentionally-out-of-order arrangement otherwise produces (flake8 is
+# already silenced via `# noqa: E402`).
 from dotenv import load_dotenv
 
 load_dotenv()

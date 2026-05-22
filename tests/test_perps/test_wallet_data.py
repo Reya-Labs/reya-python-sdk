@@ -52,9 +52,7 @@ async def test_get_wallet_positions_empty(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_get_wallet_positions_with_position(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-):
+async def test_get_wallet_positions_with_position(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
     """Position formation is verified via wallet positions endpoint.
 
     Maker rests a GTC sell, taker crosses with IOC buy. Asserts the taker
@@ -91,9 +89,7 @@ async def test_get_wallet_positions_with_position(
 
 
 @pytest.mark.asyncio
-async def test_get_wallet_perp_executions(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-):
+async def test_get_wallet_perp_executions(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
     """Latest wallet perp execution reflects the most recent fill.
 
     Maker rests a GTC sell, taker crosses with IOC buy. Asserts the taker
@@ -125,12 +121,12 @@ async def test_get_wallet_perp_executions(
     assert last_execution_after.symbol == PERP_SYMBOL, "Execution symbol should match"
     # PerpExecution uses takerAccountId / makerAccountId — the wallet whose
     # endpoint we queried is the taker, since the taker placed the IOC.
-    assert last_execution_after.taker_account_id == perp_taker_tester.account_id, (
-        "Execution taker account ID should match the taker tester"
-    )
-    assert last_execution_after.maker_account_id == perp_maker_tester.account_id, (
-        "Execution maker account ID should match the maker tester"
-    )
+    assert (
+        last_execution_after.taker_account_id == perp_taker_tester.account_id
+    ), "Execution taker account ID should match the taker tester"
+    assert (
+        last_execution_after.maker_account_id == perp_maker_tester.account_id
+    ), "Execution maker account ID should match the maker tester"
     assert last_execution_after.exchange_id == REYA_DEX_ID, "Execution exchange ID should match"
     assert float(last_execution_after.qty) == float(PERP_QTY), "Execution qty should match"
     assert last_execution_after.side == Side.B, "Execution side should be BUY"
@@ -192,9 +188,7 @@ async def test_get_wallet_configuration(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_get_single_position(
-    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester
-):
+async def test_get_single_position(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
     """Single-position lookup by symbol returns the freshly-formed position.
 
     Maker rests a GTC sell, taker crosses with IOC buy. Asserts the

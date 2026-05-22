@@ -47,9 +47,7 @@ async def _rest_maker_sell(maker: ReyaTester, market_price: float, qty: str = PE
     the −1% sell would cross any bid within the ±5% circuit-breaker band
     and never rest.
     """
-    await skip_if_external_liquidity(
-        maker.data, PERP_SYMBOL, market_price, reason_prefix="_rest_maker_sell"
-    )
+    await skip_if_external_liquidity(maker.data, PERP_SYMBOL, market_price, reason_prefix="_rest_maker_sell")
     price = str(round(market_price * 0.99, 2))
     order_id = await maker.orders.create_limit(
         LimitOrderParameters(
@@ -72,9 +70,7 @@ async def _rest_maker_buy(maker: ReyaTester, market_price: float, qty: str = PER
     the +1% buy would cross any ask within the ±5% circuit-breaker band
     and never rest.
     """
-    await skip_if_external_liquidity(
-        maker.data, PERP_SYMBOL, market_price, reason_prefix="_rest_maker_buy"
-    )
+    await skip_if_external_liquidity(maker.data, PERP_SYMBOL, market_price, reason_prefix="_rest_maker_buy")
     price = str(round(market_price * 1.01, 2))
     order_id = await maker.orders.create_limit(
         LimitOrderParameters(

@@ -169,19 +169,18 @@ async def test_perp_reduce_only_rejected_without_position(perp_taker_tester: Rey
 
     if raised is not None:
         err = str(raised).lower()
-        assert (
-            "reduce" in err or "position" in err or "400" in err
-        ), f"expected reduce-only rejection, got: {raised}"
+        assert "reduce" in err or "position" in err or "400" in err, f"expected reduce-only rejection, got: {raised}"
         logger.info(f"✅ reduce_only without position rejected synchronously: {type(raised).__name__}")
     else:
         assert response is not None
         # Under perpOB the order is accepted but the ME refuses to fill it.
-        assert response.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED), (
-            f"expected CANCELLED/REJECTED for reduce-only without position, got: {response.status}"
-        )
-        assert float(response.exec_qty or "0") == 0.0, (
-            f"reduce-only without position should not fill, got exec_qty={response.exec_qty}"
-        )
+        assert response.status in (
+            OrderStatus.CANCELLED,
+            OrderStatus.REJECTED,
+        ), f"expected CANCELLED/REJECTED for reduce-only without position, got: {response.status}"
+        assert (
+            float(response.exec_qty or "0") == 0.0
+        ), f"reduce-only without position should not fill, got exec_qty={response.exec_qty}"
         logger.info(f"✅ reduce_only without position rejected by ME: status={response.status}")
 
     # Final invariant either way: no position formed.

@@ -61,7 +61,7 @@ class PositionOperations:
             # the IOC just burns a nonce and produces a CANCELLED order. Skip
             # in that case — the orchestrated `perp_position_guard` fixture is
             # responsible for cleaning up genuine residue between sessions.
-            close_is_buy = not (current_position.side == Side.B)
+            close_is_buy = current_position.side != Side.B
             try:
                 depth = await self._t.data.market_depth(symbol)
             except ApiException as e:
