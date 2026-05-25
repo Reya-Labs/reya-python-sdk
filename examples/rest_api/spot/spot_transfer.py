@@ -52,6 +52,7 @@ ASSET_TO_SYMBOL = {
     "WETH": "WETHRUSD",
     "BTC": "WBTCRUSD",
     "WBTC": "WBTCRUSD",
+    "REYA": "REYARUSD",
 }
 
 # Mapping from asset to oracle symbol (perp symbol) for fetching oracle prices
@@ -60,6 +61,12 @@ ASSET_TO_ORACLE_SYMBOL = {
     "WETH": "ETHRUSDPERP",
     "BTC": "BTCRUSDPERP",
     "WBTC": "BTCRUSDPERP",
+    "REYA": "REYA",
+}
+
+# Fallback prices for assets without a live oracle feed
+ASSET_FALLBACK_PRICES: dict[str, Decimal] = {
+    "REYA": Decimal("0.10"),
 }
 
 ORDER_SETTLEMENT_RETRIES = 3
@@ -104,12 +111,17 @@ async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
             oracle_price = Decimal(price_data.oracle_price)
             logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
             return oracle_price
-        else:
-            logger.error(f"❌ No oracle price returned for {oracle_symbol}")
-            sys.exit(1)
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.error(f"❌ Failed to fetch oracle price for {oracle_symbol}: {e}")
-        sys.exit(1)
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to fetch oracle price for {oracle_symbol}: {e}")
+
+    # Fall back to configured price if oracle is unavailable
+    fallback = ASSET_FALLBACK_PRICES.get(asset.upper())
+    if fallback:
+        logger.warning(f"⚠️ Using fallback price for {asset}: ${fallback}")
+        return fallback
+
+    logger.error(f"❌ No oracle price available and no fallback configured for {asset}")
+    sys.exit(1)
 
 
 async def log_account_balances(
@@ -403,7 +415,9 @@ async def main():
     )
     parser.add_argument("--from-account", type=int, help="Account ID to transfer FROM (sender)")
     parser.add_argument("--to-account", type=int, help="Account ID to transfer TO (receiver)")
-    parser.add_argument("--asset", type=str, choices=["ETH", "WETH", "BTC", "WBTC"], help="Asset to transfer")
+    parser.add_argument(
+        "--asset", type=str, choices=["ETH", "WETH", "BTC", "WBTC", "REYA"], help="Asset to transfer"
+    )
     parser.add_argument("--qty", type=str, help="Quantity to transfer (e.g., 5)")
     parser.add_argument("--price", type=str, default=None, help="Custom price for transfer (default: 0.01)")
 

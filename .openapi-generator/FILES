@@ -49,6 +49,7 @@ sdk/open_api/models/spot_execution_bust.py
 sdk/open_api/models/spot_execution_bust_list.py
 sdk/open_api/models/spot_execution_list.py
 sdk/open_api/models/spot_market_definition.py
+sdk/open_api/models/spot_market_summary.py
 sdk/open_api/models/tier_type.py
 sdk/open_api/models/time_in_force.py
 sdk/open_api/models/wallet_configuration.py

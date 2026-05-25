@@ -23,7 +23,13 @@ CIRCUIT_BREAKER_PCT = Decimal("0.05")  # ±5% from oracle price
 
 # Extreme prices for safe no-match orders (guaranteed never to match)
 SAFE_NO_MATCH_BUY_PRICE = Decimal("10")  # $10 - far below any realistic ETH price
-SAFE_NO_MATCH_SELL_PRICE = Decimal("10000000")  # $10M - far above any realistic ETH price
+# $1M - far above any realistic ETH price (~470× above $2k mark) while still
+# keeping the order's open notional under server-side caps. At qty=min_qty
+# (e.g. 0.001 ETH), $1M × 0.001 = $1,000 of open notional, comfortably below
+# the whitelisted-wallet RATE_LIMIT_GTC_MAX_OPEN_NOTIONAL_WHITELISTED cap
+# (currently $5,000 on staging api-executor). The earlier $10M value yielded
+# $10K notional and tripped that cap on full-suite runs.
+SAFE_NO_MATCH_SELL_PRICE = Decimal("1000000")
 
 
 @dataclass
