@@ -23,9 +23,19 @@ logger = logging.getLogger("reya.integration_tests")
 
 CIRCUIT_BREAKER_PCT = Decimal("0.05")  # ±5% from oracle price
 
-# Extreme prices for safe no-match orders (guaranteed never to match)
-SAFE_NO_MATCH_BUY_PRICE = Decimal("10")  # $10 - far below any realistic ETH price
-SAFE_NO_MATCH_SELL_PRICE = Decimal("10000000")  # $10M - far above any realistic ETH price
+# Extreme prices for safe no-match orders (guaranteed never to match).
+#
+# The matching engine validates `limit_px <= MAX_PRICE` where
+# MAX_PRICE = 2^49 in E9-scaled units ≈ 562_949 in real units (~$562k).
+# See protos/reya-chain/crates/matching-engine/src/base/validation/rules.rs
+# in reya-off-chain-monorepo.
+#
+# We pick $400k for SAFE_NO_MATCH_SELL_PRICE: well below MAX_PRICE so the
+# ME validator accepts it, yet still far above any realistic ETH/BTC price
+# (current ETH ≈ $2k, BTC ≈ $60k — would need ~7× movement to even
+# approach this), so the "guaranteed no match" intent is preserved.
+SAFE_NO_MATCH_BUY_PRICE = Decimal("10")  # $10 — far below any realistic ETH/BTC price
+SAFE_NO_MATCH_SELL_PRICE = Decimal("400000")  # $400k — below ME MAX_PRICE (~$562k), above realistic crypto prices
 
 
 @dataclass

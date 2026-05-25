@@ -13,6 +13,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
+from tests.helpers.liquidity_detector import skip_if_external_liquidity
 from tests.helpers.reya_tester import logger
 
 PERP_SYMBOL = "ETHRUSDPERP"
@@ -20,7 +21,23 @@ PERP_QTY = "0.01"
 
 
 async def _rest_maker_sell(maker: ReyaTester, market_price: float, qty: str = PERP_QTY) -> str:
-    """Place a maker sell at 1% below oracle so a taker BUY @ 1.05x oracle crosses it."""
+    """Place a maker sell at 1% below oracle so a taker BUY @ 1.05x oracle crosses it.
+
+    Skips the calling test if any external liquidity is on the ETHRUSDPERP book
+    within the ±5% circuit-breaker band: at oracle − 1% the maker sell would
+    cross an external bid that's any higher than −1% rather than resting, and
+    ``for_order_creation`` would then time out waiting for an OPEN status that
+    will never appear. Mirrors the guard used by the maker/taker tests in
+    ``tests/test_perps/test_limit_orders.py`` and
+    ``tests/test_perps/test_position_management.py``.
+    """
+    await skip_if_external_liquidity(
+        maker.data,
+        PERP_SYMBOL,
+        market_price,
+        reason_prefix="_rest_maker_sell",
+    )
+
     price = str(round(market_price * 0.99, 2))
     order_id = await maker.orders.create_limit(
         LimitOrderParameters(

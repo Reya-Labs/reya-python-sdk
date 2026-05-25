@@ -139,17 +139,80 @@ async def test_perp_gtc_rests_on_book(perp_maker_tester: ReyaTester) -> None:
 
 
 @pytest.mark.asyncio
-async def test_perp_reduce_only_rejected_without_position(perp_taker_tester: ReyaTester) -> None:
+async def test_perp_reduce_only_rejected_without_position(
+    perp_maker_tester: ReyaTester,
+    perp_taker_tester: ReyaTester,
+) -> None:
     """``reduce_only=True`` IOC must not open a fresh position from zero.
 
-    AMM-era behavior: API rejected with a 4xx at submission. PerpOB-era: the
-    API accepts the order, the matching engine processes it and marks it
-    CANCELLED (because there's no position to reduce). Either way, no
-    position can form from a reduce-only-without-position IOC — that's the
-    invariant being tested.
+    Enforced on-chain in reya-network ``orders-gateway/src/libraries/
+    ExecutePartialFill.sol:159-174``: when ``accountOrder.reduceOnly`` is
+    set, ``ExecutePartialFill`` reads the taker's live perp base from
+    ``IPassivePerpInformationModule.getUpdatedPositionInfo`` and reverts
+    with ``Errors.ReduceOnlyConditionFailed`` if the base is zero
+    (``orders-gateway/src/libraries/execute-order-types/Utils.sol:46-51``).
+    The ME currently has no reduce-only logic — the proto carries the
+    flag through and on-chain settlement is the enforcement layer. (An ME
+    pre-check is in development; once it lands races narrow but on-chain
+    remains authoritative.)
+
+    To deterministically exercise the on-chain check, we place a maker
+    SELL at oracle*1.04 *before* submitting the taker IOC BUY at
+    oracle*1.05. Without this setup the test would silently pass via
+    the ME's CANCELLED-no-counterparty branch whenever no external ask
+    liquidity is reachable — never actually verifying the invariant.
+
+    Why oracle*1.04 for the maker:
+      - below taker IOC limit (oracle*1.05) so they can cross
+      - well above any sane external bid (bids sit below mid) so the
+        maker won't be crossed by external flow before the taker arrives
+      - inside the ±5% CB so the ME accepts it
+
+    If external asks at lower prices exist, the IOC will hit those first
+    (price-time priority) and our maker just rests until cleanup. Either
+    path reaches chain.
+
+    If this test ever sees ``FILLED``/``exec_qty>0``, on-chain
+    ``positionBase`` was non-zero at fill time. Two likely causes:
+
+      1. Test-isolation bug: ``perp_flatten_between_tests`` left chain
+         debris that the API view hasn't caught up on
+         (``check.position_not_open`` passes from API state but chain
+         truth still has a residual base from a prior test).
+      2. Real on-chain regression: reduce-only check skipped or position
+         lookup is wrong.
+
+    The diagnostic logs below print prior taker executions and the
+    resulting position so a reviewer can tell the two apart from CI logs.
     """
+    # Diagnostic snapshot pre-submit (see docstring for triage flow)
+    pre_position = await perp_taker_tester.data.position(PERP_SYMBOL)
+    pre_last_exec = await perp_taker_tester.get_last_wallet_perp_execution()
+    logger.info(
+        "🔍 reduce_only diagnostic (pre-submit): api_position=%s, last_exec=%s",
+        pre_position,
+        f"seq={pre_last_exec.sequence_number}, sym={pre_last_exec.symbol}, "
+        f"qty={pre_last_exec.qty}, side={pre_last_exec.side}"
+        if pre_last_exec is not None
+        else "none",
+    )
+
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+
+    # Guarantee the IOC has a counterparty so the on-chain check actually
+    # runs — see docstring for rationale.
+    maker_order_id = await perp_maker_tester.orders.create_limit(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=False,
+            limit_px=str(round(market_price * 1.04, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert maker_order_id is not None
+    await perp_maker_tester.wait.for_order_creation(order_id=maker_order_id)
 
     response = None
     raised: ApiException | None = None
@@ -173,6 +236,20 @@ async def test_perp_reduce_only_rejected_without_position(perp_taker_tester: Rey
         logger.info(f"✅ reduce_only without position rejected synchronously: {type(raised).__name__}")
     else:
         assert response is not None
+        # Diagnostic snapshot: if response is FILLED, log the resulting position
+        # so the next reader can tell whether chain truth grew from zero (real
+        # regression) or merely tracked an already-non-zero chain position
+        # (test-isolation bug — chain had debris before the order ran).
+        if response.status == OrderStatus.FILLED or float(response.exec_qty or "0") > 0.0:
+            post_position = await perp_taker_tester.data.position(PERP_SYMBOL)
+            logger.warning(
+                "⚠️  reduce_only diagnostic (post-fill): status=%s, exec_qty=%s, "
+                "api_position_after=%s — see test docstring for triage",
+                response.status,
+                response.exec_qty,
+                post_position,
+            )
+
         # Under perpOB the order is accepted but the ME refuses to fill it.
         assert response.status in (
             OrderStatus.CANCELLED,
