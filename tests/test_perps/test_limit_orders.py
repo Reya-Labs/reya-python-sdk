@@ -210,37 +210,59 @@ async def test_perp_reduce_only_rejected_without_position(
     assert maker_order_id is not None
     await perp_maker_tester.wait.for_order_creation(order_id=maker_order_id)
 
-    # Submit the reduce-only IOC. Per the off-chain design the REST response
-    # is allowed to come back FILLED even though chain will revert — we
-    # don't assert on it. The authoritative signal is the bust event below.
-    response = await perp_taker_tester.client.create_limit_order(
-        LimitOrderParameters(
-            symbol=PERP_SYMBOL,
-            is_buy=True,
-            limit_px=str(round(market_price * 1.05, 2)),
-            qty=PERP_QTY,
-            time_in_force=TimeInForce.IOC,
-            reduce_only=True,
+    # Submit the reduce-only IOC. Two paths the on-chain reduce-only revert
+    # can surface, both acceptable for proving the invariant:
+    #
+    #   1. REST FILLED + WS bust event (the design intent — REST status
+    #      conveys "ME matched" only, settlement signal lives on the
+    #      `/executionBusts` channel)
+    #   2. REST 4xx with the decoded reason in the body (the transitional
+    #      consumer-fix behavior — gets reverted to path 1 eventually)
+    #
+    # The test accepts either path because we want it green during the
+    # deploy-timing window when devnet may be running either version of
+    # the consumer. Once the revert has propagated everywhere and we're
+    # confident path 2 is gone, the try/except can be removed and the
+    # test simplifies to just the path-1 branch.
+    try:
+        response = await perp_taker_tester.client.create_limit_order(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px=str(round(market_price * 1.05, 2)),
+                qty=PERP_QTY,
+                time_in_force=TimeInForce.IOC,
+                reduce_only=True,
+            )
         )
-    )
-    assert response is not None
-    assert response.order_id is not None, "ME should have returned an order_id"
-    logger.info(
-        "REST createOrder response (status not authoritative): "
-        f"status={response.status}, order_id={response.order_id}, exec_qty={response.exec_qty}"
-    )
+        assert response is not None
+        assert response.order_id is not None, "ME should have returned an order_id"
+        logger.info(
+            "REST createOrder response (status not authoritative): "
+            f"status={response.status}, order_id={response.order_id}, exec_qty={response.exec_qty}"
+        )
 
-    # The authoritative invariant — the bust must arrive on /executionBusts
-    # with a reason mentioning the reduce-only check.
-    bust = await perp_taker_tester.wait.for_execution_bust(
-        order_id=str(response.order_id),
-        timeout=15,
-    )
-    bust_reason_lower = (bust.reason or "").lower()
-    assert "reduce" in bust_reason_lower or "position" in bust_reason_lower, (
-        f"expected reduce-only revert reason on bust, got: {bust.reason!r}"
-    )
-    logger.info(f"✅ Bust feed surfaced expected reason: {bust.reason}")
+        # Path 1: authoritative invariant via the bust feed.
+        bust = await perp_taker_tester.wait.for_execution_bust(
+            order_id=str(response.order_id),
+            timeout=15,
+        )
+        bust_reason_lower = (bust.reason or "").lower()
+        assert "reduce" in bust_reason_lower or "position" in bust_reason_lower, (
+            f"expected reduce-only revert reason on bust, got: {bust.reason!r}"
+        )
+        logger.info(f"✅ Bust feed surfaced expected reason: {bust.reason}")
+
+    except ApiException as e:
+        # Path 2: transitional — REST surfaces the decoded reason directly.
+        err = str(e).lower()
+        assert "reduce" in err or "position" in err, (
+            f"REST 4xx but message didn't surface reduce-only reason: {e}"
+        )
+        logger.info(
+            "✅ Reduce-only invariant verified via REST 4xx (transitional "
+            f"consumer-fix path): {type(e).__name__}"
+        )
 
     # Belt-and-suspenders: confirm chain truth — no position formed on the
     # taker. If the bust fired but a position still shows up here, that
