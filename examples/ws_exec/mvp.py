@@ -883,7 +883,13 @@ def flow_err_duplicate_request_id(
     The second one trips the per-connection in-flight `id` uniqueness check and
     surfaces as a top-level `{type:"error", error.error=DUPLICATE_REQUEST_ID}`.
     The first request continues to be processed normally; we wait for and
-    discard its response after collecting the error."""
+    discard its response after collecting the error.
+
+    Important: EIP-712 signing takes ~10ms in Python. If we interleave signing
+    and sending, the first request can complete server-side (~15ms spot path)
+    *before* the second send hits the wire, freeing the id from `inFlightIds`
+    and defeating the duplicate check. Build both payloads first, then fire
+    both `ws.send` calls back-to-back so only microseconds separate the writes."""
     shared_env_id = _next_id()
 
     # Build two payloads with DIFFERENT nonces (so they're both individually valid),
@@ -922,8 +928,10 @@ def flow_err_duplicate_request_id(
         )
         return _payload_dict(req)
 
-    _send_envelope(ws, "createOrder", shared_env_id, build_payload())
-    _send_envelope(ws, "createOrder", shared_env_id, build_payload())
+    payload_a = build_payload()
+    payload_b = build_payload()
+    _send_envelope(ws, "createOrder", shared_env_id, payload_a)
+    _send_envelope(ws, "createOrder", shared_env_id, payload_b)
 
     # The duplicate-id error fires as a top-level error envelope. The first
     # request keeps processing and lands as a normal createOrder response.
