@@ -145,13 +145,24 @@ async def test_perp_reduce_only_rejected_without_position(
 ) -> None:
     """``reduce_only=True`` IOC must not open a fresh position from zero.
 
+    Settlement signal sourced from the WebSocket ``/executionBusts`` feed,
+    NOT the REST ``createOrder`` response status. This is intentional in
+    the off-chain design (confirmed by Daniel in
+    Reya-Labs/reya-off-chain-monorepo#2575): the REST response status
+    only signals "ME matched" — settlement failures (including on-chain
+    ``ReduceOnlyConditionFailed`` reverts) surface exclusively on the
+    bust + executions WS channels. A test that inspects only the REST
+    status would have a false-positive on every reverted settlement,
+    because the REST response will return ``FILLED`` even when the chain
+    rolled back the fill.
+
     Enforced on-chain in reya-network ``orders-gateway/src/libraries/
     ExecutePartialFill.sol:159-174``: when ``accountOrder.reduceOnly`` is
     set, ``ExecutePartialFill`` reads the taker's live perp base from
     ``IPassivePerpInformationModule.getUpdatedPositionInfo`` and reverts
     with ``Errors.ReduceOnlyConditionFailed`` if the base is zero
     (``orders-gateway/src/libraries/execute-order-types/Utils.sol:46-51``).
-    The ME currently has no reduce-only logic — the proto carries the
+    The ME currently has no reduce-only pre-check — the proto carries the
     flag through and on-chain settlement is the enforcement layer. (An ME
     pre-check is in development; once it lands races narrow but on-chain
     remains authoritative.)
@@ -172,33 +183,18 @@ async def test_perp_reduce_only_rejected_without_position(
     (price-time priority) and our maker just rests until cleanup. Either
     path reaches chain.
 
-    If this test ever sees ``FILLED``/``exec_qty>0``, on-chain
-    ``positionBase`` was non-zero at fill time. Two likely causes:
-
-      1. Test-isolation bug: ``perp_flatten_between_tests`` left chain
-         debris that the API view hasn't caught up on
-         (``check.position_not_open`` passes from API state but chain
-         truth still has a residual base from a prior test).
-      2. Real on-chain regression: reduce-only check skipped or position
-         lookup is wrong.
-
-    The diagnostic logs below print prior taker executions and the
-    resulting position so a reviewer can tell the two apart from CI logs.
+    Failure modes this test catches:
+      - No bust event ever arrives (within ``BUST_TIMEOUT_S``) → on-chain
+        reduce-only check didn't fire or the bust indexer is broken
+      - Bust arrives but reason doesn't mention reduce-only/position →
+        a different revert reached chain (e.g. nonce, signature) — the
+        test's invariant isn't being exercised
+      - Taker position ends up non-zero → chain DID settle the fill (the
+        reduce-only check was skipped) — this is the headline regression
+        the test exists to catch
     """
-    # Diagnostic snapshot pre-submit (see docstring for triage flow)
-    pre_position = await perp_taker_tester.data.position(PERP_SYMBOL)
-    pre_last_exec = await perp_taker_tester.get_last_wallet_perp_execution()
-    logger.info(
-        "🔍 reduce_only diagnostic (pre-submit): api_position=%s, last_exec=%s",
-        pre_position,
-        f"seq={pre_last_exec.sequence_number}, sym={pre_last_exec.symbol}, "
-        f"qty={pre_last_exec.qty}, side={pre_last_exec.side}"
-        if pre_last_exec is not None
-        else "none",
-    )
-
-    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+    await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
 
     # Guarantee the IOC has a counterparty so the on-chain check actually
     # runs — see docstring for rationale.
@@ -214,53 +210,43 @@ async def test_perp_reduce_only_rejected_without_position(
     assert maker_order_id is not None
     await perp_maker_tester.wait.for_order_creation(order_id=maker_order_id)
 
-    response = None
-    raised: ApiException | None = None
-    try:
-        response = await perp_taker_tester.client.create_limit_order(
-            LimitOrderParameters(
-                symbol=PERP_SYMBOL,
-                is_buy=True,
-                limit_px=str(round(market_price * 1.05, 2)),
-                qty=PERP_QTY,
-                time_in_force=TimeInForce.IOC,
-                reduce_only=True,
-            )
+    # Submit the reduce-only IOC. Per the off-chain design the REST response
+    # is allowed to come back FILLED even though chain will revert — we
+    # don't assert on it. The authoritative signal is the bust event below.
+    response = await perp_taker_tester.client.create_limit_order(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=str(round(market_price * 1.05, 2)),
+            qty=PERP_QTY,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=True,
         )
-    except ApiException as e:
-        raised = e
+    )
+    assert response is not None
+    assert response.order_id is not None, "ME should have returned an order_id"
+    logger.info(
+        "REST createOrder response (status not authoritative): "
+        f"status={response.status}, order_id={response.order_id}, exec_qty={response.exec_qty}"
+    )
 
-    if raised is not None:
-        err = str(raised).lower()
-        assert "reduce" in err or "position" in err or "400" in err, f"expected reduce-only rejection, got: {raised}"
-        logger.info(f"✅ reduce_only without position rejected synchronously: {type(raised).__name__}")
-    else:
-        assert response is not None
-        # Diagnostic snapshot: if response is FILLED, log the resulting position
-        # so the next reader can tell whether chain truth grew from zero (real
-        # regression) or merely tracked an already-non-zero chain position
-        # (test-isolation bug — chain had debris before the order ran).
-        if response.status == OrderStatus.FILLED or float(response.exec_qty or "0") > 0.0:
-            post_position = await perp_taker_tester.data.position(PERP_SYMBOL)
-            logger.warning(
-                "⚠️  reduce_only diagnostic (post-fill): status=%s, exec_qty=%s, "
-                "api_position_after=%s — see test docstring for triage",
-                response.status,
-                response.exec_qty,
-                post_position,
-            )
+    # The authoritative invariant — the bust must arrive on /executionBusts
+    # with a reason mentioning the reduce-only check.
+    bust = await perp_taker_tester.wait.for_execution_bust(
+        order_id=str(response.order_id),
+        timeout=15,
+    )
+    bust_reason_lower = (bust.reason or "").lower()
+    assert "reduce" in bust_reason_lower or "position" in bust_reason_lower, (
+        f"expected reduce-only revert reason on bust, got: {bust.reason!r}"
+    )
+    logger.info(f"✅ Bust feed surfaced expected reason: {bust.reason}")
 
-        # Under perpOB the order is accepted but the ME refuses to fill it.
-        assert response.status in (
-            OrderStatus.CANCELLED,
-            OrderStatus.REJECTED,
-        ), f"expected CANCELLED/REJECTED for reduce-only without position, got: {response.status}"
-        assert (
-            float(response.exec_qty or "0") == 0.0
-        ), f"reduce-only without position should not fill, got exec_qty={response.exec_qty}"
-        logger.info(f"✅ reduce_only without position rejected by ME: status={response.status}")
-
-    # Final invariant either way: no position formed.
+    # Belt-and-suspenders: confirm chain truth — no position formed on the
+    # taker. If the bust fired but a position still shows up here, that
+    # would indicate the bust feed reported a phantom failure while the
+    # fill actually settled — i.e. an indexer-vs-chain divergence worth
+    # investigating separately.
     await asyncio.sleep(0.5)
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
 
