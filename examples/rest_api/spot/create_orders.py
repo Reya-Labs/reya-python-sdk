@@ -33,11 +33,14 @@ from sdk.reya_rest_api.models.orders import LimitOrderParameters
 # CONFIGURATION
 # =============================================================================
 
+# NOTE: The default prices below are intentionally far from any realistic
+# market price so this example NEVER fills against a live order book. If you
+# adjust BUY/SELL to near-mark values, this script will actually trade.
 SPOT_SYMBOL = "WETHRUSD"
-TRADE_QTY = "0.001"
-BUY_PRICE = "1900"
-SELL_PRICE = "2200"
-ORDER_EXPIRY_SECONDS = 10  # Orders expire after 2 minutes (set to None for default 24h)
+TRADE_QTY = "0.0001"
+BUY_PRICE = "1"  # $1 - safely below any realistic ETH bid, will rest
+SELL_PRICE = "1000000"  # $1M - safely above any realistic ETH ask, will rest
+ORDER_EXPIRY_SECONDS = 120  # Orders expire after 120s; set to None for the SDK default (24h on spot GTC)
 
 # =============================================================================
 # LOGGING SETUP
@@ -85,7 +88,6 @@ async def main() -> None:
     logger.info("=" * 60)
     logger.info("CREATE ORDERS EXAMPLE")
     logger.info("=" * 60)
-    expires_after = int(time.time()) + ORDER_EXPIRY_SECONDS if ORDER_EXPIRY_SECONDS else None
 
     logger.info(f"Symbol: {SPOT_SYMBOL}")
     logger.info(f"Quantity: {TRADE_QTY} ETH")
@@ -93,10 +95,16 @@ async def main() -> None:
     logger.info(f"Sell Price: ${SELL_PRICE}")
     logger.info(f"Account ID: {account_id}")
     if ORDER_EXPIRY_SECONDS:
-        logger.info(f"Order Expiry: {ORDER_EXPIRY_SECONDS}s (deadline: {expires_after})")
+        logger.info(f"Order Expiry: {ORDER_EXPIRY_SECONDS}s per order")
     else:
         logger.info("Order Expiry: default (24h)")
     logger.info("=" * 60)
+
+    def expires_now() -> int | None:
+        # Re-snapshot wall clock per order so the deadline budget is consistent
+        # — using a single snapshot before both orders means the second order
+        # eats the network round-trip of the first against the same budget.
+        return int(time.time()) + ORDER_EXPIRY_SECONDS if ORDER_EXPIRY_SECONDS else None
 
     # Create trading client
     client = ReyaTradingClient(config)
@@ -106,7 +114,7 @@ async def main() -> None:
         await client.start()
         logger.info("✅ Client initialized")
 
-        # Place GTC BUY order at $10
+        # Place GTC BUY order
         logger.info("-" * 60)
         logger.info(f"📈 Placing GTC BUY order: {TRADE_QTY} ETH @ ${BUY_PRICE}")
 
@@ -116,13 +124,13 @@ async def main() -> None:
             qty=TRADE_QTY,
             limit_px=BUY_PRICE,
             time_in_force=TimeInForce.GTC,
-            expires_after=expires_after,
+            expires_after=expires_now(),
         )
 
         buy_response = await client.create_limit_order(buy_params)
         logger.info(f"✅ BUY order placed: Order ID = {buy_response.order_id}")
 
-        # Place GTC SELL order at $1,000,000
+        # Place GTC SELL order
         logger.info("-" * 60)
         logger.info(f"📉 Placing GTC SELL order: {TRADE_QTY} ETH @ ${SELL_PRICE}")
 
@@ -132,7 +140,7 @@ async def main() -> None:
             qty=TRADE_QTY,
             limit_px=SELL_PRICE,
             time_in_force=TimeInForce.GTC,
-            expires_after=expires_after,
+            expires_after=expires_now(),
         )
 
         sell_response = await client.create_limit_order(sell_params)

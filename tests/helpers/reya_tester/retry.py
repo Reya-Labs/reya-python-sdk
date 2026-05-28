@@ -75,9 +75,12 @@ async def with_retry(
                 is_rate_limited = True
 
             if is_retryable and attempt < max_retries:
-                # Use longer backoff for rate-limit errors to let the 60s
-                # sliding window drain partially before retrying.
-                effective_delay = max(retry_delay, 5.0) if is_rate_limited else retry_delay
+                # For rate-limit errors, wait one full 60s window aging cycle
+                # plus a small margin so the oldest request in the bucket
+                # actually ages out before we retry. A shorter backoff (5s,
+                # ~1/12th of the window) wastes wall clock without changing
+                # the outcome — the same limit fires every attempt.
+                effective_delay = max(retry_delay, 65.0) if is_rate_limited else retry_delay
                 logger.warning(
                     f"⚠️ {operation_name} failed (attempt {attempt + 1}/{max_retries + 1}): {error_msg[:120]}... Retrying in {effective_delay}s"
                 )

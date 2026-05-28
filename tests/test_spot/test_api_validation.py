@@ -789,14 +789,25 @@ async def test_spot_order_qty_not_step_multiple(spot_config: SpotTestConfig, spo
         error_msg = str(e)
         # The order must be rejected. The exact code/message depends on which
         # validator fires first, which varies with server-side state accumulated
-        # by prior tests (rate-limit and open-order-cap pre-checks can run before
-        # the qty-step check). In isolation we get the specific
-        # CREATE_ORDER_OTHER_ERROR + "does not conform to base spacing"; under
-        # full-suite load the server sometimes returns INPUT_VALIDATION_ERROR
-        # first. Both indicate a rejected order, which is what we test.
-        assert (
-            "CREATE_ORDER_OTHER_ERROR" in error_msg or "INPUT_VALIDATION_ERROR" in error_msg
-        ), f"Expected CREATE_ORDER_OTHER_ERROR or INPUT_VALIDATION_ERROR, got: {e}"
+        # by prior tests (rate-limit and open-order-cap pre-checks can run
+        # before the qty-step check). In isolation we get the specific
+        # CREATE_ORDER_OTHER_ERROR with a "base spacing" / "step" message;
+        # under full-suite load the server can surface INPUT_VALIDATION_ERROR
+        # first via a different validator. Accept either code, but when the
+        # specific CREATE_ORDER_OTHER_ERROR fires we still assert on the
+        # message body so this test continues to detect a regression in the
+        # qty-step validator itself (rather than silently passing because
+        # some unrelated validator rejected the order first).
+        if "CREATE_ORDER_OTHER_ERROR" in error_msg:
+            lowered = error_msg.lower()
+            assert "spacing" in lowered or "step" in lowered, (
+                f"CREATE_ORDER_OTHER_ERROR fired but message did not reference qty-step "
+                f"('spacing'/'step'); regression candidate: {e}"
+            )
+        else:
+            assert (
+                "INPUT_VALIDATION_ERROR" in error_msg
+            ), f"Expected CREATE_ORDER_OTHER_ERROR or INPUT_VALIDATION_ERROR, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:200]}")
 

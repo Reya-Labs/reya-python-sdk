@@ -10,8 +10,9 @@ This script demonstrates how to:
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- SPOT_ACCOUNT_ID_1: Your Reya account ID
-- SPOT_PRIVATE_KEY_1: Your Ethereum private key
+- SPOT_ACCOUNT_ID_2: Your Reya account ID
+- SPOT_PRIVATE_KEY_2: Your Ethereum private key
+- SPOT_WALLET_ADDRESS_2: Your wallet address
 
 Usage:
     python -m examples.rest_api.spot.spot_trade
@@ -88,7 +89,7 @@ async def main() -> None:
     """Main entry point for the spot trade example."""
     load_dotenv()
 
-    # Get config from environment (uses SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1)
+    # Get config from environment (uses SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2)
     try:
         config = get_spot_config(account_number=2)
     except ValueError as e:

@@ -33,6 +33,7 @@ from decimal import Decimal
 from dotenv import load_dotenv
 from eth_account import Account
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
@@ -107,16 +108,19 @@ async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
 
     try:
         price_data = await client.markets.get_price(symbol=oracle_symbol)
-        if price_data and price_data.oracle_price:
+        # Pydantic models have no ``__bool__``, so guard on the field directly.
+        if price_data.oracle_price:
             oracle_price = Decimal(price_data.oracle_price)
             logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
             return oracle_price
-    except Exception as e:
+    except (OSError, RuntimeError, ApiException) as e:
         logger.warning(f"⚠️ Failed to fetch oracle price for {oracle_symbol}: {e}")
 
-    # Fall back to configured price if oracle is unavailable
+    # Fall back to configured price if oracle is unavailable. ``is not None``
+    # so a legitimate ``Decimal('0')`` sentinel (e.g. a free-transfer asset)
+    # is treated as configured, not as "no fallback".
     fallback = ASSET_FALLBACK_PRICES.get(asset.upper())
-    if fallback:
+    if fallback is not None:
         logger.warning(f"⚠️ Using fallback price for {asset}: ${fallback}")
         return fallback
 
@@ -250,18 +254,21 @@ async def execute_spot_transfer(
         order_fully_matched = True
         logger.info("        ✓ Sell order fully matched")
 
-    # Get transaction hash from spot executions
+    # Get transaction hash from spot executions. IOC orders may return
+    # ``order_id=None`` per the CreateOrderResponse spec — gate the loop so
+    # we don't false-match on the first historical execution with no order id.
     tx_hash = None
-    try:
-        spot_executions = await receiver_client.get_spot_executions()
-        for execution in spot_executions.data:
-            if execution.order_id == buy_order_id:
-                tx_hash = execution.additional_properties.get("transactionHash")
-                if not tx_hash:
-                    tx_hash = execution.additional_properties.get("txHash")
-                break
-    except (OSError, RuntimeError):  # nosec B110
-        pass  # Execution lookup may fail, but transfer still succeeded
+    if buy_order_id is not None:
+        try:
+            spot_executions = await receiver_client.get_spot_executions()
+            for execution in spot_executions.data:
+                if execution.order_id == buy_order_id:
+                    tx_hash = execution.additional_properties.get("transactionHash")
+                    if not tx_hash:
+                        tx_hash = execution.additional_properties.get("txHash")
+                    break
+        except (OSError, RuntimeError):  # nosec B110
+            pass  # Execution lookup may fail, but transfer still succeeded
 
     return order_fully_matched, tx_hash
 
@@ -307,9 +314,11 @@ async def balance_accounts_mode() -> None:
     logger.info(f"  Account 1: {spot_account_1}")
     logger.info(f"  Account 2: {spot_account_2}")
 
-    # Get base config to inherit api_url and chain_id
-    base_client = ReyaTradingClient()
-    base_config = base_client.config
+    # Read base config directly from env — constructing a throwaway
+    # ReyaTradingClient just to peek at .config leaks the underlying aiohttp
+    # session (no close() call) and triggers CPython "Unclosed client session"
+    # warnings on long-running runs.
+    base_config = TradingConfig.from_env_spot()
 
     # Create client 1 with proper config
     config_1 = create_trading_client_config(spot_key_1, spot_account_1, base_config)
@@ -415,9 +424,7 @@ async def main():
     )
     parser.add_argument("--from-account", type=int, help="Account ID to transfer FROM (sender)")
     parser.add_argument("--to-account", type=int, help="Account ID to transfer TO (receiver)")
-    parser.add_argument(
-        "--asset", type=str, choices=["ETH", "WETH", "BTC", "WBTC", "REYA"], help="Asset to transfer"
-    )
+    parser.add_argument("--asset", type=str, choices=["ETH", "WETH", "BTC", "WBTC", "REYA"], help="Asset to transfer")
     parser.add_argument("--qty", type=str, help="Quantity to transfer (e.g., 5)")
     parser.add_argument("--price", type=str, default=None, help="Custom price for transfer (default: 0.01)")
 
@@ -492,9 +499,8 @@ async def main():
     else:
         logger.info("  Price:        (will fetch oracle price)")
 
-    # Get base config to inherit api_url and chain_id
-    base_client = ReyaTradingClient()
-    base_config = base_client.config
+    # Read base config directly from env (same rationale as in balance_accounts_mode).
+    base_config = TradingConfig.from_env_spot()
 
     # Create sender client with proper config
     sender_config = create_trading_client_config(sender_key, from_account_id, base_config)

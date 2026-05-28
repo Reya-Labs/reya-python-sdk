@@ -1,11 +1,15 @@
 """
-Spot rate limit system verification tests.
+Spot rate limit system verification script.
 
-Each test function verifies a specific aspect of the rate limiting system.
-Comment in/out the function calls in main() to run the tests you want.
+Each function verifies a specific aspect of the rate limiting system.
+Comment in/out the function calls in main() to run the verifications you want.
+
+NOTE: This is NOT a pytest test suite (despite the legacy `test_*` function
+names). It opens real orders against a live API and burns minutes per case.
+The `examples` directory is excluded from pytest collection in pyproject.toml.
 
 Usage:
-    python examples/rest_api/spot/test_rate_limit.py
+    python examples/rest_api/spot/verify_rate_limits.py
 """
 
 import asyncio
@@ -14,10 +18,10 @@ import time
 
 from dotenv import load_dotenv
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient, get_spot_config
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
-from sdk.open_api.exceptions import ApiException
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -70,9 +74,9 @@ async def test_a_sliding_window_rate_limit():
         try:
             response = await client.create_limit_order(params)
             accepted += 1
-            order_id = response.order_id if response else "N/A"
+            order_id = response.order_id or "N/A"
             logger.info(f"  Order {i}: ACCEPTED (order_id={order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             rejected += 1
             msg = str(e)
             rejection_messages.append(msg)
@@ -92,8 +96,11 @@ async def test_a_sliding_window_rate_limit():
     await asyncio.sleep(65)
 
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.IOC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.IOC,
     )
     try:
         await client.create_limit_order(params)
@@ -140,29 +147,35 @@ async def test_b_open_order_count_cap():
     order_ids = []
     for i in range(1, 4):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             order_ids.append(response.order_id)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: REJECTED — {e}")
 
     # Place 4th GTC order — should be rejected by count cap
     logger.info("")
     logger.info("Placing 4th GTC order (should be rejected by count cap)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         await client.create_limit_order(params)
         logger.info("  FAIL: 4th order was accepted (expected rejection)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "order count cap" in msg.lower():
             logger.info(f"  SUCCESS: Rejected with count cap message — {msg}")
@@ -175,10 +188,12 @@ async def test_b_open_order_count_cap():
         logger.info(f"Cancelling order {order_ids[0]} to free up a slot...")
         try:
             await client.cancel_order(
-                order_id=order_ids[0], symbol=SYMBOL, account_id=config.account_id,
+                order_id=order_ids[0],
+                symbol=SYMBOL,
+                account_id=config.account_id,
             )
             logger.info("  Order cancelled")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Cancel failed — {e}")
 
         # We used 5/5 rate limit budget (3 creates + 1 rejected create + 1 cancel)
@@ -189,14 +204,17 @@ async def test_b_open_order_count_cap():
         logger.info("Placing new GTC order after cancel (should succeed — 2 resting, cap is 3)...")
         expires_after = int(time.time()) + 300
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             logger.info(f"  SUCCESS: Order accepted (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  FAIL: Still rejected — {e}")
 
     # Cleanup
@@ -253,26 +271,34 @@ async def test_c_rate_limit_shared_across_operations():
     logger.info("Step 1: Placing 2 GTC orders (2/5 rate limit, 2/3 cap)...")
     for i in range(1, 3):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             order_ids.append(response.order_id)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: UNEXPECTED REJECTION — {e}")
 
     # Step 2: Cancel 1 order (3/5 rate limit, 1/3 cap)
     logger.info("")
+    if not order_ids:
+        logger.warning("Step 2: No orders created in Step 1 — skipping cancel step")
+        return
     logger.info(f"Step 2: Cancelling order {order_ids[0]} (3/5 rate limit, 1/3 cap)...")
     try:
         await client.cancel_order(
-            order_id=order_ids[0], symbol=SYMBOL, account_id=config.account_id,
+            order_id=order_ids[0],
+            symbol=SYMBOL,
+            account_id=config.account_id,
         )
         logger.info("  Cancel: ACCEPTED")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         logger.info(f"  Cancel: UNEXPECTED REJECTION — {e}")
 
     # Step 3: Place 2 more GTC orders (5/5 rate limit, 3/3 cap)
@@ -280,29 +306,35 @@ async def test_c_rate_limit_shared_across_operations():
     logger.info("Step 3: Placing 2 more GTC orders (5/5 rate limit, 3/3 cap)...")
     for i in range(3, 5):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             order_ids.append(response.order_id)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: UNEXPECTED REJECTION — {e}")
 
     # Step 4: Try another create → should be rejected by rate limit (5/5)
     logger.info("")
     logger.info("Step 4: Placing another order (should be rejected by rate limit 5/5)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         await client.create_limit_order(params)
         logger.info("  FAIL: Order was accepted (expected rate limit rejection)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  SUCCESS: Rejected by rate limit")
@@ -314,10 +346,12 @@ async def test_c_rate_limit_shared_across_operations():
     logger.info("Step 5: Trying a cancel (should also be rejected by rate limit 5/5)...")
     try:
         await client.cancel_order(
-            order_id=order_ids[1], symbol=SYMBOL, account_id=config.account_id,
+            order_id=order_ids[1],
+            symbol=SYMBOL,
+            account_id=config.account_id,
         )
         logger.info("  FAIL: Cancel was accepted (expected rate limit rejection)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  SUCCESS: Cancel also rejected by rate limit")
@@ -384,14 +418,17 @@ async def test_d_mass_cancel_separate_bucket():
     logger.info("Step 1: Placing 2 GTC orders...")
     for i in range(1, 3):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: REJECTED — {e}")
 
     # Step 2: Mass cancel #1 (1/2 mass cancel budget)
@@ -400,7 +437,7 @@ async def test_d_mass_cancel_separate_bucket():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  SUCCESS: Cancelled {result.cancelled_count} orders")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         logger.info(f"  UNEXPECTED REJECTION — {e}")
 
     await asyncio.sleep(1)
@@ -411,14 +448,17 @@ async def test_d_mass_cancel_separate_bucket():
     expires_after = int(time.time()) + 300
     for i in range(1, 3):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: REJECTED — {e}")
 
     # Step 4: Mass cancel #2 (2/2 mass cancel budget)
@@ -427,7 +467,7 @@ async def test_d_mass_cancel_separate_bucket():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  SUCCESS: Cancelled {result.cancelled_count} orders")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         logger.info(f"  UNEXPECTED REJECTION — {e}")
 
     # Step 5: Mass cancel #3 → should be rejected (2/2 used)
@@ -436,7 +476,7 @@ async def test_d_mass_cancel_separate_bucket():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  FAIL: Mass cancel accepted (expected rejection) — cancelled {result.cancelled_count}")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  SUCCESS: Mass cancel rejected by rate limit")
@@ -447,13 +487,16 @@ async def test_d_mass_cancel_separate_bucket():
     logger.info("")
     logger.info("Step 6: Placing an IOC order (should succeed — order budget at 5/5 after this)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.IOC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.IOC,
     )
     try:
         response = await client.create_limit_order(params)
         logger.info(f"  SUCCESS: IOC accepted (proves order bucket is independent of mass cancel)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  FAIL: IOC rejected by rate limit (order budget unexpectedly exhausted)")
@@ -464,13 +507,16 @@ async def test_d_mass_cancel_separate_bucket():
     logger.info("")
     logger.info("Step 7: Placing another IOC (should be rejected — order budget at 5/5)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.IOC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.IOC,
     )
     try:
         await client.create_limit_order(params)
         logger.info(f"  FAIL: IOC accepted (expected order rate limit rejection)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  SUCCESS: IOC rejected by order rate limit (5/5 used)")
@@ -510,7 +556,10 @@ async def test_e_whitelisted_higher_cap():
 
     # Clean up both wallets
     logger.info("Cleaning up existing orders for both wallets...")
-    for name, client, config in [("Wallet 1 (regular)", client1, config1), ("Wallet 2 (whitelisted)", client2, config2)]:
+    for name, client, config in [
+        ("Wallet 1 (regular)", client1, config1),
+        ("Wallet 2 (whitelisted)", client2, config2),
+    ]:
         try:
             result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
             logger.info(f"  {name}: cancelled {result.cancelled_count} orders")
@@ -531,26 +580,32 @@ async def test_e_whitelisted_higher_cap():
     logger.info("Placing 3 GTC orders (should all succeed)...")
     for i in range(1, 4):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client1.create_limit_order(params)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: REJECTED — {e}")
 
     logger.info("Placing 4th GTC order (should be rejected at 3/3)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         await client1.create_limit_order(params)
         logger.info("  FAIL: 4th order accepted (expected rejection at 3/3)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "order count cap" in msg.lower() and "3/3" in msg:
             logger.info(f"  SUCCESS: Rejected at (3/3) — regular tier cap working")
@@ -568,26 +623,32 @@ async def test_e_whitelisted_higher_cap():
     logger.info("Placing 5 GTC orders (should all succeed — whitelisted cap is 5)...")
     for i in range(1, 6):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client2.create_limit_order(params)
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: REJECTED — {e}")
 
     logger.info("Placing 6th GTC order (should be rejected at 5/5)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         await client2.create_limit_order(params)
         logger.info("  FAIL: 6th order accepted (expected rejection at 5/5)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "order count cap" in msg.lower() and "5/5" in msg:
             logger.info(f"  SUCCESS: Rejected at (5/5) — whitelisted tier cap working")
@@ -650,14 +711,17 @@ async def test_f_open_notional_cap():
     logger.info("")
     logger.info("Step 1: Placing GTC buy at $1 x 2000 qty (notional=$2000, under $3k cap)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty="2000",
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty="2000",
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         response = await client.create_limit_order(params)
         logger.info(f"  ACCEPTED (order_id={response.order_id}) — $2000 notional resting")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         logger.info(f"  UNEXPECTED REJECTION — {e}")
 
     # Wait for OrdersProvider to process the stream event from step 1
@@ -668,14 +732,17 @@ async def test_f_open_notional_cap():
     logger.info("")
     logger.info("Step 2: Placing GTC buy at $1 x 1500 qty (total notional=$3500 > $3k cap)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty="1500",
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty="1500",
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         await client.create_limit_order(params)
         logger.info("  FAIL: Order accepted (expected notional cap rejection)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "notional cap" in msg.lower():
             logger.info(f"  SUCCESS: Rejected by notional cap")
@@ -687,14 +754,17 @@ async def test_f_open_notional_cap():
     logger.info("")
     logger.info("Step 3: Placing GTC buy at $1 x 900 qty (total notional=$2900 < $3k cap)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty="900",
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty="900",
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         response = await client.create_limit_order(params)
         logger.info(f"  SUCCESS: Accepted (order_id={response.order_id}) — $2900 notional resting")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         logger.info(f"  FAIL: Rejected — {e}")
 
     # Cleanup
@@ -774,15 +844,18 @@ async def test_g_premium_wallet():
     accepted = 0
     for i in range(1, 7):
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty="1000",
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty="1000",
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             accepted += 1
             logger.info(f"  Order {i}: ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Order {i}: REJECTED — {e}")
 
     if accepted == 6:
@@ -794,14 +867,17 @@ async def test_g_premium_wallet():
     logger.info("")
     logger.info("Step 2: Placing 7th GTC order (premium rate limit 6/7 → 7/7)...")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty="1000",
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty="1000",
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         response = await client.create_limit_order(params)
         logger.info(f"  SUCCESS: 7th order accepted (order_id={response.order_id})")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  FAIL: 7th order rejected by rate limit — premium limit appears lower than 7: {msg}")
@@ -812,14 +888,17 @@ async def test_g_premium_wallet():
     logger.info("")
     logger.info("Step 3: Placing 8th GTC order (premium rate limit 7/7 → should be rejected)")
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty="1000",
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty="1000",
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         await client.create_limit_order(params)
         logger.info("  FAIL: 8th order accepted (expected rate limit rejection — premium limit higher than 7?)")
-    except (ApiException, Exception) as e:
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  SUCCESS: 8th order rejected by rate limit — premium limit of 7 is enforced")
@@ -898,14 +977,17 @@ async def test_h_premium_mass_cancel():
     for i in range(1, 5):
         expires_after = int(time.time()) + 300
         params = LimitOrderParameters(
-            symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-            limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+            symbol=SYMBOL,
+            is_buy=True,
+            qty=ORDER_QTY,
+            limit_px=SAFE_NO_MATCH_BUY_PRICE,
+            time_in_force=TimeInForce.GTC,
             expires_after=expires_after,
         )
         try:
             response = await client.create_limit_order(params)
             logger.info(f"  Iter {i}: Order ACCEPTED (order_id={response.order_id})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             logger.info(f"  Iter {i}: Order UNEXPECTED REJECTION — {e}")
             continue
 
@@ -916,22 +998,26 @@ async def test_h_premium_mass_cancel():
             result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
             mass_cancels_accepted += 1
             logger.info(f"  Iter {i}: Mass cancel ACCEPTED (cancelled {result.cancelled_count})")
-        except (ApiException, Exception) as e:
+        except ApiException as e:
             msg = str(e)
             logger.info(f"  Iter {i}: Mass cancel REJECTED — {msg}")
 
     if mass_cancels_accepted == 4:
         logger.info("  SUCCESS: All 4 mass cancels accepted — premium mass cancel limit > regular 2")
     else:
-        logger.info(f"  FAIL: Only {mass_cancels_accepted}/4 mass cancels accepted — premium limit not applied as expected")
+        logger.info(
+            f"  FAIL: Only {mass_cancels_accepted}/4 mass cancels accepted — premium limit not applied as expected"
+        )
 
     # Step 2: 5th mass cancel → should be rejected
     logger.info("")
     logger.info("Step 2: 5th mass cancel (mass cancel bucket at 4/4 — should be rejected)")
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
-        logger.info(f"  FAIL: 5th mass cancel accepted — premium limit appears higher than 4 (cancelled {result.cancelled_count})")
-    except (ApiException, Exception) as e:
+        logger.info(
+            f"  FAIL: 5th mass cancel accepted — premium limit appears higher than 4 (cancelled {result.cancelled_count})"
+        )
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  SUCCESS: 5th mass cancel rejected by rate limit — premium limit of 4 is enforced")
@@ -943,14 +1029,19 @@ async def test_h_premium_mass_cancel():
     logger.info("Step 3: Placing one more GTC order (order bucket should still have headroom — 4/7)")
     expires_after = int(time.time()) + 300
     params = LimitOrderParameters(
-        symbol=SYMBOL, is_buy=True, qty=ORDER_QTY,
-        limit_px=SAFE_NO_MATCH_BUY_PRICE, time_in_force=TimeInForce.GTC,
+        symbol=SYMBOL,
+        is_buy=True,
+        qty=ORDER_QTY,
+        limit_px=SAFE_NO_MATCH_BUY_PRICE,
+        time_in_force=TimeInForce.GTC,
         expires_after=expires_after,
     )
     try:
         response = await client.create_limit_order(params)
-        logger.info(f"  SUCCESS: Order accepted (order_id={response.order_id}) — order and mass cancel buckets are independent")
-    except (ApiException, Exception) as e:
+        logger.info(
+            f"  SUCCESS: Order accepted (order_id={response.order_id}) — order and mass cancel buckets are independent"
+        )
+    except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
             logger.info(f"  FAIL: Order rejected — order bucket unexpectedly exhausted or not independent: {msg}")
@@ -978,6 +1069,15 @@ async def test_h_premium_mass_cancel():
 
 async def main():
     load_dotenv()
+
+    # Mainnet guard: these tests burn minutes per case, open/cancel real orders,
+    # and would happily run against prod if CHAIN_ID is missing from .env
+    # (get_spot_config defaults to MAINNET_CHAIN_ID=1729).
+    guard_config = get_spot_config(account_number=1)
+    assert guard_config.chain_id != 1729, (
+        "Refusing to run rate-limit verification tests against mainnet "
+        "(CHAIN_ID=1729). Set CHAIN_ID=89346162 for Cronos testnet."
+    )
 
     # Comment in/out to choose which tests to run:
     # await test_a_sliding_window_rate_limit()
