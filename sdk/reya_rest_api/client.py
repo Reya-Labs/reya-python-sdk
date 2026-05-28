@@ -168,7 +168,7 @@ class ReyaTradingClient:
             ReyaTradingClient._wallet_nonces[wallet_address] = new_nonce
             return new_nonce
 
-    def _get_market_id_from_symbol(self, symbol: str) -> int:
+    def get_market_id_from_symbol(self, symbol: str) -> int:
         """Get market_id from symbol. Raises ValueError if symbol not found."""
         if not self._initialized:
             raise ValueError("Client not initialized. Call start() first.")
@@ -236,38 +236,32 @@ class ReyaTradingClient:
         """
         return self._config.owner_wallet_address
 
-    async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
+    def build_create_limit_order_payload(self, params: LimitOrderParameters) -> tuple[dict, int]:
+        """Build the wire-shape payload (camelCase, JSON-ready) for a createOrder
+        limit-order request, and return ``(payload, nonce)``.
+
+        Pure (no I/O). The same payload shape is consumed by both the REST
+        ``OrderEntryApi`` and the ws-exec WebSocket transport — the generated
+        OpenAPI ``CreateOrderRequest`` and AsyncAPI ``CreateOrderRequest``
+        models share field names, so the dict round-trips through either.
         """
-        Create a limit (IOC/GTC) order asynchronously.
-
-        Args:
-            params: Limit order parameters
-
-        Returns:
-            API response for the order creation
-        """
-
-        # Resolve symbol to market_id
-        market_id = self._get_market_id_from_symbol(params.symbol)
-
-        if self._signature_generator is None:
-            raise ValueError("Private key is required for creating orders")
-
-        if params.expires_after is not None and params.time_in_force != TimeInForce.IOC:
-            raise ValueError("Parameter expires_after is only allowed for IOC orders")
-
-        if params.time_in_force == TimeInForce.GTC and params.reduce_only is True:
-            raise ValueError("Unexpected True value for parameter reduce_only for GTC orders")
-
-        # Prepare signature data
         if self._signature_generator is None:
             raise ValueError("Signature generator is required for order signing")
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
 
-        # For spot markets, use monotonically increasing nonce (fits in uint64)
-        # For perp markets, use 32-byte nonce
-        if self._is_spot_market(params.symbol):
+        is_spot = self._is_spot_market(params.symbol)
+        market_id = self.get_market_id_from_symbol(params.symbol)
+
+        if params.expires_after is not None and params.time_in_force != TimeInForce.IOC and not is_spot:
+            raise ValueError("Parameter expires_after is only allowed for IOC orders on perp markets")
+
+        if params.time_in_force == TimeInForce.GTC and params.reduce_only is True:
+            raise ValueError("Unexpected True value for parameter reduce_only for GTC orders")
+
+        # Spot markets use a monotonically-increasing wall-clock-derived nonce
+        # (fits in uint64); perp markets use the OrdersGateway encoded nonce.
+        if is_spot:
             nonce = self._get_next_nonce()
         else:
             nonce = self._signature_generator.create_orders_gateway_nonce(
@@ -280,39 +274,13 @@ class ReyaTradingClient:
             qty=Decimal(params.qty),
         )
 
-        # Determine deadline based on order type and market type
-        if params.time_in_force != TimeInForce.IOC:
-            # For GTC orders: use real timestamp for spot markets, 10^18 for perp markets
-            if self._is_spot_market(params.symbol):
-                deadline = int(time.time()) + GTC_DEADLINE_S  # 24 hours for GTC spot orders
-            else:
-                deadline = CONDITIONAL_ORDER_DEADLINE
-        elif params.expires_after is None:
-            # For IOC orders, use default deadline
-            deadline = int(time.time()) + DEFAULT_DEADLINE_S
-        else:
-            deadline = params.expires_after
+        deadline = self._resolve_limit_order_deadline(params, is_spot)
 
-        # For spot markets, ALWAYS use LIMIT_ORDER_SPOT (6) regardless of timeInForce
-        # The blockchain only supports matching LimitOrderSpot against LimitOrderSpot for spot trades
-        # TimeInForce behavior is encoded in the inputs field, not in the orderType
-        if self._is_spot_market(params.symbol):
-            order_type_int = OrdersGatewayOrderType.LIMIT_ORDER_SPOT
-        else:
-            # For perp markets, use orderType based on timeInForce
-            order_type_int = (
-                OrdersGatewayOrderType.LIMIT_ORDER
-                if params.time_in_force == TimeInForce.GTC
-                else (
-                    OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER
-                    if params.reduce_only is True
-                    else OrdersGatewayOrderType.MARKET_ORDER
-                )
-            )
+        order_type_int = self._resolve_limit_order_type(params, is_spot)
 
-        # For spot markets, counterparty_account_ids should be empty []
-        # Spot trades are matched against an orderbook, rather than directly against the pool.
-        counterparty_ids = [] if self._is_spot_market(params.symbol) else [self.config.pool_account_id]
+        # Spot trades are matched against the orderbook; perps fill against the
+        # pool counterparty.
+        counterparty_ids = [] if is_spot else [self.config.pool_account_id]
 
         signature = self._signature_generator.sign_raw_order(
             account_id=self.config.account_id,
@@ -325,33 +293,76 @@ class ReyaTradingClient:
             nonce=nonce,
         )
 
-        # Build the order request
-        if self.config.account_id is None:
-            raise ValueError("Account ID is required for order creation")
+        # `expiresAfter` is only sent on the wire for IOC perp + any spot;
+        # `reduceOnly` is only meaningful for perp IOC.
+        is_ioc_or_spot = params.time_in_force == TimeInForce.IOC or is_spot
+        is_perp_ioc = params.time_in_force == TimeInForce.IOC and not is_spot
 
-        # Only include expiresAfter for IOC orders and spot markets
-        # GTC perp orders don't support expiresAfter
-        is_ioc_or_spot = params.time_in_force == TimeInForce.IOC or self._is_spot_market(params.symbol)
+        payload = {
+            "accountId": self.config.account_id,
+            "symbol": params.symbol,
+            "exchangeId": self.config.dex_id,
+            "isBuy": params.is_buy,
+            "limitPx": params.limit_px,
+            "qty": params.qty,
+            "orderType": OrderType.LIMIT.value,
+            "timeInForce": params.time_in_force.value if params.time_in_force is not None else None,
+            "expiresAfter": deadline if is_ioc_or_spot else None,
+            "reduceOnly": params.reduce_only if is_perp_ioc else None,
+            "signature": signature,
+            "nonce": str(nonce),
+            "signerWallet": self.signer_wallet_address,
+            "clientOrderId": params.client_order_id,
+        }
+        return payload, nonce
 
-        # reduceOnly is only supported for perp IOC orders
-        is_perp_ioc = params.time_in_force == TimeInForce.IOC and not self._is_spot_market(params.symbol)
+    @staticmethod
+    def _resolve_limit_order_deadline(params: LimitOrderParameters, is_spot: bool) -> int:
+        """Resolve the EIP-712 deadline for a limit order based on TIF and market kind."""
+        if params.time_in_force == TimeInForce.IOC:
+            return params.expires_after if params.expires_after is not None else int(time.time()) + DEFAULT_DEADLINE_S
+        # GTC branch
+        if not is_spot:
+            return CONDITIONAL_ORDER_DEADLINE
+        # GTC spot
+        if params.expires_after is None:
+            return int(time.time()) + GTC_DEADLINE_S
+        now = int(time.time())
+        if params.expires_after <= now:
+            raise ValueError(
+                f"expires_after must be in the future for spot GTC orders "
+                f"(got {params.expires_after}, now is {now})"
+            )
+        if params.expires_after > now + GTC_DEADLINE_S:
+            raise ValueError(
+                f"expires_after for spot GTC must be within {GTC_DEADLINE_S}s of now "
+                f"(got {params.expires_after - now}s in the future)"
+            )
+        return params.expires_after
 
-        order_request = CreateOrderRequest(
-            accountId=self.config.account_id,
-            symbol=params.symbol,
-            exchangeId=self.config.dex_id,
-            isBuy=params.is_buy,
-            limitPx=params.limit_px,
-            qty=params.qty,
-            orderType=OrderType.LIMIT,
-            timeInForce=params.time_in_force,
-            expiresAfter=deadline if is_ioc_or_spot else None,
-            reduceOnly=params.reduce_only if is_perp_ioc else None,
-            signature=signature,
-            nonce=str(nonce),
-            signerWallet=self.signer_wallet_address,
-            clientOrderId=params.client_order_id,
-        )
+    @staticmethod
+    def _resolve_limit_order_type(params: LimitOrderParameters, is_spot: bool) -> int:
+        """Spot uses ``LIMIT_ORDER_SPOT`` regardless of TIF; perp branches on TIF + reduce-only."""
+        if is_spot:
+            return int(OrdersGatewayOrderType.LIMIT_ORDER_SPOT)
+        if params.time_in_force == TimeInForce.GTC:
+            return int(OrdersGatewayOrderType.LIMIT_ORDER)
+        if params.reduce_only is True:
+            return int(OrdersGatewayOrderType.REDUCE_ONLY_MARKET_ORDER)
+        return int(OrdersGatewayOrderType.MARKET_ORDER)
+
+    async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
+        """
+        Create a limit (IOC/GTC) order asynchronously.
+
+        Args:
+            params: Limit order parameters
+
+        Returns:
+            API response for the order creation
+        """
+        payload, _nonce = self.build_create_limit_order_payload(params)
+        order_request = CreateOrderRequest(**payload)
 
         response = await self.orders.create_order(create_order_request=order_request)
 
@@ -368,23 +379,27 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
-        # Resolve symbol to market_id
+        payload, _nonce = self.build_create_trigger_order_payload(params)
+        order_request = CreateOrderRequest(**payload)
+        return await self.orders.create_order(create_order_request=order_request)
 
-        if self._is_spot_market(params.symbol):
-            raise ValueError("Trigger orders are not supported for spot markets")
+    def build_create_trigger_order_payload(self, params: TriggerOrderParameters) -> tuple[dict, int]:
+        """Build the wire-shape payload for a TP/SL trigger order.
 
-        market_id = self._get_market_id_from_symbol(params.symbol)
-
-        if self._signature_generator is None:
-            raise ValueError("Private key is required for creating orders")
+        Pure; the same dict shape is consumed by REST and ws-exec.
+        """
         if self._signature_generator is None:
             raise ValueError("Signature generator is required for order signing")
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
+        if self._is_spot_market(params.symbol):
+            raise ValueError("Trigger orders are not supported for spot markets")
+
+        market_id = self.get_market_id_from_symbol(params.symbol)
 
         limit_px = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if params.is_buy else Decimal(0)
 
-        order_type_int = (
+        order_type_int = int(
             OrdersGatewayOrderType.TAKE_PROFIT
             if params.trigger_type == OrderType.TP
             else OrdersGatewayOrderType.STOP_LOSS
@@ -411,26 +426,20 @@ class ReyaTradingClient:
             nonce=nonce,
         )
 
-        if self.config.account_id is None:
-            raise ValueError("Account ID is required for order creation")
-
-        order_request = CreateOrderRequest(
-            accountId=self.config.account_id,
-            symbol=params.symbol,
-            exchangeId=self.config.dex_id,
-            isBuy=params.is_buy,
-            triggerPx=str(params.trigger_px),
-            limitPx=str(limit_px),
-            orderType=params.trigger_type,
-            expiresAfter=None,
-            signature=signature,
-            nonce=str(nonce),
-            signerWallet=self.signer_wallet_address,
-        )
-
-        response = await self.orders.create_order(create_order_request=order_request)
-
-        return response
+        payload = {
+            "accountId": self.config.account_id,
+            "symbol": params.symbol,
+            "exchangeId": self.config.dex_id,
+            "isBuy": params.is_buy,
+            "triggerPx": str(params.trigger_px),
+            "limitPx": str(limit_px),
+            "orderType": params.trigger_type.value,
+            "expiresAfter": None,
+            "signature": signature,
+            "nonce": str(nonce),
+            "signerWallet": self.signer_wallet_address,
+        }
+        return payload, nonce
 
     async def cancel_order(
         self,
@@ -458,47 +467,53 @@ class ReyaTradingClient:
             ValueError: If symbol and account_id are not provided for spot orders
             ValueError: If neither order_id nor client_order_id is provided for spot orders
         """
+        payload = self.build_cancel_order_payload(
+            order_id=order_id,
+            symbol=symbol,
+            account_id=account_id,
+            client_order_id=client_order_id,
+        )
+        cancel_order_request = CancelOrderRequest(**payload)
+        return await self.orders.cancel_order(cancel_order_request)
+
+    def build_cancel_order_payload(
+        self,
+        order_id: Optional[str] = None,
+        symbol: Optional[str] = None,
+        account_id: Optional[int] = None,
+        client_order_id: Optional[int] = None,
+    ) -> dict:
+        """Build the wire-shape payload for a cancelOrder request. Pure; reused by REST and ws-exec."""
         if self._signature_generator is None:
-            raise ValueError("Private key is required for cancelling orders")
+            raise ValueError("Signature generator is required for cancelling orders")
 
-        # Determine if this is a spot market order
-        is_spot_order = symbol and "RUSD" in symbol and "PERP" not in symbol
+        is_spot_order = bool(symbol and "RUSD" in symbol and "PERP" not in symbol)
 
-        # For spot markets, symbol and account_id are required
         if is_spot_order:
             if symbol is None:
                 raise ValueError("symbol is required for spot market order cancellation")
             if account_id is None:
                 raise ValueError(f"account_id is required for spot market order cancellation (symbol: {symbol})")
-            # For spot markets: must provide at least one of order_id or client_order_id
-            # If both are provided, the API will prefer order_id
-            if not order_id and not client_order_id:
+            if order_id is None and client_order_id is None:
                 raise ValueError("For spot orders, must provide either order_id or client_order_id")
         else:
-            # For perp markets, order_id is required
-            if not order_id:
+            if order_id is None:
                 raise ValueError("order_id is required for perp market order cancellation")
 
+        nonce: Optional[int]
+        deadline: Optional[int]
+
         if is_spot_order:
-            # Type assertions after validation (symbol and account_id are validated above)
             assert symbol is not None
             assert account_id is not None
-
-            # Get market_id from symbol
-            market_id = self._get_market_id_from_symbol(symbol)
-
-            # Generate monotonically increasing nonce
+            market_id = self.get_market_id_from_symbol(symbol)
             nonce = self._get_next_nonce()
-
-            # Generate deadline (current time + 5 seconds, in seconds)
             deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
-            # For EIP-712 signature, we need both orderId and clOrdId
-            # If one is not provided, use 0 as placeholder
-            order_id_int = int(order_id) if order_id else 0
+            # The EIP-712 schema needs both ids; zero acts as the "absent" sentinel.
+            order_id_int = int(order_id) if order_id is not None else 0
             client_order_id_int = client_order_id if client_order_id is not None else 0
 
-            # Generate EIP-712 signature for SPOT orders
             signature = self._signature_generator.sign_cancel_order_spot(
                 account_id=account_id,
                 market_id=market_id,
@@ -508,24 +523,20 @@ class ReyaTradingClient:
                 deadline=deadline,
             )
         else:
-            # Type assertion after validation (order_id is validated above for perp)
             assert order_id is not None
             signature = self._signature_generator.sign_cancel_order_perps(order_id)
             nonce = None
             deadline = None
 
-        cancel_order_request = CancelOrderRequest(
-            orderId=order_id,
-            clientOrderId=client_order_id,
-            signature=signature,
-            nonce=str(nonce) if nonce is not None else None,
-            symbol=symbol,
-            accountId=account_id,
-            expiresAfter=deadline,
-        )
-
-        response = await self.orders.cancel_order(cancel_order_request)
-        return response
+        return {
+            "orderId": order_id,
+            "clientOrderId": client_order_id,
+            "signature": signature,
+            "nonce": str(nonce) if nonce is not None else None,
+            "symbol": symbol,
+            "accountId": account_id,
+            "expiresAfter": deadline,
+        }
 
     async def mass_cancel(
         self,
@@ -547,31 +558,37 @@ class ReyaTradingClient:
         Raises:
             ValueError: If symbol is not a spot market or account_id is missing
         """
-        if self._signature_generator is None:
-            raise ValueError("Private key is required for mass cancel")
+        payload = self.build_mass_cancel_payload(symbol=symbol, account_id=account_id)
+        mass_cancel_request = MassCancelRequest(**payload)
+        return await self.orders.cancel_all(mass_cancel_request)
 
-        # Verify this is a spot market
-        if not self._is_spot_market(symbol):
+    def build_mass_cancel_payload(
+        self,
+        symbol: Optional[str],
+        account_id: Optional[int] = None,
+    ) -> dict:
+        """Build the wire-shape payload for a mass-cancel request.
+
+        ``symbol=None`` is account-wide cancel; the EIP-712 typed data is then
+        signed with ``market_id=0`` (the server reconstructs the same hash).
+        """
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for mass cancel")
+
+        if symbol is not None and not self._is_spot_market(symbol):
             raise ValueError(
-                f"Mass cancel is only supported for spot markets. " f"Symbol '{symbol}' appears to be a perp market."
+                f"Mass cancel is only supported for spot markets. Symbol '{symbol}' appears to be a perp market."
             )
 
-        # Use config account_id if not provided
         if account_id is None:
             account_id = self.config.account_id
             if account_id is None:
                 raise ValueError("account_id is required for mass cancel")
 
-        # Get market_id from symbol
-        market_id = self._get_market_id_from_symbol(symbol)
-
-        # Generate monotonically increasing nonce
+        market_id = self.get_market_id_from_symbol(symbol) if symbol is not None else 0
         nonce = self._get_next_nonce()
-
-        # Generate deadline (current time + 5 seconds, in seconds)
         deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
-        # Generate EIP-712 signature for mass cancel
         signature = self._signature_generator.sign_mass_cancel(
             account_id=account_id,
             market_id=market_id,
@@ -579,16 +596,13 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        mass_cancel_request = MassCancelRequest(
-            accountId=account_id,
-            symbol=symbol,
-            signature=signature,
-            nonce=str(nonce),
-            expiresAfter=deadline,
-        )
-
-        response = await self.orders.cancel_all(mass_cancel_request)
-        return response
+        return {
+            "accountId": account_id,
+            "symbol": symbol,
+            "signature": signature,
+            "nonce": str(nonce),
+            "expiresAfter": deadline,
+        }
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         """

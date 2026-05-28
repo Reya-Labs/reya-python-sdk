@@ -27,6 +27,8 @@ async def with_retry(
     - 504 Gateway Timeout
     - SignatureExpired errors
     - fetch failed errors
+    - Rate limit exceeded errors (uses a longer backoff because the rate-limit
+      window is 60s and short retries would just hit the same limit again)
 
     Args:
         operation: Async callable to execute
@@ -50,6 +52,7 @@ async def with_retry(
 
             # Check if this is a retryable error
             is_retryable = False
+            is_rate_limited = False
             error_msg = str(e)
 
             # Check for transient HTTP errors
@@ -64,12 +67,24 @@ async def with_retry(
                 is_retryable = True
             if "Bad Gateway" in error_msg:
                 is_retryable = True
+            # Rate-limit hits come back as 400 with a "Rate limit exceeded"
+            # message. The window is 60s, so a 1s retry would just trip the
+            # same limit; use a longer backoff for these.
+            if "Rate limit exceeded" in error_msg:
+                is_retryable = True
+                is_rate_limited = True
 
             if is_retryable and attempt < max_retries:
+                # For rate-limit errors, wait one full 60s window aging cycle
+                # plus a small margin so the oldest request in the bucket
+                # actually ages out before we retry. A shorter backoff (5s,
+                # ~1/12th of the window) wastes wall clock without changing
+                # the outcome — the same limit fires every attempt.
+                effective_delay = max(retry_delay, 65.0) if is_rate_limited else retry_delay
                 logger.warning(
-                    f"⚠️ {operation_name} failed (attempt {attempt + 1}/{max_retries + 1}): {error_msg[:100]}... Retrying in {retry_delay}s"
+                    f"⚠️ {operation_name} failed (attempt {attempt + 1}/{max_retries + 1}): {error_msg[:120]}... Retrying in {effective_delay}s"
                 )
-                await asyncio.sleep(retry_delay)
+                await asyncio.sleep(effective_delay)
                 continue
 
             # Not retryable or out of retries
