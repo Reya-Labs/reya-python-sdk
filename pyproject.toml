@@ -91,7 +91,7 @@ python_version = "3.10"
 pretty = true
 show_traceback = true
 color_output = true
-exclude = ["sdk/async_api/"]
+exclude = ["sdk/async_api/", "sdk/async_exec_api/"]
 
 allow_redefinition = false
 check_untyped_defs = true

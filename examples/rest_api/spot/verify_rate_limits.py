@@ -12,6 +12,12 @@ Usage:
     python examples/rest_api/spot/verify_rate_limits.py
 """
 
+# This is a verification harness: every test branch's REJECTED path is
+# expected to surface as *some* exception (ApiException 400/429, transport
+# error, validation error, etc.). Narrowing each ``except`` would only
+# accumulate noise here — the intent is "any failure counts as a rejection".
+# pylint: disable=broad-exception-caught
+
 import asyncio
 import logging
 import time
@@ -223,7 +229,7 @@ async def test_b_open_order_count_cap():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  Cancelled {result.cancelled_count} orders")
-    except Exception:
+    except Exception:  # nosec B110 — cleanup is best-effort
         pass
 
     await client.close()
@@ -337,7 +343,7 @@ async def test_c_rate_limit_shared_across_operations():
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  SUCCESS: Rejected by rate limit")
+            logger.info("  SUCCESS: Rejected by rate limit")
         else:
             logger.info(f"  REJECTED but unexpected reason — {msg}")
 
@@ -354,7 +360,7 @@ async def test_c_rate_limit_shared_across_operations():
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  SUCCESS: Cancel also rejected by rate limit")
+            logger.info("  SUCCESS: Cancel also rejected by rate limit")
         else:
             logger.info(f"  REJECTED but unexpected reason — {msg}")
 
@@ -366,7 +372,7 @@ async def test_c_rate_limit_shared_across_operations():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  Cancelled {result.cancelled_count} orders")
-    except Exception:
+    except Exception:  # nosec B110 — cleanup is best-effort
         pass
 
     await client.close()
@@ -479,7 +485,7 @@ async def test_d_mass_cancel_separate_bucket():
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  SUCCESS: Mass cancel rejected by rate limit")
+            logger.info("  SUCCESS: Mass cancel rejected by rate limit")
         else:
             logger.info(f"  REJECTED but unexpected reason — {msg}")
 
@@ -495,11 +501,11 @@ async def test_d_mass_cancel_separate_bucket():
     )
     try:
         response = await client.create_limit_order(params)
-        logger.info(f"  SUCCESS: IOC accepted (proves order bucket is independent of mass cancel)")
+        logger.info("  SUCCESS: IOC accepted (proves order bucket is independent of mass cancel)")
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  FAIL: IOC rejected by rate limit (order budget unexpectedly exhausted)")
+            logger.info("  FAIL: IOC rejected by rate limit (order budget unexpectedly exhausted)")
         else:
             logger.info(f"  REJECTED — {msg}")
 
@@ -515,11 +521,11 @@ async def test_d_mass_cancel_separate_bucket():
     )
     try:
         await client.create_limit_order(params)
-        logger.info(f"  FAIL: IOC accepted (expected order rate limit rejection)")
+        logger.info("  FAIL: IOC accepted (expected order rate limit rejection)")
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  SUCCESS: IOC rejected by order rate limit (5/5 used)")
+            logger.info("  SUCCESS: IOC rejected by order rate limit (5/5 used)")
         else:
             logger.info(f"  REJECTED but unexpected reason — {msg}")
 
@@ -608,7 +614,7 @@ async def test_e_whitelisted_higher_cap():
     except ApiException as e:
         msg = str(e)
         if "order count cap" in msg.lower() and "3/3" in msg:
-            logger.info(f"  SUCCESS: Rejected at (3/3) — regular tier cap working")
+            logger.info("  SUCCESS: Rejected at (3/3) — regular tier cap working")
         else:
             logger.info(f"  REJECTED — {msg}")
 
@@ -651,7 +657,7 @@ async def test_e_whitelisted_higher_cap():
     except ApiException as e:
         msg = str(e)
         if "order count cap" in msg.lower() and "5/5" in msg:
-            logger.info(f"  SUCCESS: Rejected at (5/5) — whitelisted tier cap working")
+            logger.info("  SUCCESS: Rejected at (5/5) — whitelisted tier cap working")
         else:
             logger.info(f"  REJECTED — {msg}")
 
@@ -664,7 +670,7 @@ async def test_e_whitelisted_higher_cap():
         try:
             result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
             logger.info(f"  {name}: cancelled {result.cancelled_count} orders")
-        except Exception:
+        except Exception:  # nosec B110 — cleanup is best-effort
             pass
 
     await client1.close()
@@ -745,7 +751,7 @@ async def test_f_open_notional_cap():
     except ApiException as e:
         msg = str(e)
         if "notional cap" in msg.lower():
-            logger.info(f"  SUCCESS: Rejected by notional cap")
+            logger.info("  SUCCESS: Rejected by notional cap")
         else:
             logger.info(f"  REJECTED — {msg}")
 
@@ -775,7 +781,7 @@ async def test_f_open_notional_cap():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  Cancelled {result.cancelled_count} orders")
-    except Exception:
+    except Exception:  # nosec B110 — cleanup is best-effort
         pass
 
     await client.close()
@@ -901,7 +907,7 @@ async def test_g_premium_wallet():
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  SUCCESS: 8th order rejected by rate limit — premium limit of 7 is enforced")
+            logger.info("  SUCCESS: 8th order rejected by rate limit — premium limit of 7 is enforced")
         else:
             logger.info(f"  REJECTED but unexpected reason (not rate limit) — {msg}")
 
@@ -913,7 +919,7 @@ async def test_g_premium_wallet():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  Cancelled {result.cancelled_count} orders")
-    except Exception:
+    except Exception:  # nosec B110 — cleanup is best-effort
         pass
 
     await client.close()
@@ -1020,7 +1026,7 @@ async def test_h_premium_mass_cancel():
     except ApiException as e:
         msg = str(e)
         if "rate limit" in msg.lower():
-            logger.info(f"  SUCCESS: 5th mass cancel rejected by rate limit — premium limit of 4 is enforced")
+            logger.info("  SUCCESS: 5th mass cancel rejected by rate limit — premium limit of 4 is enforced")
         else:
             logger.info(f"  REJECTED but unexpected reason — {msg}")
 
@@ -1056,7 +1062,7 @@ async def test_h_premium_mass_cancel():
     try:
         result = await client.mass_cancel(symbol=SYMBOL, account_id=config.account_id)
         logger.info(f"  Cancelled {result.cancelled_count} orders")
-    except Exception:
+    except Exception:  # nosec B110 — cleanup is best-effort
         pass
 
     await client.close()

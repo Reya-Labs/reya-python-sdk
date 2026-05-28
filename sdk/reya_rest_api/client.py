@@ -168,7 +168,7 @@ class ReyaTradingClient:
             ReyaTradingClient._wallet_nonces[wallet_address] = new_nonce
             return new_nonce
 
-    def _get_market_id_from_symbol(self, symbol: str) -> int:
+    def get_market_id_from_symbol(self, symbol: str) -> int:
         """Get market_id from symbol. Raises ValueError if symbol not found."""
         if not self._initialized:
             raise ValueError("Client not initialized. Call start() first.")
@@ -236,7 +236,7 @@ class ReyaTradingClient:
         """
         return self._config.owner_wallet_address
 
-    def _build_create_limit_order_payload(self, params: LimitOrderParameters) -> tuple[dict, int]:
+    def build_create_limit_order_payload(self, params: LimitOrderParameters) -> tuple[dict, int]:
         """Build the wire-shape payload (camelCase, JSON-ready) for a createOrder
         limit-order request, and return ``(payload, nonce)``.
 
@@ -251,7 +251,7 @@ class ReyaTradingClient:
             raise ValueError("Account ID is required for order signing")
 
         is_spot = self._is_spot_market(params.symbol)
-        market_id = self._get_market_id_from_symbol(params.symbol)
+        market_id = self.get_market_id_from_symbol(params.symbol)
 
         if params.expires_after is not None and params.time_in_force != TimeInForce.IOC and not is_spot:
             raise ValueError("Parameter expires_after is only allowed for IOC orders on perp markets")
@@ -361,7 +361,7 @@ class ReyaTradingClient:
         Returns:
             API response for the order creation
         """
-        payload, _nonce = self._build_create_limit_order_payload(params)
+        payload, _nonce = self.build_create_limit_order_payload(params)
         order_request = CreateOrderRequest(**payload)
 
         response = await self.orders.create_order(create_order_request=order_request)
@@ -379,11 +379,11 @@ class ReyaTradingClient:
             API response for the order creation
         """
 
-        payload, _nonce = self._build_create_trigger_order_payload(params)
+        payload, _nonce = self.build_create_trigger_order_payload(params)
         order_request = CreateOrderRequest(**payload)
         return await self.orders.create_order(create_order_request=order_request)
 
-    def _build_create_trigger_order_payload(self, params: TriggerOrderParameters) -> tuple[dict, int]:
+    def build_create_trigger_order_payload(self, params: TriggerOrderParameters) -> tuple[dict, int]:
         """Build the wire-shape payload for a TP/SL trigger order.
 
         Pure; the same dict shape is consumed by REST and ws-exec.
@@ -395,7 +395,7 @@ class ReyaTradingClient:
         if self._is_spot_market(params.symbol):
             raise ValueError("Trigger orders are not supported for spot markets")
 
-        market_id = self._get_market_id_from_symbol(params.symbol)
+        market_id = self.get_market_id_from_symbol(params.symbol)
 
         limit_px = Decimal(BUY_TRIGGER_ORDER_PRICE_LIMIT) if params.is_buy else Decimal(0)
 
@@ -467,7 +467,7 @@ class ReyaTradingClient:
             ValueError: If symbol and account_id are not provided for spot orders
             ValueError: If neither order_id nor client_order_id is provided for spot orders
         """
-        payload = self._build_cancel_order_payload(
+        payload = self.build_cancel_order_payload(
             order_id=order_id,
             symbol=symbol,
             account_id=account_id,
@@ -476,7 +476,7 @@ class ReyaTradingClient:
         cancel_order_request = CancelOrderRequest(**payload)
         return await self.orders.cancel_order(cancel_order_request)
 
-    def _build_cancel_order_payload(
+    def build_cancel_order_payload(
         self,
         order_id: Optional[str] = None,
         symbol: Optional[str] = None,
@@ -506,7 +506,7 @@ class ReyaTradingClient:
         if is_spot_order:
             assert symbol is not None
             assert account_id is not None
-            market_id = self._get_market_id_from_symbol(symbol)
+            market_id = self.get_market_id_from_symbol(symbol)
             nonce = self._get_next_nonce()
             deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
@@ -558,11 +558,11 @@ class ReyaTradingClient:
         Raises:
             ValueError: If symbol is not a spot market or account_id is missing
         """
-        payload = self._build_mass_cancel_payload(symbol=symbol, account_id=account_id)
+        payload = self.build_mass_cancel_payload(symbol=symbol, account_id=account_id)
         mass_cancel_request = MassCancelRequest(**payload)
         return await self.orders.cancel_all(mass_cancel_request)
 
-    def _build_mass_cancel_payload(
+    def build_mass_cancel_payload(
         self,
         symbol: Optional[str],
         account_id: Optional[int] = None,
@@ -585,7 +585,7 @@ class ReyaTradingClient:
             if account_id is None:
                 raise ValueError("account_id is required for mass cancel")
 
-        market_id = self._get_market_id_from_symbol(symbol) if symbol is not None else 0
+        market_id = self.get_market_id_from_symbol(symbol) if symbol is not None else 0
         nonce = self._get_next_nonce()
         deadline = int(time.time()) + DEFAULT_DEADLINE_S
 

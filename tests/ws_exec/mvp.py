@@ -42,8 +42,6 @@ flows settle on-chain via OrdersGateway::execute).
 
 from __future__ import annotations
 
-from typing import Optional
-
 import asyncio
 import json
 import os
@@ -54,7 +52,7 @@ import uuid
 from decimal import Decimal
 
 from dotenv import load_dotenv
-from websocket import WebSocket, create_connection  # type: ignore[attr-defined]
+from websocket import WebSocket, create_connection  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.open_api.models import TimeInForce
 from sdk.open_api.models.order_type import OrderType
@@ -112,7 +110,7 @@ async def flow_ping(client: ReyaWsExecClient) -> None:
 async def flow_spot_create_order(
     client: ReyaWsExecClient,
     qty: Decimal,
-    client_order_id: Optional[int] = None,
+    client_order_id: int | None = None,
 ) -> str:
     """Place a single LIMIT GTC spot order. Returns the orderId."""
     resp = await client.create_limit_order(
@@ -135,7 +133,7 @@ async def flow_spot_cancel_order(client: ReyaWsExecClient, order_id: str) -> Non
     resp = await client.cancel_order(
         order_id=order_id,
         symbol=SPOT_SYMBOL,
-        account_id=client._rest.config.account_id,  # noqa: SLF001
+        account_id=client.rest_client.config.account_id,
     )
     print(f"  [spot] cancelOrder OK status={resp.status} orderId={resp.order_id}")
 
@@ -153,7 +151,7 @@ async def flow_spot_create_and_cancel_by_client_order_id(
     resp = await client.cancel_order(
         client_order_id=cl_id,
         symbol=SPOT_SYMBOL,
-        account_id=client._rest.config.account_id,  # noqa: SLF001
+        account_id=client.rest_client.config.account_id,
     )
     print(f"  [spot] cancelOrder (by clientOrderId) OK status={resp.status} orderId={resp.order_id}")
 
@@ -297,7 +295,7 @@ def _raw_recv_until(
             raise RuntimeError(f"raw recv failed: {exc}") from exc
         if not raw:
             continue
-        frame = json.loads(raw)
+        frame: dict = json.loads(raw)
         if frame.get("type") == "ping":
             pong: dict = {"type": "pong"}
             if frame.get("id") is not None:
@@ -340,7 +338,7 @@ async def flow_err_duplicate_request_id(
     first continues processing and lands as a normal ok response."""
     shared_env_id = uuid.uuid4().hex[:12]
 
-    payload_a, _ = rest_client._build_create_limit_order_payload(  # noqa: SLF001
+    payload_a, _ = rest_client.build_create_limit_order_payload(
         LimitOrderParameters(
             symbol=SPOT_SYMBOL,
             is_buy=True,
@@ -349,7 +347,7 @@ async def flow_err_duplicate_request_id(
             time_in_force=TimeInForce.GTC,
         )
     )
-    payload_b, _ = rest_client._build_create_limit_order_payload(  # noqa: SLF001
+    payload_b, _ = rest_client.build_create_limit_order_payload(
         LimitOrderParameters(
             symbol=SPOT_SYMBOL,
             is_buy=True,
@@ -417,7 +415,7 @@ async def flow_err_invalid_nonce(
 ) -> None:
     """Replay a nonce: submit a createOrder twice with the SAME nonce. The first
     succeeds (we cancel inline); the second is rejected as INVALID_NONCE_ERROR."""
-    payload, _nonce = rest_client._build_create_limit_order_payload(  # noqa: SLF001
+    payload, _nonce = rest_client.build_create_limit_order_payload(
         LimitOrderParameters(
             symbol=SPOT_SYMBOL,
             is_buy=True,
@@ -427,7 +425,7 @@ async def flow_err_invalid_nonce(
         )
     )
 
-    leaked_order_id: Optional[str] = None
+    leaked_order_id: str | None = None
     ws = _raw_connect(ws_url)
     try:
         env_id_1 = uuid.uuid4().hex[:12]
@@ -462,12 +460,14 @@ def flow_err_order_deadline_passed(ws_url: str, rest_client: ReyaTradingClient, 
     # spot GTC validation by sticking to the raw signing pipeline.
     signer = rest_client.signature_generator
     config = rest_client.config
-    market_id = rest_client._get_market_id_from_symbol(SPOT_SYMBOL)  # noqa: SLF001
+    assert config.account_id is not None, "rest_client.config.account_id must be populated for E5"
+    account_id = config.account_id
+    market_id = rest_client.get_market_id_from_symbol(SPOT_SYMBOL)
     nonce = rest_client.get_next_nonce()
     deadline = int(time.time()) - 60  # 60s in the past
     inputs = signer.encode_inputs_limit_order(is_buy=True, limit_px=Decimal(SPOT_LIMIT_PX), qty=qty)
     signature = signer.sign_raw_order(
-        account_id=config.account_id,
+        account_id=account_id,
         market_id=market_id,
         exchange_id=config.dex_id,
         counterparty_account_ids=[],
@@ -477,7 +477,7 @@ def flow_err_order_deadline_passed(ws_url: str, rest_client: ReyaTradingClient, 
         nonce=nonce,
     )
     payload = {
-        "accountId": config.account_id,
+        "accountId": account_id,
         "symbol": SPOT_SYMBOL,
         "exchangeId": config.dex_id,
         "isBuy": True,
@@ -516,12 +516,14 @@ def flow_err_unauthorized_signature(
     as ``signerWallet``. Server recovers the actual signer and rejects."""
     signer = rest_client.signature_generator
     config = rest_client.config
-    market_id = rest_client._get_market_id_from_symbol(SPOT_SYMBOL)  # noqa: SLF001
+    assert config.account_id is not None, "rest_client.config.account_id must be populated for E6"
+    account_id = config.account_id
+    market_id = rest_client.get_market_id_from_symbol(SPOT_SYMBOL)
     nonce = rest_client.get_next_nonce()
     deadline = int(time.time()) + 86_400
     inputs = signer.encode_inputs_limit_order(is_buy=True, limit_px=Decimal(SPOT_LIMIT_PX), qty=qty)
     signature = signer.sign_raw_order(
-        account_id=config.account_id,
+        account_id=account_id,
         market_id=market_id,
         exchange_id=config.dex_id,
         counterparty_account_ids=[],
@@ -531,7 +533,7 @@ def flow_err_unauthorized_signature(
         nonce=nonce,
     )
     payload = {
-        "accountId": config.account_id,
+        "accountId": account_id,
         "symbol": SPOT_SYMBOL,
         "exchangeId": config.dex_id,
         "isBuy": True,
@@ -570,7 +572,7 @@ def _new_client_order_id() -> int:
     return int(time.time() * 1_000_000)
 
 
-def _assert_cancelled_count(expected: int, actual: Optional[int], label: str) -> None:
+def _assert_cancelled_count(expected: int, actual: int | None, label: str) -> None:
     """Hard-assert cancelledCount instead of just printing a WARN — the script
     claims 'all flows passed' at the end, and a silent count mismatch
     contradicts that."""
@@ -619,7 +621,7 @@ async def main() -> int:
     spot_rest = await _build_rest_client(perp=False, account_number=1)
     perp_rest = await _build_rest_client(perp=True)
 
-    spot_rest_2: Optional[ReyaTradingClient] = None
+    spot_rest_2: ReyaTradingClient | None = None
     try:
         spot_rest_2 = await _build_rest_client(perp=False, account_number=2)
     except (RuntimeError, ValueError):
@@ -678,7 +680,7 @@ async def _run_spot_flows(client: ReyaWsExecClient, qty: Decimal) -> None:
     await client.cancel_order(
         order_id=order_id,
         symbol=SPOT_SYMBOL,
-        account_id=client._rest.config.account_id,  # noqa: SLF001
+        account_id=client.rest_client.config.account_id,
     )
     print(f"  [spot] cancelOrder OK orderId={order_id}")
 
@@ -720,7 +722,7 @@ async def _run_perp_flows(client: ReyaWsExecClient, qty: Decimal) -> None:
 async def _run_error_flows(
     ws_url: str,
     spot_rest: ReyaTradingClient,
-    spot_rest_2: Optional[ReyaTradingClient],
+    spot_rest_2: ReyaTradingClient | None,
     qty: Decimal,
 ) -> None:
     print("\n=== Error flows ===")

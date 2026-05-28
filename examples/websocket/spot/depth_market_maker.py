@@ -24,7 +24,7 @@ Press Ctrl+C to stop. All resting liquidity is cancelled during shutdown
 liquidity in the market on exit instead, comment that block out.
 """
 
-from typing import Awaitable, Callable, Optional, TypeVar
+from typing import Callable, Optional, TypeVar
 
 import argparse
 import asyncio
@@ -32,6 +32,7 @@ import logging
 import os
 import random
 import threading
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
@@ -44,6 +45,7 @@ from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
 from sdk.open_api.exceptions import ApiException, ServiceException
+from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
@@ -525,7 +527,7 @@ async def fetch_initial_state(
         # check is unreachable-False; the real signal is the field value.
         if price_info.oracle_price and Decimal(price_info.oracle_price) > 0:
             state.reference_price = round_to_tick(Decimal(price_info.oracle_price), market_params.tick_size)
-    except Exception as e:
+    except (OSError, RuntimeError, ApiException) as e:
         logger.warning(f"   Failed to fetch oracle price for {state.oracle_symbol}: {e}")
 
     if state.reference_price == Decimal("0"):
@@ -772,13 +774,14 @@ async def cancel_and_replace_order(
 
     if max_qty < market_params.min_order_qty:
         logger.warning(f"[{cycle:04d}] Skipping {side} replacement - insufficient balance")
+        order_id = order.order_id
+
+        async def _cancel_no_replacement() -> CancelOrderResponse:
+            return await client.cancel_order(order_id=order_id, symbol=symbol, account_id=account_id)
+
         try:
             await with_http_retry(
-                lambda oid=order.order_id: client.cancel_order(
-                    order_id=oid,
-                    symbol=symbol,
-                    account_id=account_id,
-                ),
+                _cancel_no_replacement,
                 op_name=f"cancel_order {side} @ ${order.price}",
                 is_idempotent=True,
             )
@@ -797,13 +800,14 @@ async def cancel_and_replace_order(
     # Cancel the existing order first. cancel_order is idempotent on the server
     # (second cancel returns "Order not found"), so retrying transient errors
     # is safe.
+    order_id_to_cancel = order.order_id
+
+    async def _cancel_for_replacement() -> CancelOrderResponse:
+        return await client.cancel_order(order_id=order_id_to_cancel, symbol=symbol, account_id=account_id)
+
     try:
         await with_http_retry(
-            lambda oid=order.order_id: client.cancel_order(
-                order_id=oid,
-                symbol=symbol,
-                account_id=account_id,
-            ),
+            _cancel_for_replacement,
             op_name=f"cancel_order {side} @ ${order.price}",
             is_idempotent=True,
         )

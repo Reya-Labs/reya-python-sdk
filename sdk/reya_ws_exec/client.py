@@ -26,7 +26,11 @@ import ssl
 import threading
 import uuid
 
-from websocket import WebSocket, create_connection  # type: ignore[attr-defined]
+from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+    WebSocket,
+    WebSocketException,
+    create_connection,
+)
 
 from sdk.async_exec_api.cancel_order_request import CancelOrderRequest as WsCancelOrderRequest
 from sdk.async_exec_api.cancel_order_response import CancelOrderResponse as WsCancelOrderResponse
@@ -107,6 +111,13 @@ class ReyaWsExecClient:
         self._pending: dict[str, asyncio.Future[dict]] = {}
         self._pending_lock = threading.Lock()
 
+    @property
+    def rest_client(self) -> ReyaTradingClient:
+        """The composed REST client. Public so callers can reach the shared
+        signing / market-resolution / config surface without poking at
+        a private attribute."""
+        return self._rest
+
     # ---- lifecycle -----------------------------------------------------
 
     async def connect(self) -> None:
@@ -147,7 +158,10 @@ class ReyaWsExecClient:
         self._reader_stop.set()
         try:
             self._ws.close()
-        except Exception:  # noqa: BLE001 — close is best-effort
+        except (OSError, WebSocketException):
+            # ``close()`` is best-effort: the socket may already be torn down
+            # (OSError on EBADF / ECONNRESET) or the library may flag a state
+            # error (WebSocketException). Either way, we're shutting down.
             logger.debug("ws-exec close() raised; ignoring", exc_info=True)
 
         if self._reader_thread is not None:
@@ -176,14 +190,14 @@ class ReyaWsExecClient:
 
     async def create_limit_order(self, params: LimitOrderParameters) -> WsCreateOrderResponse:
         """Send a createOrder (LIMIT IOC/GTC) request and await the response."""
-        payload, _nonce = self._rest._build_create_limit_order_payload(params)  # noqa: SLF001
+        payload, _nonce = self._rest.build_create_limit_order_payload(params)
         req = WsCreateOrderRequest(**payload)
         envelope = await self._send_and_await("createOrder", req)
         return WsCreateOrderResponse.model_validate(envelope)
 
     async def create_trigger_order(self, params: TriggerOrderParameters) -> WsCreateOrderResponse:
         """Send a createOrder (TP/SL) request and await the response."""
-        payload, _nonce = self._rest._build_create_trigger_order_payload(params)  # noqa: SLF001
+        payload, _nonce = self._rest.build_create_trigger_order_payload(params)
         req = WsCreateOrderRequest(**payload)
         envelope = await self._send_and_await("createOrder", req)
         return WsCreateOrderResponse.model_validate(envelope)
@@ -197,7 +211,7 @@ class ReyaWsExecClient:
     ) -> WsCancelOrderResponse:
         """Cancel a resting order. Same arg semantics as
         :meth:`ReyaTradingClient.cancel_order`."""
-        payload = self._rest._build_cancel_order_payload(  # noqa: SLF001
+        payload = self._rest.build_cancel_order_payload(
             order_id=order_id,
             symbol=symbol,
             account_id=account_id,
@@ -213,7 +227,7 @@ class ReyaWsExecClient:
         account_id: Optional[int] = None,
     ) -> WsMassCancelResponse:
         """Mass-cancel all resting orders for a symbol (or account-wide when ``symbol`` is ``None``)."""
-        payload = self._rest._build_mass_cancel_payload(symbol=symbol, account_id=account_id)  # noqa: SLF001
+        payload = self._rest.build_mass_cancel_payload(symbol=symbol, account_id=account_id)
         req = WsMassCancelRequest(**payload)
         envelope = await self._send_and_await("cancelAll", req)
         return WsMassCancelResponse.model_validate(envelope)
@@ -342,7 +356,10 @@ class ReyaWsExecClient:
         while not self._reader_stop.is_set():
             try:
                 raw = ws.recv()
-            except Exception:  # noqa: BLE001 — timeout + disconnect both arrive here
+            except (OSError, WebSocketException, TimeoutError):
+                # Both the 1s recv timeout and a transport-level disconnect
+                # surface here; treat them uniformly and re-check the stop
+                # flag so close() can unblock the loop cleanly.
                 if self._reader_stop.is_set():
                     return
                 continue
@@ -365,7 +382,7 @@ class ReyaWsExecClient:
                 pong["id"] = frame["id"]
             try:
                 self._send_raw_frame(pong)
-            except Exception:  # noqa: BLE001
+            except (OSError, WebSocketException):
                 logger.debug("ws-exec failed to send pong", exc_info=True)
             return
 

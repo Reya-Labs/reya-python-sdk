@@ -11,11 +11,13 @@ order tracking with sequence numbers) correctly propagates to API surfaces.
 """
 
 import asyncio
+import functools
 import logging
 import os
 
 import pytest
 
+from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.reya_websocket import ReyaSocket
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
@@ -312,6 +314,7 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
         order_params = OrderBuilder.from_config(spot_config).buy().price(str(order_price)).gtc().build()
 
         order_id = await spot_tester.orders.create_limit(order_params)
+        assert order_id is not None, f"create_limit returned None for order {i + 1}/{num_orders}"
         order_ids.append(order_id)
         logger.debug(f"  Created order {i + 1}/{num_orders}: {order_id} @ ${order_price}")
 
@@ -340,15 +343,18 @@ async def test_spot_rapid_order_operations(spot_config: SpotTestConfig, spot_tes
     # Step 3: Rapidly cancel all orders
     logger.info(f"Cancelling {num_orders} orders rapidly...")
 
+    async def _cancel_one(oid: str) -> CancelOrderResponse:
+        return await spot_tester.client.cancel_order(
+            order_id=oid, symbol=spot_config.symbol, account_id=spot_tester.account_id
+        )
+
     for i, order_id in enumerate(order_ids):
         # Wrap in with_retry so a rate-limit hit (premium-tier wallet has 120
         # ops/60s on api-executor; cumulative quota from prior tests in the
         # suite can push us over the limit on the last few cancels) backs off
         # and retries instead of hard-failing the test.
         await with_retry(
-            lambda oid=order_id: spot_tester.client.cancel_order(
-                order_id=oid, symbol=spot_config.symbol, account_id=spot_tester.account_id
-            ),
+            functools.partial(_cancel_one, order_id),
             max_retries=5,
             retry_delay=2.0,
             operation_name=f"cancel_order({order_id})",
