@@ -8,7 +8,7 @@ Requires .env populated with SPOT_*_1 credentials and CHAIN_ID.
 
 Usage:
     poetry shell
-    python -m examples.ws_exec.quickstart
+    python -m examples.websocket.exec.ws_exec
 """
 
 from __future__ import annotations

@@ -5,12 +5,14 @@ endpoints. It accepts the same EIP-712-signed payloads over a persistent
 WebSocket connection and replies with per-request envelopes keyed by an
 opaque request id.
 
-This directory used to host a raw-signing MVP script (`mvp.py`). It has been
-moved to [`tests/ws_exec/mvp.py`][mvp] now that the SDK ships a high-level
-async client — `sdk.reya_ws_exec.ReyaWsExecClient` — that hides the wire
-envelope, the EIP-712 signing pipeline, and the in-flight dispatch map.
+The canonical runnable user-facing sample lives next to this README at
+[`ws_exec.py`](./ws_exec.py); the full end-to-end harness (every operation +
+every error mode) lives at [`tests/ws_exec/mvp.py`][mvp]. The SDK ships a
+high-level async client — `sdk.reya_ws_exec.ReyaWsExecClient` — that hides
+the wire envelope, the EIP-712 signing pipeline, and the in-flight dispatch
+map; the example file shows the canonical usage shape.
 
-[mvp]: ../../tests/ws_exec/mvp.py
+[mvp]: ../../../tests/ws_exec/mvp.py
 
 ## Quickstart
 
