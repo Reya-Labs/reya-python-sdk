@@ -2,8 +2,10 @@
 
 from typing import TYPE_CHECKING, Optional
 
+import asyncio
 import logging
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.depth import Depth
 from sdk.open_api.models.execution_bust import ExecutionBust
@@ -29,18 +31,38 @@ class DataOperations:
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
 
-    async def current_price(self, symbol: str = "ETHRUSDPERP") -> str:
-        """Fetch current market price for a symbol."""
-        price_info: Price = await self._t.client.markets.get_price(symbol)
-        logger.info(f"Price info: {price_info}")
-        current_price = price_info.oracle_price
+    async def current_price(self, symbol: str = "ETHRUSDPERP", max_attempts: int = 5) -> str:
+        """Fetch current market price for a symbol, retrying through transient price-feed gaps.
 
-        if current_price:
-            logger.info(f"💰 Current market price for {symbol}: ${float(current_price):.2f}")
-            return current_price
-        else:
-            logger.info(f"❌ Current market price for {symbol} not found")
-            raise RuntimeError("Current market price not found")
+        Devnet's price endpoint (`GET /prices/{symbol}`) occasionally returns a
+        momentary `400 NO_PRICES_FOUND_FOR_SYMBOL` ("Price not found") during an
+        oracle-push / cache-refresh race. This is a precondition read for many
+        tests, so a transient blip here would otherwise fail unrelated tests.
+        Retry a few times with a short backoff; a sustained outage still raises.
+        """
+        last_exc: Optional[Exception] = None
+        for attempt in range(max_attempts):
+            try:
+                price_info: Price = await self._t.client.markets.get_price(symbol)
+                logger.info(f"Price info: {price_info}")
+                current_price = price_info.oracle_price
+                if current_price:
+                    logger.info(f"💰 Current market price for {symbol}: ${float(current_price):.2f}")
+                    return current_price
+                logger.info(f"❌ Current market price for {symbol} missing oracle_price")
+            except ApiException as e:
+                # Only the transient price-feed gap is retryable; anything else is a real error.
+                error_text = str(e)
+                if "NO_PRICES_FOUND_FOR_SYMBOL" not in error_text and "Price not found" not in error_text:
+                    raise
+                last_exc = e
+                logger.warning(
+                    f"⚠️ price feed gap for {symbol} (attempt {attempt + 1}/{max_attempts}): "
+                    "NO_PRICES_FOUND_FOR_SYMBOL; retrying in 0.3s"
+                )
+            await asyncio.sleep(0.3)
+
+        raise RuntimeError(f"Current market price for {symbol} unavailable after {max_attempts} attempts") from last_exc
 
     async def positions(self) -> dict[str, Position]:
         """Get all current positions."""
