@@ -14,6 +14,7 @@ class ExecutionBust(BaseModel):
   price: str = Field()
   reason: str = Field(description='''Human Readable Reason String (decoded revert reason bytes)''')
   timestamp: int = Field()
+  sequence_number: int = Field(alias='''sequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -34,13 +35,13 @@ class ExecutionBust(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['symbol', 'account_id', 'exchange_id', 'maker_account_id', 'order_id', 'maker_order_id', 'qty', 'side', 'price', 'reason', 'timestamp', 'additional_properties']
+    known_object_properties = ['symbol', 'account_id', 'exchange_id', 'maker_account_id', 'order_id', 'maker_order_id', 'qty', 'side', 'price', 'reason', 'timestamp', 'sequence_number', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['symbol', 'accountId', 'exchangeId', 'makerAccountId', 'orderId', 'makerOrderId', 'qty', 'side', 'price', 'reason', 'timestamp', 'additionalProperties']
+    known_json_properties = ['symbol', 'accountId', 'exchangeId', 'makerAccountId', 'orderId', 'makerOrderId', 'qty', 'side', 'price', 'reason', 'timestamp', 'sequenceNumber', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
