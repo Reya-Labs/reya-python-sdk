@@ -44,6 +44,14 @@ from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
 DEFAULT_DEADLINE_S = 60  # Signature validity window for entry-time orders.
 
+# Spot/perp namespace discriminator on the unified marketId — mirrors
+# `SPOT_MARKET_ID_OFFSET` in the off-chain monorepo
+# (`packages/common-backend/src/market-id-namespace/index.ts`). Perp market
+# ids are the raw on-chain core id (well below 1e10); spot market ids are
+# `core_id + 1e10`. Used to gate market-type-conditional wire fields like
+# `reduceOnly` without an extra network round-trip.
+_SPOT_MARKET_ID_OFFSET = 10_000_000_000
+
 
 _ORDER_TYPE_TO_INT: dict[OrderType, OrderTypeInt] = {
     OrderType.LIMIT: OrderTypeInt.LIMIT,
@@ -208,6 +216,33 @@ class ReyaTradingClient:
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
         reduce_only = bool(params.reduce_only) if params.reduce_only is not None else False
 
+        # `reduceOnly` wire-field semantics per server-side validator
+        # (`packages/common-backend/src/validation/order-validation-v2.ts`,
+        # `validateCreateOrderRequestV2` → "Validate reduceOnly based on market
+        # type and order type"):
+        #   - perp IOC  → REQUIRED (boolean; aggressive orders must declare intent)
+        #   - perp GTC  → MUST NOT be present
+        #   - spot      → MUST NOT be present  ("not supported for spot markets")
+        # When the caller doesn't pass `reduce_only` on a perp IOC we default
+        # to `False` on the wire so the request reaches the matching engine.
+        # The signature is already produced with `reduceOnly = False` above, so
+        # the on-chain digest matches what the server reconstructs.
+        #
+        # NOTE — subject to change. PRO-133 ("Pre-MM order-signing semantics +
+        # endpoint-deprecation audit") debates whether this required-on-IOC
+        # rule stays as-is or is relaxed/normalised alongside the
+        # expiresAfter/deadline semantics overhaul covered in that ticket.
+        # Track the resolution there before tweaking this default. Linear:
+        # https://linear.app/reya-labs/issue/PRO-133
+        is_spot_market = market_id >= _SPOT_MARKET_ID_OFFSET
+        is_ioc = params.time_in_force == TimeInForce.IOC
+        if params.reduce_only is not None:
+            reduce_only_wire: Optional[bool] = bool(params.reduce_only)
+        elif is_ioc and not is_spot_market:
+            reduce_only_wire = False
+        else:
+            reduce_only_wire = None
+
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
             market_id=market_id,
@@ -234,7 +269,7 @@ class ReyaTradingClient:
             qty=params.qty,
             orderType=OrderType.LIMIT,
             timeInForce=params.time_in_force,
-            reduceOnly=reduce_only if params.reduce_only is not None else None,
+            reduceOnly=reduce_only_wire,
             expiresAfter=expires_after,
             clientOrderId=params.client_order_id,
             signature=signature,
