@@ -5,13 +5,14 @@ Spot Trade - Simple buy and sell example using the SPOT order book.
 This script demonstrates how to:
 1. Check account balance (RUSD)
 2. Fetch order book depth to determine execution prices
-3. Buy 0.001 ETH using an IOC order
-4. Sell the 0.001 ETH using an IOC order
+3. Buy spot asset using an IOC order
+4. Sell the spot asset using an IOC order
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
-- SPOT_ACCOUNT_ID_1: Your Reya account ID
-- SPOT_PRIVATE_KEY_1: Your Ethereum private key
+- SPOT_ACCOUNT_ID_2: Your Reya account ID
+- SPOT_PRIVATE_KEY_2: Your Ethereum private key
+- SPOT_WALLET_ADDRESS_2: Your wallet address
 
 Usage:
     python -m examples.rest_api.spot.spot_trade
@@ -34,8 +35,8 @@ from sdk.reya_rest_api.models.orders import LimitOrderParameters
 # CONFIGURATION
 # =============================================================================
 
-SPOT_SYMBOL = "WETHRUSD"
-TRADE_QTY = "0.001"
+SPOT_SYMBOL = "REYARUSD"
+TRADE_QTY = "10"
 
 # =============================================================================
 # LOGGING SETUP
@@ -90,19 +91,19 @@ async def main() -> None:
     """Main entry point for the spot trade example."""
     load_dotenv()
 
-    # Get config from environment (uses SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1)
+    # Get config from environment (uses SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2)
     try:
-        config = get_spot_config(account_number=1)
+        config = get_spot_config(account_number=2)
     except ValueError as e:
         logger.error(f"❌ Configuration error: {e}")
         sys.exit(1)
 
     if config.account_id is None:
-        logger.error("❌ SPOT_ACCOUNT_ID_1 environment variable is required")
+        logger.error("❌ SPOT_ACCOUNT_ID_2 environment variable is required")
         sys.exit(1)
 
     if config.private_key is None:
-        logger.error("❌ SPOT_PRIVATE_KEY_1 environment variable is required")
+        logger.error("❌ SPOT_PRIVATE_KEY_2 environment variable is required")
         sys.exit(1)
 
     account_id = config.account_id
@@ -111,7 +112,7 @@ async def main() -> None:
     logger.info("SPOT TRADE EXAMPLE")
     logger.info("=" * 60)
     logger.info(f"Symbol: {SPOT_SYMBOL}")
-    logger.info(f"Quantity: {TRADE_QTY} ETH")
+    logger.info(f"Quantity: {TRADE_QTY} {SPOT_SYMBOL}")
     logger.info(f"Account ID: {account_id}")
     logger.info("=" * 60)
 
@@ -156,7 +157,7 @@ async def main() -> None:
 
         # Step 4: Place IOC BUY order
         logger.info("-" * 60)
-        logger.info(f"📈 Placing IOC BUY order: {TRADE_QTY} ETH @ ${best_ask}")
+        logger.info(f"📈 Placing IOC BUY order: {TRADE_QTY} {SPOT_SYMBOL} @ ${best_ask}")
 
         buy_params = LimitOrderParameters(
             symbol=SPOT_SYMBOL,
@@ -180,7 +181,7 @@ async def main() -> None:
             sys.exit(1)
 
         logger.info("-" * 60)
-        logger.info(f"📉 Placing IOC SELL order: {TRADE_QTY} ETH @ ${best_bid}")
+        logger.info(f"📉 Placing IOC SELL order: {TRADE_QTY} {SPOT_SYMBOL} @ ${best_bid}")
 
         sell_params = LimitOrderParameters(
             symbol=SPOT_SYMBOL,

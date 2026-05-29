@@ -280,6 +280,6 @@ class SpotTestConfig:
         """
         Get a sell price guaranteed not to match any existing bids.
 
-        Returns $10,000,000 - an extreme high price that will never match.
+        Returns ``SAFE_NO_MATCH_SELL_PRICE`` - a high price that will never match.
         """
         return SAFE_NO_MATCH_SELL_PRICE

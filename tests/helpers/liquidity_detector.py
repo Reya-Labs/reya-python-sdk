@@ -34,6 +34,9 @@ CIRCUIT_BREAKER_PCT = Decimal("0.05")  # ±5% from oracle price
 # ME validator accepts it, yet still far above any realistic ETH/BTC price
 # (current ETH ≈ $2k, BTC ≈ $60k — would need ~7× movement to even
 # approach this), so the "guaranteed no match" intent is preserved.
+# At qty=min_qty this is also ~$400 open notional, well under the
+# server-side GTC notional caps (the concern behind main's old $1M value,
+# which is moot here since $1M would exceed the ME MAX_PRICE anyway).
 SAFE_NO_MATCH_BUY_PRICE = Decimal("10")  # $10 — far below any realistic ETH/BTC price
 SAFE_NO_MATCH_SELL_PRICE = Decimal("400000")  # $400k — below ME MAX_PRICE (~$562k), above realistic crypto prices
 
@@ -251,14 +254,15 @@ class LiquidityDetector:
         """
         Get a sell price guaranteed not to match any existing bids.
 
-        Uses an extreme high price ($10M) that is far above any realistic market price,
-        ensuring the order will never match regardless of order book state.
+        Uses a high price well above any realistic market price (see
+        ``SAFE_NO_MATCH_SELL_PRICE``), ensuring the order will never match
+        regardless of order book state.
 
         Args:
             state: Current order book state (unused, kept for API compatibility).
 
         Returns:
-            $10,000,000 - a safe sell price that will never match.
+            ``SAFE_NO_MATCH_SELL_PRICE`` - a safe sell price that will never match.
         """
         return SAFE_NO_MATCH_SELL_PRICE
 

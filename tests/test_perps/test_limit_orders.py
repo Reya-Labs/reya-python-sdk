@@ -248,20 +248,17 @@ async def test_perp_reduce_only_rejected_without_position(
             timeout=15,
         )
         bust_reason_lower = (bust.reason or "").lower()
-        assert "reduce" in bust_reason_lower or "position" in bust_reason_lower, (
-            f"expected reduce-only revert reason on bust, got: {bust.reason!r}"
-        )
+        assert (
+            "reduce" in bust_reason_lower or "position" in bust_reason_lower
+        ), f"expected reduce-only revert reason on bust, got: {bust.reason!r}"
         logger.info(f"✅ Bust feed surfaced expected reason: {bust.reason}")
 
     except ApiException as e:
         # Path 2: transitional — REST surfaces the decoded reason directly.
         err = str(e).lower()
-        assert "reduce" in err or "position" in err, (
-            f"REST 4xx but message didn't surface reduce-only reason: {e}"
-        )
+        assert "reduce" in err or "position" in err, f"REST 4xx but message didn't surface reduce-only reason: {e}"
         logger.info(
-            "✅ Reduce-only invariant verified via REST 4xx (transitional "
-            f"consumer-fix path): {type(e).__name__}"
+            "✅ Reduce-only invariant verified via REST 4xx (transitional " f"consumer-fix path): {type(e).__name__}"
         )
 
     # Belt-and-suspenders: confirm chain truth — no position formed on the

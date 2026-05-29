@@ -141,7 +141,7 @@ class ReyaTradingClient:
             ReyaTradingClient._wallet_nonces[wallet_address] = new_nonce
             return new_nonce
 
-    def _get_market_id_from_symbol(self, symbol: str) -> int:
+    def get_market_id_from_symbol(self, symbol: str) -> int:
         if not self._initialized:
             raise ValueError("Client not initialized. Call start() first.")
 
@@ -191,19 +191,21 @@ class ReyaTradingClient:
         """
         return self._config.owner_wallet_address
 
-    async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
-        """
-        Create a LIMIT order (IOC or GTC) on either spot or perp markets.
+    def build_create_limit_order_payload(self, params: LimitOrderParameters) -> tuple[dict, int]:
+        """Build the camelCase wire payload for a createOrder LIMIT request and
+        return ``(payload, nonce)``.
 
-        The matching engine routes by `symbol`. `reduce_only` is perp-only
-        and the API rejects it on spot. `expires_after` (order lifetime) is
-        signed and enforced on-chain at fill time; it is independent from
-        `deadline` (signature validity, enforced by the API at entry).
+        Pure (no I/O). The payload round-trips through both the REST
+        ``CreateOrderRequest`` (OpenAPI) and the ws-exec ``CreateOrderRequest``
+        (AsyncAPI) — they share field names — so the ws-exec transport reuses
+        this exact unified signing path instead of duplicating it.
         """
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
 
-        market_id = self._get_market_id_from_symbol(params.symbol)
+        market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
         # `expires_after` is signed and sent on every order regardless of TIF.
@@ -260,40 +262,52 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        order_request = CreateOrderRequest(
-            accountId=self.config.account_id,
-            symbol=params.symbol,
-            exchangeId=self.config.dex_id,
-            isBuy=params.is_buy,
-            limitPx=params.limit_px,
-            qty=params.qty,
-            orderType=OrderType.LIMIT,
-            timeInForce=params.time_in_force,
-            reduceOnly=reduce_only_wire,
-            expiresAfter=expires_after,
-            clientOrderId=params.client_order_id,
-            signature=signature,
-            nonce=str(nonce),
-            signerWallet=self.signer_wallet_address,
-            deadline=deadline,
-        )
+        payload = {
+            "accountId": self.config.account_id,
+            "symbol": params.symbol,
+            "exchangeId": self.config.dex_id,
+            "isBuy": params.is_buy,
+            "limitPx": params.limit_px,
+            "qty": params.qty,
+            "orderType": OrderType.LIMIT.value,
+            "timeInForce": params.time_in_force.value if params.time_in_force is not None else None,
+            "reduceOnly": reduce_only_wire,
+            "expiresAfter": expires_after,
+            "clientOrderId": params.client_order_id,
+            "signature": signature,
+            "nonce": str(nonce),
+            "signerWallet": self.signer_wallet_address,
+            "deadline": deadline,
+        }
+        return payload, nonce
 
-        return await self.orders.create_order(create_order_request=order_request)
-
-    async def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
+    async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
-        Create a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
+        Create a LIMIT order (IOC or GTC) on either spot or perp markets.
 
-        When the trigger price is hit, the matching engine places a limit
-        order at `limit_px` for the signed `qty`. Spot triggers are not
-        supported by the API.
+        The matching engine routes by `symbol`. `reduce_only` is perp-only
+        and the API rejects it on spot. `expires_after` (order lifetime) is
+        signed and enforced on-chain at fill time; it is independent from
+        `deadline` (signature validity, enforced by the API at entry).
+        """
+        payload, _nonce = self.build_create_limit_order_payload(params)
+        return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
+
+    def build_create_trigger_order_payload(self, params: TriggerOrderParameters) -> tuple[dict, int]:
+        """Build the camelCase wire payload for a STOP_LOSS / TAKE_PROFIT trigger
+        order and return ``(payload, nonce)``.
+
+        Pure (no I/O). Shared verbatim by the REST sender below and the ws-exec
+        transport, so both produce identical signed envelopes.
         """
         if params.trigger_type not in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT):
             raise ValueError(f"Unsupported trigger_type: {params.trigger_type}")
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
 
-        market_id = self._get_market_id_from_symbol(params.symbol)
+        market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
@@ -309,8 +323,9 @@ class ReyaTradingClient:
 
         order_type_int = _ORDER_TYPE_TO_INT[params.trigger_type]
 
-        # See note in create_limit_order: the matching engine rejects expires_after=0,
-        # so we default to `deadline` to keep the trigger live for the same window.
+        # See note in build_create_limit_order_payload: the matching engine rejects
+        # expires_after=0, so we default to `deadline` to keep the trigger live for
+        # the same window.
         expires_after = deadline
 
         signature = self._signature_generator.sign_order(
@@ -330,25 +345,35 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        order_request = CreateOrderRequest(
-            accountId=self.config.account_id,
-            symbol=params.symbol,
-            exchangeId=self.config.dex_id,
-            isBuy=params.is_buy,
-            limitPx=str(limit_price),
-            qty=params.qty,
-            triggerPx=str(params.trigger_px),
-            orderType=params.trigger_type,
-            reduceOnly=params.reduce_only,
-            expiresAfter=expires_after,
-            clientOrderId=params.client_order_id,
-            signature=signature,
-            nonce=str(nonce),
-            signerWallet=self.signer_wallet_address,
-            deadline=deadline,
-        )
+        payload = {
+            "accountId": self.config.account_id,
+            "symbol": params.symbol,
+            "exchangeId": self.config.dex_id,
+            "isBuy": params.is_buy,
+            "limitPx": str(limit_price),
+            "qty": params.qty,
+            "triggerPx": str(params.trigger_px),
+            "orderType": params.trigger_type.value,
+            "reduceOnly": params.reduce_only,
+            "expiresAfter": expires_after,
+            "clientOrderId": params.client_order_id,
+            "signature": signature,
+            "nonce": str(nonce),
+            "signerWallet": self.signer_wallet_address,
+            "deadline": deadline,
+        }
+        return payload, nonce
 
-        return await self.orders.create_order(create_order_request=order_request)
+    async def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
+        """
+        Create a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
+
+        When the trigger price is hit, the matching engine places a limit
+        order at `limit_px` for the signed `qty`. Spot triggers are not
+        supported by the API.
+        """
+        payload, _nonce = self.build_create_trigger_order_payload(params)
+        return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
 
     async def cancel_order(
         self,
@@ -373,14 +398,36 @@ class ReyaTradingClient:
         "at least one" here, matching the on-the-wire behaviour rather
         than the stricter docstring.
         """
+        payload = self.build_cancel_order_payload(
+            symbol=symbol,
+            account_id=account_id,
+            order_id=order_id,
+            client_order_id=client_order_id,
+        )
+        return await self.orders.cancel_order(CancelOrderRequest(**payload))
+
+    def build_cancel_order_payload(
+        self,
+        symbol: str,
+        account_id: Optional[int] = None,
+        order_id: Optional[str] = None,
+        client_order_id: Optional[int] = None,
+    ) -> dict:
+        """Build the camelCase wire payload for a cancelOrder request.
+
+        Pure (no I/O). Shared by the REST sender above and the ws-exec
+        transport. Same arg semantics as :meth:`cancel_order`.
+        """
         if order_id is None and client_order_id is None:
             raise ValueError("Provide either order_id or client_order_id")
 
         resolved_account_id = account_id if account_id is not None else self.config.account_id
         if resolved_account_id is None:
             raise ValueError("account_id is required (pass it or set in config)")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
 
-        market_id = self._get_market_id_from_symbol(symbol)
+        market_id = self.get_market_id_from_symbol(symbol)
         nonce = self._get_next_nonce()
         deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
@@ -396,17 +443,15 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        cancel_request = CancelOrderRequest(
-            symbol=symbol,
-            accountId=resolved_account_id,
-            orderId=order_id,
-            clientOrderId=client_order_id,
-            signature=signature,
-            nonce=str(nonce),
-            deadline=deadline,
-        )
-
-        return await self.orders.cancel_order(cancel_request)
+        return {
+            "symbol": symbol,
+            "accountId": resolved_account_id,
+            "orderId": order_id,
+            "clientOrderId": client_order_id,
+            "signature": signature,
+            "nonce": str(nonce),
+            "deadline": deadline,
+        }
 
     async def mass_cancel(
         self,
@@ -418,11 +463,26 @@ class ReyaTradingClient:
         market. Works on both spot and perp markets. Pass `symbol=None` to
         cancel across all markets the account has orders in.
         """
+        payload = self.build_mass_cancel_payload(symbol=symbol, account_id=account_id)
+        return await self.orders.cancel_all(MassCancelRequest(**payload))
+
+    def build_mass_cancel_payload(
+        self,
+        symbol: Optional[str] = None,
+        account_id: Optional[int] = None,
+    ) -> dict:
+        """Build the camelCase wire payload for a cancelAll (mass-cancel) request.
+
+        Pure (no I/O). Shared by the REST sender above and the ws-exec
+        transport. Pass ``symbol=None`` to cancel across all markets.
+        """
         resolved_account_id = account_id if account_id is not None else self.config.account_id
         if resolved_account_id is None:
             raise ValueError("account_id is required (pass it or set in config)")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
 
-        market_id = self._get_market_id_from_symbol(symbol) if symbol is not None else 0
+        market_id = self.get_market_id_from_symbol(symbol) if symbol is not None else 0
         nonce = self._get_next_nonce()
         deadline = int(time.time()) + DEFAULT_DEADLINE_S
 
@@ -433,15 +493,13 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        mass_cancel_request = MassCancelRequest(
-            accountId=resolved_account_id,
-            symbol=symbol,
-            signature=signature,
-            nonce=str(nonce),
-            deadline=deadline,
-        )
-
-        return await self.orders.cancel_all(mass_cancel_request)
+        return {
+            "accountId": resolved_account_id,
+            "symbol": symbol,
+            "signature": signature,
+            "nonce": str(nonce),
+            "deadline": deadline,
+        }
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         wallet = wallet_address or self.owner_wallet_address
