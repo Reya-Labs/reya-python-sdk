@@ -42,7 +42,14 @@ from sdk.reya_rest_api.config import TradingConfig, get_config
 
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
-DEFAULT_DEADLINE_S = 60  # Signature validity window for entry-time orders.
+DEFAULT_DEADLINE_S = 60  # IOC sig-validity / lifetime window (the server caps IOC deadlines).
+GTC_DEADLINE_S = 86_400  # 24h lifetime for resting spot GTC orders.
+# Non-expiring sentinel for resting perp GTC + trigger (SL/TP) orders, which rest
+# until filled or cancelled rather than timing out. The matching engine currently
+# requires `expiresAfter == deadline` (devnet stopgap pending PRO-133), so this
+# single value sets both the signature-validity window and the on-chain order
+# lifetime; non-IOC orders are exempt from the server's deadline-too-far cap.
+NON_EXPIRING_DEADLINE = 10**18
 
 # Spot/perp namespace discriminator on the unified marketId — mirrors
 # `SPOT_MARKET_ID_OFFSET` in the off-chain monorepo
@@ -206,44 +213,43 @@ class ReyaTradingClient:
             raise ValueError("Signature generator is required for order signing")
 
         market_id = self.get_market_id_from_symbol(params.symbol)
-        nonce = self._get_next_nonce()
-        deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
-        # `expires_after` is signed and sent on every order regardless of TIF.
-        # IOC carries it as defense-in-depth so the settlement contract can
-        # independently reject stale orders even if the off-chain layer
-        # misroutes one. When the caller doesn't pin a lifetime we mirror
-        # `deadline` to match the documented `deadline <= expires_after`
-        # convention.
-        expires_after = params.expires_after if params.expires_after is not None else deadline
-        client_order_id = params.client_order_id if params.client_order_id is not None else 0
-        reduce_only = bool(params.reduce_only) if params.reduce_only is not None else False
-
-        # `reduceOnly` wire-field semantics per server-side validator
-        # (`packages/common-backend/src/validation/order-validation-v2.ts`,
-        # `validateCreateOrderRequestV2` → "Validate reduceOnly based on market
-        # type and order type"):
-        #   - perp IOC  → REQUIRED (boolean; aggressive orders must declare intent)
-        #   - perp GTC  → MUST NOT be present
-        #   - spot      → MUST NOT be present  ("not supported for spot markets")
-        # When the caller doesn't pass `reduce_only` on a perp IOC we default
-        # to `False` on the wire so the request reaches the matching engine.
-        # The signature is already produced with `reduceOnly = False` above, so
-        # the on-chain digest matches what the server reconstructs.
-        #
-        # NOTE — subject to change. PRO-133 ("Pre-MM order-signing semantics +
-        # endpoint-deprecation audit") debates whether this required-on-IOC
-        # rule stays as-is or is relaxed/normalised alongside the
-        # expiresAfter/deadline semantics overhaul covered in that ticket.
-        # Track the resolution there before tweaking this default. Linear:
-        # https://linear.app/reya-labs/issue/PRO-133
         is_spot_market = market_id >= _SPOT_MARKET_ID_OFFSET
         is_ioc = params.time_in_force == TimeInForce.IOC
-        if params.reduce_only is not None:
-            reduce_only_wire: Optional[bool] = bool(params.reduce_only)
-        elif is_ioc and not is_spot_market:
-            reduce_only_wire = False
+        is_perp_ioc = is_ioc and not is_spot_market
+        nonce = self._get_next_nonce()
+
+        # `expiresAfter` is the on-chain ORDER LIFETIME (when it expires off the
+        # book), distinct from `deadline` (signature validity). The matching
+        # engine currently requires `expiresAfter == deadline` (devnet stopgap,
+        # PRO-133), so one value sets both. A resting order must outlive the 60s
+        # IOC window or it would silently expire ~1 min after placement:
+        #   - IOC      → now + 60s (server caps IOC deadlines)
+        #   - spot GTC → now + 24h
+        #   - perp GTC → non-expiring (rests until filled/cancelled)
+        # An explicit `params.deadline` / `params.expires_after` still wins.
+        if params.deadline is not None:
+            deadline = params.deadline
+        elif is_ioc:
+            deadline = int(time.time()) + DEFAULT_DEADLINE_S
+        elif is_spot_market:
+            deadline = int(time.time()) + GTC_DEADLINE_S
         else:
-            reduce_only_wire = None
+            deadline = NON_EXPIRING_DEADLINE
+        expires_after = params.expires_after if params.expires_after is not None else deadline
+        client_order_id = params.client_order_id if params.client_order_id is not None else 0
+
+        # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
+        # be ABSENT on spot ("not supported for spot markets") and perp GTC
+        # (rejected). See `validateCreateOrderRequestV2` in the off-chain
+        # `order-validation-v2.ts`. So gate the wire field to perp IOC, and
+        # reject an explicit reduce-only elsewhere rather than silently dropping
+        # the caller's intent. The signed `OrderDetails.reduceOnly` mirrors the
+        # wire (False when not sent) so the on-chain digest matches.
+        # NOTE — the required-on-perp-IOC default is under review in PRO-133.
+        if params.reduce_only and not is_perp_ioc:
+            raise ValueError("reduce_only is only supported on perp IOC orders")
+        reduce_only = bool(params.reduce_only) if is_perp_ioc else False
+        reduce_only_wire: Optional[bool] = reduce_only if is_perp_ioc else None
 
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
@@ -309,8 +315,22 @@ class ReyaTradingClient:
 
         market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
-        deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+
+        # TP/SL orders rest until their trigger fires, so they must be
+        # non-expiring — a 60s default would silently kill a stop-loss ~1 min
+        # after placement, leaving the position unprotected. `expiresAfter ==
+        # deadline` (devnet stopgap, PRO-133); an explicit `params.deadline`
+        # still wins.
+        deadline = params.deadline if params.deadline is not None else NON_EXPIRING_DEADLINE
+        expires_after = deadline
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
+
+        # reduce-only is server-rejected on non-IOC orders, and reduce-only /
+        # close-on-trigger TP/SL is still being designed (PRO-150). Reject an
+        # explicit reduce_only rather than sign+send a field the validator
+        # forbids; the wire omits `reduceOnly` entirely for triggers.
+        if params.reduce_only:
+            raise ValueError("reduce_only on TP/SL trigger orders is not supported yet (PRO-150)")
 
         # If the caller didn't pin a worst-acceptable execution price, sign a
         # sentinel that always lets the order through after trigger: huge for
@@ -323,11 +343,6 @@ class ReyaTradingClient:
 
         order_type_int = _ORDER_TYPE_TO_INT[params.trigger_type]
 
-        # See note in build_create_limit_order_payload: the matching engine rejects
-        # expires_after=0, so we default to `deadline` to keep the trigger live for
-        # the same window.
-        expires_after = deadline
-
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
             market_id=market_id,
@@ -339,7 +354,7 @@ class ReyaTradingClient:
             trigger_price=Decimal(params.trigger_px),
             time_in_force=int(TimeInForceInt.GTC),
             client_order_id=client_order_id,
-            reduce_only=bool(params.reduce_only) if params.reduce_only is not None else False,
+            reduce_only=False,
             expires_after=expires_after,
             nonce=nonce,
             deadline=deadline,
@@ -354,7 +369,7 @@ class ReyaTradingClient:
             "qty": params.qty,
             "triggerPx": str(params.trigger_px),
             "orderType": params.trigger_type.value,
-            "reduceOnly": params.reduce_only,
+            "reduceOnly": None,
             "expiresAfter": expires_after,
             "clientOrderId": params.client_order_id,
             "signature": signature,
