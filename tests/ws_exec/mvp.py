@@ -699,10 +699,10 @@ async def _run_perp_flows(client: ReyaWsExecClient, qty: Decimal) -> None:
     await flow_perp_create_limit_gtc_and_cancel(client, qty=qty)
 
     print("\n--- Flow 7: perp createOrder (TP) + cancel ---")
-    await flow_perp_create_trigger_and_cancel(client, OrderType.TP, PERP_TP_TRIGGER_PX, "TP")
+    await flow_perp_create_trigger_and_cancel(client, OrderType.TAKE_PROFIT, PERP_TP_TRIGGER_PX, "TP")
 
     print("\n--- Flow 8: perp createOrder (SL) + cancel ---")
-    await flow_perp_create_trigger_and_cancel(client, OrderType.SL, PERP_SL_TRIGGER_PX, "SL")
+    await flow_perp_create_trigger_and_cancel(client, OrderType.STOP_LOSS, PERP_SL_TRIGGER_PX, "SL")
 
     # Flows 9 and 10 are paired: 9 opens a real long, 10 is the only thing
     # that closes it. The try/finally guarantees the close runs even if a
