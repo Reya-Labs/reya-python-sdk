@@ -42,14 +42,24 @@ from sdk.reya_rest_api.config import TradingConfig, get_config
 
 from .models.orders import LimitOrderParameters, TriggerOrderParameters
 
-DEFAULT_DEADLINE_S = 60  # IOC sig-validity / lifetime window (the server caps IOC deadlines).
-GTC_DEADLINE_S = 86_400  # 24h lifetime for resting spot GTC orders.
-# Non-expiring sentinel for resting perp GTC + trigger (SL/TP) orders, which rest
-# until filled or cancelled rather than timing out. The matching engine currently
-# requires `expiresAfter == deadline` (devnet stopgap pending PRO-133), so this
-# single value sets both the signature-validity window and the on-chain order
-# lifetime; non-IOC orders are exempt from the server's deadline-too-far cap.
-NON_EXPIRING_DEADLINE = 10**18
+# Two different signed time fields (see docs + orders-gateway OrderSignatureValidation.sol):
+#   - `deadline`     — EIP-712 signature-validity window. Enforced OFF-CHAIN by
+#                      the api-executor at entry ONLY (on-chain `verifySignature`
+#                      uses `recoverSignerSkipDeadline`). Bounds how long a signed
+#                      payload may be submitted; irrelevant once the order rests.
+#   - `expiresAfter` — the on-chain ORDER LIFETIME, enforced at settlement
+#                      (`expiresAfter == 0` => never expires). THIS is what keeps
+#                      a resting order alive.
+# Conceptually a resting GTC/trigger wants `expiresAfter = 0` (never expire) with
+# a short `deadline`. But the matching engine currently rejects `expiresAfter = 0`
+# and requires `expiresAfter == deadline` (it doesn't preserve envelope_deadline
+# through trade responses — devnet stopgap, PRO-133). So we pick the desired
+# LIFETIME and sign it into BOTH fields; non-IOC orders are exempt from the
+# server's deadline-too-far cap. Once PRO-133 lands this collapses to
+# `expiresAfter = 0` + a short `deadline`.
+DEFAULT_DEADLINE_S = 60  # IOC: signature-validity window == lifetime (server caps IOC deadlines).
+GTC_LIFETIME_S = 86_400  # spot GTC: 24h on-chain lifetime (expiresAfter).
+NON_EXPIRING_LIFETIME = 10**18  # perp GTC + TP/SL: far-future lifetime ≈ never expires.
 
 # Spot/perp namespace discriminator on the unified marketId — mirrors
 # `SPOT_MARKET_ID_OFFSET` in the off-chain monorepo
@@ -218,24 +228,27 @@ class ReyaTradingClient:
         is_perp_ioc = is_ioc and not is_spot_market
         nonce = self._get_next_nonce()
 
-        # `expiresAfter` is the on-chain ORDER LIFETIME (when it expires off the
-        # book), distinct from `deadline` (signature validity). The matching
-        # engine currently requires `expiresAfter == deadline` (devnet stopgap,
-        # PRO-133), so one value sets both. A resting order must outlive the 60s
-        # IOC window or it would silently expire ~1 min after placement:
-        #   - IOC      → now + 60s (server caps IOC deadlines)
-        #   - spot GTC → now + 24h
-        #   - perp GTC → non-expiring (rests until filled/cancelled)
-        # An explicit `params.deadline` / `params.expires_after` still wins.
-        if params.deadline is not None:
-            deadline = params.deadline
+        # Pick the on-chain order LIFETIME (`expiresAfter`). A resting order must
+        # outlive the 60s IOC window or it silently expires ~1 min after
+        # placement; the matching engine routes by TIF/market:
+        #   - IOC      → now + 60s   (immediate-or-cancel; server caps IOC deadlines)
+        #   - spot GTC → now + 24h   (GTC_LIFETIME_S)
+        #   - perp GTC → ~never      (NON_EXPIRING_LIFETIME; rests until filled/cancelled)
+        # `deadline` is only the entry-time signature-validity window, but the ME
+        # currently requires `expiresAfter == deadline` (devnet stopgap, PRO-133;
+        # see the constants block), so we sign the chosen lifetime into BOTH.
+        # An explicit `params.expires_after` / `params.deadline` still wins.
+        if params.expires_after is not None:
+            lifetime = params.expires_after
+        elif params.deadline is not None:
+            lifetime = params.deadline
         elif is_ioc:
-            deadline = int(time.time()) + DEFAULT_DEADLINE_S
+            lifetime = int(time.time()) + DEFAULT_DEADLINE_S
         elif is_spot_market:
-            deadline = int(time.time()) + GTC_DEADLINE_S
+            lifetime = int(time.time()) + GTC_LIFETIME_S
         else:
-            deadline = NON_EXPIRING_DEADLINE
-        expires_after = params.expires_after if params.expires_after is not None else deadline
+            lifetime = NON_EXPIRING_LIFETIME
+        deadline = expires_after = lifetime
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
         # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
@@ -316,13 +329,15 @@ class ReyaTradingClient:
         market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
 
-        # TP/SL orders rest until their trigger fires, so they must be
-        # non-expiring — a 60s default would silently kill a stop-loss ~1 min
-        # after placement, leaving the position unprotected. `expiresAfter ==
-        # deadline` (devnet stopgap, PRO-133); an explicit `params.deadline`
-        # still wins.
-        deadline = params.deadline if params.deadline is not None else NON_EXPIRING_DEADLINE
-        expires_after = deadline
+        # A TP/SL rests until its trigger fires, so its on-chain LIFETIME
+        # (`expiresAfter`) must be ~never — otherwise a stop is silently killed
+        # ~1 min after placement, leaving the position unprotected. `deadline` is
+        # only the entry-time signature-validity window, but the ME currently
+        # requires `expiresAfter == deadline` (devnet stopgap, PRO-133), so we
+        # sign the never-expire lifetime into both. An explicit
+        # `params.deadline` still wins.
+        lifetime = params.deadline if params.deadline is not None else NON_EXPIRING_LIFETIME
+        deadline = expires_after = lifetime
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
         # reduce-only is server-rejected on non-IOC orders, and reduce-only /
