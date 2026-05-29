@@ -408,7 +408,7 @@ class ReyaTradingClient:
 
     def build_cancel_order_payload(
         self,
-        symbol: str,
+        symbol: Optional[str] = None,
         account_id: Optional[int] = None,
         order_id: Optional[str] = None,
         client_order_id: Optional[int] = None,
@@ -417,7 +417,14 @@ class ReyaTradingClient:
 
         Pure (no I/O). Shared by the REST sender above and the ws-exec
         transport. Same arg semantics as :meth:`cancel_order`.
+
+        `symbol` is typed Optional only to match the ws-exec client's
+        forwarding signature; it is required in practice (the cancel
+        EIP-712 envelope signs the resolved marketId), so a missing symbol
+        raises rather than silently producing an unsigned-for-market cancel.
         """
+        if not symbol:
+            raise ValueError("symbol is required to cancel an order")
         if order_id is None and client_order_id is None:
             raise ValueError("Provide either order_id or client_order_id")
 

@@ -49,7 +49,6 @@ import time
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 import pytest
 import pytest_asyncio
@@ -612,7 +611,7 @@ class _WsExecHarness:
     ws_url: str
     spot_rest: ReyaTradingClient
     perp_rest: ReyaTradingClient
-    spot_rest_2: Optional[ReyaTradingClient]
+    spot_rest_2: ReyaTradingClient | None
     spot_qty: Decimal
     perp_qty: Decimal
 
@@ -628,7 +627,7 @@ async def harness():
     spot_rest = await _build_rest_client(perp=False, account_number=1)
     perp_rest = await _build_rest_client(perp=True)
     try:
-        spot_rest_2: Optional[ReyaTradingClient] = await _build_rest_client(perp=False, account_number=2)
+        spot_rest_2: ReyaTradingClient | None = await _build_rest_client(perp=False, account_number=2)
     except (RuntimeError, ValueError):
         spot_rest_2 = None  # SPOT_*_2 absent -> E6 signer-mismatch test skips.
 
