@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 
 from dataclasses import dataclass
 
@@ -19,19 +19,6 @@ class LimitOrderParameters:
     expires_after: Optional[int] = None
     client_order_id: Optional[int] = None
     deadline: Optional[int] = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "symbol": self.symbol,
-            "is_buy": self.is_buy,
-            "limit_px": self.limit_px,
-            "qty": self.qty,
-            "reduce_only": self.reduce_only,
-            "expires_after": self.expires_after,
-            "time_in_force": self.time_in_force,
-            "client_order_id": self.client_order_id,
-            "deadline": self.deadline,
-        }
 
 
 @dataclass(frozen=True)
@@ -58,16 +45,3 @@ class TriggerOrderParameters:
     reduce_only: Optional[bool] = None
     client_order_id: Optional[int] = None
     deadline: Optional[int] = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "symbol": self.symbol,
-            "is_buy": self.is_buy,
-            "qty": self.qty,
-            "trigger_px": self.trigger_px,
-            "limit_px": self.limit_px,
-            "trigger_type": self.trigger_type,
-            "reduce_only": self.reduce_only,
-            "client_order_id": self.client_order_id,
-            "deadline": self.deadline,
-        }
