@@ -11,6 +11,14 @@ from dotenv import load_dotenv
 
 MAINNET_CHAIN_ID = 1729
 
+# OrdersGateway proxy = the EIP-712 verifyingContract, per deployment. devnet1
+# (the perpOB testnet) and the cronos testnet share chain id 89346162 but use
+# different proxies, so REYA_ORDERS_GATEWAY selects between them (set per
+# environment in .env.example). Cronos is reachable only via that override.
+MAINNET_ORDERS_GATEWAY = "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"
+DEVNET1_ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"
+CRONOS_ORDERS_GATEWAY = "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"
+
 # Default exchange id resolved at import time. Set REYA_DEX_ID in the
 # environment to override (e.g., devnet1 only registers exchange id 1).
 # `TradingConfig.dex_id_override` still wins per-instance if set.
@@ -54,19 +62,14 @@ class TradingConfig:
     def default_orders_gateway_address(self) -> str:
         """OrdersGateway proxy contract address used as the EIP-712 verifyingContract.
 
-        Resolution order: explicit ``orders_gateway_address`` (set via the
-        ``REYA_ORDERS_GATEWAY`` env var in ``from_env``/``from_env_spot``) wins,
-        otherwise fall back to the chain-id default. The override exists because
-        non-mainnet deployments (devnet1, future testnets) redeploy the
-        OrdersGateway proxy and a stale baked-in address makes the matching
-        engine reject every signature.
+        Set ``REYA_ORDERS_GATEWAY`` per environment (see ``.env.example``); it
+        wins when present and is required to target cronos, which shares
+        devnet1's chain id. When unset, fall back to the mainnet or devnet1
+        default by chain id.
         """
         if self.orders_gateway_address:
             return self.orders_gateway_address
-        if self.is_mainnet:
-            return "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"  # Mainnet address
-        else:
-            return "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"  # Testnet address
+        return MAINNET_ORDERS_GATEWAY if self.is_mainnet else DEVNET1_ORDERS_GATEWAY
 
     @classmethod
     def from_env(cls) -> "TradingConfig":
