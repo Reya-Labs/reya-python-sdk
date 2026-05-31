@@ -246,7 +246,16 @@ async def test_spot_extreme_price(spot_config: SpotTestConfig, spot_tester: Reya
 
     await spot_tester.orders.close_all(fail_if_none=False)
 
-    # Extremely high price
+    # Extremely high price (~1e12), well above the ME's max price bound
+    # (MAX_QTY_OR_PX ≈ 1.84e10), so the order is rejected; this test only
+    # asserts it's handled gracefully (any ApiException) and leaves no resting
+    # order. NOTE: server-side the spot balance check runs *before* px/qty
+    # validation, so the rejection surfaces as "Insufficient balance"
+    # (qty × 1e12 ≈ 1e9 > balance) rather than the truer "price exceeds maximum"
+    # — which is why this test shows up as ~1e9 "Insufficient balance for spot
+    # order" warns in devnet logs (not a bug; see Linear PRO-160). To be very
+    # clean the server should validate px/qty before the balance check —
+    # tracked low-priority in reya-off-chain-monorepo#2669.
     extreme_price = "999999999999"
 
     order_params = OrderBuilder.from_config(spot_config).buy().price(extreme_price).gtc().build()
