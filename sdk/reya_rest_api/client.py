@@ -380,7 +380,11 @@ class ReyaTradingClient:
             "symbol": params.symbol,
             "exchangeId": self.config.dex_id,
             "isBuy": params.is_buy,
-            "limitPx": str(limit_price),
+            # Fixed-point, never scientific notation: str(Decimal("0.000000001"))
+            # is "1E-9", which the server's ethers FixedNumber parser rejects with
+            # INVALID_ARGUMENT. format(..., "f") renders "0.000000001". Matters for
+            # the sell-trigger sentinel; harmless for caller-supplied prices.
+            "limitPx": format(limit_price, "f"),
             "qty": params.qty,
             "triggerPx": str(params.trigger_px),
             "orderType": params.trigger_type.value,
