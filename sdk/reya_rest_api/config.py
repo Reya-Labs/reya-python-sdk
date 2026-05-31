@@ -64,11 +64,11 @@ class TradingConfig:
         if self.orders_gateway_address:
             return self.orders_gateway_address
         # OrdersGateway proxy = the EIP-712 verifyingContract, per deployment.
-        # NOTE: devnet1 (the perpOB testnet) and the legacy cronos testnet share
-        # chain id 89346162 but use different proxy deployments, so they cannot
-        # be distinguished by chain id alone. Non-mainnet defaults to devnet1
-        # (the current perpOB target); set REYA_ORDERS_GATEWAY to the cronos
-        # value to target the legacy cronos deployment instead.
+        # NOTE: devnet1 (the perpOB testnet) and the cronos testnet share chain
+        # id 89346162 but use different proxy deployments, so they cannot be
+        # distinguished by chain id alone. Non-mainnet defaults to devnet1 (the
+        # current perpOB target); set REYA_ORDERS_GATEWAY to the cronos value to
+        # target the cronos deployment instead.
         orders_gateway_by_env = {
             "mainnet": "0xfc8c96be87da63cecddbf54abfa7b13ee8044739",
             "cronos_testnet": "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5",
