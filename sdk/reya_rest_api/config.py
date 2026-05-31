@@ -69,9 +69,7 @@ class TradingConfig:
         """
         if self.orders_gateway_address:
             return self.orders_gateway_address
-        return (
-            MAINNET_ORDERS_GATEWAY if self.is_mainnet else DEVNET1_ORDERS_GATEWAY
-        )
+        return MAINNET_ORDERS_GATEWAY if self.is_mainnet else DEVNET1_ORDERS_GATEWAY
 
     @classmethod
     def from_env(cls) -> "TradingConfig":
