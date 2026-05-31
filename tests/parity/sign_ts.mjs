@@ -81,6 +81,19 @@ const orderValue = {
   },
 };
 
+// LIMIT IOC perp SELL: identical to orderValue except the quantity sign. This
+// vector exists specifically to pin the is_buy=False → negative-quantity path,
+// which the buy vector above can't catch (a sign bug would still match a
+// positive expected value). Only `quantity` differs, so any drift here is
+// unambiguously the sign encoding.
+const orderSellValue = {
+  ...orderValue,
+  order: {
+    ...orderValue.order,
+    quantity: BigInt("-500000000000000000"), // -0.5 E18 (signed; negative = sell)
+  },
+};
+
 // === OrderCancel (matching-engine layer) ===
 const orderCancelTypes = {
   OrderCancel: [
@@ -136,6 +149,11 @@ const massCancelValue = {
 const wallet = new Wallet(PRIVATE_KEY);
 
 const orderSig = await wallet.signTypedData(domain, orderTypes, orderValue);
+const orderSellSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderSellValue,
+);
 const cancelSig = await wallet.signTypedData(
   domain,
   orderCancelTypes,
@@ -155,6 +173,7 @@ console.log(
       orders_gateway: ORDERS_GATEWAY,
       signatures: {
         order: orderSig,
+        order_sell: orderSellSig,
         order_cancel: cancelSig,
         mass_cancel: massCancelSig,
       },

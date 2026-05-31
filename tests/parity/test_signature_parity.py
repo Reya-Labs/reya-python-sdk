@@ -40,6 +40,13 @@ EXPECTED_SIGNATURES = {
         "3a62255e2f7be29b9c64d0481816e3baacc728b4ef61300636437a653a18f380"
         "1c"
     ),
+    # Same envelope as "order" but with a SELL (negative quantity) — pins the
+    # is_buy=False sign-encoding path that the buy vector can't catch.
+    "order_sell": (
+        "0x4a9ea03e75d0fa8b5b59e1a9a14228b14d1a4bca0b1888b4fd346639135ddda5"
+        "55f551472ab4ff8357ac82b580da1ab5e62211bb1c8dfc27a79c7e211c312a93"
+        "1b"
+    ),
     "order_cancel": (
         "0x5b68e16ff34ae2fa0b62acdc66c90f15784dc0940275b5d00d711d34185a8c80"
         "7df56678de28f079184c002dd195b4f7be7fd7760288a1410c0ac24d4ce1a0fc"
@@ -98,6 +105,34 @@ def test_order_signature_parity(signer: SignatureGenerator) -> None:
     assert (
         sig == EXPECTED_SIGNATURES["order"]
     ), f"Order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order']}"
+
+
+def test_order_sell_signature_parity(signer: SignatureGenerator) -> None:
+    """is_buy=False must encode a negative quantity identically to ethers v6.
+
+    Identical to the buy vector except ``is_buy=False``; the only signed field
+    that changes is the order quantity's sign, so any drift isolates the
+    is_buy → signed-quantity encoding.
+    """
+    sig = signer.sign_order(
+        account_id=12345,
+        market_id=1,
+        exchange_id=2,
+        order_type=int(OrderTypeInt.LIMIT),
+        is_buy=False,
+        qty=Decimal("0.5"),
+        limit_price=Decimal("3000"),
+        trigger_price=Decimal("0"),
+        time_in_force=int(TimeInForceInt.IOC),
+        client_order_id=42,
+        reduce_only=False,
+        expires_after=0,
+        nonce=1700000000000000,
+        deadline=1745000000,
+    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order_sell"]
+    ), f"Sell-order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_sell']}"
 
 
 def test_order_cancel_signature_parity(signer: SignatureGenerator) -> None:

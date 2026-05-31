@@ -202,20 +202,20 @@ def market_config(  # pylint: disable=redefined-outer-name
 
 
 @pytest.fixture
-def maker(  # pylint: disable=redefined-outer-name
-    market_type: str,
-    maker_tester,  # spot maker (PERP_ACCOUNT_ID_1 / SPOT_ACCOUNT_ID_1)
-    perp_maker_tester,
-):
-    """Yield the maker tester for the active parametrization."""
-    return maker_tester if market_type == "spot" else perp_maker_tester
+def maker(market_type: str, request):  # pylint: disable=redefined-outer-name
+    """Yield the maker tester for the active parametrization.
+
+    Resolve the tester lazily by market type so that, in an env configured for
+    only one market, the other market's session fixture (which `pytest.skip`s
+    on missing credentials) is never set up — otherwise a spot-only run would
+    silently skip every perp parametrization (green with zero coverage), and
+    vice versa.
+    """
+    return request.getfixturevalue("perp_maker_tester" if market_type == "perp" else "maker_tester")
 
 
 @pytest.fixture
-def taker(  # pylint: disable=redefined-outer-name
-    market_type: str,
-    taker_tester,
-    perp_taker_tester,
-):
-    """Yield the taker tester for the active parametrization."""
-    return taker_tester if market_type == "spot" else perp_taker_tester
+def taker(market_type: str, request):  # pylint: disable=redefined-outer-name
+    """Yield the taker tester for the active parametrization (resolved lazily;
+    see :func:`maker` for why)."""
+    return request.getfixturevalue("perp_taker_tester" if market_type == "perp" else "taker_tester")

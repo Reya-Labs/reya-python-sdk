@@ -209,8 +209,8 @@ class Checks:
             order_execution.taker_account_id,
             order_execution.maker_account_id,
         ), "check_order_execution: Order execution account ID does not match either taker or maker"
-        assert (
-            order_execution.qty == expected_order.qty if expected_qty is None else expected_qty
+        assert order_execution.qty == (
+            expected_order.qty if expected_qty is None else expected_qty
         ), "check_order_execution: Order execution qty does not match"
         assert order_execution.side == expected_order.side, "check_order_execution: Order execution side does not match"
         assert (
