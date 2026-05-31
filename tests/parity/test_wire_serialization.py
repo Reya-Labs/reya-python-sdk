@@ -25,7 +25,6 @@ PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff8
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162
 PERP_SYMBOL = "ETHRUSDPERP"
-TINY_TICK_SYMBOL = "BTCRUSDPERP"  # used to exercise a sub-1e-6 tick (sci-notation guard)
 
 
 @pytest.fixture
@@ -44,9 +43,8 @@ def client() -> ReyaTradingClient:
         account_id=12345,
     )
     c = ReyaTradingClient(config)
-    c._symbol_to_market_id = {PERP_SYMBOL: 1, TINY_TICK_SYMBOL: 2}  # perp core id, unified == raw
-    # Tick size (price spacing) per perp symbol — drives the sell-trigger sentinel.
-    c._symbol_to_tick_size = {PERP_SYMBOL: "0.001", TINY_TICK_SYMBOL: "0.0000001"}
+    c._symbol_to_market_id = {PERP_SYMBOL: 1}  # perp core id, unified == raw
+    c._symbol_to_tick_size = {PERP_SYMBOL: "0.001"}  # tick size drives the sell-trigger sentinel
     c._initialized = True
     return c
 
@@ -67,22 +65,6 @@ def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
     assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
 
 
-def test_sell_trigger_sentinel_tiny_tick_is_plain_decimal(client: ReyaTradingClient) -> None:
-    """A sub-1e-6 tick must still serialize as a plain decimal, never sci notation
-    ('1E-7'), which the server's ethers FixedNumber parser rejects."""
-    payload, _ = client.build_create_trigger_order_payload(
-        TriggerOrderParameters(
-            symbol=TINY_TICK_SYMBOL,
-            is_buy=False,
-            qty="0.01",
-            trigger_px="1",
-            trigger_type=OrderType.STOP_LOSS,
-        )
-    )
-    assert payload["limitPx"] == "0.0000001"
-    assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
-
-
 def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
     """is_buy=True + no limit_px → huge sentinel must also be plain (no 'E')."""
     payload, _ = client.build_create_trigger_order_payload(
@@ -98,8 +80,10 @@ def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClien
     assert "E" not in payload["limitPx"].upper()
 
 
-def test_caller_supplied_limit_px_passes_through(client: ReyaTradingClient) -> None:
-    """An explicit limit_px is preserved verbatim (and stays non-scientific)."""
+def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
+    """A small explicit limit_px must serialize as a plain decimal, never sci
+    notation: str(Decimal("0.0000001")) == "1E-7", which the server's ethers
+    FixedNumber parser rejects — this is exactly what format(..., "f") guards."""
     payload, _ = client.build_create_trigger_order_payload(
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
@@ -107,8 +91,8 @@ def test_caller_supplied_limit_px_passes_through(client: ReyaTradingClient) -> N
             qty="0.01",
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
-            limit_px="3000.5",
+            limit_px="0.0000001",
         )
     )
-    assert payload["limitPx"] == "3000.5"
-    assert "E" not in payload["limitPx"].upper()
+    assert payload["limitPx"] == "0.0000001"
+    assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
