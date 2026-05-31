@@ -39,6 +39,11 @@ python -m examples.websocket.market_monitoring
 python -m examples.rpc.trade_execution
 ```
 
+## Testing against devnet
+* The integration suites (`tests/test_orderbook`, `test_perps`, `test_spot`, `ws_exec`) run **live against devnet** — they place real orders, fill, settle on-chain, and assert on executions/balances.
+* **Before running the suite, kill any long-running example scripts** (e.g. `examples.websocket.perps.depth_market_maker`, any `python -m examples.*`). They maintain resting orders / open positions on the shared devnet test accounts and **pollute test state** — symptoms include `cancelledCount` mismatches, "reduce-only not rejected" (a leftover position exists), and matching against the wrong counterparty. Check with `ps -Ao pid,etime,command | grep -iE "examples\.|market_maker"` and kill stragglers before a run.
+* Tests share a small pool of devnet accounts; leftover orders from a crashed/aborted run can also pollute — a clean run starts from no resting orders / no open positions on the test accounts.
+
 ## Key Architecture
 - REST: client.py (main entry) -> resources/ (endpoints) -> auth/signatures.py (EIP-712) -> models/ (Pydantic)
 - RPC: actions/ (tx builders) -> abis/ (contract ABIs) -> config.py (network addresses)
