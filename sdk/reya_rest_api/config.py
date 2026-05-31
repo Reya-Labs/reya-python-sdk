@@ -66,7 +66,7 @@ class TradingConfig:
         if self.is_mainnet:
             return "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"  # Mainnet address
         else:
-            return "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"  # Testnet address
+            return "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"  # devnet1 (perpOB testnet)
 
     @classmethod
     def from_env(cls) -> "TradingConfig":
