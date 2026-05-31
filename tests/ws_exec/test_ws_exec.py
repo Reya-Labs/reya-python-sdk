@@ -706,24 +706,36 @@ async def test_spot_cancel_all_account_wide(spot_ws, harness):  # pylint: disabl
     await flow_spot_cancel_all_account_wide(spot_ws, qty=harness.spot_qty, num_orders_to_open=2)
 
 
-# All perp order entry over ws-exec currently returns INTERNAL server-side on
-# devnet1 (spot works; the same perp orders succeed over REST). Tracked in
-# PRO-149 — xfail (non-strict) so the suite stays green and auto-flags (xpass)
-# the moment the ws-exec perp handler is fixed.
-_PERP_WS_EXEC_XFAIL = pytest.mark.xfail(
-    reason="PRO-149: perp order entry over ws-exec returns INTERNAL on devnet1 "
-    "(server-side 'Handler threw'); spot + REST-perp work",
+# Perp order entry over ws-exec was brought up in layers (PRO-149 → PRO-152 →
+# PRO-154). Current devnet1 state:
+#   * IOC open + reduce-only close — WORKS (PerpMarketProvider bootstrap fixed,
+#     PRO-149; executor allowlisted on-chain, PRO-152). No marker — real coverage.
+#   * LIMIT GTC create works; cancel-by-orderId is fixed server-side (forward the
+#     perp marketId, perpOB-6 "Bug 11") but pending a devnet ws-exec redeploy, so
+#     the cancel step still returns INPUT_VALIDATION_ERROR "marketId is required".
+#     xfail (non-strict) → auto-xpasses once the service is redeployed.
+_PERP_CANCEL_PENDING_DEPLOY_XFAIL = pytest.mark.xfail(
+    reason="ws-exec perp cancel-by-orderId fix (forward marketId, perpOB-6 Bug 11) is "
+    "merged + cascaded to feat/perpOB-11 but pending a devnet ws-exec redeploy; perp "
+    "GTC create succeeds, cancel returns INPUT_VALIDATION_ERROR 'marketId is required' until then",
     strict=False,
+)
+# TP/SL triggers are a server-side facade, not a live feature yet — skip (not
+# xfail) so we don't pretend to cover them. Also blocked by PRO-154 (1e18
+# expiresAfter ABI overflow on settle) and PRO-150 (TP/SL design).
+_SLTP_FACADE_SKIP = pytest.mark.skip(
+    reason="TP/SL is a server-side facade, not a live feature yet (PRO-150 design; "
+    "PRO-154 1e18 expiresAfter ABI overflow blocks it) — skip until SLTP is real"
 )
 
 
-@_PERP_WS_EXEC_XFAIL
+@_PERP_CANCEL_PENDING_DEPLOY_XFAIL
 async def test_perp_limit_gtc_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 6: perp LIMIT GTC conditional rests, then cancel."""
     await flow_perp_create_limit_gtc_and_cancel(perp_ws, qty=harness.perp_qty)
 
 
-@_PERP_WS_EXEC_XFAIL
+@_SLTP_FACADE_SKIP
 async def test_perp_trigger_take_profit_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 7: perp TAKE_PROFIT trigger order, then cancel."""
     await flow_perp_create_trigger_and_cancel(
@@ -731,13 +743,12 @@ async def test_perp_trigger_take_profit_and_cancel(perp_ws, harness):  # pylint:
     )
 
 
-@_PERP_WS_EXEC_XFAIL
+@_SLTP_FACADE_SKIP
 async def test_perp_trigger_stop_loss_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 8: perp STOP_LOSS trigger order, then cancel."""
     await flow_perp_create_trigger_and_cancel(perp_ws, OrderType.STOP_LOSS, PERP_SL_TRIGGER_PX, harness.perp_qty, "SL")
 
 
-@_PERP_WS_EXEC_XFAIL
 async def test_perp_ioc_open_and_close(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flows 9-10 (paired): perp IOC opens a min-size long, reduce-only IOC
     closes it. The close always runs in ``finally`` so a failed assertion never
