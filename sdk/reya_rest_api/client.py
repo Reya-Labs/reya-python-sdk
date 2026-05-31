@@ -373,6 +373,8 @@ class ReyaTradingClient:
         # AND conform to the market's price spacing — an arbitrary tiny value
         # like 0.000000001 is rejected by the matching engine as off-grid
         # ("does not conform to price spacing"), so we use exactly one tick.
+        # The sentinel model itself (vs requiring an explicit limit_px, slippage
+        # bounds, etc.) is being revisited — see PRO-155.
         if params.limit_px is not None:
             limit_price = Decimal(params.limit_px)
         elif params.is_buy:
