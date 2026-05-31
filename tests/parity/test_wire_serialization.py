@@ -25,6 +25,7 @@ PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff8
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162
 PERP_SYMBOL = "ETHRUSDPERP"
+TINY_TICK_SYMBOL = "BTCRUSDPERP"  # used to exercise a sub-1e-6 tick (sci-notation guard)
 
 
 @pytest.fixture
@@ -43,13 +44,16 @@ def client() -> ReyaTradingClient:
         account_id=12345,
     )
     c = ReyaTradingClient(config)
-    c._symbol_to_market_id = {PERP_SYMBOL: 1}  # perp core id, unified == raw
+    c._symbol_to_market_id = {PERP_SYMBOL: 1, TINY_TICK_SYMBOL: 2}  # perp core id, unified == raw
+    # Tick size (price spacing) per perp symbol — drives the sell-trigger sentinel.
+    c._symbol_to_tick_size = {PERP_SYMBOL: "0.001", TINY_TICK_SYMBOL: "0.0000001"}
     c._initialized = True
     return c
 
 
-def test_sell_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
-    """is_buy=False + no limit_px → sentinel must serialize as '0.000000001', not '1E-9'."""
+def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
+    """is_buy=False + no limit_px → sentinel is exactly one tick (spacing-conforming),
+    not a sub-tick value the matching engine would reject as off-grid."""
     payload, _ = client.build_create_trigger_order_payload(
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
@@ -59,7 +63,23 @@ def test_sell_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClie
             trigger_type=OrderType.STOP_LOSS,
         )
     )
-    assert payload["limitPx"] == "0.000000001"
+    assert payload["limitPx"] == "0.001"  # == market tick size
+    assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
+
+
+def test_sell_trigger_sentinel_tiny_tick_is_plain_decimal(client: ReyaTradingClient) -> None:
+    """A sub-1e-6 tick must still serialize as a plain decimal, never sci notation
+    ('1E-7'), which the server's ethers FixedNumber parser rejects."""
+    payload, _ = client.build_create_trigger_order_payload(
+        TriggerOrderParameters(
+            symbol=TINY_TICK_SYMBOL,
+            is_buy=False,
+            qty="0.01",
+            trigger_px="1",
+            trigger_type=OrderType.STOP_LOSS,
+        )
+    )
+    assert payload["limitPx"] == "0.0000001"
     assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
 
 

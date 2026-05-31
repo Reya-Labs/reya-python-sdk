@@ -107,6 +107,11 @@ class ReyaTradingClient:
 
     def __init__(self, config: Optional[TradingConfig] = None):
         self._symbol_to_market_id: dict[str, int] = {}
+        # Perp tick size (price spacing) per symbol, from MarketDefinition.
+        # Used to pick a price-spacing-conforming sentinel limit price for
+        # TP/SL triggers when the caller doesn't pin one. Perp-only: triggers
+        # aren't supported on spot.
+        self._symbol_to_tick_size: dict[str, str] = {}
         self._initialized = False
 
         self.logger = logging.getLogger("reya_trading.client")
@@ -130,6 +135,7 @@ class ReyaTradingClient:
         """Load both perp and spot market definitions."""
         market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
         self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+        self._symbol_to_tick_size = {market.symbol: market.tick_size for market in market_definitions}
         perp_count = len(market_definitions)
 
         spot_market_definitions = await self.reference.get_spot_market_definitions()
@@ -168,6 +174,19 @@ class ReyaTradingClient:
             raise ValueError(f"Unknown symbol '{symbol}'. Available symbols: {available_symbols}")
 
         return market_id
+
+    def _tick_size_for(self, symbol: str) -> str:
+        """Return the perp market's tick size (price spacing) for ``symbol``.
+
+        Used to pick a price-spacing-conforming sentinel limit price for TP/SL
+        triggers. Perp-only — triggers aren't supported on spot.
+        """
+        if not self._initialized:
+            raise ValueError("Client not initialized. Call start() first.")
+        tick_size = self._symbol_to_tick_size.get(symbol)
+        if tick_size is None:
+            raise ValueError(f"No tick size for perp symbol '{symbol}'. Trigger orders are perp-only.")
+        return tick_size
 
     @property
     def orders(self) -> OrderEntryApi:
@@ -348,13 +367,18 @@ class ReyaTradingClient:
             raise ValueError("reduce_only on TP/SL trigger orders is not supported yet (PRO-150)")
 
         # If the caller didn't pin a worst-acceptable execution price, sign a
-        # sentinel that always lets the order through after trigger: huge for
-        # buys (worst-case high price), tiny non-zero for sells (worst-case low
-        # price; the spec rejects 0).
+        # sentinel that always lets the order through after the trigger fires:
+        # a huge price for buys (worst-case high), and the market's smallest
+        # tick for sells (worst-case low). The sell sentinel must be non-zero
+        # AND conform to the market's price spacing — an arbitrary tiny value
+        # like 0.000000001 is rejected by the matching engine as off-grid
+        # ("does not conform to price spacing"), so we use exactly one tick.
         if params.limit_px is not None:
             limit_price = Decimal(params.limit_px)
+        elif params.is_buy:
+            limit_price = Decimal("100000000000000000000")
         else:
-            limit_price = Decimal("100000000000000000000") if params.is_buy else Decimal("0.000000001")
+            limit_price = Decimal(self._tick_size_for(params.symbol))
 
         order_type_int = _ORDER_TYPE_TO_INT[params.trigger_type]
 
@@ -380,10 +404,11 @@ class ReyaTradingClient:
             "symbol": params.symbol,
             "exchangeId": self.config.dex_id,
             "isBuy": params.is_buy,
-            # Fixed-point, never scientific notation: str(Decimal("0.000000001"))
-            # is "1E-9", which the server's ethers FixedNumber parser rejects with
-            # INVALID_ARGUMENT. format(..., "f") renders "0.000000001". Matters for
-            # the sell-trigger sentinel; harmless for caller-supplied prices.
+            # Fixed-point, never scientific notation. A small tick (e.g.
+            # str(Decimal("0.0000001")) == "1E-7") would otherwise reach the
+            # wire in sci notation, which the server's ethers FixedNumber parser
+            # rejects with INVALID_ARGUMENT. format(..., "f") renders a plain
+            # decimal for any tick size or caller-supplied price.
             "limitPx": format(limit_price, "f"),
             "qty": params.qty,
             "triggerPx": str(params.trigger_px),
