@@ -30,31 +30,31 @@ from sdk.reya_rest_api.config import TradingConfig
 PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162  # cronos / devnet1
-ORDERS_GATEWAY = "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"
+ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"
 
 # Hex produced by tests/parity/sign_ts.mjs against the canonical TS sign impl
 # (ethers v6 signTypedData with the orderTypes from the off-chain monorepo).
 EXPECTED_SIGNATURES = {
     "order": (
-        "0x7eb002513a43ffa8974ad0d1b17f0a70f954bae605ec8ddaab0aa6a0346fff68"
-        "3a62255e2f7be29b9c64d0481816e3baacc728b4ef61300636437a653a18f380"
-        "1c"
+        "0xc3b3bc8592d7777e325063b3882263c0e846c672f0d69661541df68931d4e454"
+        "34eddedb9a363237bcdd61804d229bfa244263f93da409f364bc27d3b47b969e"
+        "1b"
     ),
     # Same envelope as "order" but with a SELL (negative quantity) — pins the
     # is_buy=False sign-encoding path that the buy vector can't catch.
     "order_sell": (
-        "0x4a9ea03e75d0fa8b5b59e1a9a14228b14d1a4bca0b1888b4fd346639135ddda5"
-        "55f551472ab4ff8357ac82b580da1ab5e62211bb1c8dfc27a79c7e211c312a93"
-        "1b"
+        "0xc46e7e3ca39c19f1ec2a1c370d0c521271fca8ced7fd4f9cd0b74dbe25c19517"
+        "2692285b50c0cc19ce021e94997b81f4b24bd7342ce32475170f6a281ef65c8e"
+        "1c"
     ),
     "order_cancel": (
-        "0x5b68e16ff34ae2fa0b62acdc66c90f15784dc0940275b5d00d711d34185a8c80"
-        "7df56678de28f079184c002dd195b4f7be7fd7760288a1410c0ac24d4ce1a0fc"
+        "0x90ddba6ff879dee4773c214c927a470720f42378574281866edce100ea8c59d7"
+        "75fb29e4ab6108a9ea84bfe12fffcdbbd6dfff98ea6ae034bbd87f4c21254f94"
         "1b"
     ),
     "mass_cancel": (
-        "0x2d95d9a00ceacd9af6291340a2c200b5b2d9bb7f4c8edb4fe960e22b09b19375"
-        "7c506b87445f8f255abbc794183cc66fe7f90759ff41091c65159f278c55ee2e"
+        "0x86d4f060ffbba16698cf8f89fdeabb0397a814be6f54075f908ccbd73894a422"
+        "7c33b0b77ac8c2e495eca0848e56e60711cd5fa60b657a4ba675fd6bd13be920"
         "1b"
     ),
 }

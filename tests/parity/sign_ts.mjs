@@ -27,7 +27,7 @@ const PRIVATE_KEY =
 const SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 const CHAIN_ID = 89346162; // cronos / devnet1
-const ORDERS_GATEWAY = "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"; // testnet OG proxy
+const ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"; // devnet1 OG proxy (PRO-164)
 
 const domain = {
   name: "Reya",
