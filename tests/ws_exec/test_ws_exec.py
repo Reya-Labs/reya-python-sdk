@@ -12,7 +12,7 @@ Happy paths (11) — all driven via :class:`ReyaWsExecClient`:
     0. Application ping/pong probe
     1. Spot createOrder (LIMIT GTC, far-out price - rests)
     2. Spot cancelOrder by orderId
-    3. Spot createOrder + cancelOrder by clientOrderId  -- xfail, see PRO-143
+    3. Spot createOrder + cancelOrder by clientOrderId
     4. Spot cancelAll, symbol-scoped (opens N orders, mass-cancels them)
     5. Spot cancelAll, account-wide (no symbol scope)
     6. Perp createOrder (LIMIT GTC conditional, rests) + cancel
@@ -686,13 +686,13 @@ async def test_spot_create_and_cancel_by_order_id(spot_ws, harness):  # pylint: 
     print(f"  [spot] cancelOrder OK orderId={order_id} status={resp.status}")
 
 
-@pytest.mark.xfail(
-    reason="PRO-143: ws-exec cancelOrder by clientOrderId returns no orderId, but "
-    "CancelOrderResponse marks orderId required (spec-vs-server mismatch)",
-    strict=False,
-)
 async def test_spot_cancel_by_client_order_id(spot_ws, harness):  # pylint: disable=redefined-outer-name
-    """Flow 3: create + cancel by clientOrderId. xfail until PRO-143 is resolved."""
+    """Flow 3: create + cancel by clientOrderId.
+
+    PRO-143 resolved: the ME echoes the cancelled order's resolved orderId on a
+    successful cancel, so the server response satisfies the (orderId-required)
+    CancelOrderResponse schema. Un-xfailed as a regression guard.
+    """
     await flow_spot_create_and_cancel_by_client_order_id(spot_ws, qty=harness.spot_qty)
 
 
