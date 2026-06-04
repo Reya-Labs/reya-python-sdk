@@ -4,8 +4,8 @@
 Offline (no devnet): builds payloads with a fixed key + a hand-seeded
 symbol→marketId map, and asserts on the emitted wire shape — numeric fields as
 plain decimal strings (never scientific notation), the decoupled
-``deadline`` / ``expiresAfter`` fields, and the ``postOnly`` flag and its entry
-guards.
+``deadline`` / ``expiresAfter`` fields, and the order/cancel entry-rule guards
+(``reduceOnly``, ``postOnly``, GTT, and the cancel-identifier rules).
 
 Regression: the sell-trigger sentinel limit price is ``Decimal("0.000000001")``,
 and ``str(Decimal("0.000000001"))`` is ``"1E-9"``. The server's ethers
@@ -23,6 +23,7 @@ import pytest
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
 
@@ -30,6 +31,7 @@ PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff8
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162
 PERP_SYMBOL = "ETHRUSDPERP"
+SPOT_SYMBOL = "WETHRUSD"  # market_id >= _SPOT_MARKET_ID_OFFSET => spot namespace
 
 
 @pytest.fixture
@@ -48,7 +50,7 @@ def client() -> ReyaTradingClient:
         account_id=12345,
     )
     c = ReyaTradingClient(config)
-    c._symbol_to_market_id = {PERP_SYMBOL: 1}  # perp core id, unified == raw
+    c._symbol_to_market_id = {PERP_SYMBOL: 1, SPOT_SYMBOL: _SPOT_MARKET_ID_OFFSET + 1}
     c._symbol_to_tick_size = {PERP_SYMBOL: "0.001"}  # tick size drives the sell-trigger sentinel
     c._initialized = True
     return c
@@ -186,3 +188,54 @@ def test_gtt_rejected_pending_offchain(client: ReyaTradingClient) -> None:
                 time_in_force=TimeInForce.GTT,
             )
         )
+
+
+def test_reduce_only_on_spot_rejected(client: ReyaTradingClient) -> None:
+    """reduce_only is perp-IOC-only; on a spot order it must be rejected at entry
+    (the server forbids it on spot), not silently dropped."""
+    with pytest.raises(ValueError, match="reduce_only is only supported on perp IOC"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=SPOT_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.IOC,
+                reduce_only=True,
+            )
+        )
+
+
+def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient) -> None:
+    """reduce_only / close-on-trigger TP/SL isn't supported yet — an explicit
+    reduce_only on a trigger order is rejected rather than signed + sent."""
+    with pytest.raises(ValueError, match="reduce_only on TP/SL trigger orders is not supported"):
+        client.build_create_trigger_order_payload(
+            TriggerOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=False,
+                qty="0.01",
+                trigger_px="1000",
+                trigger_type=OrderType.STOP_LOSS,
+                reduce_only=True,
+            )
+        )
+
+
+def test_cancel_requires_an_identifier(client: ReyaTradingClient) -> None:
+    """A cancel must carry at least one of order_id / client_order_id; neither is rejected."""
+    with pytest.raises(ValueError, match="Provide either order_id or client_order_id"):
+        client.build_cancel_order_payload(symbol=PERP_SYMBOL)
+
+
+def test_cancel_accepts_both_identifiers(client: ReyaTradingClient) -> None:
+    """The client accepts both order_id and client_order_id and carries both on the
+    wire (the server resolves precedence in favour of order_id) rather than rejecting
+    the combination."""
+    payload = client.build_cancel_order_payload(
+        symbol=PERP_SYMBOL,
+        order_id="123",
+        client_order_id=456,
+    )
+    assert payload["orderId"] == "123"
+    assert payload["clientOrderId"] == 456
