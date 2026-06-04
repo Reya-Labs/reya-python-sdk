@@ -17,7 +17,7 @@ class Order(BaseModel):
   limit_px: str = Field(alias='''limitPx''')
   order_type: OrderType = Field(description='''Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.''', alias='''orderType''')
   trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
-  time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel)''', default=None, alias='''timeInForce''')
+  time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', default=None, alias='''timeInForce''')
   reduce_only: Optional[bool] = Field(description='''Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.''', default=None, alias='''reduceOnly''')
   status: OrderStatus = Field(description='''Order status''')
   created_at: int = Field(alias='''createdAt''')
