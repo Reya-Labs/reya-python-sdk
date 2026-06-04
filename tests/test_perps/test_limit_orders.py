@@ -194,6 +194,20 @@ async def test_perp_reduce_only_rejected_without_position(
         the test exists to catch
     """
     market_price = float(await perp_taker_tester.data.current_price(PERP_SYMBOL))
+
+    # Skip if an external MM is on the book: the setup maker SELL at oracle*1.04
+    # below would cross any external bid above that price and fill immediately
+    # instead of resting, so the reduce-only IOC would settle against external
+    # liquidity rather than exercise the zero-position on-chain check (and that
+    # settlement currently 500s). Mirrors `test_perp_ioc_taker_buy_matches_maker_sell`
+    # and the other controlled-book tests that self-skip on a dirty devnet book.
+    await skip_if_external_liquidity(
+        perp_taker_tester.data,
+        PERP_SYMBOL,
+        market_price,
+        reason_prefix="test_perp_reduce_only_rejected_without_position",
+    )
+
     await perp_taker_tester.check.position_not_open(PERP_SYMBOL)
 
     # Guarantee the IOC has a counterparty so the on-chain check actually
