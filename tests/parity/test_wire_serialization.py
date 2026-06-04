@@ -139,9 +139,10 @@ def test_limit_payload_post_only_defaults_false(client: ReyaTradingClient) -> No
     assert payload["postOnly"] is False
 
 
-def test_post_only_true_rejected_pending_wire_support(client: ReyaTradingClient) -> None:
-    """post_only=True on a GTC limit is rejected until the OpenAPI wire field and
-    off-chain 14-field digest land — no silently un-settleable order."""
+def test_post_only_true_rejected_pending_offchain(client: ReyaTradingClient) -> None:
+    """post_only=True on a GTC limit is rejected until the off-chain 14-field digest
+    reconstruction lands — no silently un-settleable order. (The OpenAPI/wire field
+    is already present; the off-chain side is the remaining gate.)"""
     with pytest.raises(ValueError, match="post_only=True is not yet supported"):
         client.build_create_limit_order_payload(
             LimitOrderParameters(
@@ -167,5 +168,21 @@ def test_post_only_with_ioc_rejected(client: ReyaTradingClient) -> None:
                 qty="0.01",
                 time_in_force=TimeInForce.IOC,
                 post_only=True,
+            )
+        )
+
+
+def test_gtt_rejected_pending_offchain(client: ReyaTradingClient) -> None:
+    """GTT is exposed in the OpenAPI enum and signing-capable, but rejected at entry
+    until the off-chain 14-field digest + GTT expiresAfter validation land — rather
+    than a KeyError on the GTC/IOC-only TIF map or an un-settleable order."""
+    with pytest.raises(ValueError, match="GTT time-in-force is not yet supported"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.GTT,
             )
         )

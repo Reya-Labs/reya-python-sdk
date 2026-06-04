@@ -72,9 +72,11 @@ _ORDER_TYPE_TO_INT: dict[OrderType, OrderTypeInt] = {
     OrderType.TAKE_PROFIT: OrderTypeInt.TAKE_PROFIT,
 }
 
-# Maps the public OpenAPI `TimeInForce` to the signed uint8. GTT is intentionally
-# absent: the signing enum has `TimeInForceInt.GTT`, but the OpenAPI enum doesn't
-# expose GTT yet, so callers can't request it until the spec adds it.
+# Maps the public OpenAPI `TimeInForce` to the signed uint8. The OpenAPI enum now
+# exposes GTT, but it's intentionally absent here: GTT entry is gated in
+# `build_create_limit_order_payload` (rejected until off-chain support lands), so
+# only GTC/IOC reach this map. Add `TimeInForce.GTT: TimeInForceInt.GTT` when the
+# gate lifts.
 _TIME_IN_FORCE_TO_INT: dict[TimeInForce, TimeInForceInt] = {
     TimeInForce.GTC: TimeInForceInt.GTC,
     TimeInForce.IOC: TimeInForceInt.IOC,
@@ -244,6 +246,20 @@ class ReyaTradingClient:
         is_spot_market = market_id >= _SPOT_MARKET_ID_OFFSET
         is_ioc = params.time_in_force == TimeInForce.IOC
         is_perp_ioc = is_ioc and not is_spot_market
+
+        # GTT entry is signing-capable (`TimeInForceInt.GTT`) and now exposed in the
+        # OpenAPI enum, but it can't travel end-to-end yet: the off-chain still
+        # reconstructs the 13-field digest, and GTT needs its own `expiresAfter`
+        # validation (non-zero, and greater than `deadline`). Reject it at entry
+        # until off-chain support lands, rather than sign an un-settleable order.
+        # (Lift this together with the `_TIME_IN_FORCE_TO_INT` GTT mapping and the
+        # GTT expiresAfter rule.)
+        if params.time_in_force == TimeInForce.GTT:
+            raise ValueError(
+                "GTT time-in-force is not yet supported end-to-end (pending off-chain "
+                "14-field digest reconstruction and GTT expiresAfter validation)"
+            )
+
         nonce = self._get_next_nonce()
 
         # `deadline` (entry-time signature validity) and `expiresAfter` (on-chain
@@ -274,15 +290,13 @@ class ReyaTradingClient:
         # always rejected. On-chain taker-side enforcement is deferred for now;
         # this is the entry guard.
         #
-        # Rollout gate: the flag is already signed into the 14-field
-        # `OrderDetails.postOnly` digest (so SDK signatures match the on-chain
-        # schema), but `post_only=True` can't yet travel end-to-end — the generated
-        # `CreateOrderRequest` has no `postOnly` field (the wire value is dropped)
-        # and the off-chain digest reconstruction is still 13-field, so a signed
-        # postOnly=true would fail signer recovery off-chain. Until the OpenAPI
-        # `postOnly` field and the off-chain 14-field digest land, reject True
-        # rather than emit an un-settleable order. The default False is unaffected:
-        # signed as False and reconstructed as False either way.
+        # Rollout gate: the flag is signed into the 14-field `OrderDetails.postOnly`
+        # digest and the `CreateOrderRequest` wire model now carries it, but
+        # `post_only=True` still can't travel end-to-end — the off-chain digest
+        # reconstruction is still 13-field, so a signed postOnly=true would fail
+        # signer recovery off-chain. Reject True until off-chain reconstructs 14
+        # fields, rather than emit an un-settleable order. The default False is
+        # unaffected: signed as False and reconstructed as False either way.
         post_only = bool(params.post_only) if params.post_only is not None else False
         if post_only:
             if is_ioc:
@@ -291,8 +305,8 @@ class ReyaTradingClient:
                     "(IOC is taker-only; post_only requires the order to rest)"
                 )
             raise ValueError(
-                "post_only=True is not yet supported end-to-end (pending the OpenAPI postOnly wire "
-                "field and the off-chain 14-field digest reconstruction)"
+                "post_only=True is not yet supported end-to-end "
+                "(pending the off-chain 14-field digest reconstruction)"
             )
 
         signature = self._signature_generator.sign_order(
@@ -323,10 +337,10 @@ class ReyaTradingClient:
             "orderType": OrderType.LIMIT.value,
             "timeInForce": params.time_in_force.value if params.time_in_force is not None else None,
             "reduceOnly": reduce_only_wire,
-            # Signed into the 14-field digest above and carried here for the
-            # ws-exec path + forward-compat. The REST `CreateOrderRequest` model
-            # has no `postOnly` field yet, so it drops this until the OpenAPI spec
-            # carries it; `post_only` is gated to False above until then.
+            # Signed into the 14-field digest above and carried on the wire. The
+            # `CreateOrderRequest` model now has a `postOnly` field, so this is
+            # transported (no longer dropped); `post_only` is gated to False above
+            # until the off-chain side reconstructs 14 fields.
             "postOnly": post_only,
             "expiresAfter": expires_after,
             "clientOrderId": params.client_order_id,
