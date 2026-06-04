@@ -2,8 +2,10 @@
 """Wire-serialization guards for the order-payload builders.
 
 Offline (no devnet): builds payloads with a fixed key + a hand-seeded
-symbol→marketId map, and asserts numeric wire fields are emitted as
-plain decimal strings — never scientific notation.
+symbol→marketId map, and asserts on the emitted wire shape — numeric fields as
+plain decimal strings (never scientific notation), the decoupled
+``deadline`` / ``expiresAfter`` fields, and the ``postOnly`` flag and its entry
+guards.
 
 Regression: the sell-trigger sentinel limit price is ``Decimal("0.000000001")``,
 and ``str(Decimal("0.000000001"))`` is ``"1E-9"``. The server's ethers
@@ -14,12 +16,15 @@ was correct. The builder now uses ``format(value, "f")``.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import TriggerOrderParameters
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
 
 PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
@@ -96,3 +101,71 @@ def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClie
     )
     assert payload["limitPx"] == "0.0000001"
     assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
+
+
+def test_limit_payload_decouples_deadline_from_expires_after(client: ReyaTradingClient) -> None:
+    """GTC limit: ``expiresAfter`` is 0 / perpetual and ``deadline`` is a short,
+    independent unix-seconds window — not the old far-future
+    ``deadline == expiresAfter`` lifetime stopgap."""
+    before = int(time.time())
+    payload, _ = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px="3000",
+            qty="0.01",
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    # Perpetual lifetime — rests until filled or cancelled.
+    assert payload["expiresAfter"] == 0
+    # A near-future unix-seconds deadline, decoupled from (and not equal to) expiresAfter.
+    assert before <= payload["deadline"] <= before + 600
+    assert payload["deadline"] != payload["expiresAfter"]
+
+
+def test_limit_payload_post_only_defaults_false(client: ReyaTradingClient) -> None:
+    """postOnly is signed into the 14-field digest and carried on the wire as
+    False by default (no caller opt-in)."""
+    payload, _ = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px="3000",
+            qty="0.01",
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert payload["postOnly"] is False
+
+
+def test_post_only_true_rejected_pending_wire_support(client: ReyaTradingClient) -> None:
+    """post_only=True on a GTC limit is rejected until the OpenAPI wire field and
+    off-chain 14-field digest land — no silently un-settleable order."""
+    with pytest.raises(ValueError, match="post_only=True is not yet supported"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.GTC,
+                post_only=True,
+            )
+        )
+
+
+def test_post_only_with_ioc_rejected(client: ReyaTradingClient) -> None:
+    """post_only + IOC is self-contradictory (IOC is taker-only; post_only must
+    rest) and is always rejected, independent of the rollout gate."""
+    with pytest.raises(ValueError, match="post_only is not supported on IOC"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.IOC,
+                post_only=True,
+            )
+        )

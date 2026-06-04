@@ -28,6 +28,30 @@ class TimeInForceInt(IntEnum):
 
     GTC = 0
     IOC = 1
+    GTT = 2
+
+
+# EIP-712 `OrderDetails` member list. Field order MUST match the on-chain
+# OrderDetails typehash byte-for-byte (the struct hash is order-sensitive).
+# `postOnly` sits immediately after `reduceOnly` (14 fields). The golden-vector
+# test in tests/parity/test_order_details_golden.py pins the resulting struct
+# hash to the canonical on-chain value, so accidental drift is caught.
+_ORDER_DETAILS_TYPE: list[dict[str, str]] = [
+    {"name": "accountId", "type": "uint128"},
+    {"name": "marketId", "type": "uint128"},
+    {"name": "exchangeId", "type": "uint128"},
+    {"name": "orderType", "type": "uint8"},
+    {"name": "quantity", "type": "int256"},
+    {"name": "limitPrice", "type": "uint256"},
+    {"name": "triggerPrice", "type": "uint256"},
+    {"name": "timeInForce", "type": "uint8"},
+    {"name": "clientOrderId", "type": "uint64"},
+    {"name": "reduceOnly", "type": "bool"},
+    {"name": "postOnly", "type": "bool"},
+    {"name": "expiresAfter", "type": "uint256"},
+    {"name": "signer", "type": "address"},
+    {"name": "nonce", "type": "uint256"},
+]
 
 
 class SignatureGenerator:
@@ -81,6 +105,7 @@ class SignatureGenerator:
         expires_after: int,
         nonce: int,
         deadline: int,
+        post_only: bool = False,
     ) -> str:
         """Sign an Order envelope per docs/eip712.md.
 
@@ -98,21 +123,7 @@ class SignatureGenerator:
                 {"name": "deadline", "type": "uint256"},
                 {"name": "order", "type": "OrderDetails"},
             ],
-            "OrderDetails": [
-                {"name": "accountId", "type": "uint128"},
-                {"name": "marketId", "type": "uint128"},
-                {"name": "exchangeId", "type": "uint128"},
-                {"name": "orderType", "type": "uint8"},
-                {"name": "quantity", "type": "int256"},
-                {"name": "limitPrice", "type": "uint256"},
-                {"name": "triggerPrice", "type": "uint256"},
-                {"name": "timeInForce", "type": "uint8"},
-                {"name": "clientOrderId", "type": "uint64"},
-                {"name": "reduceOnly", "type": "bool"},
-                {"name": "expiresAfter", "type": "uint256"},
-                {"name": "signer", "type": "address"},
-                {"name": "nonce", "type": "uint256"},
-            ],
+            "OrderDetails": _ORDER_DETAILS_TYPE,
         }
 
         message = {
@@ -129,6 +140,7 @@ class SignatureGenerator:
                 "timeInForce": time_in_force,
                 "clientOrderId": client_order_id,
                 "reduceOnly": reduce_only,
+                "postOnly": post_only,
                 "expiresAfter": expires_after,
                 "signer": self._signer_wallet_address,
                 "nonce": nonce,

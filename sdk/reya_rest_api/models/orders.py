@@ -16,6 +16,10 @@ class LimitOrderParameters:
     qty: str
     time_in_force: TimeInForce
     reduce_only: Optional[bool] = None
+    # Maker-only intent: the order must rest, never cross as a taker. Valid on
+    # GTC; rejected on IOC (immediate-or-cancel is taker-only). Maps to on-chain
+    # `OrderDetails.postOnly`. None == not requested (treated as False).
+    post_only: Optional[bool] = None
     expires_after: Optional[int] = None
     client_order_id: Optional[int] = None
     deadline: Optional[int] = None

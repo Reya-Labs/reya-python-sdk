@@ -13,10 +13,11 @@
 // hex. The Python parity test (test_signature_parity.py) hardcodes these
 // values and asserts the Python sign_* helpers produce the same bytes.
 //
-// Typed-data definitions and field semantics mirror
-// /Users/ab/Code/reya-off-chain-monorepo/packages/common/src/transactions/sign.ts
-// at commit feat/perpOB-8-candles. If those drift, regenerate by re-running
-// this script and updating the expected hex in test_signature_parity.py.
+// The OrderDetails typed-data is the 14-field schema — postOnly is the 14th
+// field, immediately after reduceOnly — mirroring the canonical on-chain
+// OrderDetails typehash. The OrderCancel / MassCancel envelopes are unchanged.
+// If anything drifts, regenerate by re-running this script and updating the
+// expected hex in test_signature_parity.py.
 
 import { Wallet } from "ethers";
 
@@ -27,7 +28,7 @@ const PRIVATE_KEY =
 const SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 const CHAIN_ID = 89346162; // cronos / devnet1
-const ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"; // devnet1 OG proxy (PRO-164)
+const ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"; // devnet1 OG proxy
 
 const domain = {
   name: "Reya",
@@ -54,6 +55,7 @@ const orderTypes = {
     { name: "timeInForce", type: "uint8" },
     { name: "clientOrderId", type: "uint64" },
     { name: "reduceOnly", type: "bool" },
+    { name: "postOnly", type: "bool" },
     { name: "expiresAfter", type: "uint256" },
     { name: "signer", type: "address" },
     { name: "nonce", type: "uint256" },
@@ -75,6 +77,7 @@ const orderValue = {
     timeInForce: 1, // IOC
     clientOrderId: 42n,
     reduceOnly: false,
+    postOnly: false,
     expiresAfter: 0n,
     signer: SIGNER_ADDRESS,
     nonce: BigInt(1700000000000000),
@@ -91,6 +94,17 @@ const orderSellValue = {
   order: {
     ...orderValue.order,
     quantity: BigInt("-500000000000000000"), // -0.5 E18 (signed; negative = sell)
+  },
+};
+
+// Identical to orderValue except postOnly=true. Pins the maker-only flag's
+// signed path — the 14th OrderDetails field. Only `postOnly` differs, so any
+// drift here unambiguously isolates the postOnly encoding.
+const orderPostOnlyValue = {
+  ...orderValue,
+  order: {
+    ...orderValue.order,
+    postOnly: true,
   },
 };
 
@@ -154,6 +168,11 @@ const orderSellSig = await wallet.signTypedData(
   orderTypes,
   orderSellValue,
 );
+const orderPostOnlySig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderPostOnlyValue,
+);
 const cancelSig = await wallet.signTypedData(
   domain,
   orderCancelTypes,
@@ -174,6 +193,7 @@ console.log(
       signatures: {
         order: orderSig,
         order_sell: orderSellSig,
+        order_post_only: orderPostOnlySig,
         order_cancel: cancelSig,
         mass_cancel: massCancelSig,
       },

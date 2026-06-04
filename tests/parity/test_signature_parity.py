@@ -3,13 +3,12 @@
 TS↔Py signature parity test.
 
 Pinned vector: hardhat test private key 0xac09…ff80 (signer 0xf39F…2266) signing
-three v2.3.0 envelopes (Order, OrderCancel, MassCancel) against the testnet
-OrdersGateway at chain id 89346162.
+the Order envelope (14-field OrderDetails incl. postOnly) plus the OrderCancel
+and MassCancel envelopes, against the testnet OrdersGateway at chain id 89346162.
 
 Expected hex was produced by ``node tests/parity/sign_ts.mjs``, which uses
 ethers v6's ``signTypedData`` against the same orderTypes / orderCancelTypes /
-massCancelTypes that the off-chain monorepo uses (see
-``packages/common/src/transactions/sign.ts`` on the ``feat/perpOB`` branch).
+massCancelTypes as the canonical off-chain signer.
 
 If this test ever fails, either:
 - The Python ``sign_*`` helpers diverged from the canonical TS impl, or
@@ -36,15 +35,22 @@ ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"
 # (ethers v6 signTypedData with the orderTypes from the off-chain monorepo).
 EXPECTED_SIGNATURES = {
     "order": (
-        "0xc3b3bc8592d7777e325063b3882263c0e846c672f0d69661541df68931d4e454"
-        "34eddedb9a363237bcdd61804d229bfa244263f93da409f364bc27d3b47b969e"
-        "1b"
+        "0x8b7d36f622ad44815d66a6f75678f40c99cdb965088bcc857b53db5f8a7b272d"
+        "0204574e11bb9c8109c132490b7f36ff4dc6ee1e93c277a616cf60c2db26cce6"
+        "1c"
     ),
     # Same envelope as "order" but with a SELL (negative quantity) — pins the
     # is_buy=False sign-encoding path that the buy vector can't catch.
     "order_sell": (
-        "0xc46e7e3ca39c19f1ec2a1c370d0c521271fca8ced7fd4f9cd0b74dbe25c19517"
-        "2692285b50c0cc19ce021e94997b81f4b24bd7342ce32475170f6a281ef65c8e"
+        "0xf2d69b90a93c361c28a44483d26e6667721f63fb8c8ec1a12106773c663a4397"
+        "2c42d4b2ea68531b9b63d25e3a90cf093892db8983525424a6b0044d4c6d28bf"
+        "1b"
+    ),
+    # Same envelope as "order" but with postOnly=true — pins the 14th
+    # OrderDetails field; only postOnly differs from "order".
+    "order_post_only": (
+        "0x752574d6c57c9b9736966f7ec318c9a5ee9dc0f1e7ea631b5056061c0241d0bf"
+        "1cd0cc3b3bd3bbee542c7a95f2bc1ebd85afb25152f4b648f57989063745af9c"
         "1c"
     ),
     "order_cancel": (
@@ -133,6 +139,37 @@ def test_order_sell_signature_parity(signer: SignatureGenerator) -> None:
     assert (
         sig == EXPECTED_SIGNATURES["order_sell"]
     ), f"Sell-order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_sell']}"
+
+
+def test_order_post_only_signature_parity(signer: SignatureGenerator) -> None:
+    """post_only=True must encode the 14th OrderDetails field identically to ethers v6.
+
+    Identical to the buy vector except ``post_only=True``; the only signed field
+    that changes is ``OrderDetails.postOnly``, so any drift isolates the postOnly
+    encoding. This is an encoding-level parity check — the IOC + post_only combo
+    is rejected at the client layer (``build_create_limit_order_payload``), but
+    ``sign_order`` itself signs whatever field values it is handed.
+    """
+    sig = signer.sign_order(
+        account_id=12345,
+        market_id=1,
+        exchange_id=2,
+        order_type=int(OrderTypeInt.LIMIT),
+        is_buy=True,
+        qty=Decimal("0.5"),
+        limit_price=Decimal("3000"),
+        trigger_price=Decimal("0"),
+        time_in_force=int(TimeInForceInt.IOC),
+        client_order_id=42,
+        reduce_only=False,
+        expires_after=0,
+        nonce=1700000000000000,
+        deadline=1745000000,
+        post_only=True,
+    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order_post_only"]
+    ), f"post_only-order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_post_only']}"
 
 
 def test_order_cancel_signature_parity(signer: SignatureGenerator) -> None:
