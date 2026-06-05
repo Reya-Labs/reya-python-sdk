@@ -68,13 +68,10 @@ async def test_spot_order_invalid_signature(spot_config: SpotTestConfig, spot_te
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
         deadline=deadline,
-        # The perpOB-era controller rejects orders without an
-        # `expiresAfter` short-circuit before reaching the signature
-        # check. Set it to `deadline` (matching the SDK's high-level
-        # `create_limit_order` default) so the request makes it past
-        # request validation to the actual signature path this test
-        # exercises.
-        expiresAfter=deadline,
+        # GTC orders carry no lifetime: expiresAfter must be 0 (only GTT
+        # sets it). A non-zero value is rejected at request validation,
+        # before the signature path this test exercises.
+        expiresAfter=0,
         reduceOnly=None,
         signature=fake_signature,
         nonce=str(nonce),
@@ -145,11 +142,10 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
         time_in_force=0,  # GTC
         client_order_id=0,
         reduce_only=False,
-        # Match the request's `expiresAfter` so the signature recovers
-        # against the same envelope the server validates (otherwise we'd
-        # fail at a different layer than the permission check this test
-        # is meant to exercise). See the request below.
-        expires_after=deadline,
+        # Match the request's `expiresAfter` (0 for GTC) so the signature
+        # recovers against the same envelope the server validates — else
+        # we'd fail signature recovery, not the permission check under test.
+        expires_after=0,
         nonce=nonce,
         deadline=deadline,
     )
@@ -164,10 +160,9 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
         deadline=deadline,
-        # perpOB-era request-validation requires `expiresAfter` set to
-        # a future timestamp; without it the controller rejects with
-        # INPUT_VALIDATION_ERROR before reaching the permission check.
-        expiresAfter=deadline,
+        # GTC carries no lifetime: expiresAfter must be 0 (only GTT sets it),
+        # else request validation rejects before the permission check.
+        expiresAfter=0,
         reduceOnly=None,
         signature=signature,
         nonce=str(nonce),
@@ -392,7 +387,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         time_in_force=0,  # GTC
         client_order_id=0,
         reduce_only=False,
-        expires_after=first_deadline,  # perpOB-era request validator requires future `expiresAfter`
+        expires_after=0,  # GTC has no lifetime; matches the wire expiresAfter (0)
         nonce=first_nonce,
         deadline=first_deadline,
     )
@@ -407,7 +402,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
         deadline=first_deadline,
-        expiresAfter=first_deadline,
+        expiresAfter=0,
         reduceOnly=None,
         signature=first_signature,
         nonce=str(first_nonce),
@@ -441,7 +436,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         time_in_force=0,  # GTC
         client_order_id=0,
         reduce_only=False,
-        expires_after=reused_deadline,  # perpOB-era request validator requires future `expiresAfter`
+        expires_after=0,  # GTC has no lifetime; matches the wire expiresAfter (0)
         nonce=first_nonce,
         deadline=reused_deadline,
     )
@@ -456,7 +451,7 @@ async def test_spot_order_reused_nonce(spot_config: SpotTestConfig, spot_tester:
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
         deadline=reused_deadline,
-        expiresAfter=reused_deadline,
+        expiresAfter=0,
         reduceOnly=None,
         signature=reused_signature,
         nonce=str(first_nonce),  # Reuse the same nonce
@@ -517,7 +512,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         time_in_force=0,  # GTC
         client_order_id=0,
         reduce_only=False,
-        expires_after=first_deadline,  # perpOB-era request validator requires future `expiresAfter`
+        expires_after=0,  # GTC has no lifetime; matches the wire expiresAfter (0)
         nonce=first_nonce,
         deadline=first_deadline,
     )
@@ -532,7 +527,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
         deadline=first_deadline,
-        expiresAfter=first_deadline,
+        expiresAfter=0,
         reduceOnly=None,
         signature=first_signature,
         nonce=str(first_nonce),
@@ -567,7 +562,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         time_in_force=0,  # GTC
         client_order_id=0,
         reduce_only=False,
-        expires_after=old_deadline,  # perpOB-era request validator requires future `expiresAfter`
+        expires_after=0,  # GTC has no lifetime; matches the wire expiresAfter (0)
         nonce=old_nonce,
         deadline=old_deadline,
     )
@@ -582,7 +577,7 @@ async def test_spot_order_old_nonce(spot_config: SpotTestConfig, spot_tester: Re
         orderType=OrderType.LIMIT,
         timeInForce=TimeInForce.GTC,
         deadline=old_deadline,
-        expiresAfter=old_deadline,
+        expiresAfter=0,
         reduceOnly=None,
         signature=old_signature,
         nonce=str(old_nonce),  # Use nonce - 1
@@ -1839,7 +1834,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
         time_in_force=0,  # GTC
         client_order_id=0,
         reduce_only=False,
-        expires_after=deadline,  # perpOB-era request validator requires future `expiresAfter`
+        expires_after=0,  # GTC has no lifetime; matches the wire expiresAfter (0)
         nonce=nonce,
         deadline=deadline,
     )
@@ -1857,7 +1852,7 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
         signature=signature,
         nonce="",  # Empty nonce
         deadline=deadline,
-        expiresAfter=deadline,
+        expiresAfter=0,
         signerWallet=sig_gen.signer_wallet_address,
     )
 
