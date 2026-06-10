@@ -23,7 +23,7 @@ def _get_version() -> str:
             with open(pyproject_path, "rb") as f:
                 pyproject_data = tomllib.load(f)
             return str(pyproject_data["project"]["version"])
-        except (FileNotFoundError, KeyError):
+        except (OSError, KeyError, tomllib.TOMLDecodeError):
             return "unknown"
 
 
