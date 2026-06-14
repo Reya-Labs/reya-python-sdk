@@ -108,6 +108,34 @@ const orderPostOnlyValue = {
   },
 };
 
+// GTT *create* vector: identical to orderValue except timeInForce=2 (GTT) and a
+// non-zero expiresAfter strictly after the deadline (the order has to outlive
+// its own entry window). Pins the GTT create path's signed timeInForce==2 +
+// non-zero expiresAfter encoding — the base/sell/post_only vectors are all IOC
+// (timeInForce=1, expiresAfter=0), so a silent GTT→0/1 mismap would slip past
+// them while the wire string stayed "GTT". The Python side reproduces this both
+// via direct sign_order(int(TimeInForceInt.GTT)) and via
+// build_create_limit_order_payload.
+const orderGttCreateValue = {
+  ...orderValue,
+  order: {
+    ...orderValue.order,
+    timeInForce: 2, // GTT (rests + auto-expires at expiresAfter)
+    expiresAfter: BigInt(1745000600), // strictly after deadline 1745000000
+  },
+};
+
+// GTT create + postOnly=true: same as the GTT create vector with the maker-only
+// flag set, pinning that a GTT can also be post-only end-to-end (timeInForce==2
+// AND postOnly==true both signed).
+const orderGttPostOnlyValue = {
+  ...orderGttCreateValue,
+  order: {
+    ...orderGttCreateValue.order,
+    postOnly: true,
+  },
+};
+
 // === OrderCancel (matching-engine layer) ===
 const orderCancelTypes = {
   OrderCancel: [
@@ -229,6 +257,16 @@ const orderPostOnlySig = await wallet.signTypedData(
   orderTypes,
   orderPostOnlyValue,
 );
+const orderGttCreateSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderGttCreateValue,
+);
+const orderGttPostOnlySig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderGttPostOnlyValue,
+);
 const cancelSig = await wallet.signTypedData(
   domain,
   orderCancelTypes,
@@ -265,6 +303,8 @@ console.log(
         order: orderSig,
         order_sell: orderSellSig,
         order_post_only: orderPostOnlySig,
+        order_gtt_create: orderGttCreateSig,
+        order_gtt_post_only: orderGttPostOnlySig,
         order_cancel: cancelSig,
         mass_cancel: massCancelSig,
         cancel_all_after_arm: cancelAllAfterArmSig,

@@ -295,3 +295,53 @@ def test_post_only_gtc_flows_and_is_signed(client: ReyaTradingClient) -> None:
         post_only=True,
     )
     assert payload["signature"] == expected
+
+
+@pytest.mark.post_only
+def test_post_only_gtt_flows_and_is_signed(client: ReyaTradingClient) -> None:
+    """post_only=True + GTT flows (a GTT rests until it expires, so it can be
+    maker-only), the payload carries postOnly=true AND a non-zero expiresAfter,
+    and the signature covers BOTH postOnly=True and timeInForce==GTT(2) —
+    re-signing the same envelope reproduces the payload's bytes. Falsifiability:
+    re-signing as GTC (the only other resting TIF) must NOT match, proving the
+    GTT int is what got signed."""
+    expires_after = PINNED_DEADLINE + 600
+    payload, nonce = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px="3000",
+            qty="0.5",
+            time_in_force=TimeInForce.GTT,
+            post_only=True,
+            client_order_id=42,
+            deadline=PINNED_DEADLINE,
+            expires_after=expires_after,
+        )
+    )
+    assert payload["postOnly"] is True
+    assert payload["timeInForce"] == TimeInForce.GTT.value
+    assert payload["expiresAfter"] == expires_after
+
+    def _resign(tif_int: int) -> str:
+        return client.signature_generator.sign_order(
+            account_id=12345,
+            market_id=1,
+            exchange_id=2,
+            order_type=int(OrderTypeInt.LIMIT),
+            is_buy=True,
+            qty=Decimal("0.5"),
+            limit_price=Decimal("3000"),
+            trigger_price=Decimal("0"),
+            time_in_force=tif_int,
+            client_order_id=42,
+            reduce_only=False,
+            expires_after=expires_after,
+            nonce=nonce,
+            deadline=PINNED_DEADLINE,
+            post_only=True,
+        )
+
+    assert payload["signature"] == _resign(int(TimeInForceInt.GTT))
+    # Sanity: the GTT int matters — re-signing as GTC signs different bytes.
+    assert payload["signature"] != _resign(int(TimeInForceInt.GTC))

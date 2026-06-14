@@ -26,7 +26,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import ModifyOrderParameters
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters
 
 pytestmark = pytest.mark.offline
 
@@ -57,6 +57,23 @@ EXPECTED_SIGNATURES = {
         "0x752574d6c57c9b9736966f7ec318c9a5ee9dc0f1e7ea631b5056061c0241d0bf"
         "1cd0cc3b3bd3bbee542c7a95f2bc1ebd85afb25152f4b648f57989063745af9c"
         "1c"
+    ),
+    # GTT *create*: same envelope as "order" but timeInForce=2 (GTT) and a
+    # non-zero expiresAfter (1745000600) strictly after the deadline. Pins that
+    # the SIGNED timeInForce is 2 and a non-zero expiresAfter is covered — a
+    # silent GTT→0/1 mismap (with the wire string still "GTT") would slip past
+    # every IOC-based vector. Only timeInForce + expiresAfter differ from "order".
+    "order_gtt_create": (
+        "0xe8df8d60e3f7381f3d23df513addfdf886cbac6e71c727e579cb038c2ce62498"
+        "7515cca3414e88e2d241c152157ce12cb2454d86e5fb379c865fbe42c289e3fd"
+        "1c"
+    ),
+    # GTT create + postOnly=true: the GTT create vector with the maker-only flag
+    # set, pinning both timeInForce==2 AND postOnly==true signed together.
+    "order_gtt_post_only": (
+        "0xb23de139806533b33906e8c373054ff1a296d9e6d6a166c8c8ac65a991a529da"
+        "4d9e939674c951be5b58a4059c0875ef02ade964cf4d06b8bc51d4e453a4746f"
+        "1b"
     ),
     "order_cancel": (
         "0x90ddba6ff879dee4773c214c927a470720f42378574281866edce100ea8c59d7"
@@ -209,6 +226,83 @@ def test_order_post_only_signature_parity(signer: SignatureGenerator) -> None:
     ), f"post_only-order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_post_only']}"
 
 
+def test_order_gtt_create_signature_parity(signer: SignatureGenerator) -> None:
+    """GTT create must sign timeInForce==2 (not the IOC 1 / GTC 0 the wire-string
+    can't catch) and a non-zero expiresAfter.
+
+    Identical to the "order" vector except ``time_in_force=int(TimeInForceInt.GTT)``
+    (== 2) and ``expires_after=1745000600`` (strictly after the deadline). Any
+    drift here isolates the GTT timeInForce + expiresAfter encoding. Falsifiable:
+    a silent GTT→0/1 mismap would change these bytes and fail.
+    """
+    sig = signer.sign_order(
+        account_id=12345,
+        market_id=1,
+        exchange_id=2,
+        order_type=int(OrderTypeInt.LIMIT),
+        is_buy=True,
+        qty=Decimal("0.5"),
+        limit_price=Decimal("3000"),
+        trigger_price=Decimal("0"),
+        time_in_force=int(TimeInForceInt.GTT),
+        client_order_id=42,
+        reduce_only=False,
+        expires_after=1745000600,
+        nonce=1700000000000000,
+        deadline=1745000000,
+    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order_gtt_create"]
+    ), f"GTT-create signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_gtt_create']}"
+    # Falsifiability: signing the SAME envelope as IOC (the legacy default) must
+    # NOT match the GTT golden — proving the golden is sensitive to timeInForce.
+    sig_ioc = signer.sign_order(
+        account_id=12345,
+        market_id=1,
+        exchange_id=2,
+        order_type=int(OrderTypeInt.LIMIT),
+        is_buy=True,
+        qty=Decimal("0.5"),
+        limit_price=Decimal("3000"),
+        trigger_price=Decimal("0"),
+        time_in_force=int(TimeInForceInt.IOC),
+        client_order_id=42,
+        reduce_only=False,
+        expires_after=1745000600,
+        nonce=1700000000000000,
+        deadline=1745000000,
+    )
+    assert sig_ioc != EXPECTED_SIGNATURES["order_gtt_create"], "GTT golden is insensitive to timeInForce"
+
+
+def test_order_gtt_post_only_signature_parity(signer: SignatureGenerator) -> None:
+    """A GTT can also be post-only: timeInForce==2 AND postOnly==true both signed.
+
+    Identical to the GTT-create vector except ``post_only=True``. Any drift here
+    isolates the (GTT + postOnly) combination's encoding.
+    """
+    sig = signer.sign_order(
+        account_id=12345,
+        market_id=1,
+        exchange_id=2,
+        order_type=int(OrderTypeInt.LIMIT),
+        is_buy=True,
+        qty=Decimal("0.5"),
+        limit_price=Decimal("3000"),
+        trigger_price=Decimal("0"),
+        time_in_force=int(TimeInForceInt.GTT),
+        client_order_id=42,
+        reduce_only=False,
+        expires_after=1745000600,
+        nonce=1700000000000000,
+        deadline=1745000000,
+        post_only=True,
+    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order_gtt_post_only"]
+    ), f"GTT+postOnly signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_gtt_post_only']}"
+
+
 def test_order_cancel_signature_parity(signer: SignatureGenerator) -> None:
     """Python sign_cancel_order produces the same bytes as ethers v6 signTypedData."""
     sig = signer.sign_cancel_order(
@@ -344,6 +438,66 @@ def offline_client() -> ReyaTradingClient:
     client._symbol_to_market_id = {"ETHRUSDPERP": 1}  # pylint: disable=protected-access
     client._initialized = True  # pylint: disable=protected-access
     return client
+
+
+def test_gtt_create_builder_signs_time_in_force_two(offline_client: ReyaTradingClient) -> None:
+    """Builder-level GTT-create: ``build_create_limit_order_payload`` for a GTT
+    must produce a signature that matches ``sign_order`` with
+    ``time_in_force=int(TimeInForceInt.GTT)`` (== 2) — proving the client's
+    ``_TIME_IN_FORCE_TO_INT[GTT]`` translation feeds the SIGNED int 2, not a
+    silent 0/1 mismap. The wire string stays "GTT" either way, so only the
+    signature can catch the mismap.
+
+    The create builder auto-generates the nonce (no override hook), so this is
+    self-consistency against ``sign_order`` over the SAME nonce/deadline (the
+    cross-language TS golden for this struct is pinned separately via
+    ``test_order_gtt_create_signature_parity``)."""
+    expires_after = 1745000600
+    deadline = 1745000000
+    payload, nonce = offline_client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol="ETHRUSDPERP",
+            is_buy=True,
+            limit_px="3000",
+            qty="0.5",
+            time_in_force=TimeInForce.GTT,
+            client_order_id=42,
+            expires_after=expires_after,
+            deadline=deadline,
+        )
+    )
+    # The wire string is "GTT" regardless of the signed int, so it is NOT what
+    # proves the mapping. The signature is.
+    assert payload["timeInForce"] == TimeInForce.GTT.value
+    assert payload["expiresAfter"] == expires_after
+
+    def _resign(tif_int: int) -> str:
+        return offline_client.signature_generator.sign_order(
+            account_id=12345,
+            market_id=1,
+            exchange_id=2,
+            order_type=int(OrderTypeInt.LIMIT),
+            is_buy=True,
+            qty=Decimal("0.5"),
+            limit_price=Decimal("3000"),
+            trigger_price=Decimal("0"),
+            time_in_force=tif_int,
+            client_order_id=42,
+            reduce_only=False,
+            expires_after=expires_after,
+            nonce=nonce,
+            deadline=deadline,
+            post_only=False,
+        )
+
+    assert payload["signature"] == _resign(int(TimeInForceInt.GTT)), (
+        "GTT-create builder did not sign timeInForce==2:\n"
+        f"  payload: {payload['signature']}\n  GTT(2):  {_resign(int(TimeInForceInt.GTT))}"
+    )
+    # Falsifiability: a silent 0 (GTC) or 1 (IOC) mismap would sign different
+    # bytes — confirm the assertion above actually discriminates.
+    assert payload["signature"] != _resign(int(TimeInForceInt.GTC))
+    assert payload["signature"] != _resign(int(TimeInForceInt.IOC))
 
 
 @pytest.mark.modify

@@ -11,10 +11,13 @@ assert a fresh `lastUpdateAt` plus the WS `orderChange` carrying the SAME
 orderId with the new fields. No fills occur (the orders rest far from the
 book), so these run on a single account (`maker`) per market.
 
-expiresAfter is TIF-bound: only GTT orders carry a lifetime and GTT creation
-is gated off in the SDK, so the flags-only test pins the NEGATIVE behavior
-(non-zero expiresAfter on a GTC → INPUT_VALIDATION_ERROR, order untouched).
-Revisit as a positive 0→future→0 test once GTT entry lands.
+expiresAfter is TIF-bound: only GTT orders carry a lifetime. These happy-path
+modifies all run on a resting GTC, so the flags-only test pins the (still-valid)
+rule that a NON-GTT order's expiresAfter must be 0 — modifying a resting GTC to a
+non-zero expiresAfter is rejected (INPUT_VALIDATION_ERROR, order untouched). GTT
+creation IS supported by the SDK now (shipped in 98c10c2); the positive GTT
+modify path (0→future→0 on a resting GTT) is intentionally DEFERRED until the
+GTT matching-engine is on devnet1.
 """
 
 import time
@@ -22,7 +25,6 @@ from decimal import Decimal
 
 import pytest
 
-from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import full_state_modify_params
@@ -116,7 +118,8 @@ async def test_modify_flags_only(
 ) -> None:
     """postOnly False→True→False, each step a single-field modify with the
     rest of the state restated unchanged; then a non-zero expiresAfter on the
-    GTC is rejected (only GTT carries a lifetime) leaving the order untouched."""
+    GTC is rejected client-side (only GTT carries a lifetime) leaving the order
+    untouched."""
     order = await rest_gtc(maker, market_config, price_multiplier=0.50)
     order_id = order.order_id
 
@@ -132,24 +135,23 @@ async def test_modify_flags_only(
     order = await wait_for_order_fields(maker, order_id, post_only=False)
     logger.info(f"[{market_type}] ✅ postOnly True -> False read back")
 
-    # expiresAfter is TIF-bound: the resting order is GTC (GTT creation is
-    # gated off in the SDK), so ANY non-zero expiresAfter is rejected by the
-    # handler with INPUT_VALIDATION_ERROR and the order is left untouched.
+    # expiresAfter is TIF-bound: the resting order is GTC, so any non-zero
+    # expiresAfter is rejected by the client's fail-fast coupling guard in
+    # build_modify_order_payload with a ValueError BEFORE the request is signed
+    # or sent — GTC never expires; only GTT carries a lifetime. GTT creation IS
+    # supported now; the positive GTT modify path (rest a GTT, then refresh its
+    # expiry) is deferred until GTT is on devnet1. The off-chain server enforces
+    # the same rule as defense-in-depth (covered by the off-chain handler tests).
     future_expiry = int(time.time()) + 3600
-    with pytest.raises(ApiException) as exc_info:
+    with pytest.raises(ValueError, match="GTC orders must not expire"):
         await maker.client.modify_order(full_state_modify_params(order, expires_after=future_expiry))
-    error_msg = str(exc_info.value)
-    assert "INPUT_VALIDATION_ERROR" in error_msg, f"Expected INPUT_VALIDATION_ERROR, got: {error_msg[:200]}"
-    assert (
-        "expiresAfter must be 0 for non-GTT orders" in error_msg
-    ), f"Expected the non-GTT expiresAfter message, got: {error_msg[:200]}"
-    logger.info(f"[{market_type}] ✅ non-zero expiresAfter on a GTC rejected with INPUT_VALIDATION_ERROR")
+    logger.info(f"[{market_type}] ✅ non-zero expiresAfter on a GTC rejected client-side before send")
 
     untouched = await maker.data.open_order(order_id)
     assert untouched is not None, "Rejected expiresAfter modify must leave the order resting"
     assert int(untouched.expires_after or 0) == 0, f"expiresAfter must stay 0: {untouched.expires_after}"
     assert not untouched.post_only, f"Rejected modify must not flip postOnly: {untouched.post_only}"
-    logger.info(f"[{market_type}] ✅ order untouched after the expiresAfter rejection")
+    logger.info(f"[{market_type}] ✅ order untouched after the rejected expiresAfter modify")
 
     await maker.orders.cancel(order_id=order_id, symbol=market_config.symbol, account_id=maker.account_id)
     await maker.check.no_open_orders()

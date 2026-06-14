@@ -201,6 +201,20 @@ class OrderBuilder:
         self._time_in_force = TimeInForce.IOC
         return self
 
+    def gtt(self, expires_after: int | None = None) -> OrderBuilder:
+        """Set time-in-force to Good-Till-Time (rests until it auto-expires).
+
+        GTT is the ONLY time-in-force that carries an order lifetime: the SDK
+        requires a non-zero ``expires_after`` strictly after the deadline (GTC
+        rests until cancelled and IOC never rests, so both sign ``expires_after``
+        0). Pass it here, or set it separately via :meth:`expires_after`; either
+        way the build is rejected without one.
+        """
+        self._time_in_force = TimeInForce.GTT
+        if expires_after is not None:
+            self._expires_after = expires_after
+        return self
+
     def time_in_force(self, tif: TimeInForce) -> OrderBuilder:
         """Set time-in-force explicitly."""
         self._time_in_force = tif
@@ -217,7 +231,12 @@ class OrderBuilder:
         return self
 
     def expires_after(self, timestamp_ms: int) -> OrderBuilder:
-        """Set expiration timestamp in milliseconds (IOC orders only)."""
+        """Set the on-chain order lifetime (``expiresAfter``).
+
+        Only GTT carries a lifetime, and the SDK requires it non-zero and
+        strictly after the deadline; GTC and IOC must sign ``expiresAfter`` 0
+        (GTC rests until cancelled, IOC never rests). Use with :meth:`gtt`.
+        """
         self._expires_after = timestamp_ms
         return self
 

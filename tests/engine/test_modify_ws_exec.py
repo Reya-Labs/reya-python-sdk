@@ -241,12 +241,12 @@ async def test_ws_exec_modify_flags_and_expires_after_envelope(
     """Two transport concerns in one deterministic flow: (1) flag fidelity —
     postOnly False→True→False survives WsModifyOrderRequest's boolean
     serialization, read back via REST openOrders (the WS modify response
-    carries no postOnly echo); (2) validation envelope — a non-zero
-    expiresAfter on the resting GTC has NO client-side guard in
-    build_modify_order_payload, so it reaches the server and must map back
-    through the per-op error envelope as WsExecOperationError
-    INPUT_VALIDATION_ERROR ('expiresAfter must be 0 for non-GTT orders'),
-    leaving the order untouched."""
+    carries no postOnly echo); (2) coupling guard — a non-zero expiresAfter on
+    the resting GTC is rejected by the shared client coupling guard in
+    build_modify_order_payload (reused by the ws-exec transport) with a
+    ValueError BEFORE anything is signed or sent — GTC never expires; only GTT
+    carries a lifetime — leaving the order untouched. The off-chain server
+    enforces the same rule as defense-in-depth."""
     rest, ws, min_qty = modify_ws_harness
 
     create = await ws.create_limit_order(
@@ -276,24 +276,18 @@ async def test_ws_exec_modify_flags_and_expires_after_envelope(
         order = await _wait_for_order_post_only(rest, order_id, expected=False)
         print("  [ws-exec] postOnly True -> False read back")
 
-        # expiresAfter is TIF-bound: the resting order is GTC, so ANY non-zero
-        # expiresAfter is a server-side INPUT_VALIDATION_ERROR (the shared
-        # builder signs-and-sends it without a local guard).
+        # expiresAfter is TIF-bound: the resting order is GTC, so any non-zero
+        # expiresAfter is rejected by the shared client coupling guard in
+        # build_modify_order_payload with a ValueError before signing/sending.
         future_expiry = int(time.time()) + 3600
-        with pytest.raises(WsExecOperationError) as exc_info:
+        with pytest.raises(ValueError, match="GTC orders must not expire"):
             await ws.modify_order(full_state_modify_params(order, expires_after=future_expiry))
-        assert (
-            exc_info.value.code == "INPUT_VALIDATION_ERROR"
-        ), f"Expected INPUT_VALIDATION_ERROR, got {exc_info.value.code}"
-        assert (
-            "expiresAfter must be 0 for non-GTT orders" in exc_info.value.message
-        ), f"Expected the non-GTT expiresAfter message, got: {exc_info.value.message[:200]}"
-        print("  [ws-exec] non-zero expiresAfter on GTC rejected OK code=INPUT_VALIDATION_ERROR")
+        print("  [ws-exec] non-zero expiresAfter on GTC rejected client-side before send")
 
         untouched = await _wait_for_open_order(rest, order_id)
         assert int(untouched.expires_after or 0) == 0, f"expiresAfter must stay 0: {untouched.expires_after}"
         assert not untouched.post_only, f"Rejected modify must not flip postOnly: {untouched.post_only}"
-        print("  [ws-exec] order untouched after the expiresAfter rejection")
+        print("  [ws-exec] order untouched after the rejected expiresAfter modify")
     finally:
         await ws.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=rest.config.account_id)
 
