@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional, Union
 import asyncio
 import logging
 import os
+from decimal import Decimal
 
 import pytest
 
@@ -183,6 +184,43 @@ class Checks:
             assert (
                 pos.last_trade_sequence_number == expected_last_trade_sequence_number
             ), "check_position: Last trade sequence number does not match"
+
+    async def position_delta(
+        self,
+        symbol: str,
+        baseline: Decimal,
+        expected_delta: Decimal,
+        expected_account_id: Optional[int] = None,
+        expected_exchange_id: Optional[int] = None,
+        timeout: float = 3.0,
+    ) -> None:
+        """Assert the signed position moved by exactly `expected_delta` from `baseline`.
+
+        Perp tests are baseline-relative: accounts may carry pre-existing
+        positions, so tests assert the signed move their own trades caused
+        rather than absolute position state. Polls briefly to absorb the
+        indexer-write lag (same rationale as `position`). When the expected
+        final signed quantity is non-zero, the position record's identity
+        fields are verified too.
+        """
+        expected = baseline + expected_delta
+        current = await self._t.positions.signed_qty(symbol)
+        deadline = asyncio.get_event_loop().time() + timeout
+        while current != expected and asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(0.1)
+            current = await self._t.positions.signed_qty(symbol)
+        assert current == expected, (
+            f"check_position_delta: expected signed qty {expected} "
+            f"(baseline {baseline} + delta {expected_delta}), got {current}"
+        )
+
+        if expected != 0:
+            pos = await self._t.data.position(symbol)
+            assert pos is not None, "check_position_delta: non-zero signed qty but no position record"
+            if expected_account_id is not None:
+                assert pos.account_id == expected_account_id, "check_position_delta: Account ID does not match"
+            if expected_exchange_id is not None:
+                assert pos.exchange_id == expected_exchange_id, "check_position_delta: Exchange ID does not match"
 
     async def position_not_open(self, symbol: str) -> None:
         """Assert position is closed via both REST and WebSocket."""

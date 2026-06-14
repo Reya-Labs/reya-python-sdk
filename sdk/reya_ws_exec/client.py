@@ -32,14 +32,18 @@ from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name
     create_connection,
 )
 
+from sdk.async_exec_api.cancel_all_after_request import CancelAllAfterRequest as WsCancelAllAfterRequest
+from sdk.async_exec_api.cancel_all_after_response import CancelAllAfterResponse as WsCancelAllAfterResponse
 from sdk.async_exec_api.cancel_order_request import CancelOrderRequest as WsCancelOrderRequest
 from sdk.async_exec_api.cancel_order_response import CancelOrderResponse as WsCancelOrderResponse
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsCreateOrderRequest
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsCreateOrderResponse
 from sdk.async_exec_api.mass_cancel_request import MassCancelRequest as WsMassCancelRequest
 from sdk.async_exec_api.mass_cancel_response import MassCancelResponse as WsMassCancelResponse
+from sdk.async_exec_api.modify_order_request import ModifyOrderRequest as WsModifyOrderRequest
+from sdk.async_exec_api.modify_order_response import ModifyOrderResponse as WsModifyOrderResponse
 from sdk.reya_rest_api.client import ReyaTradingClient
-from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
 logger = logging.getLogger("reya.ws_exec")
 
@@ -231,6 +235,34 @@ class ReyaWsExecClient:
         req = WsMassCancelRequest(**payload)
         envelope = await self._send_and_await("cancelAll", req)
         return WsMassCancelResponse.model_validate(envelope)
+
+    async def modify_order(self, params: ModifyOrderParameters) -> WsModifyOrderResponse:
+        """Modify a resting order in place. Same arg semantics as
+        :meth:`ReyaTradingClient.modify_order`."""
+        payload, _nonce = self._rest.build_modify_order_payload(params)
+        req = WsModifyOrderRequest(**payload)
+        envelope = await self._send_and_await("modifyOrder", req)
+        return WsModifyOrderResponse.model_validate(envelope)
+
+    async def cancel_all_after(
+        self,
+        timeout_ms: int,
+        account_id: Optional[int] = None,
+        deadline: Optional[int] = None,
+        nonce: Optional[int] = None,
+    ) -> WsCancelAllAfterResponse:
+        """Arm, refresh, or disarm the account-wide cancel-all-after countdown
+        (dead-man's-switch). Same arg semantics as
+        :meth:`ReyaTradingClient.cancel_all_after`."""
+        payload = self._rest.build_cancel_all_after_payload(
+            timeout_ms=timeout_ms,
+            account_id=account_id,
+            deadline=deadline,
+            nonce=nonce,
+        )
+        req = WsCancelAllAfterRequest(**payload)
+        envelope = await self._send_and_await("cancelAllAfter", req)
+        return WsCancelAllAfterResponse.model_validate(envelope)
 
     async def ping(self) -> None:
         """Send a JSON-layer ping and await the matching pong.

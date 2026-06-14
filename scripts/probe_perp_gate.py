@@ -23,7 +23,7 @@ async def main() -> None:
     client = ReyaTradingClient()
     await client.start()
     try:
-        defs = await client.reference.get_market_definitions()
+        defs = await client.reference.get_perp_market_definitions()
         perp_defs = [d for d in defs if d.symbol.endswith("PERP")]
         print(f"Found {len(perp_defs)} perp market(s): {[d.symbol for d in perp_defs]}")
 

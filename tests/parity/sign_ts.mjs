@@ -160,6 +160,62 @@ const massCancelValue = {
   },
 };
 
+// === CancelAllAfter (matching-engine layer, cancel-on-disconnect) ===
+const cancelAllAfterTypes = {
+  CancelAllAfter: [
+    { name: "verifyingChainId", type: "uint64" },
+    { name: "deadline", type: "uint64" },
+    { name: "cancelAllAfter", type: "CancelAllAfterDetails" },
+  ],
+  CancelAllAfterDetails: [
+    { name: "accountId", type: "uint64" },
+    { name: "timeoutMs", type: "uint64" },
+    { name: "nonce", type: "uint64" },
+  ],
+};
+
+const cancelAllAfterArmValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000180),
+  cancelAllAfter: {
+    accountId: 12345n,
+    timeoutMs: 30000n,
+    nonce: BigInt(1700000000000003),
+  },
+};
+
+// timeoutMs 0 = disarm; pins the zero path distinctly from the arm vector.
+const cancelAllAfterDisarmValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000240),
+  cancelAllAfter: {
+    accountId: 12345n,
+    timeoutMs: 0n,
+    nonce: BigInt(1700000000000004),
+  },
+};
+
+// Modify signs the SAME Order envelope over the full post-modify state — no
+// dedicated typed-data schema. This vector is orderValue with all four
+// modifiable fields changed (px/qty/postOnly/expiresAfter) on a resting GTT
+// (the modifiable order that legitimately carries a non-zero expiresAfter,
+// strictly after the deadline), and a fresh nonce; the Python side must
+// reproduce it through the modify payload builder, proving modify == order
+// signing over the post-modify struct.
+const orderModifyStateValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000300),
+  order: {
+    ...orderValue.order,
+    quantity: BigInt("750000000000000000"), // +0.75 E18 (new TOTAL qty)
+    limitPrice: BigInt("2950000000000000000000"), // 2950 E18 (new px)
+    timeInForce: 2, // GTT (resting + auto-expires at expiresAfter)
+    postOnly: true,
+    expiresAfter: BigInt(1745003600),
+    nonce: BigInt(1700000000000005),
+  },
+};
+
 const wallet = new Wallet(PRIVATE_KEY);
 
 const orderSig = await wallet.signTypedData(domain, orderTypes, orderValue);
@@ -183,6 +239,21 @@ const massCancelSig = await wallet.signTypedData(
   massCancelTypes,
   massCancelValue,
 );
+const cancelAllAfterArmSig = await wallet.signTypedData(
+  domain,
+  cancelAllAfterTypes,
+  cancelAllAfterArmValue,
+);
+const cancelAllAfterDisarmSig = await wallet.signTypedData(
+  domain,
+  cancelAllAfterTypes,
+  cancelAllAfterDisarmValue,
+);
+const orderModifyStateSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderModifyStateValue,
+);
 
 console.log(
   JSON.stringify(
@@ -196,6 +267,9 @@ console.log(
         order_post_only: orderPostOnlySig,
         order_cancel: cancelSig,
         mass_cancel: massCancelSig,
+        cancel_all_after_arm: cancelAllAfterArmSig,
+        cancel_all_after_disarm: cancelAllAfterDisarmSig,
+        order_modify_state: orderModifyStateSig,
       },
     },
     null,

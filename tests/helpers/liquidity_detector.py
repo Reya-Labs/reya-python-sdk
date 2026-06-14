@@ -331,7 +331,7 @@ async def skip_if_external_liquidity(
 ) -> None:
     """Skip the calling pytest test if any external liquidity is on the orderbook.
 
-    Mirrors the pattern used by `tests/test_spot/test_maker_taker_matching.py`
+    Mirrors the pattern used by `tests/spot/test_maker_taker_matching.py`
     (which calls ``pytest.skip`` when ``spot_config.has_any_external_liquidity``
     is true): tests that need to *rest* a maker order at oracle ±1% and then
     cross it with a same-side taker only work in a controlled environment.
@@ -366,3 +366,16 @@ async def skip_if_external_liquidity(
         "any liquidity within the ±5% circuit-breaker band rather than "
         "resting on the book. Rerun against a controlled environment."
     )
+
+
+async def skip_if_external_config_liquidity(config, tester, reason: str) -> None:
+    """Config-flavoured twin of `skip_if_external_liquidity` for tests that
+    hold a `MarketTestConfig`: refreshes the config's cached book via the
+    tester's data ops and skips when ANY external liquidity is present.
+
+    Use the positional variant above when you only have data-ops + symbol +
+    oracle price (no config object).
+    """
+    await config.refresh_order_book(tester.data)
+    if config.has_any_external_liquidity:
+        pytest.skip(f"Skipping: external liquidity exists. {reason}")

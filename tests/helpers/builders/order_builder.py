@@ -28,16 +28,62 @@ Example usage:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from dataclasses import dataclass, field
 
+from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
-from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
+from sdk.reya_rest_api.models import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
 if TYPE_CHECKING:
-    from tests.test_spot.spot_config import SpotTestConfig
+    from tests.helpers.market_config import SpotTestConfig
+
+
+def full_state_modify_params(order: Order, **overrides: Any) -> ModifyOrderParameters:
+    """Build the COMPLETE post-modify state for a fetched resting order.
+
+    ``modifyOrder`` has no omitted-means-inherited shorthand: the four
+    modifiable fields (``limit_px``, ``qty``, ``post_only``, ``expires_after``)
+    must all carry the full intended post-modify state, and the signed
+    immutables (``is_buy``, ``time_in_force``, ``trigger_px``, ``reduce_only``)
+    must restate the resting order's values. This helper restates everything
+    from the fetched :class:`Order`, targets it by ``order_id``, then applies
+    ``overrides`` — so a test only spells out what it actually changes::
+
+        order = await tester.data.open_order(order_id)
+        params = full_state_modify_params(order, limit_px="2950", qty="0.75")
+
+    Overriding ``client_order_id`` switches targeting to it (clearing
+    ``order_id``) unless ``order_id`` is also explicitly overridden, keeping
+    the builder's exactly-one-target rule satisfied by default.
+
+    ``resting_client_order_id`` stays at the dataclass default (0) unless
+    overridden — the public ``Order`` model doesn't expose the resting
+    clientOrderId, so tests that created the order with a non-zero
+    clientOrderId must pass it explicitly.
+    """
+    if order.qty is None:
+        raise ValueError(f"Order {order.order_id} has no qty; cannot restate the post-modify state")
+
+    fields: dict[str, Any] = {
+        "symbol": order.symbol,
+        "is_buy": order.side == Side.B,
+        "limit_px": order.limit_px,
+        "qty": order.qty,
+        "post_only": bool(order.post_only) if order.post_only is not None else False,
+        "expires_after": order.expires_after if order.expires_after is not None else 0,
+        "time_in_force": order.time_in_force if order.time_in_force is not None else TimeInForce.GTC,
+        "order_id": int(order.order_id),
+        "trigger_px": order.trigger_px,
+        "reduce_only": bool(order.reduce_only) if order.reduce_only is not None else False,
+    }
+    if "client_order_id" in overrides and "order_id" not in overrides:
+        fields["order_id"] = None
+    fields.update(overrides)
+    return ModifyOrderParameters(**fields)
 
 
 @dataclass
@@ -61,6 +107,7 @@ class OrderBuilder:
     _limit_px: str = "4000.0"
     _time_in_force: TimeInForce = field(default_factory=lambda: TimeInForce.GTC)
     _reduce_only: bool | None = None
+    _post_only: bool | None = None
     _expires_after: int | None = None
     _client_order_id: int | None = None
 
@@ -164,6 +211,11 @@ class OrderBuilder:
         self._reduce_only = value
         return self
 
+    def post_only(self, value: bool = True) -> OrderBuilder:
+        """Set the post-only (maker-only) flag (GTC only; rejected on IOC)."""
+        self._post_only = value
+        return self
+
     def expires_after(self, timestamp_ms: int) -> OrderBuilder:
         """Set expiration timestamp in milliseconds (IOC orders only)."""
         self._expires_after = timestamp_ms
@@ -188,6 +240,7 @@ class OrderBuilder:
             limit_px=self._limit_px,
             time_in_force=self._time_in_force,
             reduce_only=self._reduce_only,
+            post_only=self._post_only,
             expires_after=self._expires_after,
             client_order_id=self._client_order_id,
         )
@@ -205,6 +258,7 @@ class OrderBuilder:
             "_limit_px",
             "_time_in_force",
             "_reduce_only",
+            "_post_only",
             "_expires_after",
             "_client_order_id",
         ]:

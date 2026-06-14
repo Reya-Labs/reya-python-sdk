@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from typing import Optional  # noqa: E402
+
 import asyncio  # noqa: E402
 import os  # noqa: E402
 from decimal import Decimal  # noqa: E402
@@ -24,16 +26,23 @@ from decimal import Decimal  # noqa: E402
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 
+from sdk.open_api.api.wallet_data_api import WalletDataApi  # noqa: E402
+from sdk.open_api.api_client import ApiClient  # noqa: E402
+from sdk.open_api.configuration import Configuration  # noqa: E402
 from sdk.open_api.exceptions import ApiException  # noqa: E402
 from sdk.open_api.models import TimeInForce  # noqa: E402
+from sdk.reya_rest_api.config import MAINNET_CHAIN_ID  # noqa: E402
 from sdk.reya_rest_api.models.orders import LimitOrderParameters  # noqa: E402
 from tests.helpers import ReyaTester  # noqa: E402
-from tests.helpers.reya_tester import logger  # noqa: E402
-from tests.test_spot.spot_config import (  # noqa: E402
+from tests.helpers.market_config import (  # noqa: E402
+    MarketConfig,
+    PerpTestConfig,
     SpotMarketConfig,
     SpotTestConfig,
     fetch_spot_market_configs,
 )
+from tests.helpers.reya_tester import logger  # noqa: E402
+from tests.helpers.settlement import make_settlement_probe  # noqa: E402
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
@@ -46,13 +55,31 @@ DEFAULT_SPOT_ASSET = "ETH"
 
 
 def pytest_addoption(parser):
-    """Add custom command-line options for spot tests."""
+    """Add custom command-line options for the live e2e suites."""
     parser.addoption(
         "--spot-asset",
         action="store",
         default=DEFAULT_SPOT_ASSET,
         help="Asset to use for spot tests (e.g., ETH, BTC). Default: ETH",
     )
+    parser.addoption(
+        "--orderbook-perp-asset",
+        action="store",
+        default="ETH",
+        help="Base asset for [spot, perp]-parametrized tests' perp leg. Symbol becomes <asset>RUSDPERP.",
+    )
+
+
+def pytest_collection_modifyitems(items):
+    """Auto-mark [spot]/[perp] param instances so `-m spot` / `-m perp` stay
+    truthful for the parametrized suites without hand-applied markers."""
+    for item in items:
+        callspec = getattr(item, "callspec", None)
+        market = callspec.params.get("market_type") if callspec else None
+        if market == "spot":
+            item.add_marker(pytest.mark.spot)
+        elif market == "perp":
+            item.add_marker(pytest.mark.perp)
 
 
 @pytest.fixture(scope="session")
@@ -62,16 +89,142 @@ def spot_asset(request):
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)
-async def rate_limit_delay():
+async def rate_limit_delay(request):
     """
     Add a small delay after each test to avoid WAF rate limiting.
 
     The staging environment uses AWS WAF which can block requests if too many
     come from the same IP in a short time window. This delay helps prevent
-    403 Forbidden errors during test runs.
+    403 Forbidden errors during test runs. Offline-marked tests make no
+    network calls, so they skip the delay entirely.
     """
     yield
-    await asyncio.sleep(TEST_DELAY_SECONDS)
+    if request.node.get_closest_marker("offline") is None:
+        await asyncio.sleep(TEST_DELAY_SECONDS)
+
+
+# ============================================================================
+# Cancel-on-disconnect (cancelAllAfter) teardown safety
+# ============================================================================
+# An armed COD countdown that leaks past a test would mass-cancel a later
+# test's resting orders mid-flight. Every tester therefore disarms in
+# teardown — idempotently (disarming an unarmed account is a server-side
+# no-op) and best-effort (older deployments without the endpoint must not
+# tank cleanup).
+
+
+async def _disarm_cod_safely(tester: ReyaTester) -> None:
+    """Disarm the tester's COD countdown; never fail teardown.
+
+    Swallows ApiException (e.g. 404 on deployments that predate
+    cancelAllAfter) and transport errors — an armed deadline must never leak
+    across tests, but a failed disarm must not mask the test's own outcome.
+    """
+    try:
+        await tester.disarm_cod()
+    except (ApiException, OSError, RuntimeError, ValueError, asyncio.CancelledError) as e:
+        logger.debug(f"COD disarm skipped (account {tester.account_id}): {e}")
+
+
+# ============================================================================
+# Execution-busts guard (session-wide settlement-regression tripwire)
+# ============================================================================
+
+_BUSTS_GUARD_WALLET_ENV_VARS = (
+    "PERP_WALLET_ADDRESS_1",
+    "PERP_WALLET_ADDRESS_2",
+    "SPOT_WALLET_ADDRESS_1",
+    "SPOT_WALLET_ADDRESS_2",
+)
+
+
+def _busts_guard_wallets() -> list[str]:
+    """Unique wallet addresses configured via env (order-preserving)."""
+    wallets: list[str] = []
+    for var in _BUSTS_GUARD_WALLET_ENV_VARS:
+        address = os.environ.get(var)
+        if address and address not in wallets:
+            wallets.append(address)
+    return wallets
+
+
+def _busts_guard_api_url() -> str:
+    """API base URL resolved the same way TradingConfig.from_env does, but
+    without requiring wallet/key env vars (the guard is read-only)."""
+    chain_id = int(os.environ.get("CHAIN_ID", MAINNET_CHAIN_ID))
+    if chain_id == MAINNET_CHAIN_ID:
+        default_api_url = "https://api.reya.xyz/v2"
+    else:
+        default_api_url = "https://api-devnet.reya-cronos.network/v2"
+    return os.environ.get("REYA_API_URL", default_api_url)
+
+
+async def _fetch_execution_bust_counts(wallets: list[str]) -> Optional[dict[str, int]]:
+    """Fetch the executionBusts count per wallet via a throwaway read-only
+    API client. Returns None when the API is unreachable (offline/unit runs)."""
+    api_client = ApiClient(Configuration(host=_busts_guard_api_url()))
+    try:
+        wallet_api = WalletDataApi(api_client)
+        counts: dict[str, int] = {}
+        for address in wallets:
+            bust_list = await wallet_api.get_wallet_execution_busts(address=address)
+            counts[address] = len(bust_list.data or [])
+        return counts
+    except (ApiException, OSError, RuntimeError, ValueError) as e:
+        logger.warning(f"Execution-busts guard: API unreachable, guard disabled: {e}")
+        return None
+    finally:
+        if hasattr(api_client, "rest_client") and api_client.rest_client:
+            await api_client.rest_client.close()
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session", autouse=True)
+async def execution_busts_guard(request):
+    """Session-wide settlement-regression tripwire.
+
+    Records each configured wallet's `GET /v2/wallet/{addr}/executionBusts`
+    count at session start and asserts it is UNCHANGED at session end — any
+    new bust during the run means a fill was accepted by the matching engine
+    but failed settlement, which no test should cause.
+
+    Skips silently when no wallet env vars are configured (unit-only runs
+    make zero network calls) and degrades gracefully when the API is
+    unreachable (offline runs).
+    """
+    if all(item.get_closest_marker("offline") for item in request.session.items):
+        # Offline-only session (e.g. `pytest -m offline` / tests/parity) —
+        # the guard's API calls are the only network traffic; stay silent.
+        yield
+        return
+
+    wallets = _busts_guard_wallets()
+    if not wallets:
+        yield
+        return
+
+    start_counts = await _fetch_execution_bust_counts(wallets)
+    if start_counts is None:
+        yield
+        return
+
+    logger.info(f"🛡️ Execution-busts guard armed: baseline {start_counts}")
+    yield
+
+    end_counts = await _fetch_execution_bust_counts(wallets)
+    if end_counts is None:
+        logger.warning("Execution-busts guard: API unreachable at session end; skipping final check")
+        return
+
+    changed = {
+        address: (start_counts[address], end_counts.get(address))
+        for address in start_counts
+        if end_counts.get(address) != start_counts[address]
+    }
+    assert not changed, (
+        "Execution busts changed during the test session (settlement regression): "
+        f"{{wallet: (start, end)}} = {changed}"
+    )
+    logger.info("🛡️ Execution-busts guard: no new busts across the session")
 
 
 # ============================================================================
@@ -111,6 +264,7 @@ async def reya_tester_session():
     logger.info("🧹 SESSION END: Closing connections")
     logger.info("=" * 60)
     try:
+        await _disarm_cod_safely(tester)
         if tester.websocket:
             tester.websocket.close()
         await tester.positions.close_all(fail_if_none=False)
@@ -137,6 +291,9 @@ async def reya_tester(reya_tester_session):  # pylint: disable=redefined-outer-n
 
     yield reya_tester_session
 
+    # Disarm COD first: an armed countdown firing mid-cleanup would race the
+    # explicit close_all below; an armed deadline must never leak across tests.
+    await _disarm_cod_safely(reya_tester_session)
     # Clean up positions and orders after test (connection stays open)
     await reya_tester_session.positions.close_all(fail_if_none=False)
     await reya_tester_session.orders.close_all(fail_if_none=False)
@@ -173,6 +330,7 @@ async def maker_tester_session():
 
     # Cleanup
     try:
+        await _disarm_cod_safely(tester)
         if tester.websocket:
             tester.websocket.close()
         preserve_orders = os.getenv("SPOT_PRESERVE_ACCOUNT1_ORDERS", "").lower() == "true"
@@ -212,6 +370,7 @@ async def taker_tester_session():
 
     # Cleanup
     try:
+        await _disarm_cod_safely(tester)
         if tester.websocket:
             tester.websocket.close()
         await tester.orders.close_all(fail_if_none=False)
@@ -239,6 +398,7 @@ async def maker_tester(maker_tester_session):  # pylint: disable=redefined-outer
 
     yield maker_tester_session
 
+    await _disarm_cod_safely(maker_tester_session)
     if not preserve_orders:
         await maker_tester_session.orders.close_all(fail_if_none=False)
 
@@ -262,6 +422,7 @@ async def spot_tester(maker_tester_session):  # pylint: disable=redefined-outer-
 
     yield maker_tester_session
 
+    await _disarm_cod_safely(maker_tester_session)
     if not preserve_orders:
         await maker_tester_session.orders.close_all(fail_if_none=False)
 
@@ -276,6 +437,7 @@ async def taker_tester(taker_tester_session):  # pylint: disable=redefined-outer
 
     yield taker_tester_session
 
+    await _disarm_cod_safely(taker_tester_session)
     await taker_tester_session.orders.close_all(fail_if_none=False)
 
 
@@ -305,6 +467,7 @@ async def perp_maker_tester_session():
     yield tester
 
     try:
+        await _disarm_cod_safely(tester)
         if tester.websocket:
             tester.websocket.close()
         await tester.positions.close_all(fail_if_none=False)
@@ -332,6 +495,7 @@ async def perp_taker_tester_session():
     yield tester
 
     try:
+        await _disarm_cod_safely(tester)
         if tester.websocket:
             tester.websocket.close()
         await tester.positions.close_all(fail_if_none=False)
@@ -342,83 +506,294 @@ async def perp_taker_tester_session():
         logger.warning(f"Error during perp taker cleanup: {e}")
 
 
+async def _restore_to_baseline(  # pylint: disable=redefined-outer-name
+    maker: ReyaTester,
+    taker: ReyaTester,
+    symbol: str,
+    maker_baseline: Decimal,
+    taker_baseline: Decimal,
+    min_qty: Decimal,
+    qty_step: Decimal,
+) -> None:
+    """Trade the test's own net delta back between the two accounts.
+
+    All test fills are maker↔taker crosses, so the deltas mirror (taker +X ⇒
+    maker −X) and one reverse cross restores both baselines exactly. The IOC
+    leg is NOT reduce-only: restoring can legitimately increase an account's
+    absolute position (e.g. selling back to a short baseline).
+    """
+    maker_delta = await maker.positions.signed_qty(symbol) - maker_baseline
+    taker_delta = await taker.positions.signed_qty(symbol) - taker_baseline
+    if abs(maker_delta) < min_qty and abs(taker_delta) < min_qty:
+        return
+
+    logger.info(f"  [restore] maker delta {maker_delta:+}, taker delta {taker_delta:+} on {symbol}")
+    if maker_delta + taker_delta != Decimal("0"):
+        logger.warning(
+            f"  [restore] deltas not mirrored (sum {maker_delta + taker_delta:+}) — "
+            "external fills involved; restoring the reversible overlap only"
+        )
+    if maker_delta == 0 or taker_delta == 0 or (maker_delta > 0) == (taker_delta > 0):
+        logger.warning("  [restore] deltas not opposite-signed; cannot cross back peer-to-peer")
+        return
+
+    restore_qty = min(abs(maker_delta), abs(taker_delta)).quantize(qty_step)
+    if restore_qty < min_qty:
+        return
+
+    oracle_price = Decimal(str(await maker.data.current_price(symbol)))
+    cross_price = oracle_price.quantize(Decimal("0.01"))
+
+    # Whoever gained exposure sells it back: the positive-delta side rests
+    # the GTC SELL, the other side crosses with an IOC BUY.
+    side_a, side_b = (maker, taker) if maker_delta > 0 else (taker, maker)
+    logger.info(
+        f"  [restore] account {side_a.account_id} GTC SELL {restore_qty} @ ${cross_price}, "
+        f"account {side_b.account_id} IOC BUY"
+    )
+    try:
+        ok = await _execute_perp_flatten(
+            side_a=side_a,
+            side_b=side_b,
+            symbol=symbol,
+            qty=str(restore_qty),
+            price=str(cross_price),
+            side_a_is_buy=False,
+            ioc_reduce_only=False,
+        )
+        if not ok:
+            logger.warning("  [restore] restore cross did not complete cleanly")
+            return
+    except (ApiException, OSError, RuntimeError) as e:
+        logger.warning(f"  [restore] restore cross threw {type(e).__name__}: {e}")
+        return
+
+    residual_maker = await maker.positions.signed_qty(symbol) - maker_baseline
+    residual_taker = await taker.positions.signed_qty(symbol) - taker_baseline
+    if abs(residual_maker) >= min_qty or abs(residual_taker) >= min_qty:
+        logger.warning(f"  [restore] residual delta after restore: maker {residual_maker:+}, taker {residual_taker:+}")
+    else:
+        logger.info("  [restore] ✅ both accounts back at baseline")
+
+
+# ============================================================================
+# [spot, perp] market parametrization (lifted from tests/engine/conftest.py)
+# ============================================================================
+# Any test (in any directory) can take `market_config` + `maker`/`taker` and
+# run once per market type. ALL resolution is lazy (request.getfixturevalue)
+# so an env configured for only one market never spins up the other market's
+# sessions — the missing-credential pytest.skip then applies only to that
+# market's param instances instead of tanking the suite.
+
+_DEFAULT_MARKET_TYPES = ("spot", "perp")
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def perp_market_config(
+    request, perp_maker_tester_session  # pylint: disable=redefined-outer-name
+) -> PerpTestConfig:
+    """Fetch the perp market config for parametrized tests.
+
+    Resolves the asset from (in order): the ``--orderbook-perp-asset`` CLI
+    flag, the ``ORDERBOOK_PERP_ASSET`` env var, then the default ``ETH``.
+    Metadata comes from the PERP session (historically this pulled the SPOT
+    maker session, which forced spot-account init on perp-only runs). Skips
+    if the deployment hasn't enabled this market on the matching engine.
+    """
+    cli_asset = request.config.getoption("--orderbook-perp-asset", default=None)
+    asset = (cli_asset or os.environ.get("ORDERBOOK_PERP_ASSET", "ETH")).upper()
+    symbol = f"{asset}RUSDPERP"
+
+    market_def = None
+    for definition in await perp_maker_tester_session.client.reference.get_perp_market_definitions():
+        if definition.symbol == symbol:
+            market_def = definition
+            break
+
+    if market_def is None:
+        pytest.skip(f"Perp market {symbol} not present in /v2/marketDefinitions")
+    assert market_def is not None  # narrows the Optional after the skip above
+
+    # Fail loud rather than swallow the error with a fake price — a wrong oracle
+    # price silently invalidates every downstream test (limits, liquidity checks,
+    # circuit-breaker bands).
+    oracle_price = float(await perp_maker_tester_session.data.current_price(symbol))
+
+    return PerpTestConfig(
+        symbol=symbol,
+        market_id=market_def.market_id,
+        min_qty=str(market_def.min_order_qty),
+        qty_step_size=str(market_def.qty_step_size),
+        oracle_price=oracle_price,
+        base_asset=asset,
+        min_balance=float(Decimal(market_def.min_order_qty) * 50),
+        tick_size=str(market_def.tick_size),
+    )
+
+
+@pytest.fixture(params=_DEFAULT_MARKET_TYPES)
+def market_type(request) -> str:
+    """Parametrize over [spot, perp] — the param drives ``market_config``."""
+    param: str = request.param
+    return param
+
+
+@pytest.fixture
+def market_config(market_type: str, request) -> MarketConfig:  # pylint: disable=redefined-outer-name
+    """Yield the right per-market config for the active parametrization.
+
+    Resolved LAZILY by market type: requesting the [spot] instance never
+    touches the perp session and vice versa. (The pre-lift version took both
+    configs as arguments, which eagerly initialized BOTH market sessions for
+    every param instance.)
+    """
+    name = "spot_config" if market_type == "spot" else "perp_market_config"
+    config: MarketConfig = request.getfixturevalue(name)
+    return config
+
+
+@pytest.fixture
+def maker(market_type: str, request):  # pylint: disable=redefined-outer-name
+    """Yield the maker tester for the active parametrization (lazy; see
+    ``market_config``)."""
+    return request.getfixturevalue("perp_maker_tester" if market_type == "perp" else "maker_tester")
+
+
+@pytest.fixture
+def taker(market_type: str, request):  # pylint: disable=redefined-outer-name
+    """Yield the taker tester for the active parametrization (lazy; see
+    ``market_config``)."""
+    return request.getfixturevalue("perp_taker_tester" if market_type == "perp" else "taker_tester")
+
+
+@pytest.fixture
+def settlement_probe(market_type, market_config, maker, taker):  # pylint: disable=redefined-outer-name
+    """A market-matched settlement probe for [spot, perp]-parametrized FILL
+    tests: spot asserts exact zero-fee balance deltas, perp asserts ±qty signed
+    position deltas. ``maker`` is the aggressor (buyer), ``taker`` the resting
+    counterparty (seller)."""
+    return make_settlement_probe(market_type, market_config, buyer=maker, seller=taker)
+
+
+@pytest.fixture
+def settlement_cleanup_guard(market_type, request):  # pylint: disable=redefined-outer-name
+    """Post-test settlement cleanup for a [spot, perp]-parametrized FILL test:
+    spot wires the session ``spot_balance_guard`` (balances restored at session
+    end); perp is a no-op here because the perp baseline-restore activates
+    transitively via the maker/taker → perp fixtures. Request it (autouse) only
+    from modules that actually produce fills, so rejection-only and read-only
+    tests never spin up the spot sessions."""
+    if market_type == "spot":
+        request.getfixturevalue("spot_balance_guard")
+    yield
+
+
+# ============================================================================
+# Perp-skip canary
+# ============================================================================
+# The lazy resolution above has one dangerous regression mode: a bug that
+# makes EVERY [perp] param instance skip at setup while perp credentials are
+# present would leave the suite green with zero perp coverage. Track
+# setup-phase outcomes of perp-param instances and fail the run if all of
+# them skipped. (In-test skips — e.g. external-liquidity guards — happen in
+# the 'call' phase and don't trip this.) Kill switch: PERP_SKIP_CANARY=off.
+
+_perp_param_setup_stats = {"total": 0, "skipped": 0}
+
+
+def pytest_runtest_logreport(report):
+    if report.when != "setup" or "[perp" not in report.nodeid:
+        return
+    _perp_param_setup_stats["total"] += 1
+    if report.skipped:
+        _perp_param_setup_stats["skipped"] += 1
+
+
+def pytest_sessionfinish(session, exitstatus):  # pylint: disable=unused-argument
+    if os.environ.get("PERP_SKIP_CANARY", "").lower() == "off":
+        return
+    stats = _perp_param_setup_stats
+    if stats["total"] >= 3 and stats["skipped"] == stats["total"] and os.environ.get("PERP_ACCOUNT_ID_1"):
+        print(
+            "\n[perp-skip canary] every [perp] param instance "
+            f"({stats['total']}) skipped at setup while PERP credentials are present — "
+            "perp coverage silently vanished (lazy fixture regression or perp market "
+            "missing from /v2/marketDefinitions). Set PERP_SKIP_CANARY=off to override."
+        )
+        session.exitstatus = 1
+
+
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
-async def perp_flatten_between_tests(  # pylint: disable=redefined-outer-name,unused-argument
+async def perp_baseline_restore(  # pylint: disable=redefined-outer-name,unused-argument
     perp_maker_tester_session, perp_taker_tester_session, perp_position_guard
 ):
-    """Function-scoped orchestrated flatten run before & after every perp test.
+    """Capture both perp accounts' signed positions before each test and trade
+    the test's own delta back afterwards.
 
-    Mirrors what `perp_position_guard` does at session boundaries, but at
-    per-test scope. Required because under perpOB a one-sided reduce-only IOC
-    has no AMM counterparty, so the per-test `close_all` legitimately skips and
-    leaves mirrored debris from a previous test that the next test may need
-    cleared (most position-management tests assert on an empty starting
-    position via `check.position_not_open`).
+    Perp tests are baseline-relative: whatever position an account holds when
+    a test starts is the baseline it asserts signed deltas against (via
+    `check.position_delta`), and this teardown crosses the net delta back
+    between the two accounts so each test leaves them exactly as it got them.
+    Pre-existing (possibly dirty) state therefore never fails a test — tests
+    that genuinely need a flat account `pytest.skip` themselves instead.
 
     Activated transitively through `perp_maker_tester` / `perp_taker_tester`.
-    `_flatten_to_zero` short-circuits when nothing needs flattening, so the
-    overhead on tests that don't accumulate debris is just two position
-    queries (~100ms).
+    Teardown ordering matters: the wrappers' `orders.close_all` finalizers run
+    first (clearing any leftover resting GTC), then this restore cross runs on
+    a clean book.
     """
     market_def = await perp_maker_tester_session.get_market_definition(PERP_GUARD_SYMBOL)
     min_qty = Decimal(str(market_def.min_order_qty))
     qty_step = Decimal(str(market_def.qty_step_size))
 
-    await _flatten_to_zero(
-        maker=perp_maker_tester_session,
-        taker=perp_taker_tester_session,
-        symbol=PERP_GUARD_SYMBOL,
-        min_qty=min_qty,
-        qty_step=qty_step,
-        label="pre-test",
-    )
+    maker_baseline = await perp_maker_tester_session.positions.signed_qty(PERP_GUARD_SYMBOL)
+    taker_baseline = await perp_taker_tester_session.positions.signed_qty(PERP_GUARD_SYMBOL)
 
     yield
 
-    await _flatten_to_zero(
+    await _restore_to_baseline(
         maker=perp_maker_tester_session,
         taker=perp_taker_tester_session,
         symbol=PERP_GUARD_SYMBOL,
+        maker_baseline=maker_baseline,
+        taker_baseline=taker_baseline,
         min_qty=min_qty,
         qty_step=qty_step,
-        label="post-test",
     )
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
 async def perp_maker_tester(  # pylint: disable=redefined-outer-name,unused-argument
-    perp_maker_tester_session, perp_flatten_between_tests
+    perp_maker_tester_session, perp_baseline_restore
 ):
-    """Function-scoped perp maker — clears orders/positions/WS state between tests.
+    """Function-scoped perp maker — clears orders/WS state between tests.
 
-    Requests `perp_flatten_between_tests` (transitively activates
-    `perp_position_guard`) so per-test debris is orchestrated-flattened
-    rather than left to a best-effort one-sided IOC.
+    Positions are deliberately NOT closed here: perp tests are baseline-
+    relative (see `perp_baseline_restore`), and a one-sided `close_all`
+    would eat the very baseline the restore fixture preserves.
     """
     await perp_maker_tester_session.orders.close_all(fail_if_none=False)
-    await perp_maker_tester_session.positions.close_all(fail_if_none=False)
     perp_maker_tester_session.ws.clear()
     yield perp_maker_tester_session
+    await _disarm_cod_safely(perp_maker_tester_session)
     await perp_maker_tester_session.orders.close_all(fail_if_none=False)
-    await perp_maker_tester_session.positions.close_all(fail_if_none=False)
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function")
 async def perp_taker_tester(  # pylint: disable=redefined-outer-name,unused-argument
-    perp_taker_tester_session, perp_flatten_between_tests
+    perp_taker_tester_session, perp_baseline_restore
 ):
-    """Function-scoped perp taker — clears orders/positions/WS state between tests.
+    """Function-scoped perp taker — clears orders/WS state between tests.
 
-    Requests `perp_flatten_between_tests` (transitively activates
-    `perp_position_guard`) so per-test debris is orchestrated-flattened
-    rather than left to a best-effort one-sided IOC.
+    Positions are deliberately NOT closed here: perp tests are baseline-
+    relative (see `perp_baseline_restore`), and a one-sided `close_all`
+    would eat the very baseline the restore fixture preserves.
     """
     await perp_taker_tester_session.orders.close_all(fail_if_none=False)
-    await perp_taker_tester_session.positions.close_all(fail_if_none=False)
     perp_taker_tester_session.ws.clear()
     yield perp_taker_tester_session
+    await _disarm_cod_safely(perp_taker_tester_session)
     await perp_taker_tester_session.orders.close_all(fail_if_none=False)
-    await perp_taker_tester_session.positions.close_all(fail_if_none=False)
 
 
 # ============================================================================
@@ -431,16 +806,6 @@ async def perp_taker_tester(  # pylint: disable=redefined-outer-name,unused-argu
 # with an IOC, and both positions move consistently.
 
 
-async def _get_perp_position_qty(tester: ReyaTester, symbol: str) -> Decimal:
-    """Return the signed position size (+ long, − short) on `symbol`, or 0."""
-    pos = await tester.data.position(symbol)
-    if pos is None or pos.qty is None:
-        return Decimal("0")
-    qty = Decimal(str(pos.qty))
-    # Sides on the API: 'B' = Bid/long (positive), 'A' = Ask/short (negative).
-    return qty if str(pos.side) in ("Side.B", "B") else -qty
-
-
 async def _execute_perp_flatten(
     side_a: ReyaTester,
     side_b: ReyaTester,
@@ -448,6 +813,7 @@ async def _execute_perp_flatten(
     qty: str,
     price: str,
     side_a_is_buy: bool,
+    ioc_reduce_only: bool = True,
 ) -> bool:
     """Cross a GTC on one side with a matching IOC on the other to move
     both testers' positions by ±qty in opposite directions.
@@ -457,15 +823,14 @@ async def _execute_perp_flatten(
     - `side_b` places the opposite-direction IOC at the same price.
     - On match, side_a moves +qty (if buy) / -qty (if sell), side_b mirrors.
 
-    Used by `perp_position_guard` to converge accumulated positions back
-    toward zero at session end. For mirrored positions (5: -X, 6: +X — the
-    common case after a maker/taker test) this restores both to zero.
-    For unmirrored residue (e.g. accumulated drift), it reduces by qty.
+    `ioc_reduce_only` controls the IOC leg: flatten-to-zero callers keep the
+    default (the IOC always reduces toward zero there); baseline-restore
+    callers MUST pass False, because trading a test's delta back can
+    legitimately increase an account's absolute position (e.g. selling back
+    to a short baseline).
     """
-    # API rejects `reduceOnly` on GTC (only valid for IOC and TP/SL). The
-    # GTC is left as a regular limit; it's reduce-by-construction because the
-    # caller passed `qty <= |side_a position|`. The IOC sets reduce_only=True
-    # because the API requires it on perp IOCs.
+    # API rejects `reduceOnly` on GTC (only valid for IOC and TP/SL), so the
+    # GTC leg is always a plain limit.
     gtc_params = LimitOrderParameters(
         symbol=symbol,
         is_buy=side_a_is_buy,
@@ -487,7 +852,7 @@ async def _execute_perp_flatten(
         limit_px=price,
         qty=qty,
         time_in_force=TimeInForce.IOC,
-        reduce_only=True,
+        reduce_only=ioc_reduce_only,
     )
     await side_b.client.create_limit_order(ioc_params)
 
@@ -514,7 +879,7 @@ async def _execute_perp_flatten(
 PERP_GUARD_SYMBOL = "ETHRUSDPERP"
 
 
-async def _flatten_to_zero(
+async def _flatten_to_zero(  # pylint: disable=redefined-outer-name
     maker: ReyaTester,
     taker: ReyaTester,
     symbol: str,
@@ -533,8 +898,8 @@ async def _flatten_to_zero(
 
     `label` is just for log readability ("session start" / "session end").
     """
-    maker_qty = await _get_perp_position_qty(maker, symbol)
-    taker_qty = await _get_perp_position_qty(taker, symbol)
+    maker_qty = await maker.positions.signed_qty(symbol)
+    taker_qty = await taker.positions.signed_qty(symbol)
     logger.info(f"  [{label}] maker (account {maker.account_id}): {maker_qty} {symbol}")
     logger.info(f"  [{label}] taker (account {taker.account_id}): {taker_qty} {symbol}")
 
@@ -627,7 +992,7 @@ async def perp_position_guard(  # pylint: disable=redefined-outer-name
     symbol = PERP_GUARD_SYMBOL
 
     # Pull market metadata from the maker tester so we don't depend on the
-    # perp_market_config fixture (which lives in tests/test_orderbook/conftest).
+    # perp_market_config fixture (which lives in tests/engine/conftest).
     market_def = await perp_maker_tester_session.get_market_definition(symbol)
     min_qty = Decimal(str(market_def.min_order_qty))
     qty_step = Decimal(str(market_def.qty_step_size))
@@ -702,25 +1067,25 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
             symbol = spot_config.symbol
 
     Run tests for different assets:
-        pytest tests/test_spot/ -v --spot-asset=ETH
-        pytest tests/test_spot/ -v --spot-asset=BTC
+        pytest tests/spot/ -v --spot-asset=ETH
+        pytest tests/spot/ -v --spot-asset=BTC
     """
     # Validate the selected asset is available
     if spot_asset not in spot_market_configs:
         available = sorted(spot_market_configs.keys())
         pytest.skip(f"Asset '{spot_asset}' not available. Available assets: {', '.join(available)}")
 
-    market_config: SpotMarketConfig = spot_market_configs[spot_asset]
+    selected_market: SpotMarketConfig = spot_market_configs[spot_asset]
 
     logger.info("=" * 60)
     logger.info(f"🎯 SPOT TESTS CONFIGURED FOR: {spot_asset}")
-    logger.info(f"   Symbol: {market_config.symbol}")
-    logger.info(f"   Min Order Qty: {market_config.min_order_qty}")
-    logger.info(f"   Min Balance: {market_config.min_balance}")
+    logger.info(f"   Symbol: {selected_market.symbol}")
+    logger.info(f"   Min Order Qty: {selected_market.min_order_qty}")
+    logger.info(f"   Min Balance: {selected_market.min_balance}")
     logger.info("=" * 60)
 
     # Fetch oracle price using PERP symbol (e.g., ETHRUSDPERP, BTCRUSDPERP)
-    oracle_symbol = market_config.oracle_symbol
+    oracle_symbol = selected_market.oracle_symbol
 
     try:
         price_str = await maker_tester_session.data.current_price(oracle_symbol)
@@ -734,13 +1099,14 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
         logger.warning(f"Using fallback oracle price: ${oracle_price:.2f}")
 
     return SpotTestConfig(
-        symbol=market_config.symbol,
-        market_id=market_config.market_id,
-        min_qty=market_config.min_order_qty,
-        qty_step_size=market_config.qty_step_size,
+        symbol=selected_market.symbol,
+        market_id=selected_market.market_id,
+        min_qty=selected_market.min_order_qty,
+        qty_step_size=selected_market.qty_step_size,
         oracle_price=oracle_price,
-        base_asset=market_config.base_asset,
-        min_balance=float(market_config.min_balance),
+        base_asset=selected_market.base_asset,
+        min_balance=float(selected_market.min_balance),
+        tick_size=selected_market.tick_size,
     )
 
 

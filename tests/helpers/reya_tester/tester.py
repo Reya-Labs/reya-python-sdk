@@ -8,6 +8,7 @@ import os
 
 from dotenv import load_dotenv
 
+from sdk.open_api.models.cancel_all_after_response import CancelAllAfterResponse
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_websocket import ReyaSocket
@@ -243,6 +244,22 @@ class ReyaTester:
             PerpTradeContext: Context manager for trade verification.
         """
         return PerpTradeContext(tester=self)
+
+    async def arm_cod(self, timeout_ms: int) -> CancelAllAfterResponse:
+        """Arm or refresh the account-wide cancel-all-after countdown
+        (cancel-on-disconnect dead-man's-switch).
+
+        Thin wrapper over ``client.cancel_all_after``; ``timeout_ms`` must be
+        within [5000, 60000] ms. Each call replaces the running countdown.
+        """
+        return await self.client.cancel_all_after(timeout_ms=timeout_ms)
+
+    async def disarm_cod(self) -> CancelAllAfterResponse:
+        """Disarm the cancel-all-after countdown (``timeoutMs=0``).
+
+        Idempotent server-side: disarming an unarmed account is a no-op.
+        """
+        return await self.client.cancel_all_after(timeout_ms=0)
 
     def get_next_nonce(self) -> int:
         """

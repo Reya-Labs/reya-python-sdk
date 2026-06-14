@@ -11,10 +11,13 @@ This is the cross-implementation check for the 14-field OrderDetails (``postOnly
 inserted after ``reduceOnly``).
 """
 
+import pytest
 from eth_abi import encode
 from eth_utils import keccak
 
 from sdk.reya_rest_api.auth.signatures import _ORDER_DETAILS_TYPE
+
+pytestmark = pytest.mark.offline
 
 # Canonical on-chain OrderDetails struct hash for the reference order below.
 GOLDEN_DIGEST = "0xafd76928ba06e123f0d14a403d91fdc8a4f653c55bae7282db60b5f0acdde258"

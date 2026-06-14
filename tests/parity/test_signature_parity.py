@@ -22,8 +22,13 @@ from decimal import Decimal
 
 import pytest
 
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig
+from sdk.reya_rest_api.models.orders import ModifyOrderParameters
+
+pytestmark = pytest.mark.offline
 
 # === Fixed test vector ===
 PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -63,6 +68,38 @@ EXPECTED_SIGNATURES = {
         "7c33b0b77ac8c2e495eca0848e56e60711cd5fa60b657a4ba675fd6bd13be920"
         "1b"
     ),
+    # CancelAllAfter (dead-man's-switch) ARM: timeoutMs=30000.
+    "cancel_all_after_arm": (
+        "0x7d8d65dc7949e42fea86da56df36fbfc0fa07bbd8f8f6be8b9f8f5b2f46031bc"
+        "190cf90ff18671afe86dce8d27dfceff513e9c8b9df45c94c5bfb937b3b49514"
+        "1c"
+    ),
+    # CancelAllAfter DISARM: timeoutMs=0 — pins the zero path distinctly
+    # from the arm vector.
+    "cancel_all_after_disarm": (
+        "0x8ef177568c9b4077353f261779b284f33f39d95c73a720c332cf07304ee54091"
+        "5380177af7b95dabfcd8efbe278ab440b82c6623944818d4a16228fce075beb2"
+        "1b"
+    ),
+    # Modify signs the SAME Order envelope over the full post-modify state —
+    # the "order" vector with all four modifiable fields changed (qty 0.75,
+    # limitPrice 2950, postOnly true, expiresAfter 1745003600) on a resting GTT
+    # (the modifiable order that carries a non-zero expiresAfter), and a fresh
+    # nonce/deadline. Asserted twice below: once via sign_order (envelope
+    # identity) and once via build_modify_order_payload (the real client path).
+    "order_modify_state": (
+        "0x3d63bcbae53e3d2d23a7930c68d80e98bd55953ce91553094d8dd87d930a8d36"
+        "2b2fab25d5873619623813c5ba34d1b03f33f57478ebb58f5b122e4792ec6a82"
+        "1b"
+    ),
+}
+
+# === cancelAllAfter ARM vector inputs (tamper table flips one at a time) ===
+CANCEL_ALL_AFTER_ARM_PARAMS: dict[str, int] = {
+    "account_id": 12345,
+    "timeout_ms": 30000,
+    "nonce": 1700000000000003,
+    "deadline": 1745000180,
 }
 
 
@@ -201,3 +238,138 @@ def test_mass_cancel_signature_parity(signer: SignatureGenerator) -> None:
     assert (
         sig == EXPECTED_SIGNATURES["mass_cancel"]
     ), f"MassCancel signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['mass_cancel']}"
+
+
+@pytest.mark.cod
+def test_cancel_all_after_arm_signature_parity(signer: SignatureGenerator) -> None:
+    """Python sign_cancel_all_after (arm, timeoutMs=30000) produces the same
+    bytes as ethers v6 signTypedData."""
+    sig = signer.sign_cancel_all_after(**CANCEL_ALL_AFTER_ARM_PARAMS)
+    assert (
+        sig == EXPECTED_SIGNATURES["cancel_all_after_arm"]
+    ), f"CancelAllAfter arm signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['cancel_all_after_arm']}"
+
+
+@pytest.mark.cod
+def test_cancel_all_after_disarm_signature_parity(signer: SignatureGenerator) -> None:
+    """timeoutMs=0 (disarm) must encode identically to ethers v6 — pins the
+    zero path distinctly from the arm vector."""
+    sig = signer.sign_cancel_all_after(
+        account_id=12345,
+        timeout_ms=0,
+        nonce=1700000000000004,
+        deadline=1745000240,
+    )
+    assert (
+        sig == EXPECTED_SIGNATURES["cancel_all_after_disarm"]
+    ), f"CancelAllAfter disarm signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['cancel_all_after_disarm']}"
+
+
+@pytest.mark.cod
+@pytest.mark.parametrize(
+    "tampered_field, tampered_value",
+    [
+        ("account_id", 12346),
+        ("timeout_ms", 30001),
+        ("nonce", 1700000000000004),
+        ("deadline", 1745000181),
+    ],
+)
+def test_cancel_all_after_tamper_changes_signature(
+    signer: SignatureGenerator, tampered_field: str, tampered_value: int
+) -> None:
+    """Every CancelAllAfterDetails/envelope field is signature-bearing: flipping
+    any one of accountId / timeoutMs / nonce / deadline must change the bytes.
+
+    Catches a helper that silently drops a field from the typed data (the
+    signature would still verify for the untampered struct, letting the server
+    accept a request whose unsigned field was forged in transit)."""
+    params = {**CANCEL_ALL_AFTER_ARM_PARAMS, tampered_field: tampered_value}
+    sig = signer.sign_cancel_all_after(**params)
+    assert sig != EXPECTED_SIGNATURES["cancel_all_after_arm"], (
+        f"Tampering {tampered_field} ({CANCEL_ALL_AFTER_ARM_PARAMS[tampered_field]} -> {tampered_value}) "
+        f"did not change the CancelAllAfter signature — the field is not being signed"
+    )
+
+
+@pytest.mark.modify
+def test_order_modify_state_signature_parity(signer: SignatureGenerator) -> None:
+    """Envelope identity: modify has NO dedicated typed-data schema — signing
+    the full post-modify state through plain ``sign_order`` must reproduce the
+    TS vector. Same fields as the "order" vector except the four modifiables
+    (qty 0.75, limitPrice 2950, postOnly true, expiresAfter 1745003600), GTT
+    TIF (the modifiable order that carries a non-zero expiresAfter), and a
+    fresh nonce/deadline."""
+    sig = signer.sign_order(
+        account_id=12345,
+        market_id=1,
+        exchange_id=2,
+        order_type=int(OrderTypeInt.LIMIT),
+        is_buy=True,
+        qty=Decimal("0.75"),
+        limit_price=Decimal("2950"),
+        trigger_price=Decimal("0"),
+        time_in_force=int(TimeInForceInt.GTT),
+        client_order_id=42,
+        reduce_only=False,
+        expires_after=1745003600,
+        nonce=1700000000000005,
+        deadline=1745000300,
+        post_only=True,
+    )
+    assert (
+        sig == EXPECTED_SIGNATURES["order_modify_state"]
+    ), f"Post-modify Order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_modify_state']}"
+
+
+@pytest.fixture
+def offline_client() -> ReyaTradingClient:
+    """A ReyaTradingClient that can build payloads offline.
+
+    Same seam as tests/parity/test_wire_serialization.py: seed the
+    symbol→marketId map directly instead of calling ``start()`` (which loads
+    market definitions over the network), and pin ``dex_id_override=2`` so the
+    signed exchangeId matches the vector regardless of any REYA_DEX_ID env
+    override picked up at import time.
+    """
+    config = TradingConfig(
+        api_url="https://invalid.example",  # never called — building is pure
+        chain_id=CHAIN_ID,
+        owner_wallet_address=SIGNER_ADDRESS,
+        private_key=PRIVATE_KEY,
+        account_id=12345,
+        dex_id_override=2,
+    )
+    client = ReyaTradingClient(config)
+    client._symbol_to_market_id = {"ETHRUSDPERP": 1}  # pylint: disable=protected-access
+    client._initialized = True  # pylint: disable=protected-access
+    return client
+
+
+@pytest.mark.modify
+def test_modify_order_builder_signature_parity(offline_client: ReyaTradingClient) -> None:
+    """Builder-level parity: ``build_modify_order_payload`` over matching
+    inputs must emit the SAME pinned hex as the TS vector — proving modify
+    == order signing over the post-modify struct through the real client
+    path (param mapping, TIF translation, resting-clientOrderId resolution),
+    not just through a hand-fed ``sign_order``."""
+    payload, nonce = offline_client.build_modify_order_payload(
+        ModifyOrderParameters(
+            symbol="ETHRUSDPERP",
+            is_buy=True,
+            limit_px="2950",
+            qty="0.75",
+            post_only=True,
+            expires_after=1745003600,
+            time_in_force=TimeInForce.GTT,
+            order_id=63552420354981888,
+            resting_client_order_id=42,
+            nonce=1700000000000005,
+            deadline=1745000300,
+        )
+    )
+    assert nonce == 1700000000000005
+    assert payload["signature"] == EXPECTED_SIGNATURES["order_modify_state"], (
+        f"Modify-builder signature drift:\n  py:  {payload['signature']}\n"
+        f"  ts:  {EXPECTED_SIGNATURES['order_modify_state']}"
+    )

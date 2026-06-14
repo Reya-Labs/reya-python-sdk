@@ -14,7 +14,7 @@ class CreateOrderRequest(BaseModel):
   time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', default=None, alias='''timeInForce''')
   trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
   reduce_only: Optional[bool] = Field(description='''Reduce-only intent. Perp only; spot markets must set this to false. Maps to on-chain `OrderDetails.reduceOnly`.''', default=None, alias='''reduceOnly''')
-  post_only: Optional[bool] = Field(description='''Post-only (maker-only) intent: the order must rest and never cross as a taker. Valid on GTC/GTT; rejected on IOC. Maps to on-chain `OrderDetails.postOnly`.''', default=None, alias='''postOnly''')
+  post_only: Optional[bool] = Field(description='''Post-only (maker-only) intent: the order must rest and never cross as a taker. Valid on GTC/GTT; rejected on IOC. An order that would cross at insertion is rejected with `POST_ONLY_WOULD_CROSS_ERROR`. Maps to on-chain `OrderDetails.postOnly`.''', default=None, alias='''postOnly''')
   signature: str = Field(description='''EIP-712 signature over the `Order(uint256 verifyingChainId, uint256 deadline, OrderDetails order)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
   nonce: str = Field(description='''Monotonically increasing per-signer nonce. Maps to on-chain `OrderDetails.nonce`.''')
   signer_wallet: str = Field(alias='''signerWallet''')
