@@ -102,6 +102,41 @@ async def rest_gtc(
     return await wait_for_order_fields(tester, order_id)
 
 
+async def rest_gtt(
+    tester: ReyaTester,
+    market_config: MarketTestConfig,
+    *,
+    price_multiplier: float,
+    expires_after: int,
+    is_buy: bool = True,
+    qty: str | None = None,
+    post_only: bool = False,
+    client_order_id: int | None = None,
+) -> Order:
+    """Market-agnostic GTT rest for [spot, perp]-parametrized tests: place at
+    ``market_config.price(multiplier)`` with a non-zero ``expires_after``
+    (strictly after the entry deadline), wait for creation, return the fetched
+    Order. GTT rests like GTC but the matching engine auto-reaps it at
+    ``expires_after`` — pass a comfortably-future value (default client deadline
+    is now+60s) for tests that must not expire mid-run."""
+    builder = (
+        OrderBuilder()
+        .symbol(market_config.symbol)
+        .side(is_buy)
+        .price(str(market_config.price(price_multiplier)))
+        .qty(qty if qty is not None else market_config.min_qty)
+        .gtt(expires_after)
+    )
+    if post_only:
+        builder = builder.post_only()
+    if client_order_id is not None:
+        builder = builder.client_order_id(client_order_id)
+    order_id = await tester.orders.create_limit(builder.build())
+    assert order_id is not None, "GTT creation must return an order_id"
+    await tester.wait.for_order_creation(order_id)
+    return await wait_for_order_fields(tester, order_id)
+
+
 async def wait_for_taker_execution(
     tester: ReyaTester, market_type: str, taker_order_id: str, timeout_s: float = 10.0
 ) -> SpotExecution | PerpExecution:

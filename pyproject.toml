@@ -182,5 +182,6 @@ markers = [
     "cod: Cancel-on-disconnect (cancelAllAfter dead-man's-switch) tests",
     "modify: In-place order modification (modifyOrder) tests",
     "post_only: Post-only (maker-only) order tests",
+    "gtt: Good-Till-Time (auto-expiring resting order) tests",
     "offline: No-network tests (parity golden vectors + client guards) — safe without devnet/.env",
 ]
