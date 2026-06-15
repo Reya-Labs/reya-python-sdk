@@ -4,21 +4,24 @@ modifyOrder server-side validation tests — live e2e.
 - EMPTY_MODIFY_ERROR: an exact restate (no field changed) is rejected,
 - ORDER_NOT_FOUND: bogus targets, just-cancelled orders, and fully-filled
   orders,
-- INPUT_VALIDATION_ERROR: zero px / zero qty / both-or-neither targeting /
-  clientOrderId=0 — driven as RAW `ModifyOrderRequest`s through the generated
-  OrderEntryApi because the typed `ModifyOrderParameters` path pre-empts the
-  targeting mistakes client-side (pinned offline in
-  tests/validation/test_client_guards.py). Mirrors the raw-request precedent
-  in tests/spot/test_api_validation.py.
+- INPUT_VALIDATION_ERROR: zero px / zero qty / neither id / clientOrderId=0 —
+  driven as RAW `ModifyOrderRequest`s through the generated OrderEntryApi
+  because the typed `ModifyOrderParameters` path pre-empts these client-side
+  (pinned offline in tests/validation/test_client_guards.py). Mirrors the
+  raw-request precedent in tests/spot/test_api_validation.py. (Supplying BOTH
+  ids is valid under full-restate, so it is not a rejection case.)
+- MODIFY_IMMUTABLE_MISMATCH (surfaced as INPUT_VALIDATION_ERROR): a restated
+  immutable that doesn't match the resting order — driven raw with a valid
+  signature over a flipped side.
 - INPUT_VALIDATION_ERROR via raw JSON POSTs: each of the four required
   modifiable fields omitted, plus negative limitPx/qty — the generated
   pydantic request model can't express an omitted required field or a
   negative qty, so these go over aiohttp directly (same precedent file).
 - UNAUTHORIZED_SIGNATURE_ERROR: signature over one post-modify state, wire
   payload carrying another,
-- MODIFY_ORDER_OTHER_ERROR: TP/SL trigger orders are not modifiable (the
-  code is the handler's catch-all, so the discriminating message is pinned
-  too).
+- TP/SL trigger orders are not modifiable: the typed SDK restates
+  orderType=LIMIT, mismatching the resting trigger order, so the engine
+  rejects with MODIFY_IMMUTABLE_MISMATCH (INPUT_VALIDATION_ERROR).
 """
 
 from typing import Any
@@ -32,6 +35,7 @@ import pytest
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.models.orders import ModifyOrderParameters
@@ -56,10 +60,14 @@ def _raw_modify_request(
     qty: str,
     order_id: int | None = None,
     client_order_id: int | None = None,
+    is_buy: bool = True,
 ) -> ModifyOrderRequest:
     """Build a raw ModifyOrderRequest with a REAL signature over exactly the
     values sent (post-modify state of a resting buy GTC), so the server-side
-    INPUT validation — not signature recovery — is what rejects."""
+    INPUT validation — not signature recovery — is what rejects. `is_buy`
+    defaults to the resting order's side; flip it to forge an immutable
+    mismatch (the signature stays valid, but the restated side no longer
+    matches the resting order)."""
     nonce = tester.get_next_nonce()
     deadline = int(time.time()) + 60
     signature = tester.client.signature_generator.sign_order(
@@ -67,7 +75,7 @@ def _raw_modify_request(
         market_id=spot_config.market_id,
         exchange_id=tester.client.config.dex_id,
         order_type=int(OrderTypeInt.LIMIT),
-        is_buy=True,
+        is_buy=is_buy,
         qty=Decimal(qty),
         limit_price=Decimal(limit_px),
         trigger_price=Decimal(0),
@@ -87,9 +95,9 @@ def _raw_modify_request(
         # Restated immutables (full-restate) — exactly the values signed above,
         # so the signature stays valid and input validation is what rejects.
         exchangeId=tester.client.config.dex_id,
-        isBuy=True,
-        orderType="LIMIT",
-        timeInForce="GTC",
+        isBuy=is_buy,
+        orderType=OrderType.LIMIT,
+        timeInForce=TimeInForce.GTC,
         triggerPx=None,
         reduceOnly=False,
         limitPx=limit_px,
@@ -201,8 +209,10 @@ async def test_modify_after_full_fill_not_found(
 @pytest.mark.asyncio
 async def test_invalid_values_raw(spot_config: SpotTestConfig, spot_tester: ReyaTester):
     """Raw-request INPUT_VALIDATION_ERROR sweep against ONE resting order:
-    zero px, zero qty, both targeting ids, neither id, clientOrderId=0. The
-    resting order must come through every rejection untouched."""
+    zero px, zero qty, neither id, clientOrderId=0. The resting order must come
+    through every rejection untouched. (Supplying BOTH orderId and clientOrderId
+    is valid under full-restate — orderId targets, clientOrderId is the restated
+    immutable — so it is not part of this rejection sweep.)"""
     order = await rest_spot_gtc(spot_tester, spot_config, price_multiplier=0.95)
     order_id = int(order.order_id)
     original_px, original_qty = order.limit_px, order.qty
@@ -213,7 +223,6 @@ async def test_invalid_values_raw(spot_config: SpotTestConfig, spot_tester: Reya
     cases: list[tuple[str, dict[str, Any]]] = [
         ("zero px", {"limit_px": "0", "qty": good_qty, "order_id": order_id}),
         ("zero qty", {"limit_px": good_px, "qty": "0", "order_id": order_id}),
-        ("both ids", {"limit_px": good_px, "qty": good_qty, "order_id": order_id, "client_order_id": 777}),
         ("neither id", {"limit_px": good_px, "qty": good_qty}),
         ("clientOrderId=0", {"limit_px": good_px, "qty": good_qty, "client_order_id": 0}),
     ]
@@ -230,6 +239,45 @@ async def test_invalid_values_raw(spot_config: SpotTestConfig, spot_tester: Reya
 
         untouched = await spot_tester.data.open_order(order.order_id)
         assert untouched is not None, "Rejected modifies must leave the order resting"
+        assert_px_qty(untouched, expected_px=original_px, expected_qty=original_qty)
+    finally:
+        await spot_tester.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.spot
+@pytest.mark.asyncio
+async def test_immutable_mismatch_raw(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+    """A restated immutable that doesn't match the resting order is rejected by
+    the matching engine's immutable-match (MODIFY_IMMUTABLE_MISMATCH, surfaced
+    as INPUT_VALIDATION_ERROR), and the resting order is left untouched. The
+    signature is valid over the tampered side, so it is the immutable-match —
+    not signature recovery — that rejects (full-restate end-to-end)."""
+    order = await rest_spot_gtc(spot_tester, spot_config, price_multiplier=0.95)  # resting BUY
+    order_id = int(order.order_id)
+    original_px, original_qty = order.limit_px, order.qty
+    assert original_px is not None and original_qty is not None
+    try:
+        # Restate the side flipped (sell) against a resting buy — every other
+        # field is correct and the signature is valid over the flipped side, so
+        # only the engine's immutable-match can reject it.
+        request = _raw_modify_request(
+            spot_tester,
+            spot_config,
+            limit_px=str(spot_config.price(0.96)),
+            qty=spot_config.min_qty,
+            order_id=order_id,
+            is_buy=False,
+        )
+        with pytest.raises(ApiException) as exc_info:
+            await spot_tester.client.orders.modify_order(request)
+        error_msg = str(exc_info.value)
+        assert (
+            "INPUT_VALIDATION_ERROR" in error_msg
+        ), f"Expected INPUT_VALIDATION_ERROR (immutable mismatch), got: {error_msg[:200]}"
+        logger.info("✅ Restated immutable mismatch (side) rejected with INPUT_VALIDATION_ERROR")
+
+        untouched = await spot_tester.data.open_order(order.order_id)
+        assert untouched is not None, "Rejected modify must leave the order resting"
         assert_px_qty(untouched, expected_px=original_px, expected_qty=original_qty)
     finally:
         await spot_tester.orders.close_all(fail_if_none=False)
@@ -331,11 +379,10 @@ async def test_tampered_signature(spot_config: SpotTestConfig, spot_tester: Reya
 @pytest.mark.trigger
 @pytest.mark.asyncio
 async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
-    """TP/SL trigger orders cannot be modified — MODIFY_ORDER_OTHER_ERROR.
-
-    The code is the handler's catch-all (also returned for rate limiting,
-    kill-switches, balance and px/qty spacing failures), so the discriminating
-    message is pinned too."""
+    """TP/SL trigger orders cannot be modified. Under full-restate the typed SDK
+    restates `orderType=LIMIT`, which mismatches the resting trigger order's
+    type, so the matching engine rejects it via the immutable-match
+    (`MODIFY_IMMUTABLE_MISMATCH`, surfaced as `INPUT_VALIDATION_ERROR`)."""
     market_def = await perp_maker_tester.get_market_definition(PERP_SYMBOL)
     min_qty = str(market_def.min_order_qty)
     oracle_price = float(await perp_maker_tester.data.current_price(PERP_SYMBOL))
@@ -369,13 +416,10 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
         with pytest.raises(ApiException) as exc_info:
             await perp_maker_tester.client.modify_order(modify_params)
         error_msg = str(exc_info.value)
-        assert "MODIFY_ORDER_OTHER_ERROR" in error_msg, f"Expected MODIFY_ORDER_OTHER_ERROR, got: {error_msg[:200]}"
         assert (
-            "Only LIMIT orders can be modified" in error_msg
-        ), f"Expected the trigger-modify message, got: {error_msg[:200]}"
-        logger.info(
-            "✅ Trigger order modify rejected with MODIFY_ORDER_OTHER_ERROR / 'Only LIMIT orders can be modified'"
-        )
+            "INPUT_VALIDATION_ERROR" in error_msg
+        ), f"Expected INPUT_VALIDATION_ERROR (immutable mismatch on orderType), got: {error_msg[:200]}"
+        logger.info("✅ Trigger order modify rejected with INPUT_VALIDATION_ERROR (orderType immutable mismatch)")
     finally:
         try:
             await perp_maker_tester.client.cancel_order(

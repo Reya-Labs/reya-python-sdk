@@ -1,18 +1,19 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-
+from sdk.async_exec_api.order_type import OrderType
+from sdk.async_exec_api.time_in_force import TimeInForce
 class ModifyOrderRequest(BaseModel): 
   order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. Exactly one of `orderId` or `clientOrderId` must be provided.''', default=None, alias='''orderId''')
   client_order_id: Optional[int] = Field(default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
-  exchange_id: int = Field(description='''On-chain `OrderDetails.exchangeId`. Immutable — restate the resting order's value (mismatch is rejected with `MODIFY_IMMUTABLE_MISMATCH`).''', alias='''exchangeId''')
-  is_buy: bool = Field(description='''Order side. Immutable — restate the resting order's value.''', alias='''isBuy''')
-  order_type: str = Field(description='''On-chain `OrderDetails.orderType`. Immutable and must be `LIMIT`.''', alias='''orderType''')
-  time_in_force: Optional[str] = Field(default=None, description='''On-chain `OrderDetails.timeInForce`. Immutable — a modify cannot flip GTC<->GTT.''', alias='''timeInForce''')
-  trigger_px: Optional[str] = Field(default=None, description='''On-chain `OrderDetails.triggerPrice`. Immutable (zero/absent for LIMIT).''', alias='''triggerPx''')
-  reduce_only: Optional[bool] = Field(default=None, description='''On-chain `OrderDetails.reduceOnly`. Immutable.''', alias='''reduceOnly''')
+  exchange_id: int = Field(alias='''exchangeId''')
+  is_buy: bool = Field(description='''Order side. Immutable — restate the resting order's value. Combined with `qty`, sets the signed `OrderDetails.quantity` (int256). A mismatch is rejected with `MODIFY_IMMUTABLE_MISMATCH`.''', alias='''isBuy''')
+  order_type: OrderType = Field(description='''Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.''', alias='''orderType''')
+  time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', default=None, alias='''timeInForce''')
+  trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
+  reduce_only: Optional[bool] = Field(description='''On-chain `OrderDetails.reduceOnly`. Immutable — restate the resting order's value. A mismatch is rejected with `MODIFY_IMMUTABLE_MISMATCH`.''', default=None, alias='''reduceOnly''')
   limit_px: str = Field(alias='''limitPx''')
   qty: str = Field()
   post_only: bool = Field(description='''The post-modify post-only (maker-only) flag. Always required — send the complete intended value even when it is unchanged from the resting order. If true and the post-modify order would cross, the modification is rejected with `POST_ONLY_WOULD_CROSS_ERROR` and the resting order is unchanged.''', alias='''postOnly''')
@@ -47,7 +48,7 @@ class ModifyOrderRequest(BaseModel):
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['orderId', 'clientOrderId', 'symbol', 'accountId', 'limitPx', 'qty', 'postOnly', 'expiresAfter', 'signature', 'nonce', 'signerWallet', 'deadline', 'additionalProperties']
+    known_json_properties = ['orderId', 'clientOrderId', 'symbol', 'accountId', 'exchangeId', 'isBuy', 'orderType', 'timeInForce', 'triggerPx', 'reduceOnly', 'limitPx', 'qty', 'postOnly', 'expiresAfter', 'signature', 'nonce', 'signerWallet', 'deadline', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
