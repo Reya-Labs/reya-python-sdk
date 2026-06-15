@@ -106,24 +106,28 @@ async def rest_gtt(
     tester: ReyaTester,
     market_config: MarketTestConfig,
     *,
-    price_multiplier: float,
     expires_after: int,
+    price_multiplier: float = 1.0,
+    price: str | None = None,
     is_buy: bool = True,
     qty: str | None = None,
     post_only: bool = False,
     client_order_id: int | None = None,
 ) -> Order:
-    """Market-agnostic GTT rest for [spot, perp]-parametrized tests: place at
-    ``market_config.price(multiplier)`` with a non-zero ``expires_after``
-    (strictly after the entry deadline), wait for creation, return the fetched
-    Order. GTT rests like GTC but the matching engine auto-reaps it at
-    ``expires_after`` — pass a comfortably-future value (default client deadline
-    is now+60s) for tests that must not expire mid-run."""
+    """Market-agnostic GTT rest for [spot, perp]-parametrized tests: place at an
+    explicit ``price`` (or ``market_config.price(multiplier)`` when omitted) with
+    a non-zero ``expires_after`` (strictly after the entry deadline), wait for
+    creation, return the fetched Order. GTT rests like GTC but the matching
+    engine auto-reaps it at ``expires_after`` — pass a comfortably-future value
+    (default client deadline is now+60s) for tests that must not expire mid-run.
+    Pass an absolute ``price`` (e.g. the re-fetched current mark) for crossing
+    tests where the stale session-config price would drift off the perp band."""
+    px = price if price is not None else str(market_config.price(price_multiplier))
     builder = (
         OrderBuilder()
         .symbol(market_config.symbol)
         .side(is_buy)
-        .price(str(market_config.price(price_multiplier)))
+        .price(px)
         .qty(qty if qty is not None else market_config.min_qty)
         .gtt(expires_after)
     )

@@ -19,6 +19,7 @@ resting counterparty — matching the ``settlement_probe`` convention.
 from __future__ import annotations
 
 import time
+from decimal import Decimal
 
 import pytest
 
@@ -142,14 +143,24 @@ async def test_gtt_resting_fill_settles_on_chain(
     busts (asserted session-wide by ``execution_busts_guard``)."""
     await skip_if_external_config_liquidity(market_config, maker, "Engineered cross needs an empty book.")
     qty = market_config.min_qty
-    cross_px = str(market_config.price(0.99))
     expires_after = int(time.time()) + GTT_LIFETIME_S
+
+    if market_type == "perp":
+        # Cross at the CURRENT mark (re-fetched), not the stale session-start
+        # config price: over a long suite run the oracle drifts, and a cross far
+        # from the live mark gets blocked by the perp execution band (the
+        # conftest perp-cross helpers re-fetch the current oracle for the same
+        # reason). The perp symbol IS its own oracle symbol.
+        mark = Decimal(str(await maker.data.current_price(market_config.symbol)))
+        cross_px = str(mark.quantize(Decimal("0.01")))
+    else:
+        # Spot prices come from the perp oracle (not the spot symbol) and there
+        # is no execution band / dynamic depth, so the config price is reliable.
+        cross_px = str(market_config.price(0.99))
 
     await settlement_probe.capture_baseline()
 
-    seller_order = await rest_gtt(
-        taker, market_config, price_multiplier=0.99, expires_after=expires_after, is_buy=False
-    )
+    await rest_gtt(taker, market_config, price=cross_px, expires_after=expires_after, is_buy=False)
     buyer_order_id = await maker.orders.create_limit(
         LimitOrderParameters(
             symbol=market_config.symbol,
@@ -161,6 +172,13 @@ async def test_gtt_resting_fill_settles_on_chain(
     )
     assert buyer_order_id is not None, f"[{market_type}] aggressor IOC must return an order_id"
 
-    await taker.wait.for_order_state(seller_order.order_id, OrderStatus.FILLED, timeout=10)
-    await settlement_probe.assert_settled(qty=qty, price=cross_px)
+    # The authoritative proof that the resting GTT FILLED and SETTLED on-chain is
+    # the position/balance delta (via REST), which settlement_probe polls and
+    # which times out if the two-party cross never landed. We deliberately do NOT
+    # gate on the resting order's WS status first: the WS order-change store can
+    # lag or go stale over a long session (a false "not found"), whereas the
+    # on-chain delta is both stronger (settlement actually moved funds) and
+    # market-correct (the probe requires BOTH our accounts to have moved ±qty, so
+    # it only passes if our two orders crossed EACH OTHER, not algorithmic depth).
+    await settlement_probe.assert_settled(qty=qty, price=cross_px, timeout_s=25)
     logger.info(f"[{market_type}] ✅ a resting GTT filled and settled on-chain (no bust)")
