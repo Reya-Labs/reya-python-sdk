@@ -246,11 +246,13 @@ def test_modify_gtc_with_expiry_rejected(client: ReyaTradingClient) -> None:
 
 @pytest.mark.modify
 def test_modify_gtc_without_expiry_builds(client: ReyaTradingClient) -> None:
-    """A GTC modify with no expiresAfter builds — GTC rests until cancelled."""
+    """A GTC modify with no expiresAfter builds — GTC rests until cancelled.
+    expiresAfter serializes as the signed never-expires sentinel 0 (matching the
+    signed OrderDetails; the wire field is a numeric uint, never null)."""
     payload, _nonce = client.build_modify_order_payload(
         _modify_params(time_in_force=TimeInForce.GTC, expires_after=None)
     )
-    assert payload["expiresAfter"] is None
+    assert payload["expiresAfter"] == 0
 
 
 # ============================================================================

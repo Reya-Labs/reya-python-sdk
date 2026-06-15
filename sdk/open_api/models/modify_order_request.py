@@ -31,6 +31,12 @@ class ModifyOrderRequest(BaseModel):
     client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(description="On-chain `OrderDetails.exchangeId`. Immutable — restate the resting order's value (mismatch is rejected with `MODIFY_IMMUTABLE_MISMATCH`).", alias="exchangeId")
+    is_buy: StrictBool = Field(description="Order side. Immutable — restate the resting order's value.", alias="isBuy")
+    order_type: StrictStr = Field(description="On-chain `OrderDetails.orderType`. Immutable and must be `LIMIT` (only LIMIT orders are modifiable).", alias="orderType")
+    time_in_force: Optional[StrictStr] = Field(default=None, description="On-chain `OrderDetails.timeInForce`. Immutable — a modify cannot flip GTC<->GTT.", alias="timeInForce")
+    trigger_px: Optional[StrictStr] = Field(default=None, description="On-chain `OrderDetails.triggerPrice`. Immutable (zero/absent for LIMIT).", alias="triggerPx")
+    reduce_only: Optional[StrictBool] = Field(default=None, description="On-chain `OrderDetails.reduceOnly`. Immutable.", alias="reduceOnly")
     limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")
     qty: Annotated[str, Field(strict=True)]
     post_only: StrictBool = Field(description="The post-modify post-only (maker-only) flag. Always required — send the complete intended value even when it is unchanged from the resting order. If true and the post-modify order would cross, the modification is rejected with `POST_ONLY_WOULD_CROSS_ERROR` and the resting order is unchanged.", alias="postOnly")
@@ -40,7 +46,7 @@ class ModifyOrderRequest(BaseModel):
     signer_wallet: Annotated[str, Field(strict=True)] = Field(alias="signerWallet")
     deadline: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "symbol", "accountId", "limitPx", "qty", "postOnly", "expiresAfter", "signature", "nonce", "signerWallet", "deadline"]
+    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "symbol", "accountId", "exchangeId", "isBuy", "orderType", "timeInForce", "triggerPx", "reduceOnly", "limitPx", "qty", "postOnly", "expiresAfter", "signature", "nonce", "signerWallet", "deadline"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):

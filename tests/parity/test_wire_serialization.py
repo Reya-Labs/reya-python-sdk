@@ -342,6 +342,12 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
         "clientOrderId",
         "symbol",
         "accountId",
+        "exchangeId",
+        "isBuy",
+        "orderType",
+        "timeInForce",
+        "triggerPx",
+        "reduceOnly",
         "limitPx",
         "qty",
         "postOnly",
@@ -356,10 +362,19 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
     assert payload["qty"] == "0.75"
     assert payload["postOnly"] is True
     assert payload["expiresAfter"] == 1745003600
+    # Restated immutables (full-restate) — always present.
+    assert payload["isBuy"] is True
+    assert payload["orderType"] == "LIMIT"
+    assert payload["timeInForce"] == "GTT"
+    assert payload["reduceOnly"] is False
+    assert payload["triggerPx"] is None  # LIMIT carries no trigger
+    assert isinstance(payload["exchangeId"], int)
     # Targeting + auth.
     assert payload["orderId"] == "63552420354981888"  # orderId is a STRING on the wire
     assert isinstance(payload["orderId"], str)
-    assert payload["clientOrderId"] is None
+    # clientOrderId is the resting order's signed clientOrderId (0 here — the
+    # GTT fixture targets by orderId and carries no clientOrderId).
+    assert payload["clientOrderId"] == 0
     assert payload["accountId"] == 12345
     assert payload["signerWallet"] == SIGNER_ADDRESS
     assert payload["signature"].startswith("0x")
@@ -375,11 +390,18 @@ def test_modify_payload_round_trips_generated_model(client: ReyaTradingClient) -
     payload, _nonce = client.build_modify_order_payload(_modify_params())
     body = ModifyOrderRequest(**payload).to_dict()
 
-    # to_dict drops unset/None optionals: clientOrderId disappears, orderId stays.
+    # to_dict drops None optionals: triggerPx (None for LIMIT) disappears;
+    # clientOrderId stays (0 is the restated immutable, not None); orderId stays.
     assert set(body.keys()) == {
         "orderId",
+        "clientOrderId",
         "symbol",
         "accountId",
+        "exchangeId",
+        "isBuy",
+        "orderType",
+        "timeInForce",
+        "reduceOnly",
         "limitPx",
         "qty",
         "postOnly",

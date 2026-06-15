@@ -7,6 +7,12 @@ class ModifyOrderRequest(BaseModel):
   client_order_id: Optional[int] = Field(default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
+  exchange_id: int = Field(description='''On-chain `OrderDetails.exchangeId`. Immutable — restate the resting order's value (mismatch is rejected with `MODIFY_IMMUTABLE_MISMATCH`).''', alias='''exchangeId''')
+  is_buy: bool = Field(description='''Order side. Immutable — restate the resting order's value.''', alias='''isBuy''')
+  order_type: str = Field(description='''On-chain `OrderDetails.orderType`. Immutable and must be `LIMIT`.''', alias='''orderType''')
+  time_in_force: Optional[str] = Field(default=None, description='''On-chain `OrderDetails.timeInForce`. Immutable — a modify cannot flip GTC<->GTT.''', alias='''timeInForce''')
+  trigger_px: Optional[str] = Field(default=None, description='''On-chain `OrderDetails.triggerPrice`. Immutable (zero/absent for LIMIT).''', alias='''triggerPx''')
+  reduce_only: Optional[bool] = Field(default=None, description='''On-chain `OrderDetails.reduceOnly`. Immutable.''', alias='''reduceOnly''')
   limit_px: str = Field(alias='''limitPx''')
   qty: str = Field()
   post_only: bool = Field(description='''The post-modify post-only (maker-only) flag. Always required — send the complete intended value even when it is unchanged from the resting order. If true and the post-modify order would cross, the modification is rejected with `POST_ONLY_WOULD_CROSS_ERROR` and the resting order is unchanged.''', alias='''postOnly''')
@@ -35,7 +41,7 @@ class ModifyOrderRequest(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['order_id', 'client_order_id', 'symbol', 'account_id', 'limit_px', 'qty', 'post_only', 'expires_after', 'signature', 'nonce', 'signer_wallet', 'deadline', 'additional_properties']
+    known_object_properties = ['order_id', 'client_order_id', 'symbol', 'account_id', 'exchange_id', 'is_buy', 'order_type', 'time_in_force', 'trigger_px', 'reduce_only', 'limit_px', 'qty', 'post_only', 'expires_after', 'signature', 'nonce', 'signer_wallet', 'deadline', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 

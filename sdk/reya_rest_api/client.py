@@ -732,13 +732,25 @@ class ReyaTradingClient:
 
         payload = {
             "orderId": str(params.order_id) if params.order_id is not None else None,
-            "clientOrderId": params.client_order_id,
+            # clientOrderId is the resting order's signed clientOrderId (a restated
+            # immutable, 0 when the order has none) — NOT the targeting param. The
+            # ME targets by orderId when present, else by a non-zero clientOrderId.
+            "clientOrderId": signed_client_order_id,
             "symbol": params.symbol,
             "accountId": self.config.account_id,
+            # Restated immutables (full-restate): the request carries every signed
+            # OrderDetails field. The ME verifies each equals the resting order
+            # (else MODIFY_IMMUTABLE_MISMATCH). orderType is LIMIT (LIMIT-only).
+            "exchangeId": self.config.dex_id,
+            "isBuy": params.is_buy,
+            "orderType": "LIMIT",
+            "timeInForce": params.time_in_force.value,
+            "triggerPx": params.trigger_px,
+            "reduceOnly": params.reduce_only,
             "limitPx": params.limit_px,
             "qty": params.qty,
             "postOnly": params.post_only,
-            "expiresAfter": params.expires_after,
+            "expiresAfter": expires_after,
             "signature": signature,
             "nonce": str(nonce),
             "signerWallet": self.signer_wallet_address,
