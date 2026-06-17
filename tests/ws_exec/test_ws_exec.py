@@ -53,6 +53,7 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+from sdk.async_exec_api.order_status import OrderStatus
 from sdk.open_api.models import TimeInForce
 from sdk.open_api.models.order_type import OrderType
 from sdk.reya_rest_api import ReyaTradingClient
@@ -155,6 +156,43 @@ async def flow_spot_create_order(
         raise RuntimeError(f"spot createOrder OK but missing orderId: {resp}")
     print(f"  [spot] createOrder OK orderId={resp.order_id} " f"status={resp.status} clientOrderId={client_order_id}")
     return resp.order_id
+
+
+async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None:
+    """Spot IOC happy-path over ws-exec. A far-out ($1) IOC BUY on an ETH-priced
+    book crosses nothing, so the engine immediately cancels the unfilled order
+    (IOC never rests). Asserts the transport carries the IOC and the response
+    reflects the no-fill IOC outcome — not REJECTED, no resting orderId (the
+    server omits orderId for IOC), and execQty is absent/0. Read back via REST
+    openOrders confirms nothing rested.
+
+    Robust-by-construction: no resting liquidity dependency and no self-match —
+    spot IOC FILL/REJECT engine semantics are proven in tests/spot/test_ioc_*."""
+    resp = await client.create_limit_order(
+        LimitOrderParameters(
+            symbol=SPOT_SYMBOL,
+            is_buy=True,
+            limit_px=SPOT_LIMIT_PX,
+            qty=str(qty),
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+    print(
+        f"  [spot] createOrder (IOC no-cross) OK status={resp.status} execQty={resp.exec_qty} orderId={resp.order_id}"
+    )
+    if resp.status == OrderStatus.REJECTED:
+        raise RuntimeError(f"spot IOC no-cross unexpectedly REJECTED: {resp}")
+    # IOC never rests -> the server returns no resting orderId and no fill.
+    if resp.order_id is not None:
+        raise RuntimeError(f"spot IOC must not produce a resting orderId, got {resp.order_id}: {resp}")
+    if resp.exec_qty is not None and Decimal(resp.exec_qty) != Decimal(0):
+        raise RuntimeError(f"spot IOC away from the touch must not fill, got execQty={resp.exec_qty}: {resp}")
+
+    # Read-back fidelity: nothing from this account is resting on the book.
+    open_symbols = [o.order_id for o in await client.rest_client.get_open_orders() if o.symbol == SPOT_SYMBOL]
+    if open_symbols:
+        raise RuntimeError(f"spot IOC must leave no resting order; openOrders for {SPOT_SYMBOL}: {open_symbols}")
 
 
 async def flow_spot_cancel_order(client: ReyaWsExecClient, order_id: str) -> None:
@@ -498,6 +536,26 @@ def flow_err_unauthorized_signature(
         ws.close()
 
 
+async def flow_err_spot_reduce_only_rejected(client: ReyaWsExecClient, qty: Decimal) -> None:
+    """reduce_only is perp-IOC-only; on a spot order it is rejected client-side
+    on the ws-exec build path (the same `build_create_limit_order_payload` guard
+    the REST suite asserts in tests/parity/test_wire_serialization.py), so the
+    transport never signs+sends a field the validator forbids. Mirrors the REST
+    `match=` exactly."""
+    with pytest.raises(ValueError, match="reduce_only is only supported on perp IOC"):
+        await client.create_limit_order(
+            LimitOrderParameters(
+                symbol=SPOT_SYMBOL,
+                is_buy=True,
+                limit_px=SPOT_LIMIT_PX,
+                qty=str(qty),
+                time_in_force=TimeInForce.IOC,
+                reduce_only=True,
+            )
+        )
+    print("  [err] spot reduce_only rejected client-side OK")
+
+
 # ---- Helpers ---------------------------------------------------------------
 
 
@@ -649,6 +707,13 @@ async def test_spot_cancel_all_account_wide(spot_ws, harness):  # pylint: disabl
     await flow_spot_cancel_all_account_wide(spot_ws, qty=harness.spot_qty, num_orders_to_open=2)
 
 
+async def test_spot_ioc_no_cross(spot_ws, harness):  # pylint: disable=redefined-outer-name
+    """Spot IOC happy-path: a far-out IOC BUY crosses nothing, returns immediately
+    with no resting order (IOC never rests). Closes the spot-IOC happy-path hole
+    (IOC previously only appeared spot-side as a rejection)."""
+    await flow_spot_ioc_no_cross(spot_ws, qty=harness.spot_qty)
+
+
 # Perp order entry over ws-exec was brought up in layers and now works on devnet1
 # for LIMIT (both TIFs):
 #   * IOC open + reduce-only close — PerpMarketProvider bootstrap fixed (PRO-149);
@@ -729,3 +794,10 @@ async def test_err_unauthorized_signature(harness):  # pylint: disable=redefined
     if harness.spot_rest_2 is None:
         pytest.skip("SPOT_*_2 not set in .env; signer-mismatch test needs a second account")
     flow_err_unauthorized_signature(harness.ws_url, harness.spot_rest, harness.spot_rest_2, qty=harness.spot_qty)
+
+
+async def test_err_spot_reduce_only_rejected(spot_ws, harness):  # pylint: disable=redefined-outer-name
+    """E7: reduce_only on a spot order is rejected client-side on the ws-exec build
+    path (ValueError), mirroring the REST guard — the transport never signs+sends
+    a reduceOnly field the validator forbids on spot."""
+    await flow_err_spot_reduce_only_rejected(spot_ws, qty=harness.spot_qty)
