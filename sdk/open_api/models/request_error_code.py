@@ -20,7 +20,7 @@ from typing_extensions import Self
 
 class RequestErrorCode(str, Enum):
     """
-    Standardized error codes for API responses
+    Standardized error codes for API responses. The `*_OTHER_ERROR` family (`CREATE_ORDER_OTHER_ERROR`, `CANCEL_ORDER_OTHER_ERROR`, `CANCEL_ALL_AFTER_OTHER_ERROR`) is the per-operation catch-all for a matching-engine-side failure that has no more specific code — the human-readable `message` carries the detail. Modify-specific failures surface as `INPUT_VALIDATION_ERROR` (bad/immutable restate), `ORDER_NOT_FOUND`, `EMPTY_MODIFY_ERROR`, `MODIFY_QTY_BELOW_FILLED_ERROR`, `POST_ONLY_WOULD_CROSS_ERROR`, or `MODIFY_ORDER_OTHER_ERROR`.
     """
 
     """

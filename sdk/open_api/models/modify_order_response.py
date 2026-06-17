@@ -26,13 +26,13 @@ from typing_extensions import Self
 
 class ModifyOrderResponse(BaseModel):
     """
-    Result of a modification, same shape as `CreateOrderResponse`. `orderId` is always the same ID the order had before the modification. If the modification crossed the book it executed immediately: `execQty` carries the quantity it filled and `status` reflects the outcome (`OPEN` for a partial fill leaving a remainder resting, `FILLED` for a complete fill). Per-fill detail (prices, fees) is delivered on the wallet executions and `walletOrderChanges` streams, exactly as for `createOrder`.
+    Result of a modification, same shape as `CreateOrderResponse` plus `execQty` / `cumQty`. `orderId` is always the same ID the order had before the modification. If the modification crossed the book it executed immediately: `execQty` carries the quantity it filled and `status` reflects the outcome (`OPEN` for a partial fill leaving a remainder resting, `FILLED` for a complete fill, or `CANCELLED` when a non-post-only crossing modify self-matches the account's own resting liquidity — self-match prevention cancels the taker, so the order is removed and rests nowhere). Per-fill detail (prices, fees) is delivered on the wallet executions and `walletOrderChanges` streams, exactly as for `createOrder`.
     """ # noqa: E501
     status: OrderStatus
     exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
     cum_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="cumQty")
-    order_id: StrictStr = Field(description="Modified order ID — unchanged by the modification.", alias="orderId")
-    client_order_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="clientOrderId")
+    order_id: StrictStr = Field(description="Order ID — unchanged by the modification (the same ID the order had before).", alias="orderId")
+    client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID preserved from order creation, as a decimal string (`uint64`).", alias="clientOrderId")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["status", "execQty", "cumQty", "orderId", "clientOrderId"]
 

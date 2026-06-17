@@ -4,11 +4,11 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class CancelOrderRequest(BaseModel): 
   order_id: Optional[str] = Field(description='''Internal matching engine order ID to cancel. At least one of `orderId` or `clientOrderId` must be provided; if both are supplied the server treats `orderId` as the canonical identifier and `clientOrderId` is ignored. For spot markets, this is the order ID returned in the CreateOrderResponse.''', default=None, alias='''orderId''')
-  client_order_id: Optional[int] = Field(default=None, alias='''clientOrderId''')
+  client_order_id: Optional[str] = Field(description='''Client-provided order ID for tracking and correlation, as a decimal string (`uint64`). At least one of `orderId` or `clientOrderId` must be provided; `clientOrderId` is consulted only when `orderId` is absent. This is the same clientOrderId provided in CreateOrderRequest.''', default=None, alias='''clientOrderId''')
   account_id: int = Field(alias='''accountId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
-  signature: str = Field(description='''See signatures section for more details on how to generate.''')
-  nonce: str = Field(description='''See signatures and nonces section for more details.''')
+  signature: str = Field(description='''EIP-712 signature over the `OrderCancel(uint64 verifyingChainId, uint64 deadline, OrderCancelDetails cancel)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
+  nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See `docs/eip712.md`.''')
   deadline: int = Field()
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 

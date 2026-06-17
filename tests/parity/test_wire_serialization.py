@@ -304,7 +304,7 @@ def test_cancel_accepts_both_identifiers(client: ReyaTradingClient) -> None:
         client_order_id=456,
     )
     assert payload["orderId"] == "123"
-    assert payload["clientOrderId"] == 456
+    assert payload["clientOrderId"] == "456"
 
 
 def _modify_params(**overrides: Any) -> ModifyOrderParameters:
@@ -372,9 +372,11 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
     # Targeting + auth.
     assert payload["orderId"] == "63552420354981888"  # orderId is a STRING on the wire
     assert isinstance(payload["orderId"], str)
-    # clientOrderId is the resting order's signed clientOrderId (0 here — the
-    # GTT fixture targets by orderId and carries no clientOrderId).
-    assert payload["clientOrderId"] == 0
+    # clientOrderId is the resting order's signed clientOrderId ("0" here — the
+    # GTT fixture targets by orderId and carries no clientOrderId). It is a
+    # decimal STRING on the wire (uint64), like orderId.
+    assert payload["clientOrderId"] == "0"
+    assert isinstance(payload["clientOrderId"], str)
     assert payload["accountId"] == 12345
     assert payload["signerWallet"] == SIGNER_ADDRESS
     assert payload["signature"].startswith("0x")
@@ -420,14 +422,14 @@ def test_modify_payload_round_trips_generated_model(client: ReyaTradingClient) -
 
 @pytest.mark.modify
 def test_modify_payload_client_order_id_targeting_wire_shape(client: ReyaTradingClient) -> None:
-    """Targeting by client_order_id: the body carries clientOrderId as an int
-    and omits orderId."""
+    """Targeting by client_order_id: the body carries clientOrderId as a decimal
+    string (uint64) and omits orderId."""
     payload, _nonce = client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=777))
     assert payload["orderId"] is None
-    assert payload["clientOrderId"] == 777
+    assert payload["clientOrderId"] == "777"
     body = ModifyOrderRequest(**payload).to_dict()
     assert "orderId" not in body
-    assert body["clientOrderId"] == 777
+    assert body["clientOrderId"] == "777"
 
 
 @pytest.mark.cod

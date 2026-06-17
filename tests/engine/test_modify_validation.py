@@ -106,7 +106,7 @@ def _raw_modify_request(
     )
     return ModifyOrderRequest(
         orderId=str(order_id) if order_id is not None else None,
-        clientOrderId=client_order_id,
+        clientOrderId=str(client_order_id) if client_order_id is not None else None,
         symbol=spot_config.symbol,
         accountId=tester.account_id,
         # Restated immutables (full-restate) — exactly the values signed above,

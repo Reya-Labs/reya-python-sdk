@@ -6,8 +6,8 @@ class ModifyOrderResponse(BaseModel):
   status: OrderStatus = Field(description='''Order status''')
   exec_qty: Optional[str] = Field(default=None, alias='''execQty''')
   cum_qty: Optional[str] = Field(default=None, alias='''cumQty''')
-  order_id: str = Field(description='''Modified order ID — unchanged by the modification.''', alias='''orderId''')
-  client_order_id: Optional[int] = Field(default=None, alias='''clientOrderId''')
+  order_id: str = Field(description='''Order ID — unchanged by the modification (the same ID the order had before).''', alias='''orderId''')
+  client_order_id: Optional[str] = Field(description='''Client-provided order ID preserved from order creation, as a decimal string (`uint64`).''', default=None, alias='''clientOrderId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')

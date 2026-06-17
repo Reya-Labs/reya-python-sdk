@@ -20,7 +20,7 @@ class CreateOrderRequest(BaseModel):
   signer_wallet: str = Field(alias='''signerWallet''')
   deadline: int = Field()
   expires_after: Optional[int] = Field(default=None, alias='''expiresAfter''')
-  client_order_id: Optional[int] = Field(default=None, alias='''clientOrderId''')
+  client_order_id: Optional[str] = Field(description='''Client-provided order ID for tracking and correlation, as a decimal string. Maps to the on-chain `OrderDetails.clientOrderId` (`uint64`) — signed as part of the EIP-712 payload but not enforced on-chain. Carried as a string (full `uint64` range [0, 2^64-1]) to preserve precision, like `orderId` and `nonce`.''', default=None, alias='''clientOrderId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')

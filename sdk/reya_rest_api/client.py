@@ -332,7 +332,7 @@ class ReyaTradingClient:
             "reduceOnly": reduce_only_wire,
             "postOnly": post_only,
             "expiresAfter": expires_after,
-            "clientOrderId": params.client_order_id,
+            "clientOrderId": (str(params.client_order_id) if params.client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "signerWallet": self.signer_wallet_address,
@@ -437,7 +437,7 @@ class ReyaTradingClient:
             "orderType": params.trigger_type.value,
             "reduceOnly": None,
             "expiresAfter": expires_after,
-            "clientOrderId": params.client_order_id,
+            "clientOrderId": (str(params.client_order_id) if params.client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "signerWallet": self.signer_wallet_address,
@@ -533,7 +533,7 @@ class ReyaTradingClient:
             "symbol": symbol,
             "accountId": resolved_account_id,
             "orderId": order_id,
-            "clientOrderId": client_order_id,
+            "clientOrderId": (str(client_order_id) if client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "deadline": deadline,
@@ -735,7 +735,7 @@ class ReyaTradingClient:
             # clientOrderId is the resting order's signed clientOrderId (a restated
             # immutable, 0 when the order has none) — NOT the targeting param. The
             # ME targets by orderId when present, else by a non-zero clientOrderId.
-            "clientOrderId": signed_client_order_id,
+            "clientOrderId": str(signed_client_order_id),
             "symbol": params.symbol,
             "accountId": self.config.account_id,
             # Restated immutables (full-restate): the request carries every signed

@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from sdk.open_api.models.order_status import OrderStatus
 from typing import Optional, Set
@@ -29,7 +29,7 @@ class CancelOrderResponse(BaseModel):
     """ # noqa: E501
     status: OrderStatus
     order_id: StrictStr = Field(description="Cancelled order ID", alias="orderId")
-    client_order_id: Optional[StrictInt] = Field(default=None, description="Client-provided order ID echoed back from the request", alias="clientOrderId")
+    client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID echoed back from the request, as a decimal string (`uint64`).", alias="clientOrderId")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["status", "orderId", "clientOrderId"]
 
