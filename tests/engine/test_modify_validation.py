@@ -53,6 +53,13 @@ PERP_SYMBOL = "ETHRUSDPERP"
 BOGUS_ORDER_ID = 999_999_999_999_999_999
 
 
+_TIF_TO_INT = {
+    TimeInForce.GTC: int(TimeInForceInt.GTC),
+    TimeInForce.GTT: int(TimeInForceInt.GTT),
+    TimeInForce.IOC: int(TimeInForceInt.IOC),
+}
+
+
 def _raw_modify_request(
     tester: ReyaTester,
     spot_config: SpotTestConfig,
@@ -61,31 +68,41 @@ def _raw_modify_request(
     order_id: int | None = None,
     client_order_id: int | None = None,
     is_buy: bool = True,
+    exchange_id: int | None = None,
+    time_in_force: TimeInForce = TimeInForce.GTC,
+    expires_after: int = 0,
+    reduce_only: bool = False,
+    post_only: bool = False,
+    trigger_px: str | None = None,
+    nonce: int | None = None,
 ) -> ModifyOrderRequest:
     """Build a raw ModifyOrderRequest with a REAL signature over exactly the
     values sent (post-modify state of a resting buy GTC), so the server-side
-    INPUT validation — not signature recovery — is what rejects. `is_buy`
-    defaults to the resting order's side; flip it to forge an immutable
-    mismatch (the signature stays valid, but the restated side no longer
-    matches the resting order)."""
-    nonce = tester.get_next_nonce()
+    INPUT validation / immutable-match — not signature recovery — is what
+    rejects. Every restated immutable (`is_buy`, `exchange_id`, `time_in_force`,
+    `reduce_only`, `client_order_id`, `trigger_px`) is both signed and wired, so
+    flipping any one forges an immutable mismatch with a still-valid signature.
+    `nonce` can be pinned to replay a consumed nonce."""
+    resolved_exchange_id = exchange_id if exchange_id is not None else tester.client.config.dex_id
+    resolved_nonce = nonce if nonce is not None else tester.get_next_nonce()
     deadline = int(time.time()) + 60
+    signed_cloid = client_order_id if client_order_id is not None else 0
     signature = tester.client.signature_generator.sign_order(
         account_id=tester.account_id,
         market_id=spot_config.market_id,
-        exchange_id=tester.client.config.dex_id,
+        exchange_id=resolved_exchange_id,
         order_type=int(OrderTypeInt.LIMIT),
         is_buy=is_buy,
         qty=Decimal(qty),
         limit_price=Decimal(limit_px),
-        trigger_price=Decimal(0),
-        time_in_force=int(TimeInForceInt.GTC),
-        client_order_id=0,
-        reduce_only=False,
-        expires_after=0,
-        nonce=nonce,
+        trigger_price=Decimal(trigger_px) if trigger_px is not None else Decimal(0),
+        time_in_force=_TIF_TO_INT[time_in_force],
+        client_order_id=signed_cloid,
+        reduce_only=reduce_only,
+        expires_after=expires_after,
+        nonce=resolved_nonce,
         deadline=deadline,
-        post_only=False,
+        post_only=post_only,
     )
     return ModifyOrderRequest(
         orderId=str(order_id) if order_id is not None else None,
@@ -94,18 +111,18 @@ def _raw_modify_request(
         accountId=tester.account_id,
         # Restated immutables (full-restate) — exactly the values signed above,
         # so the signature stays valid and input validation is what rejects.
-        exchangeId=tester.client.config.dex_id,
+        exchangeId=resolved_exchange_id,
         isBuy=is_buy,
         orderType=OrderType.LIMIT,
-        timeInForce=TimeInForce.GTC,
-        triggerPx=None,
-        reduceOnly=False,
+        timeInForce=time_in_force,
+        triggerPx=trigger_px,
+        reduceOnly=reduce_only,
         limitPx=limit_px,
         qty=qty,
-        postOnly=False,
-        expiresAfter=0,
+        postOnly=post_only,
+        expiresAfter=expires_after,
         signature=signature,
-        nonce=str(nonce),
+        nonce=str(resolved_nonce),
         signerWallet=tester.client.signer_wallet_address,
         deadline=deadline,
     )
@@ -427,3 +444,163 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
             )
         except ApiException as e:
             logger.warning(f"Trigger order cleanup cancel failed (may already be gone): {e}")
+
+
+@pytest.mark.spot
+@pytest.mark.parametrize("field_label", ["exchangeId", "timeInForce", "reduceOnly", "clientOrderId"])
+@pytest.mark.asyncio
+async def test_immutable_mismatch_fields_raw(spot_config: SpotTestConfig, spot_tester: ReyaTester, field_label: str):
+    """Each restated immutable field that differs from the resting order is
+    rejected by the ME immutable-match (MODIFY_IMMUTABLE_MISMATCH, surfaced as
+    INPUT_VALIDATION_ERROR). Driven raw with a VALID signature over the flipped
+    value so input/immutable validation — not signature recovery — rejects.
+    Extends the isBuy-only `test_immutable_mismatch_raw` across the rest of the
+    immutable set (orderType is covered by `test_trigger_order_not_modifiable`)."""
+    order = await rest_spot_gtc(spot_tester, spot_config, price_multiplier=0.95)  # resting BUY GTC, cl_ord_id 0
+    order_id = int(order.order_id)
+    original_px, original_qty = order.limit_px, order.qty
+    assert original_px is not None and original_qty is not None
+    good_px = str(spot_config.price(0.96))
+
+    overrides: dict[str, dict[str, Any]] = {
+        "exchangeId": {"exchange_id": spot_tester.client.config.dex_id + 1},
+        "timeInForce": {"time_in_force": TimeInForce.GTT, "expires_after": int(time.time()) + 3600},
+        "reduceOnly": {"reduce_only": True},
+        "clientOrderId": {"client_order_id": int(time.time() * 1_000_000)},
+    }
+    case_overrides = overrides[field_label]
+
+    try:
+        request = _raw_modify_request(
+            spot_tester, spot_config, limit_px=good_px, qty=spot_config.min_qty, order_id=order_id, **case_overrides
+        )
+        with pytest.raises(ApiException) as exc_info:
+            await spot_tester.client.orders.modify_order(request)
+        error_msg = str(exc_info.value)
+        assert (
+            "INPUT_VALIDATION_ERROR" in error_msg
+        ), f"[{field_label}] expected INPUT_VALIDATION_ERROR (immutable mismatch), got: {error_msg[:200]}"
+        logger.info(f"✅ [{field_label}] restated-immutable mismatch rejected with INPUT_VALIDATION_ERROR")
+
+        untouched = await spot_tester.data.open_order(order.order_id)
+        assert untouched is not None, f"[{field_label}] rejected modify must leave the order resting"
+        assert_px_qty(untouched, expected_px=original_px, expected_qty=original_qty)
+    finally:
+        await spot_tester.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.spot
+@pytest.mark.maker_taker
+@pytest.mark.asyncio
+async def test_modify_unauthorized_cross_account(
+    spot_config: SpotTestConfig, maker_tester: ReyaTester, taker_tester: ReyaTester
+):
+    """Account B cannot modify account A's resting order: the ME ownership check
+    (account_id mismatch) rejects it, surfaced as MODIFY_ORDER_OTHER_ERROR. The
+    maker's order is left resting."""
+    maker_order = await rest_spot_gtc(maker_tester, spot_config, price_multiplier=0.95, is_buy=True)
+    original_px, original_qty = maker_order.limit_px, maker_order.qty
+    assert original_px is not None and original_qty is not None
+
+    try:
+        # taker (account B) restates maker's order, signed with B's key/account.
+        with pytest.raises(ApiException) as exc_info:
+            await taker_tester.client.modify_order(
+                full_state_modify_params(maker_order, limit_px=str(spot_config.price(0.96)))
+            )
+        error_msg = str(exc_info.value)
+        assert (
+            "MODIFY_ORDER_OTHER_ERROR" in error_msg
+        ), f"expected MODIFY_ORDER_OTHER_ERROR (cross-account UNAUTHORIZED), got: {error_msg[:200]}"
+        logger.info("✅ Cross-account modify rejected with MODIFY_ORDER_OTHER_ERROR")
+
+        untouched = await maker_tester.data.open_order(maker_order.order_id)
+        assert untouched is not None, "Maker's order must survive a cross-account modify attempt"
+        assert_px_qty(untouched, expected_px=original_px, expected_qty=original_qty)
+    finally:
+        await maker_tester.orders.cancel(
+            order_id=maker_order.order_id, symbol=spot_config.symbol, account_id=maker_tester.account_id
+        )
+        await maker_tester.check.no_open_orders()
+
+
+@pytest.mark.spot
+@pytest.mark.asyncio
+async def test_modify_replayed_nonce_rejected(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+    """A nonce is single-use: a second modify reusing a consumed nonce is
+    rejected with INVALID_NONCE_ERROR. Driven raw so the nonce is pinned across
+    both requests; the first modify (a real px change) consumes the nonce."""
+    order = await rest_spot_gtc(spot_tester, spot_config, price_multiplier=0.95)
+    order_id = int(order.order_id)
+    px1 = str(spot_config.price(0.96))
+    px2 = str(spot_config.price(0.97))
+    nonce = spot_tester.get_next_nonce()
+
+    try:
+        first = _raw_modify_request(
+            spot_tester, spot_config, limit_px=px1, qty=spot_config.min_qty, order_id=order_id, nonce=nonce
+        )
+        await spot_tester.client.orders.modify_order(first)
+        logger.info(f"✅ First modify accepted (nonce {nonce} consumed)")
+
+        replay = _raw_modify_request(
+            spot_tester, spot_config, limit_px=px2, qty=spot_config.min_qty, order_id=order_id, nonce=nonce
+        )
+        with pytest.raises(ApiException) as exc_info:
+            await spot_tester.client.orders.modify_order(replay)
+        error_msg = str(exc_info.value)
+        assert (
+            "INVALID_NONCE_ERROR" in error_msg
+        ), f"expected INVALID_NONCE_ERROR on a replayed nonce, got: {error_msg[:200]}"
+        logger.info("✅ Replayed nonce rejected with INVALID_NONCE_ERROR")
+    finally:
+        await spot_tester.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.spot
+@pytest.mark.asyncio
+async def test_modify_signature_envelope_raw(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+    """The signature envelope is required + validated: a missing signature, a
+    zero nonce, and a missing signerWallet are each rejected (HTTP 400). Driven
+    as raw JSON POSTs (the typed model can't express an omitted/empty envelope
+    field), mutating exactly one envelope field per case off a fully-valid
+    signed modify; the resting order survives every rejection."""
+    order = await rest_spot_gtc(spot_tester, spot_config, price_multiplier=0.95)
+    original_px, original_qty = order.limit_px, order.qty
+    assert original_px is not None and original_qty is not None
+    good_px = str(spot_config.price(0.96))
+    url = f"{spot_tester.client.config.api_url}/modifyOrder"
+
+    def _omit_signature(body: dict) -> None:
+        body.pop("signature", None)
+
+    def _zero_nonce(body: dict) -> None:
+        body["nonce"] = "0"
+
+    def _omit_signer(body: dict) -> None:
+        body.pop("signerWallet", None)
+
+    cases = [
+        ("missing signature", _omit_signature),
+        ("zero nonce", _zero_nonce),
+        ("missing signerWallet", _omit_signer),
+    ]
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            for label, mutate in cases:
+                payload, _nonce = spot_tester.client.build_modify_order_payload(
+                    full_state_modify_params(order, limit_px=good_px)
+                )
+                request_body = _strip_nones(payload)
+                mutate(request_body)
+                async with session.post(url, json=request_body) as resp:
+                    body = await resp.text()
+                    assert resp.status == 400, f"[{label}] expected HTTP 400, got {resp.status}: {body[:200]}"
+                logger.info(f"✅ [{label}] rejected with HTTP 400")
+
+        untouched = await spot_tester.data.open_order(order.order_id)
+        assert untouched is not None, "Rejected modifies must leave the order resting"
+        assert_px_qty(untouched, expected_px=original_px, expected_qty=original_qty)
+    finally:
+        await spot_tester.orders.close_all(fail_if_none=False)

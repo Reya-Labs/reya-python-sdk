@@ -22,6 +22,7 @@ crosses) and produce a fill, so they wire the per-market settlement cleanup
 Previously spot-only; parametrizing closes the perp queue-priority gap.
 """
 
+import time
 from decimal import Decimal
 
 import pytest
@@ -32,7 +33,7 @@ from tests.helpers.builders import OrderBuilder
 from tests.helpers.builders.order_builder import full_state_modify_params
 from tests.helpers.liquidity_detector import skip_if_external_config_liquidity
 from tests.helpers.market_config import PerpTestConfig, SpotTestConfig
-from tests.helpers.order_lifecycle import rest_gtc, wait_for_order_fields, wait_for_taker_execution
+from tests.helpers.order_lifecycle import rest_gtc, rest_gtt, wait_for_order_fields, wait_for_taker_execution
 from tests.helpers.reya_tester import logger
 
 pytestmark = [pytest.mark.e2e, pytest.mark.modify, pytest.mark.maker_taker]
@@ -117,6 +118,45 @@ async def test_qty_up_loses_priority(
 
     await taker.wait.for_order_state(maker2.order_id, OrderStatus.FILLED, timeout=5)
     await maker.orders.cancel(order_id=maker1.order_id, symbol=market_config.symbol, account_id=maker.account_id)
+    await maker.check.no_open_orders()
+    await taker.check.no_open_orders()
+
+
+@pytest.mark.asyncio
+async def test_expiry_only_modify_keeps_priority(
+    market_config: SpotTestConfig | PerpTestConfig, market_type: str, maker: ReyaTester, taker: ReyaTester
+) -> None:
+    """An expiry-only modify on a GTT (px+qty unchanged) keeps queue priority:
+    the in-place re-key preserves the FIFO spot, so the taker's first (only)
+    fill is still against the modified maker1 (rested first), not maker2.
+    Mirrors qty-down-keeps-priority but exercises the expiry-only in-place
+    path (S3)."""
+    await skip_if_external_config_liquidity(market_config, maker, PRIORITY_REASON)
+    queue_px = str(market_config.price(0.99))
+    expires_after = int(time.time()) + 3600
+
+    maker1 = await rest_gtt(maker, market_config, expires_after=expires_after, price_multiplier=0.99, is_buy=True)
+    maker2 = await rest_gtt(taker, market_config, expires_after=expires_after, price_multiplier=0.99, is_buy=True)
+
+    new_expiry = int(time.time()) + 7200
+    response = await maker.client.modify_order(full_state_modify_params(maker1, expires_after=new_expiry))
+    assert response.order_id == maker1.order_id
+    assert response.status == OrderStatus.OPEN
+    await wait_for_order_fields(maker, maker1.order_id, expires_after=new_expiry)
+    logger.info(f"[{market_type}] maker1 {maker1.order_id} expiry-only modify (px/qty unchanged)")
+
+    # IOC from `taker`: sized to one maker (min_qty), fills maker1 (still first)
+    # and never reaches taker's own maker2 (no self-match).
+    taker_order_id = await _taker_sell(taker, market_config, price=queue_px)
+    execution = await wait_for_taker_execution(taker, market_type, taker_order_id)
+    assert str(execution.maker_order_id) == str(maker1.order_id), (
+        f"[{market_type}] expiry-only modify lost queue priority: taker filled maker {execution.maker_order_id}, "
+        f"expected maker1 {maker1.order_id}"
+    )
+    logger.info(f"[{market_type}] ✅ expiry-only modify kept priority: taker filled maker1 first")
+
+    await maker.wait.for_order_state(maker1.order_id, OrderStatus.FILLED, timeout=5)
+    await taker.orders.cancel(order_id=maker2.order_id, symbol=market_config.symbol, account_id=taker.account_id)
     await maker.check.no_open_orders()
     await taker.check.no_open_orders()
 

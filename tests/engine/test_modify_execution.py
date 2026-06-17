@@ -203,3 +203,277 @@ async def test_qty_below_filled_rejected(
     finally:
         await maker.orders.close_all(fail_if_none=False)
         await taker.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.asyncio
+async def test_crossing_modify_partial_fill_rests_remainder(
+    market_config: SpotTestConfig | PerpTestConfig,
+    market_type: str,
+    maker: ReyaTester,
+    taker: ReyaTester,
+    settlement_probe: SettlementProbe,
+) -> None:
+    """A crossing modify whose qty EXCEEDS the resting counterparty partially
+    fills and rests the remainder: response is non-terminal (OPEN /
+    PARTIALLY_FILLED) with execQty == counterparty size, the remainder stays
+    resting (cumQty == filled), orderId preserved, and the filled slice settles.
+    Complements the full-fill test (which collapses to FILLED)."""
+    await skip_if_external_config_liquidity(market_config, maker, EXECUTION_REASON)
+    min_qty = market_config.min_qty
+    double_min_qty = str(Decimal(min_qty) * 2)
+    cross_px = str(market_config.price(1.01))
+
+    await settlement_probe.capture_baseline()
+
+    # maker buys 2×min; taker rests an ask of exactly min — the crossing modify
+    # consumes the ask (min) and rests the remaining min.
+    buyer_order = await rest_gtc(maker, market_config, price_multiplier=0.96, qty=double_min_qty, is_buy=True)
+    seller_order = await rest_gtc(taker, market_config, price_multiplier=1.01, qty=min_qty, is_buy=False)
+
+    try:
+        response = await maker.client.modify_order(full_state_modify_params(buyer_order, limit_px=cross_px))
+        assert response.order_id == buyer_order.order_id, "orderId must be preserved through a partial-fill modify"
+        # The API collapses a resting partially-filled order to OPEN (no
+        # PARTIALLY_FILLED status); the partial fill shows via execQty + cumQty.
+        assert (
+            response.status == OrderStatus.OPEN
+        ), f"[{market_type}] a partially-filled crossing modify must rest the remainder OPEN, got {response.status}"
+        assert response.exec_qty is not None and Decimal(response.exec_qty) == Decimal(
+            min_qty
+        ), f"[{market_type}] execQty must report only the crossed (counterparty) size: {response}"
+        logger.info(f"[{market_type}] ✅ partial crossing modify: execQty={response.exec_qty} status={response.status}")
+
+        execution = await wait_for_taker_execution(maker, market_type, buyer_order.order_id)
+        assert Decimal(execution.qty) == Decimal(min_qty), f"Execution qty {execution.qty} != {min_qty}"
+        await taker.wait.for_order_state(seller_order.order_id, OrderStatus.FILLED, timeout=5)
+
+        # The remainder (min) keeps resting under the same orderId with cumQty == filled.
+        remainder = await wait_for_order_fields(maker, buyer_order.order_id, cum_qty=min_qty)
+        assert Decimal(remainder.qty or "0") == Decimal(
+            double_min_qty
+        ), f"[{market_type}] total qty unchanged by a partial fill: {remainder.qty}"
+        logger.info(f"[{market_type}] ✅ remainder rests: qty={remainder.qty} cumQty={remainder.cum_qty}")
+
+        await settlement_probe.assert_settled(qty=min_qty, price=cross_px)
+        logger.info(f"[{market_type}] ✅ partial fill settled for the crossed slice")
+    finally:
+        await maker.orders.close_all(fail_if_none=False)
+        await taker.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.asyncio
+async def test_crossing_modify_self_match_cancelled(
+    market_config: SpotTestConfig | PerpTestConfig,
+    market_type: str,
+    maker: ReyaTester,
+) -> None:
+    """A modify that crosses the SAME account's resting order is self-match
+    prevented: the modified order (the taker) is CANCELLED — the only modify
+    path that yields status CANCELLED — and the resting counterparty survives.
+    Single account, so no fill/settlement occurs."""
+    await skip_if_external_config_liquidity(market_config, maker, EXECUTION_REASON)
+    ask_px = str(market_config.price(1.04))
+
+    # Same account rests an ASK above and a BID below; modifying the bid up to
+    # the ask crosses the account's OWN order -> self-match -> bid cancelled.
+    resting_ask = await rest_gtc(maker, market_config, price_multiplier=1.04, is_buy=False)
+    resting_bid = await rest_gtc(maker, market_config, price_multiplier=0.96, is_buy=True)
+
+    try:
+        response = await maker.client.modify_order(full_state_modify_params(resting_bid, limit_px=ask_px))
+        assert response.order_id == resting_bid.order_id, "orderId must be preserved through a self-match cancel"
+        assert (
+            response.status == OrderStatus.CANCELLED
+        ), f"[{market_type}] self-matching modify must be CANCELLED (SMP), got {response.status}"
+        logger.info(f"[{market_type}] ✅ self-matching modify cancelled: {response.order_id}")
+
+        # The modified bid is gone; the resting ask is untouched.
+        await maker.wait.for_order_state(resting_bid.order_id, OrderStatus.CANCELLED, timeout=5)
+        surviving_ask = await maker.data.open_order(resting_ask.order_id)
+        assert surviving_ask is not None, f"[{market_type}] resting counterparty (ask) must survive SMP"
+        logger.info(f"[{market_type}] ✅ resting counterparty ask survived the self-match")
+    finally:
+        await maker.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.asyncio
+async def test_post_modify_resting_maker_fill_settles(
+    market_config: SpotTestConfig | PerpTestConfig,
+    market_type: str,
+    maker: ReyaTester,
+    taker: ReyaTester,
+    settlement_probe: SettlementProbe,
+) -> None:
+    """Settlement-critical: modify a resting order (re-signs + republishes the
+    post-modify state), THEN have a taker cross into it so the modified order
+    fills as a MAKER. The maker-side fill must settle, proving the REPUBLISHED
+    (fresh) signature — not stale pre-modify bytes — is what settles. The
+    crossing-execution test only exercises the modified order as a taker."""
+    await skip_if_external_config_liquidity(market_config, maker, EXECUTION_REASON)
+    min_qty = market_config.min_qty
+    resting_px = str(market_config.price(0.97))
+
+    # maker rests a buy, then modifies it (px change -> re-sign) while it stays
+    # resting and non-crossing; the modified order keeps resting at resting_px.
+    buyer_order = await rest_gtc(maker, market_config, price_multiplier=0.96, is_buy=True)
+    modify_resp = await maker.client.modify_order(full_state_modify_params(buyer_order, limit_px=resting_px))
+    assert modify_resp.order_id == buyer_order.order_id
+    assert modify_resp.status == OrderStatus.OPEN, f"[{market_type}] non-crossing modify must stay OPEN"
+    await wait_for_order_fields(maker, buyer_order.order_id, limit_px=resting_px)
+    logger.info(f"[{market_type}] ✅ resting order modified + re-signed at {resting_px}")
+
+    await settlement_probe.capture_baseline()
+
+    try:
+        # A taker SELLS into the modified resting buy -> the modified order fills
+        # as the MAKER, using its republished post-modify signature.
+        ioc = OrderBuilder().symbol(market_config.symbol).sell().price(resting_px).qty(min_qty).ioc().build()
+        taker_order_id = await taker.orders.create_limit(ioc)
+        assert taker_order_id is not None
+        execution = await wait_for_taker_execution(taker, market_type, taker_order_id)
+        assert str(execution.maker_order_id) == str(
+            buyer_order.order_id
+        ), f"[{market_type}] the modified order must be the maker side: {execution.maker_order_id}"
+        await maker.wait.for_order_state(buyer_order.order_id, OrderStatus.FILLED, timeout=5)
+        logger.info(f"[{market_type}] ✅ modified order filled as maker")
+
+        await settlement_probe.assert_settled(qty=min_qty, price=resting_px)
+        logger.info(f"[{market_type}] ✅ maker-side fill settled with the republished post-modify signature")
+    finally:
+        await maker.orders.close_all(fail_if_none=False)
+        await taker.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.asyncio
+async def test_post_only_off_modify_crosses_and_fills(
+    market_config: SpotTestConfig | PerpTestConfig,
+    market_type: str,
+    maker: ReyaTester,
+    taker: ReyaTester,
+    settlement_probe: SettlementProbe,
+) -> None:
+    """Flipping postOnly True->False on a modify whose new price crosses lets it
+    execute as a taker (fills) — the mirror of the post-only-would-cross
+    rejection. The resting post-only order, once postOnly is cleared, is free to
+    take liquidity."""
+    await skip_if_external_config_liquidity(market_config, maker, EXECUTION_REASON)
+    min_qty = market_config.min_qty
+    cross_px = str(market_config.price(1.01))
+
+    await settlement_probe.capture_baseline()
+
+    # maker rests a POST-ONLY buy below; taker rests the ask.
+    post_only_buy = (
+        OrderBuilder()
+        .symbol(market_config.symbol)
+        .buy()
+        .price(str(market_config.price(0.96)))
+        .qty(min_qty)
+        .gtc()
+        .post_only(True)
+        .build()
+    )
+    buyer_order_id = await maker.orders.create_limit(post_only_buy)
+    assert buyer_order_id is not None
+    buyer_order = await wait_for_order_fields(maker, buyer_order_id, post_only=True)
+    seller_order = await rest_gtc(taker, market_config, price_multiplier=1.01, qty=min_qty, is_buy=False)
+
+    try:
+        response = await maker.client.modify_order(
+            full_state_modify_params(buyer_order, limit_px=cross_px, post_only=False)
+        )
+        assert response.order_id == buyer_order_id, "orderId must be preserved"
+        assert (
+            response.status == OrderStatus.FILLED
+        ), f"[{market_type}] postOnly-off crossing modify must fill, got {response.status}"
+        assert response.exec_qty is not None and Decimal(response.exec_qty) == Decimal(min_qty)
+        logger.info(f"[{market_type}] ✅ postOnly True->False modify crossed and filled as taker")
+
+        await taker.wait.for_order_state(seller_order.order_id, OrderStatus.FILLED, timeout=5)
+        await settlement_probe.assert_settled(qty=min_qty, price=cross_px)
+        logger.info(f"[{market_type}] ✅ settlement landed for the postOnly-off taker fill")
+    finally:
+        await maker.orders.close_all(fail_if_none=False)
+        await taker.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.asyncio
+async def test_qty_strictly_below_filled_rejected(
+    market_config: SpotTestConfig | PerpTestConfig,
+    market_type: str,
+    maker: ReyaTester,
+    taker: ReyaTester,
+) -> None:
+    """Boundary (lower arm): a partially-filled order with cumQty == 2×min,
+    modified to a TOTAL qty strictly below cumQty (== min) is rejected with
+    MODIFY_QTY_BELOW_FILLED_ERROR. Complements the existing ==cumQty arm and the
+    accept arm below."""
+    await skip_if_external_config_liquidity(market_config, maker, EXECUTION_REASON)
+    min_qty = market_config.min_qty
+    triple_min = str(Decimal(min_qty) * 3)
+    double_min = str(Decimal(min_qty) * 2)
+    queue_px = str(market_config.price(0.99))
+
+    maker_order = await rest_gtc(maker, market_config, price_multiplier=0.99, qty=triple_min, is_buy=True)
+    try:
+        ioc = OrderBuilder().symbol(market_config.symbol).sell().price(queue_px).qty(double_min).ioc().build()
+        taker_order_id = await taker.orders.create_limit(ioc)
+        assert taker_order_id is not None
+        await wait_for_taker_execution(taker, market_type, taker_order_id)
+        partially_filled = await wait_for_order_fields(maker, maker_order.order_id, cum_qty=double_min)
+
+        # total qty == min < cumQty (2×min) — strictly below filled.
+        with pytest.raises(ApiException) as exc_info:
+            await maker.client.modify_order(full_state_modify_params(partially_filled, qty=min_qty))
+        assert "MODIFY_QTY_BELOW_FILLED_ERROR" in str(
+            exc_info.value
+        ), f"[{market_type}] expected MODIFY_QTY_BELOW_FILLED_ERROR, got: {str(exc_info.value)[:200]}"
+        logger.info(f"[{market_type}] ✅ qty strictly < cumQty rejected")
+        assert await maker.data.open_order(maker_order.order_id) is not None, "remainder must stay resting"
+    finally:
+        await maker.orders.close_all(fail_if_none=False)
+        await taker.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.asyncio
+async def test_qty_above_filled_succeeds(
+    market_config: SpotTestConfig | PerpTestConfig,
+    market_type: str,
+    maker: ReyaTester,
+    taker: ReyaTester,
+) -> None:
+    """Boundary (accept arm): a partially-filled order (cumQty == 2×min)
+    modified to a TOTAL qty strictly ABOVE cumQty (cum + one qty step) is
+    accepted — the order stays OPEN with the new total and cumQty preserved.
+    Closes the QtyBelowFilled boundary triple (< reject, == reject, +step
+    accept)."""
+    await skip_if_external_config_liquidity(market_config, maker, EXECUTION_REASON)
+    min_qty = market_config.min_qty
+    quad_min = str(Decimal(min_qty) * 4)
+    double_min = str(Decimal(min_qty) * 2)
+    # cumQty + one step; distinct from the resting total (4×min) so it's a real change.
+    above_filled = str(Decimal(double_min) + Decimal(market_config.qty_step_size))
+    queue_px = str(market_config.price(0.99))
+
+    maker_order = await rest_gtc(maker, market_config, price_multiplier=0.99, qty=quad_min, is_buy=True)
+    try:
+        ioc = OrderBuilder().symbol(market_config.symbol).sell().price(queue_px).qty(double_min).ioc().build()
+        taker_order_id = await taker.orders.create_limit(ioc)
+        assert taker_order_id is not None
+        await wait_for_taker_execution(taker, market_type, taker_order_id)
+        partially_filled = await wait_for_order_fields(maker, maker_order.order_id, cum_qty=double_min)
+
+        response = await maker.client.modify_order(full_state_modify_params(partially_filled, qty=above_filled))
+        assert response.order_id == maker_order.order_id
+        assert (
+            response.status == OrderStatus.OPEN
+        ), f"[{market_type}] qty above cumQty must be accepted (rests OPEN), got {response.status}"
+        logger.info(f"[{market_type}] ✅ qty == cumQty + step accepted (total -> {above_filled})")
+
+        updated = await wait_for_order_fields(maker, maker_order.order_id, qty=above_filled, cum_qty=double_min)
+        assert Decimal(updated.cum_qty or "0") == Decimal(
+            double_min
+        ), f"[{market_type}] cumQty must be preserved by a qty-up modify: {updated.cum_qty}"
+    finally:
+        await maker.orders.close_all(fail_if_none=False)
+        await taker.orders.close_all(fail_if_none=False)

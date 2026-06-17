@@ -324,3 +324,81 @@ async def test_ws_exec_empty_modify_error_envelope(modify_ws_harness):  # pylint
         assert still_open is not None, "Rejected empty modify must leave the order resting"
     finally:
         await ws.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=rest.config.account_id)
+
+
+async def test_ws_exec_immutable_mismatch_envelope(modify_ws_harness):  # pylint: disable=redefined-outer-name
+    """Validation-rejection envelope breadth over ws-exec: a restated immutable
+    that doesn't match the resting order (here the side is flipped) is rejected
+    by the ME immutable-match, surfaced through the per-op error envelope as
+    WsExecOperationError INPUT_VALIDATION_ERROR. The signature is valid over the
+    flipped side, so it is the immutable-match — not signature recovery — that
+    rejects. The resting order survives."""
+    rest, ws, min_qty = modify_ws_harness
+
+    create = await ws.create_limit_order(
+        LimitOrderParameters(
+            symbol=SPOT_SYMBOL,
+            is_buy=True,
+            limit_px=REST_PX,
+            qty=min_qty,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert create.order_id is not None
+    order_id = create.order_id
+
+    try:
+        order = await _wait_for_open_order(rest, order_id)
+
+        # Restate the side flipped (sell) against the resting buy — the SDK signs
+        # over the flipped side, so the engine's immutable-match rejects it.
+        with pytest.raises(WsExecOperationError) as exc_info:
+            await ws.modify_order(full_state_modify_params(order, is_buy=False))
+        assert (
+            exc_info.value.code == "INPUT_VALIDATION_ERROR"
+        ), f"Expected INPUT_VALIDATION_ERROR (immutable mismatch), got {exc_info.value.code}"
+        print(f"  [ws-exec] immutable (side) mismatch rejected OK code={exc_info.value.code}")
+
+        still_open = await _wait_for_open_order(rest, order_id)
+        assert still_open is not None, "Rejected immutable-mismatch modify must leave the order resting"
+    finally:
+        await ws.cancel_order(order_id=order_id, symbol=SPOT_SYMBOL, account_id=rest.config.account_id)
+
+
+async def test_ws_exec_self_match_modify_cancelled(modify_ws_harness):  # pylint: disable=redefined-outer-name
+    """Crossing-modify path over ws-exec WITHOUT a fill: rest an ask above and a
+    bid below (same account), then modify the bid up to the ask so it crosses
+    the account's OWN order → self-match prevention CANCELS the modified bid.
+    The ws response carries status CANCELLED (the only modify outcome that
+    yields CANCELLED) and no settlement occurs, so the shared account balances
+    are untouched. The resting ask survives."""
+    rest, ws, min_qty = modify_ws_harness
+    ask_px = "2"
+    bid_px = "1"
+
+    # Resting ask ABOVE the bid (both far below the ETH-priced book's market, so
+    # the bid->ask cross only ever reaches the account's OWN ask, never external).
+    ask = await ws.create_limit_order(
+        LimitOrderParameters(
+            symbol=SPOT_SYMBOL, is_buy=False, limit_px=ask_px, qty=min_qty, time_in_force=TimeInForce.GTC
+        )
+    )
+    bid = await ws.create_limit_order(
+        LimitOrderParameters(
+            symbol=SPOT_SYMBOL, is_buy=True, limit_px=bid_px, qty=min_qty, time_in_force=TimeInForce.GTC
+        )
+    )
+    assert ask.order_id is not None and bid.order_id is not None
+
+    try:
+        bid_order = await _wait_for_open_order(rest, bid.order_id)
+        response = await ws.modify_order(full_state_modify_params(bid_order, limit_px=ask_px))
+        assert response.order_id == bid.order_id, f"orderId must be preserved: {response.order_id} != {bid.order_id}"
+        assert response.status.value == "CANCELLED", f"self-matching modify must be CANCELLED, got {response.status}"
+        print(f"  [ws-exec] self-matching modify cancelled OK status={response.status}")
+    finally:
+        # The bid is cancelled by SMP; cancel the surviving ask (best-effort).
+        try:
+            await ws.cancel_order(order_id=ask.order_id, symbol=SPOT_SYMBOL, account_id=rest.config.account_id)
+        except WsExecOperationError:
+            pass
