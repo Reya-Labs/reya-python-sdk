@@ -55,7 +55,12 @@ pytestmark = [pytest.mark.e2e, pytest.mark.cod]
 # The ME scans armed countdowns on a ~500ms tick; allow that plus clock skew
 # and request latency before declaring a fire missed (or a non-fire proven).
 FIRE_MARGIN_S = 3.0
-TRIGGER_AT_WINDOW_MS = 2_000
+# triggerAt is stamped on the ME clock; this window absorbs client↔ME clock
+# skew + round-trip latency. Dev runners (esp. WSL2) drift several seconds from
+# the NTP-synced cluster — measured up to ~2.7s here — so 2s was too tight and
+# flaked intermittently. 5s covers realistic dev skew while still catching any
+# gross ME bug (wrong unit / missing timeout are off by ≥30,000ms).
+TRIGGER_AT_WINDOW_MS = 5_000
 
 
 def _assert_trigger_at_echo(response: CancelAllAfterResponse, timeout_ms: int, sent_at_ms: float) -> None:

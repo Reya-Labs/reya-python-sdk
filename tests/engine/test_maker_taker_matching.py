@@ -108,6 +108,15 @@ async def test_maker_taker_match_e2e(
 
     # Step 6: WS execution event for taker — perp goes via perp_executions, spot via spot_executions.
     if market_type == "spot":
+        # The spot execution event rides the async on-chain settlement → indexer
+        # → WS path (ME-broadcaster mode), so it lands AFTER the FILLED order
+        # change. Poll within the same window the perp branch uses rather than
+        # asserting immediately. (last_spot_execution is a live property over the
+        # growing spot_executions collection, so re-reading picks up new events.)
+        for _ in range(20):
+            if taker.ws.last_spot_execution is not None:
+                break
+            await asyncio.sleep(0.25)
         assert taker.ws.last_spot_execution is not None, "[spot] expected last_spot_execution on taker WS"
         assert taker.ws.last_spot_execution.symbol == market_config.symbol
     else:

@@ -13,6 +13,7 @@ the initial snapshot contains the correct state before incremental updates.
 
 import asyncio
 import logging
+import time
 
 import pytest
 
@@ -439,7 +440,13 @@ async def test_spot_executions_ws_initial_snapshot(
         await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
         logger.info("✅ Trade executed")
 
-    # Step 2: Verify we received spot execution via WebSocket
+    # Step 2: Verify we received spot execution via WebSocket.
+    # spotExecutions surface via settlement -> indexer -> WS, which lags the trade
+    # asynchronously (more so in ME-broadcaster mode). Poll instead of asserting on a
+    # fixed sleep — otherwise this flakes under full-suite load.
+    deadline = time.time() + 15.0
+    while time.time() < deadline and len(taker_tester.ws.spot_executions) == 0:
+        await asyncio.sleep(0.1)
     assert len(taker_tester.ws.spot_executions) > 0, "Should have received spot execution via WebSocket"
     logger.info(f"✅ Received {len(taker_tester.ws.spot_executions)} spot execution(s) via WebSocket")
 
@@ -589,8 +596,17 @@ async def test_spot_balances_ws_update_after_trade(
         await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
         logger.info("✅ Trade executed")
 
-    # Wait for balance updates to propagate
-    await asyncio.sleep(0.3)
+    # Poll for balance updates to propagate. A spot fill settles both legs (base + RUSD),
+    # but balance updates surface via settlement -> indexer -> WS, which lags the trade
+    # asynchronously (more so in ME-broadcaster mode). A fixed sleep flakes under
+    # full-suite load — poll until both legs have arrived, within a generous window.
+    base_asset = spot_config.base_asset
+    deadline = time.time() + 15.0
+    while time.time() < deadline:
+        taker_assets = {u.asset for u in taker_tester.ws.balance_updates}
+        if len(taker_tester.ws.balance_updates) >= 2 and base_asset in taker_assets and "RUSD" in taker_assets:
+            break
+        await asyncio.sleep(0.1)
 
     # Verify balance updates received (only check taker since maker may not be involved with external liquidity)
     taker_updates = taker_tester.ws.balance_updates
@@ -598,7 +614,6 @@ async def test_spot_balances_ws_update_after_trade(
     logger.info(f"Taker balance updates: {len(taker_updates)}")
 
     # Taker should have received balance updates (base asset and RUSD)
-    base_asset = spot_config.base_asset
     assert len(taker_updates) >= 2, f"Taker should have at least 2 balance updates, got {len(taker_updates)}"
 
     # Verify assets updated

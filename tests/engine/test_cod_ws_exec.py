@@ -56,7 +56,12 @@ pytestmark = [
     ),
 ]
 
-TRIGGER_AT_WINDOW_MS = 2_000
+# triggerAt is stamped on the ME clock; this window absorbs client↔ME clock
+# skew + round-trip latency. Dev runners (esp. WSL2) drift several seconds from
+# the NTP-synced cluster (measured up to ~2.7s), so 2s flaked intermittently.
+# 5s covers realistic dev skew while still catching any gross ME bug (wrong
+# unit / missing timeout are off by ≥30,000ms). Mirror of test_cod_lifecycle.py.
+TRIGGER_AT_WINDOW_MS = 5_000
 
 SPOT_SYMBOL = "WETHRUSD"
 # Far-out resting price on an ETH-priced book (same convention as
