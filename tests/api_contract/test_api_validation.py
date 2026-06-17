@@ -1762,7 +1762,7 @@ async def test_spot_order_invalid_time_in_force(spot_config: SpotTestConfig, spo
     """
     Test that an order with an invalid timeInForce is rejected.
 
-    The API should validate that timeInForce is one of: IOC, GTC.
+    The API should validate that timeInForce is one of: IOC, GTC, GTT.
     """
     logger.info("=" * 80)
     logger.info("SPOT ORDER INVALID TIME IN FORCE TEST")
