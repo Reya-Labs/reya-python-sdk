@@ -162,9 +162,10 @@ async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None
     """Spot IOC happy-path over ws-exec. A far-out ($1) IOC BUY on an ETH-priced
     book crosses nothing, so the engine immediately cancels the unfilled order
     (IOC never rests). Asserts the transport carries the IOC and the response
-    reflects the no-fill IOC outcome — not REJECTED, no resting orderId (the
-    server omits orderId for IOC), and execQty is absent/0. Read back via REST
-    openOrders confirms nothing rested.
+    reflects the no-fill IOC outcome — CANCELLED (not REJECTED) and execQty
+    absent/0. The matching engine assigns a Snowflake orderId to every order, so
+    a no-cross IOC still carries an assigned orderId; it simply never rests,
+    which the REST openOrders read-back confirms.
 
     Robust-by-construction: no resting liquidity dependency and no self-match —
     spot IOC FILL/REJECT engine semantics are proven in tests/spot/test_ioc_*."""
@@ -183,9 +184,11 @@ async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None
     )
     if resp.status == OrderStatus.REJECTED:
         raise RuntimeError(f"spot IOC no-cross unexpectedly REJECTED: {resp}")
-    # IOC never rests -> the server returns no resting orderId and no fill.
-    if resp.order_id is not None:
-        raise RuntimeError(f"spot IOC must not produce a resting orderId, got {resp.order_id}: {resp}")
+    # The engine assigns an orderId to every order, including a no-cross IOC; it
+    # is CANCELLED, not resting (no-rest is proven by the openOrders read-back
+    # below). Mirrors tests/engine/test_ioc_orders.py.
+    if resp.order_id is None:
+        raise RuntimeError(f"engine must assign an orderId to every order, got None: {resp}")
     if resp.exec_qty is not None and Decimal(resp.exec_qty) != Decimal(0):
         raise RuntimeError(f"spot IOC away from the touch must not fill, got execQty={resp.exec_qty}: {resp}")
 

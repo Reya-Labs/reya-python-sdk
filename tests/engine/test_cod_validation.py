@@ -51,12 +51,18 @@ def _raw_cancel_all_after_request(
 
 
 @pytest.mark.asyncio
+# Only values inside the schema envelope [0, 60000] can reach the server through
+# the generated CancelAllAfterRequest model (timeoutMs is Field(le=60000, ge=0)).
+# So the server-side test covers the [1, 4999] gap (schema-valid but
+# business-rejected) and the {0, 5000, 60000} accepted boundary. timeoutMs > 60000
+# is a client-side schema/guard rejection — pinned offline in
+# tests/validation/test_client_guards.py (build_cancel_all_after_payload + the
+# typed model both reject it before the wire), not reachable here.
 @pytest.mark.parametrize(
     "timeout_ms,accepted",
     [
         (1, False),
         (4_999, False),
-        (60_001, False),
         (5_000, True),
         (60_000, True),
         (0, True),

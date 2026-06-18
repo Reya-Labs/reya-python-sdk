@@ -17,6 +17,7 @@ import pytest
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
+from tests.engine.post_only_helpers import wait_for_ws_order_event
 from tests.helpers import ReyaTester
 from tests.helpers.market_config import PerpTestConfig, SpotTestConfig
 
@@ -42,6 +43,10 @@ async def test_ws_order_change_on_create(
     order_id = await maker.orders.create_limit(params)
     assert order_id is not None
     await maker.wait.for_order_creation(order_id)
+    # for_order_creation can return on the REST-only path before the WS event
+    # lands (the WS client runs on a daemon background thread), so poll the WS
+    # store first — otherwise the single-shot check below races the socket.
+    await wait_for_ws_order_event(maker, order_id)
 
     maker.check.ws_order_change_received(
         order_id=order_id,
