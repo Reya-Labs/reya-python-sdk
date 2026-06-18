@@ -4,7 +4,7 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 
 class CancelAllAfterRequest(BaseModel): 
   account_id: int = Field(alias='''accountId''')
-  timeout_ms: int = Field(description='''Countdown duration in milliseconds. `0` disarms an armed countdown (no-op if none is armed); any non-zero value must be within [5000, 60000] and arms a fresh countdown of that duration, replacing any previously armed one (re-arming with the same value is the refresh/heartbeat). The exact accepted set is `{0} ∪ [5000, 60000]`; the schema bound is the outer envelope [0, 60000] and the matching engine rejects the [1, 4999] gap with `INPUT_VALIDATION_ERROR`. Signed into the `CancelAllAfter` envelope.''', alias='''timeoutMs''')
+  timeout_ms: int = Field(description='''Countdown duration in milliseconds. `0` disarms an armed countdown (no-op if none is armed); any other value must be within `[5000, 60000]` and (re-)arms a fresh countdown of that duration — re-arming refreshes it. Values in `(0, 5000)` are rejected with `INPUT_VALIDATION_ERROR`. Signed into the `CancelAllAfter` envelope.''', alias='''timeoutMs''')
   signature: str = Field(description='''EIP-712 signature over the `CancelAllAfter(uint64 verifyingChainId, uint64 deadline, CancelAllAfterDetails cancelAllAfter)` envelope, where `CancelAllAfterDetails(uint64 accountId, uint64 timeoutMs, uint64 nonce)`. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
   nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required on every arm/refresh/disarm call; replayed nonces are rejected with `INVALID_NONCE_ERROR`.''')
   signer_wallet: str = Field(alias='''signerWallet''')

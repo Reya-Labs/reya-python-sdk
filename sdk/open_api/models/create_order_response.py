@@ -31,7 +31,7 @@ class CreateOrderResponse(BaseModel):
     status: OrderStatus
     exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
     cum_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="cumQty")
-    order_id: Optional[StrictStr] = Field(default=None, description="Created order ID (currently generated for all order types except IOC)", alias="orderId")
+    order_id: Optional[StrictStr] = Field(default=None, description="Engine-assigned order ID, generated for all order types including IOC. A no-cross IOC still receives an ID and is returned with status CANCELLED (it never rests).", alias="orderId")
     client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID echoed back from the request, as a decimal string (`uint64`).", alias="clientOrderId")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["status", "execQty", "cumQty", "orderId", "clientOrderId"]
