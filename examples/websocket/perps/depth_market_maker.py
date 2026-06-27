@@ -98,11 +98,12 @@ MAX_ORDER_QTY = Decimal("0.01")
 # Settle asset on Reya is rUSD across all envs at the time of writing.
 COLLATERAL_ASSET = "RUSD"
 
-# GTC orders are signed with a long-lived `expires_after` so the matching
-# engine doesn't quietly cancel resting depth before the next replace cycle.
-# 10 minutes is well above any single cycle's batch of placements + WS
-# round-trip slack, and at the off-chain api's documented deadline cap.
-GTC_LIFETIME_S = 60 * 10
+# Resting depth is posted as GTT (Good-Till-Time): it rests like GTC but the
+# matching engine auto-reaps it at `expires_after`, so a stale quote is cleaned
+# up if a replace cycle is missed. 10 minutes is well above any single cycle's
+# batch of placements + WS round-trip slack. (A true GTC would rest forever
+# until explicitly cancelled — `expires_after=0`.)
+GTT_LIFETIME_S = 60 * 10
 
 
 @dataclass
@@ -417,7 +418,7 @@ class WebSocketHandler:
 
 async def fetch_market_definition(client: ReyaTradingClient, symbol: str) -> MarketParams:
     """Look up perp market params via ``/marketDefinitions``."""
-    definitions = await client.reference.get_market_definitions()
+    definitions = await client.reference.get_perp_market_definitions()
     for market in definitions:
         if market.symbol == symbol:
             return MarketParams(
@@ -511,16 +512,15 @@ async def place_single_order(
 
     for attempt in range(max_retries):
         try:
-            deadline = int(time.time()) + GTC_LIFETIME_S
+            expires_after = int(time.time()) + GTT_LIFETIME_S
             await client.create_limit_order(
                 LimitOrderParameters(
                     symbol=symbol,
                     is_buy=is_buy,
                     limit_px=price,
                     qty=qty,
-                    time_in_force=TimeInForce.GTC,
-                    expires_after=deadline,
-                    deadline=deadline,
+                    time_in_force=TimeInForce.GTT,
+                    expires_after=expires_after,
                 )
             )
             logger.info(f"   Placed {side} @ ${price} qty={qty}")
@@ -628,16 +628,15 @@ async def cancel_and_replace_order(
     qty_to_use = new_qty
     for attempt in range(max_retries):
         try:
-            deadline = int(time.time()) + GTC_LIFETIME_S
+            expires_after = int(time.time()) + GTT_LIFETIME_S
             await client.create_limit_order(
                 LimitOrderParameters(
                     symbol=symbol,
                     is_buy=order.is_buy,
                     limit_px=str(new_price),
                     qty=qty_to_use,
-                    time_in_force=TimeInForce.GTC,
-                    expires_after=deadline,
-                    deadline=deadline,
+                    time_in_force=TimeInForce.GTT,
+                    expires_after=expires_after,
                 )
             )
             return True

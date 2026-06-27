@@ -5,8 +5,8 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 class MassCancelRequest(BaseModel): 
   account_id: int = Field(alias='''accountId''')
   symbol: Optional[str] = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''', default=None)
-  signature: str = Field(description='''See signatures and nonces section for more details on how to generate.''')
-  nonce: str = Field(description='''See signatures and nonces section for more details.''')
+  signature: str = Field(description='''EIP-712 signature over the `MassCancel(uint64 verifyingChainId, uint64 deadline, MassCancelDetails massCancel)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
+  nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See `docs/eip712.md`.''')
   deadline: int = Field()
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 

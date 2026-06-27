@@ -5,7 +5,8 @@ Offline (no devnet): builds payloads with a fixed key + a hand-seeded
 symbol→marketId map, and asserts on the emitted wire shape — numeric fields as
 plain decimal strings (never scientific notation), the decoupled
 ``deadline`` / ``expiresAfter`` fields, and the order/cancel entry-rule guards
-(``reduceOnly``, ``postOnly``, GTT, and the cancel-identifier rules).
+(``reduceOnly``, ``postOnly``, the GTC/GTT↔``expiresAfter`` coupling, and the
+cancel-identifier rules).
 
 Regression: the sell-trigger sentinel limit price is ``Decimal("0.000000001")``,
 and ``str(Decimal("0.000000001"))`` is ``"1E-9"``. The server's ethers
@@ -16,16 +17,26 @@ was correct. The builder now uses ``format(value, "f")``.
 
 from __future__ import annotations
 
+from typing import Any
+
 import time
 
 import pytest
 
+from sdk.open_api.models.cancel_all_after_request import CancelAllAfterRequest
+from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
+from sdk.reya_rest_api.models.orders import (
+    LimitOrderParameters,
+    ModifyOrderParameters,
+    TriggerOrderParameters,
+)
+
+pytestmark = pytest.mark.offline
 
 PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
@@ -141,21 +152,21 @@ def test_limit_payload_post_only_defaults_false(client: ReyaTradingClient) -> No
     assert payload["postOnly"] is False
 
 
-def test_post_only_true_rejected_pending_offchain(client: ReyaTradingClient) -> None:
-    """post_only=True on a GTC limit is rejected until the off-chain 14-field digest
-    reconstruction lands — no silently un-settleable order. (The OpenAPI/wire field
-    is already present; the off-chain side is the remaining gate.)"""
-    with pytest.raises(ValueError, match="post_only=True is not yet supported"):
-        client.build_create_limit_order_payload(
-            LimitOrderParameters(
-                symbol=PERP_SYMBOL,
-                is_buy=True,
-                limit_px="3000",
-                qty="0.01",
-                time_in_force=TimeInForce.GTC,
-                post_only=True,
-            )
+def test_post_only_true_flows_to_wire(client: ReyaTradingClient) -> None:
+    """post_only=True on a GTC limit travels end-to-end now that the off-chain
+    verifies the 14-field digest and the matching engine enforces would-cross:
+    it is signed and carried on the wire, no longer rejected at entry."""
+    payload, _ = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px="3000",
+            qty="0.01",
+            time_in_force=TimeInForce.GTC,
+            post_only=True,
         )
+    )
+    assert payload["postOnly"] is True
 
 
 def test_post_only_with_ioc_rejected(client: ReyaTradingClient) -> None:
@@ -174,11 +185,32 @@ def test_post_only_with_ioc_rejected(client: ReyaTradingClient) -> None:
         )
 
 
-def test_gtt_rejected_pending_offchain(client: ReyaTradingClient) -> None:
-    """GTT is exposed in the OpenAPI enum and signing-capable, but rejected at entry
-    until the off-chain 14-field digest + GTT expiresAfter validation land — rather
-    than a KeyError on the GTC/IOC-only TIF map or an un-settleable order."""
-    with pytest.raises(ValueError, match="GTT time-in-force is not yet supported"):
+def test_gtt_accepted_and_signs_expires_after(client: ReyaTradingClient) -> None:
+    """GTT rests like GTC but auto-expires at ``expiresAfter``: the order signs
+    and the non-zero ``expiresAfter`` (strictly after the deadline) travels onto
+    the wire — no longer rejected at entry now that the off-chain digest + ME
+    rest/reap GTT end-to-end."""
+    deadline = int(time.time()) + 60
+    expires_after = deadline + 600
+    payload, _nonce = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px="3000",
+            qty="0.01",
+            time_in_force=TimeInForce.GTT,
+            deadline=deadline,
+            expires_after=expires_after,
+        )
+    )
+    assert payload["timeInForce"] == TimeInForce.GTT.value
+    assert payload["expiresAfter"] == expires_after
+
+
+def test_gtt_without_expiry_rejected(client: ReyaTradingClient) -> None:
+    """GTT requires a non-zero ``expiresAfter`` — a GTT that never expires is a
+    contradiction (that is GTC). Rejected at entry before signing."""
+    with pytest.raises(ValueError, match="GTT orders require a non-zero expires_after"):
         client.build_create_limit_order_payload(
             LimitOrderParameters(
                 symbol=PERP_SYMBOL,
@@ -186,6 +218,40 @@ def test_gtt_rejected_pending_offchain(client: ReyaTradingClient) -> None:
                 limit_px="3000",
                 qty="0.01",
                 time_in_force=TimeInForce.GTT,
+            )
+        )
+
+
+def test_gtt_expiry_not_after_deadline_rejected(client: ReyaTradingClient) -> None:
+    """A GTT whose ``expiresAfter`` is not strictly after the deadline would
+    expire within (or before) its own entry window — rejected at entry."""
+    deadline = int(time.time()) + 600
+    with pytest.raises(ValueError, match="GTT expires_after must be greater than deadline"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.GTT,
+                deadline=deadline,
+                expires_after=deadline,
+            )
+        )
+
+
+def test_gtc_with_expiry_rejected(client: ReyaTradingClient) -> None:
+    """GTC never expires — pairing it with a non-zero ``expiresAfter`` is the
+    legacy GTC-with-expiry shape that is now GTT. Rejected at entry."""
+    with pytest.raises(ValueError, match="GTC orders must not expire"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.GTC,
+                expires_after=int(time.time()) + 600,
             )
         )
 
@@ -238,4 +304,157 @@ def test_cancel_accepts_both_identifiers(client: ReyaTradingClient) -> None:
         client_order_id=456,
     )
     assert payload["orderId"] == "123"
-    assert payload["clientOrderId"] == 456
+    assert payload["clientOrderId"] == "456"
+
+
+def _modify_params(**overrides: Any) -> ModifyOrderParameters:
+    """A complete, valid post-modify state targeting by order_id.
+
+    The resting order is GTT — the modifiable order that legitimately carries a
+    non-zero ``expiresAfter`` (strictly after the deadline), satisfying the
+    GTC/GTT↔``expiresAfter`` coupling.
+    """
+    fields: dict[str, Any] = {
+        "symbol": PERP_SYMBOL,
+        "is_buy": True,
+        "limit_px": "2950",
+        "qty": "0.75",
+        "post_only": True,
+        "expires_after": 1745003600,
+        "time_in_force": TimeInForce.GTT,
+        "order_id": 63552420354981888,
+        "deadline": 1745000300,
+        "nonce": 1700000000000005,
+    }
+    fields.update(overrides)
+    return ModifyOrderParameters(**fields)
+
+
+@pytest.mark.modify
+def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
+    """The modify body always carries ALL FOUR post-modify fields (limitPx, qty,
+    postOnly, expiresAfter — no omitted-means-inherited shorthand), the
+    targeting identifier, and signerWallet, with the documented wire types."""
+    payload, nonce = client.build_modify_order_payload(_modify_params())
+
+    assert set(payload.keys()) == {
+        "orderId",
+        "clientOrderId",
+        "symbol",
+        "accountId",
+        "exchangeId",
+        "isBuy",
+        "orderType",
+        "timeInForce",
+        "triggerPx",
+        "reduceOnly",
+        "limitPx",
+        "qty",
+        "postOnly",
+        "expiresAfter",
+        "signature",
+        "nonce",
+        "signerWallet",
+        "deadline",
+    }
+    # The four post-modify fields — always present, never None.
+    assert payload["limitPx"] == "2950"
+    assert payload["qty"] == "0.75"
+    assert payload["postOnly"] is True
+    assert payload["expiresAfter"] == 1745003600
+    # Restated immutables (full-restate) — always present.
+    assert payload["isBuy"] is True
+    assert payload["orderType"] == "LIMIT"
+    assert payload["timeInForce"] == "GTT"
+    assert payload["reduceOnly"] is False
+    assert payload["triggerPx"] is None  # LIMIT carries no trigger
+    assert isinstance(payload["exchangeId"], int)
+    # Targeting + auth.
+    assert payload["orderId"] == "63552420354981888"  # orderId is a STRING on the wire
+    assert isinstance(payload["orderId"], str)
+    # clientOrderId is the resting order's signed clientOrderId ("0" here — the
+    # GTT fixture targets by orderId and carries no clientOrderId). It is a
+    # decimal STRING on the wire (uint64), like orderId.
+    assert payload["clientOrderId"] == "0"
+    assert isinstance(payload["clientOrderId"], str)
+    assert payload["accountId"] == 12345
+    assert payload["signerWallet"] == SIGNER_ADDRESS
+    assert payload["signature"].startswith("0x")
+    assert payload["nonce"] == str(nonce)  # nonce serializes as a string
+    assert isinstance(payload["deadline"], int)
+
+
+@pytest.mark.modify
+def test_modify_payload_round_trips_generated_model(client: ReyaTradingClient) -> None:
+    """The payload round-trips through the generated ModifyOrderRequest with
+    orderId kept as a string (StrictStr per the OpenAPI model) and the four
+    post-modify fields + targeting + signerWallet surviving serialization."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params())
+    body = ModifyOrderRequest(**payload).to_dict()
+
+    # to_dict drops None optionals: triggerPx (None for LIMIT) disappears;
+    # clientOrderId stays (0 is the restated immutable, not None); orderId stays.
+    assert set(body.keys()) == {
+        "orderId",
+        "clientOrderId",
+        "symbol",
+        "accountId",
+        "exchangeId",
+        "isBuy",
+        "orderType",
+        "timeInForce",
+        "reduceOnly",
+        "limitPx",
+        "qty",
+        "postOnly",
+        "expiresAfter",
+        "signature",
+        "nonce",
+        "signerWallet",
+        "deadline",
+    }
+    assert body["orderId"] == "63552420354981888"
+    assert isinstance(body["orderId"], str)
+    assert isinstance(body["postOnly"], bool)
+    assert isinstance(body["expiresAfter"], int)
+    assert isinstance(body["nonce"], str)
+
+
+@pytest.mark.modify
+def test_modify_payload_client_order_id_targeting_wire_shape(client: ReyaTradingClient) -> None:
+    """Targeting by client_order_id: the body carries clientOrderId as a decimal
+    string (uint64) and omits orderId."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=777))
+    assert payload["orderId"] is None
+    assert payload["clientOrderId"] == "777"
+    body = ModifyOrderRequest(**payload).to_dict()
+    assert "orderId" not in body
+    assert body["clientOrderId"] == "777"
+
+
+@pytest.mark.cod
+def test_cancel_all_after_payload_wire_shape(client: ReyaTradingClient) -> None:
+    """The cancelAllAfter body is exactly {accountId, timeoutMs, signature,
+    nonce, signerWallet, deadline} with the documented wire types, and
+    round-trips through the generated CancelAllAfterRequest."""
+    payload = client.build_cancel_all_after_payload(timeout_ms=30000)
+
+    assert set(payload.keys()) == {
+        "accountId",
+        "timeoutMs",
+        "signature",
+        "nonce",
+        "signerWallet",
+        "deadline",
+    }
+    assert payload["accountId"] == 12345
+    assert payload["timeoutMs"] == 30000
+    assert isinstance(payload["timeoutMs"], int)
+    assert payload["signature"].startswith("0x")
+    assert isinstance(payload["nonce"], str)  # nonce serializes as a string
+    assert payload["signerWallet"] == SIGNER_ADDRESS
+    assert isinstance(payload["deadline"], int)
+
+    body = CancelAllAfterRequest(**payload).to_dict()
+    assert set(body.keys()) == set(payload.keys())
+    assert body["timeoutMs"] == 30000

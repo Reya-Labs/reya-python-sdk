@@ -2,8 +2,9 @@
 Signature generation utilities for Reya Trading API authentication.
 
 Implements EIP-712 signing for the unified spot+perp Order envelope, plus
-matching-engine-layer OrderCancel and MassCancel envelopes. See
-specs/docs/eip712.md for the canonical typehash strings and field semantics.
+matching-engine-layer OrderCancel, MassCancel, and CancelAllAfter envelopes.
+See specs/docs/eip712.md for the canonical typehash strings and field
+semantics.
 """
 
 from decimal import Decimal
@@ -224,6 +225,43 @@ class SignatureGenerator:
             "massCancel": {
                 "accountId": account_id,
                 "marketId": market_id,
+                "nonce": nonce,
+            },
+        }
+
+        signed_message = Account.sign_typed_data(self._private_key, self._domain, types, message)
+        return _to_hex_signature(signed_message.signature.hex())
+
+    def sign_cancel_all_after(
+        self,
+        account_id: int,
+        timeout_ms: int,
+        nonce: int,
+        deadline: int,
+    ) -> str:
+        """Sign a CancelAllAfter envelope (matching-engine layer).
+
+        Arms/refreshes (`timeout_ms` in [5000, 60000]) or disarms
+        (`timeout_ms=0`) the account-wide dead-man's-switch countdown."""
+        types = {
+            "CancelAllAfter": [
+                {"name": "verifyingChainId", "type": "uint64"},
+                {"name": "deadline", "type": "uint64"},
+                {"name": "cancelAllAfter", "type": "CancelAllAfterDetails"},
+            ],
+            "CancelAllAfterDetails": [
+                {"name": "accountId", "type": "uint64"},
+                {"name": "timeoutMs", "type": "uint64"},
+                {"name": "nonce", "type": "uint64"},
+            ],
+        }
+
+        message = {
+            "verifyingChainId": self._chain_id,
+            "deadline": deadline,
+            "cancelAllAfter": {
+                "accountId": account_id,
+                "timeoutMs": timeout_ms,
                 "nonce": nonce,
             },
         }

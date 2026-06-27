@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import asyncio
 import logging
 import time
+from decimal import Decimal
 
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.side import Side
@@ -25,6 +26,15 @@ class PositionOperations:
 
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
+
+    async def signed_qty(self, symbol: str) -> Decimal:
+        """Signed position size on `symbol`: + long, − short, 0 when flat."""
+        position = await self._t.data.position(symbol)
+        if position is None or position.qty is None:
+            return Decimal("0")
+        qty = Decimal(str(position.qty))
+        # Sides on the API: 'B' = Bid/long (positive), 'A' = Ask/short (negative).
+        return qty if str(position.side) in ("Side.B", "B") else -qty
 
     async def close_all(self, fail_if_none: bool = True) -> None:
         """Best-effort: try to flatten any open positions.

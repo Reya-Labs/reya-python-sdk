@@ -22,6 +22,8 @@ from sdk.open_api.api_client import ApiClient
 from sdk.open_api.configuration import Configuration
 from sdk.open_api.models.account import Account
 from sdk.open_api.models.account_balance import AccountBalance
+from sdk.open_api.models.cancel_all_after_request import CancelAllAfterRequest
+from sdk.open_api.models.cancel_all_after_response import CancelAllAfterResponse
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
 from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
@@ -30,6 +32,8 @@ from sdk.open_api.models.execution_bust_list import ExecutionBustList
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse
+from sdk.open_api.models.modify_order_request import ModifyOrderRequest
+from sdk.open_api.models.modify_order_response import ModifyOrderResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
@@ -40,7 +44,7 @@ from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig, get_config
 
-from .models.orders import LimitOrderParameters, TriggerOrderParameters
+from .models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
 # Two INDEPENDENT signed time fields:
 #   - `deadline`     — EIP-712 signature-validity window, enforced off-chain at
@@ -58,6 +62,12 @@ from .models.orders import LimitOrderParameters, TriggerOrderParameters
 DEFAULT_DEADLINE_S = 60  # signature-validity window (entry only), all order types.
 PERPETUAL_LIFETIME = 0  # `expiresAfter` sentinel: never expires (GTC rests; IOC moot).
 
+# cancelAllAfter (dead-man's-switch) countdown bounds. `timeoutMs` must be 0
+# (disarm) or within [min, max]; each call replaces the running countdown.
+CANCEL_ALL_AFTER_DISARM_MS = 0
+CANCEL_ALL_AFTER_MIN_TIMEOUT_MS = 5_000
+CANCEL_ALL_AFTER_MAX_TIMEOUT_MS = 60_000
+
 # Spot/perp namespace discriminator on the unified marketId, mirroring the
 # off-chain market-id namespace convention. Perp market ids are the raw on-chain
 # core id (well below 1e10); spot market ids are `core_id + 1e10`. Used to gate
@@ -72,14 +82,11 @@ _ORDER_TYPE_TO_INT: dict[OrderType, OrderTypeInt] = {
     OrderType.TAKE_PROFIT: OrderTypeInt.TAKE_PROFIT,
 }
 
-# Maps the public OpenAPI `TimeInForce` to the signed uint8. The OpenAPI enum now
-# exposes GTT, but it's intentionally absent here: GTT entry is gated in
-# `build_create_limit_order_payload` (rejected until off-chain support lands), so
-# only GTC/IOC reach this map. Add `TimeInForce.GTT: TimeInForceInt.GTT` when the
-# gate lifts.
+# Maps the public OpenAPI `TimeInForce` to the signed uint8 (0=GTC, 1=IOC, 2=GTT).
 _TIME_IN_FORCE_TO_INT: dict[TimeInForce, TimeInForceInt] = {
     TimeInForce.GTC: TimeInForceInt.GTC,
     TimeInForce.IOC: TimeInForceInt.IOC,
+    TimeInForce.GTT: TimeInForceInt.GTT,
 }
 
 
@@ -134,7 +141,7 @@ class ReyaTradingClient:
 
     async def _load_market_definitions(self) -> None:
         """Load both perp and spot market definitions."""
-        market_definitions: list[MarketDefinition] = await self.reference.get_market_definitions()
+        market_definitions: list[MarketDefinition] = await self.reference.get_perp_market_definitions()
         self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
         self._symbol_to_tick_size = {market.symbol: market.tick_size for market in market_definitions}
         perp_count = len(market_definitions)
@@ -247,19 +254,6 @@ class ReyaTradingClient:
         is_ioc = params.time_in_force == TimeInForce.IOC
         is_perp_ioc = is_ioc and not is_spot_market
 
-        # GTT entry is signing-capable (`TimeInForceInt.GTT`) and now exposed in the
-        # OpenAPI enum, but it can't travel end-to-end yet: the off-chain still
-        # reconstructs the 13-field digest, and GTT needs its own `expiresAfter`
-        # validation (non-zero, and greater than `deadline`). Reject it at entry
-        # until off-chain support lands, rather than sign an un-settleable order.
-        # (Lift this together with the `_TIME_IN_FORCE_TO_INT` GTT mapping and the
-        # GTT expiresAfter rule.)
-        if params.time_in_force == TimeInForce.GTT:
-            raise ValueError(
-                "GTT time-in-force is not yet supported end-to-end (pending off-chain "
-                "14-field digest reconstruction and GTT expiresAfter validation)"
-            )
-
         nonce = self._get_next_nonce()
 
         # `deadline` (entry-time signature validity) and `expiresAfter` (on-chain
@@ -273,6 +267,18 @@ class ReyaTradingClient:
         expires_after = params.expires_after if params.expires_after is not None else PERPETUAL_LIFETIME
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
+        # TIF <-> expiresAfter coupling (mirrors the off-chain validator + the ME):
+        # GTC never expires (expiresAfter must be 0); GTT always expires
+        # (expiresAfter non-zero and strictly after the deadline). IOC never rests,
+        # so its lifetime is moot. Fail fast before signing.
+        if params.time_in_force == TimeInForce.GTT:
+            if expires_after == 0:
+                raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
+            if expires_after <= deadline:
+                raise ValueError("GTT expires_after must be greater than deadline")
+        elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
+            raise ValueError("GTC orders must not expire (expires_after must be 0)")
+
         # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
         # be ABSENT on spot ("not supported for spot markets") and perp GTC
         # (rejected by the off-chain order validator). So gate the wire field to
@@ -285,28 +291,15 @@ class ReyaTradingClient:
         reduce_only_wire: Optional[bool] = reduce_only if is_perp_ioc else None
 
         # `post_only` marks a maker-only order: it must REST, never cross as a
-        # taker. IOC is immediate-or-cancel (taker by nature), so post_only + IOC
-        # is self-contradictory (the order could neither take nor rest) and is
-        # always rejected. On-chain taker-side enforcement is deferred for now;
-        # this is the entry guard.
-        #
-        # Rollout gate: the flag is signed into the 14-field `OrderDetails.postOnly`
-        # digest and the `CreateOrderRequest` wire model now carries it, but
-        # `post_only=True` still can't travel end-to-end — the off-chain digest
-        # reconstruction is still 13-field, so a signed postOnly=true would fail
-        # signer recovery off-chain. Reject True until off-chain reconstructs 14
-        # fields, rather than emit an un-settleable order. The default False is
-        # unaffected: signed as False and reconstructed as False either way.
+        # taker. The off-chain verifies the 14-field digest and the matching
+        # engine enforces would-cross, so post_only=True travels end-to-end.
+        # IOC is immediate-or-cancel (taker by nature), so post_only + IOC is
+        # self-contradictory (the order could neither take nor rest) and is
+        # always rejected.
         post_only = bool(params.post_only) if params.post_only is not None else False
-        if post_only:
-            if is_ioc:
-                raise ValueError(
-                    "post_only is not supported on IOC orders "
-                    "(IOC is taker-only; post_only requires the order to rest)"
-                )
+        if post_only and is_ioc:
             raise ValueError(
-                "post_only=True is not yet supported end-to-end "
-                "(pending the off-chain 14-field digest reconstruction)"
+                "post_only is not supported on IOC orders (IOC is taker-only; post_only requires the order to rest)"
             )
 
         signature = self._signature_generator.sign_order(
@@ -337,13 +330,9 @@ class ReyaTradingClient:
             "orderType": OrderType.LIMIT.value,
             "timeInForce": params.time_in_force.value if params.time_in_force is not None else None,
             "reduceOnly": reduce_only_wire,
-            # Signed into the 14-field digest above and carried on the wire. The
-            # `CreateOrderRequest` model now has a `postOnly` field, so this is
-            # transported (no longer dropped); `post_only` is gated to False above
-            # until the off-chain side reconstructs 14 fields.
             "postOnly": post_only,
             "expiresAfter": expires_after,
-            "clientOrderId": params.client_order_id,
+            "clientOrderId": (str(params.client_order_id) if params.client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "signerWallet": self.signer_wallet_address,
@@ -448,7 +437,7 @@ class ReyaTradingClient:
             "orderType": params.trigger_type.value,
             "reduceOnly": None,
             "expiresAfter": expires_after,
-            "clientOrderId": params.client_order_id,
+            "clientOrderId": (str(params.client_order_id) if params.client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "signerWallet": self.signer_wallet_address,
@@ -544,7 +533,7 @@ class ReyaTradingClient:
             "symbol": symbol,
             "accountId": resolved_account_id,
             "orderId": order_id,
-            "clientOrderId": client_order_id,
+            "clientOrderId": (str(client_order_id) if client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "deadline": deadline,
@@ -597,6 +586,177 @@ class ReyaTradingClient:
             "nonce": str(nonce),
             "deadline": deadline,
         }
+
+    async def cancel_all_after(
+        self,
+        timeout_ms: int,
+        account_id: Optional[int] = None,
+        deadline: Optional[int] = None,
+        nonce: Optional[int] = None,
+    ) -> CancelAllAfterResponse:
+        """
+        Arm, refresh, or disarm the account-wide cancel-all-after countdown
+        (dead-man's-switch). While armed, all of the account's open orders are
+        mass-cancelled unless the countdown is refreshed with another call
+        before `timeout_ms` elapses. `timeout_ms=0` disarms; non-zero values
+        must be within [5000, 60000] ms. Each call replaces the countdown.
+        Refresh is explicit only — order entry, ping/pong, and connection
+        close neither refresh nor trigger it.
+        """
+        payload = self.build_cancel_all_after_payload(
+            timeout_ms=timeout_ms,
+            account_id=account_id,
+            deadline=deadline,
+            nonce=nonce,
+        )
+        return await self.orders.cancel_all_after(CancelAllAfterRequest(**payload))
+
+    def build_cancel_all_after_payload(
+        self,
+        timeout_ms: int,
+        account_id: Optional[int] = None,
+        deadline: Optional[int] = None,
+        nonce: Optional[int] = None,
+    ) -> dict:
+        """Build the camelCase wire payload for a cancelAllAfter request.
+
+        Pure (no I/O). Shared by the REST sender above and the ws-exec
+        transport. Same arg semantics as :meth:`cancel_all_after`.
+        """
+        if timeout_ms != CANCEL_ALL_AFTER_DISARM_MS and not (
+            CANCEL_ALL_AFTER_MIN_TIMEOUT_MS <= timeout_ms <= CANCEL_ALL_AFTER_MAX_TIMEOUT_MS
+        ):
+            raise ValueError(
+                f"timeout_ms must be {CANCEL_ALL_AFTER_DISARM_MS} (disarm) or within "
+                f"[{CANCEL_ALL_AFTER_MIN_TIMEOUT_MS}, {CANCEL_ALL_AFTER_MAX_TIMEOUT_MS}] ms (got {timeout_ms})"
+            )
+
+        resolved_account_id = account_id if account_id is not None else self.config.account_id
+        if resolved_account_id is None:
+            raise ValueError("account_id is required (pass it or set in config)")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for signing")
+
+        resolved_nonce = nonce if nonce is not None else self._get_next_nonce()
+        resolved_deadline = deadline if deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+
+        signature = self._signature_generator.sign_cancel_all_after(
+            account_id=resolved_account_id,
+            timeout_ms=timeout_ms,
+            nonce=resolved_nonce,
+            deadline=resolved_deadline,
+        )
+
+        return {
+            "accountId": resolved_account_id,
+            "timeoutMs": timeout_ms,
+            "signature": signature,
+            "nonce": str(resolved_nonce),
+            "signerWallet": self.signer_wallet_address,
+            "deadline": resolved_deadline,
+        }
+
+    async def modify_order(self, params: ModifyOrderParameters) -> ModifyOrderResponse:
+        """
+        Modify a resting order in place on either spot or perp markets. The
+        order keeps its `orderId` and `clientOrderId`. Target exactly one of
+        `params.order_id` / `params.client_order_id`. The four modifiable
+        fields (`limit_px`, `qty`, `post_only`, `expires_after`) all carry the
+        complete post-modify state; the immutables (`is_buy`, `time_in_force`,
+        `trigger_px`, `reduce_only`, `resting_client_order_id`) must restate
+        the resting order's values — both go into the fresh EIP-712 signature
+        over the full post-modify state.
+        """
+        payload, _nonce = self.build_modify_order_payload(params)
+        return await self.orders.modify_order(ModifyOrderRequest(**payload))
+
+    def build_modify_order_payload(self, params: ModifyOrderParameters) -> tuple[dict, int]:
+        """Build the camelCase wire payload for a modifyOrder request and
+        return ``(payload, nonce)``.
+
+        Pure (no I/O). Shared by the REST sender above and the ws-exec
+        transport. Signs the same 14-field `OrderDetails` envelope as
+        createOrder, over the full post-modify order state.
+        """
+        has_order_id = params.order_id is not None
+        has_client_order_id = params.client_order_id is not None
+        if has_order_id == has_client_order_id:
+            raise ValueError("Provide exactly one of order_id or client_order_id")
+        if has_client_order_id and params.client_order_id == 0:
+            raise ValueError("client_order_id 0 is not a valid modify target")
+        if self.config.account_id is None:
+            raise ValueError("Account ID is required for order signing")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for order signing")
+
+        market_id = self.get_market_id_from_symbol(params.symbol)
+        nonce = params.nonce if params.nonce is not None else self._get_next_nonce()
+        deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+
+        # TIF <-> expiresAfter coupling, checked against the RESTING order's
+        # immutable TIF (a modify cannot change TIF — the caller passes the
+        # resting order's TIF). GTC never expires; GTT must expire after deadline.
+        expires_after = params.expires_after or 0
+        if params.time_in_force == TimeInForce.GTT:
+            if expires_after == 0:
+                raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
+            if expires_after <= deadline:
+                raise ValueError("GTT expires_after must be greater than deadline")
+        elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
+            raise ValueError("GTC orders must not expire (expires_after must be 0)")
+
+        # The signed `OrderDetails.clientOrderId` is the RESTING order's
+        # clientOrderId — independent of the targeting parameter. When
+        # targeting BY client_order_id it defaults to that value (mirrors the
+        # TS SDK: restingClientOrderId ?? clientOrderId ?? 0).
+        signed_client_order_id = params.resting_client_order_id or params.client_order_id or 0
+        trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
+
+        signature = self._signature_generator.sign_order(
+            account_id=self.config.account_id,
+            market_id=market_id,
+            exchange_id=self.config.dex_id,
+            order_type=int(OrderTypeInt.LIMIT),
+            is_buy=params.is_buy,
+            qty=Decimal(params.qty),
+            limit_price=Decimal(params.limit_px),
+            trigger_price=trigger_price,
+            time_in_force=int(TimeInForceInt[params.time_in_force.value]),
+            client_order_id=signed_client_order_id,
+            reduce_only=params.reduce_only,
+            expires_after=expires_after,
+            nonce=nonce,
+            deadline=deadline,
+            post_only=params.post_only,
+        )
+
+        payload = {
+            "orderId": str(params.order_id) if params.order_id is not None else None,
+            # clientOrderId is the resting order's signed clientOrderId (a restated
+            # immutable, 0 when the order has none) — NOT the targeting param. The
+            # ME targets by orderId when present, else by a non-zero clientOrderId.
+            "clientOrderId": str(signed_client_order_id),
+            "symbol": params.symbol,
+            "accountId": self.config.account_id,
+            # Restated immutables (full-restate): the request carries every signed
+            # OrderDetails field. The ME verifies each equals the resting order
+            # (else MODIFY_IMMUTABLE_MISMATCH). orderType is LIMIT (LIMIT-only).
+            "exchangeId": self.config.dex_id,
+            "isBuy": params.is_buy,
+            "orderType": "LIMIT",
+            "timeInForce": params.time_in_force.value,
+            "triggerPx": params.trigger_px,
+            "reduceOnly": params.reduce_only,
+            "limitPx": params.limit_px,
+            "qty": params.qty,
+            "postOnly": params.post_only,
+            "expiresAfter": expires_after,
+            "signature": signature,
+            "nonce": str(nonce),
+            "signerWallet": self.signer_wallet_address,
+            "deadline": deadline,
+        }
+        return payload, nonce
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         wallet = wallet_address or self.owner_wallet_address

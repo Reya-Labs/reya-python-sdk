@@ -18,7 +18,9 @@ class Order(BaseModel):
   order_type: OrderType = Field(description='''Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.''', alias='''orderType''')
   trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
   time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', default=None, alias='''timeInForce''')
+  expires_after: Optional[int] = Field(default=None, alias='''expiresAfter''')
   reduce_only: Optional[bool] = Field(description='''Whether this is a reduce-only order, exclusively used for LIMIT IOC orders.''', default=None, alias='''reduceOnly''')
+  post_only: Optional[bool] = Field(description='''Whether this is a post-only (maker-only) order. Mirrors `CreateOrderRequest.postOnly`; updated by `modifyOrder`.''', default=None, alias='''postOnly''')
   status: OrderStatus = Field(description='''Order status''')
   created_at: int = Field(alias='''createdAt''')
   last_update_at: int = Field(alias='''lastUpdateAt''')
@@ -42,13 +44,13 @@ class Order(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'qty', 'exec_qty', 'cum_qty', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'reduce_only', 'status', 'created_at', 'last_update_at', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'qty', 'exec_qty', 'cum_qty', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'expires_after', 'reduce_only', 'post_only', 'status', 'created_at', 'last_update_at', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'qty', 'execQty', 'cumQty', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'reduceOnly', 'status', 'createdAt', 'lastUpdateAt', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'qty', 'execQty', 'cumQty', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'expiresAfter', 'reduceOnly', 'postOnly', 'status', 'createdAt', 'lastUpdateAt', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):

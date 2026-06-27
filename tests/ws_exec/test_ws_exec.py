@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import json
 import os
-import ssl
 import time
 import uuid
 from dataclasses import dataclass
@@ -53,14 +52,21 @@ from decimal import Decimal
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
-from websocket import WebSocket, create_connection  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
+from sdk.async_exec_api.order_status import OrderStatus
 from sdk.open_api.models import TimeInForce
 from sdk.open_api.models.order_type import OrderType
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
 from sdk.reya_ws_exec import ReyaWsExecClient
+from tests.helpers.ws_exec_harness import (
+    assert_per_op_error,
+    assert_top_level_error,
+    raw_connect,
+    raw_recv_until,
+    raw_send_envelope,
+)
 
 load_dotenv()
 
@@ -150,6 +156,46 @@ async def flow_spot_create_order(
         raise RuntimeError(f"spot createOrder OK but missing orderId: {resp}")
     print(f"  [spot] createOrder OK orderId={resp.order_id} " f"status={resp.status} clientOrderId={client_order_id}")
     return resp.order_id
+
+
+async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None:
+    """Spot IOC happy-path over ws-exec. A far-out ($1) IOC BUY on an ETH-priced
+    book crosses nothing, so the engine immediately cancels the unfilled order
+    (IOC never rests). Asserts the transport carries the IOC and the response
+    reflects the no-fill IOC outcome — CANCELLED (not REJECTED) and execQty
+    absent/0. The matching engine assigns a Snowflake orderId to every order, so
+    a no-cross IOC still carries an assigned orderId; it simply never rests,
+    which the REST openOrders read-back confirms.
+
+    Robust-by-construction: no resting liquidity dependency and no self-match —
+    spot IOC FILL/REJECT engine semantics are proven in tests/spot/test_ioc_*."""
+    resp = await client.create_limit_order(
+        LimitOrderParameters(
+            symbol=SPOT_SYMBOL,
+            is_buy=True,
+            limit_px=SPOT_LIMIT_PX,
+            qty=str(qty),
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+    print(
+        f"  [spot] createOrder (IOC no-cross) OK status={resp.status} execQty={resp.exec_qty} orderId={resp.order_id}"
+    )
+    if resp.status == OrderStatus.REJECTED:
+        raise RuntimeError(f"spot IOC no-cross unexpectedly REJECTED: {resp}")
+    # The engine assigns an orderId to every order, including a no-cross IOC; it
+    # is CANCELLED, not resting (no-rest is proven by the openOrders read-back
+    # below). Mirrors tests/engine/test_ioc_orders.py.
+    if resp.order_id is None:
+        raise RuntimeError(f"engine must assign an orderId to every order, got None: {resp}")
+    if resp.exec_qty is not None and Decimal(resp.exec_qty) != Decimal(0):
+        raise RuntimeError(f"spot IOC away from the touch must not fill, got execQty={resp.exec_qty}: {resp}")
+
+    # Read-back fidelity: nothing from this account is resting on the book.
+    open_symbols = [o.order_id for o in await client.rest_client.get_open_orders() if o.symbol == SPOT_SYMBOL]
+    if open_symbols:
+        raise RuntimeError(f"spot IOC must leave no resting order; openOrders for {SPOT_SYMBOL}: {open_symbols}")
 
 
 async def flow_spot_cancel_order(client: ReyaWsExecClient, order_id: str) -> None:
@@ -296,68 +342,6 @@ async def flow_perp_ioc_close(client: ReyaWsExecClient, qty: Decimal) -> None:
 # connection, do the one negative probe, and close.
 
 
-def _raw_connect(url: str) -> WebSocket:
-    sslopt = {"cert_reqs": ssl.CERT_REQUIRED}
-    return create_connection(url, sslopt=sslopt)
-
-
-def _raw_send_envelope(ws: WebSocket, msg_type: str, env_id: str, payload: dict) -> None:
-    # Drop None-valued fields so a raw frame matches what the high-level OpenAPI
-    # client puts on the wire (it serializes with exclude_none). Notably the
-    # ws-exec server rejects a *present* null `reduceOnly` on spot with
-    # INPUT_VALIDATION ("reduceOnly field is not supported for spot markets").
-    clean = {k: v for k, v in payload.items() if v is not None}
-    ws.send(json.dumps({"type": msg_type, "id": env_id, "payload": clean}))
-
-
-def _raw_recv_until(
-    ws: WebSocket,
-    predicate,
-    timeout_s: float = RECV_TIMEOUT_S,
-) -> dict:
-    """Read frames until ``predicate(frame)`` returns True. Times out cleanly."""
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        ws.settimeout(max(0.1, deadline - time.time()))
-        try:
-            raw = ws.recv()
-        except Exception as exc:  # noqa: BLE001 — surface as RuntimeError below
-            raise RuntimeError(f"raw recv failed: {exc}") from exc
-        if not raw:
-            continue
-        frame: dict = json.loads(raw)
-        if frame.get("type") == "ping":
-            pong: dict = {"type": "pong"}
-            if frame.get("id") is not None:
-                pong["id"] = frame["id"]
-            ws.send(json.dumps(pong))
-            continue
-        if predicate(frame):
-            return frame
-    raise RuntimeError("raw recv timed out before predicate matched")
-
-
-def _assert_top_level_error(frame: dict, expected_code: str, op_label: str) -> None:
-    if frame.get("type") != "error":
-        raise RuntimeError(f"[{op_label}] expected type=error, got {frame!r}")
-    err = frame.get("error", {}) or {}
-    actual = err.get("error")
-    if actual != expected_code:
-        raise RuntimeError(f"[{op_label}] expected {expected_code!r}, got {actual!r} message={err.get('message')!r}")
-
-
-def _assert_per_op_error(frame: dict, expected_codes: tuple[str, ...], op_label: str) -> dict:
-    if frame.get("ok"):
-        raise RuntimeError(f"[{op_label}] expected error, got ok=true payload={frame.get('payload')!r}")
-    err = frame.get("error", {}) or {}
-    actual = err.get("error")
-    if actual not in expected_codes:
-        raise RuntimeError(
-            f"[{op_label}] expected one of {expected_codes!r}, got error={actual!r} message={err.get('message')!r}"
-        )
-    return err
-
-
 async def flow_err_duplicate_request_id(
     ws_url: str,
     rest_client: ReyaTradingClient,
@@ -387,17 +371,17 @@ async def flow_err_duplicate_request_id(
         )
     )
 
-    ws = _raw_connect(ws_url)
+    ws = raw_connect(ws_url)
     try:
-        _raw_send_envelope(ws, "createOrder", shared_env_id, payload_a)
-        _raw_send_envelope(ws, "createOrder", shared_env_id, payload_b)
+        raw_send_envelope(ws, "createOrder", shared_env_id, payload_a)
+        raw_send_envelope(ws, "createOrder", shared_env_id, payload_b)
 
-        err_frame = _raw_recv_until(ws, lambda f: f.get("type") == "error")
-        _assert_top_level_error(err_frame, "DUPLICATE_REQUEST_ID", "duplicate request id")
+        err_frame = raw_recv_until(ws, lambda f: f.get("type") == "error")
+        assert_top_level_error(err_frame, "DUPLICATE_REQUEST_ID", "duplicate request id")
         print("  [err] DUPLICATE_REQUEST_ID OK")
 
         # The first send's response still comes back ok=true under shared_env_id.
-        ok_frame = _raw_recv_until(ws, lambda f: f.get("id") == shared_env_id and "ok" in f)
+        ok_frame = raw_recv_until(ws, lambda f: f.get("id") == shared_env_id and "ok" in f)
         leaked_order_id = (ok_frame.get("payload") or {}).get("orderId")
     finally:
         ws.close()
@@ -415,11 +399,11 @@ async def flow_err_duplicate_request_id(
 
 def flow_err_malformed_json(ws_url: str) -> None:
     """Send a non-JSON string. Server returns MALFORMED_JSON at the framing layer."""
-    ws = _raw_connect(ws_url)
+    ws = raw_connect(ws_url)
     try:
         ws.send("this-is-not-json")
-        err_frame = _raw_recv_until(ws, lambda f: f.get("type") == "error")
-        _assert_top_level_error(err_frame, "MALFORMED_JSON", "malformed json")
+        err_frame = raw_recv_until(ws, lambda f: f.get("type") == "error")
+        assert_top_level_error(err_frame, "MALFORMED_JSON", "malformed json")
         print("  [err] MALFORMED_JSON OK")
     finally:
         ws.close()
@@ -427,12 +411,12 @@ def flow_err_malformed_json(ws_url: str) -> None:
 
 def flow_err_unknown_type(ws_url: str) -> None:
     """Send a frame with an unknown `type`. Server returns UNKNOWN_TYPE."""
-    ws = _raw_connect(ws_url)
+    ws = raw_connect(ws_url)
     try:
         env_id = uuid.uuid4().hex[:12]
         ws.send(json.dumps({"type": "foobar", "id": env_id, "payload": {}}))
-        err_frame = _raw_recv_until(ws, lambda f: f.get("type") == "error")
-        _assert_top_level_error(err_frame, "UNKNOWN_TYPE", "unknown type")
+        err_frame = raw_recv_until(ws, lambda f: f.get("type") == "error")
+        assert_top_level_error(err_frame, "UNKNOWN_TYPE", "unknown type")
         print("  [err] UNKNOWN_TYPE OK")
     finally:
         ws.close()
@@ -456,19 +440,19 @@ async def flow_err_invalid_nonce(
     )
 
     leaked_order_id: str | None = None
-    ws = _raw_connect(ws_url)
+    ws = raw_connect(ws_url)
     try:
         env_id_1 = uuid.uuid4().hex[:12]
-        _raw_send_envelope(ws, "createOrder", env_id_1, payload)
-        ok = _raw_recv_until(ws, lambda f: f.get("id") == env_id_1 and "ok" in f)
+        raw_send_envelope(ws, "createOrder", env_id_1, payload)
+        ok = raw_recv_until(ws, lambda f: f.get("id") == env_id_1 and "ok" in f)
         if not ok.get("ok"):
             raise RuntimeError(f"invalid-nonce setup failed: {ok!r}")
         leaked_order_id = (ok.get("payload") or {}).get("orderId")
 
         env_id_2 = uuid.uuid4().hex[:12]
-        _raw_send_envelope(ws, "createOrder", env_id_2, payload)
-        err = _raw_recv_until(ws, lambda f: f.get("id") == env_id_2 and "ok" in f)
-        _assert_per_op_error(err, ("INVALID_NONCE_ERROR",), "invalid nonce replay")
+        raw_send_envelope(ws, "createOrder", env_id_2, payload)
+        err = raw_recv_until(ws, lambda f: f.get("id") == env_id_2 and "ok" in f)
+        assert_per_op_error(err, ("INVALID_NONCE_ERROR",), "invalid nonce replay")
         print("  [err] INVALID_NONCE_ERROR OK")
     finally:
         ws.close()
@@ -501,12 +485,12 @@ def flow_err_order_deadline_passed(ws_url: str, rest_client: ReyaTradingClient, 
         )
     )
 
-    ws = _raw_connect(ws_url)
+    ws = raw_connect(ws_url)
     try:
         env_id = uuid.uuid4().hex[:12]
-        _raw_send_envelope(ws, "createOrder", env_id, payload)
-        resp = _raw_recv_until(ws, lambda f: f.get("id") == env_id and "ok" in f)
-        err = _assert_per_op_error(
+        raw_send_envelope(ws, "createOrder", env_id, payload)
+        resp = raw_recv_until(ws, lambda f: f.get("id") == env_id and "ok" in f)
+        err = assert_per_op_error(
             resp,
             ("ORDER_DEADLINE_PASSED_ERROR", "INPUT_VALIDATION_ERROR"),
             "expired deadline",
@@ -540,12 +524,12 @@ def flow_err_unauthorized_signature(
     # Declared as the OTHER wallet -> recovered signer vs declared mismatch.
     payload["signerWallet"] = other_rest_client.signer_wallet_address
 
-    ws = _raw_connect(ws_url)
+    ws = raw_connect(ws_url)
     try:
         env_id = uuid.uuid4().hex[:12]
-        _raw_send_envelope(ws, "createOrder", env_id, payload)
-        resp = _raw_recv_until(ws, lambda f: f.get("id") == env_id and "ok" in f)
-        err = _assert_per_op_error(
+        raw_send_envelope(ws, "createOrder", env_id, payload)
+        resp = raw_recv_until(ws, lambda f: f.get("id") == env_id and "ok" in f)
+        err = assert_per_op_error(
             resp,
             ("UNAUTHORIZED_SIGNATURE_ERROR", "CREATE_ORDER_OTHER_ERROR"),
             "signer mismatch",
@@ -553,6 +537,26 @@ def flow_err_unauthorized_signature(
         print(f"  [err] signer mismatch rejected OK code={err.get('error')!r}")
     finally:
         ws.close()
+
+
+async def flow_err_spot_reduce_only_rejected(client: ReyaWsExecClient, qty: Decimal) -> None:
+    """reduce_only is perp-IOC-only; on a spot order it is rejected client-side
+    on the ws-exec build path (the same `build_create_limit_order_payload` guard
+    the REST suite asserts in tests/parity/test_wire_serialization.py), so the
+    transport never signs+sends a field the validator forbids. Mirrors the REST
+    `match=` exactly."""
+    with pytest.raises(ValueError, match="reduce_only is only supported on perp IOC"):
+        await client.create_limit_order(
+            LimitOrderParameters(
+                symbol=SPOT_SYMBOL,
+                is_buy=True,
+                limit_px=SPOT_LIMIT_PX,
+                qty=str(qty),
+                time_in_force=TimeInForce.IOC,
+                reduce_only=True,
+            )
+        )
+    print("  [err] spot reduce_only rejected client-side OK")
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -633,7 +637,7 @@ async def harness():
 
     try:
         spot_markets = {m.symbol: m for m in await spot_rest.reference.get_spot_market_definitions()}
-        perp_markets = {m.symbol: m for m in await perp_rest.reference.get_market_definitions()}
+        perp_markets = {m.symbol: m for m in await perp_rest.reference.get_perp_market_definitions()}
         if SPOT_SYMBOL not in spot_markets:
             raise RuntimeError(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
         if PERP_SYMBOL not in perp_markets:
@@ -704,6 +708,13 @@ async def test_spot_cancel_all_symbol_scoped(spot_ws, harness):  # pylint: disab
 async def test_spot_cancel_all_account_wide(spot_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 5: open N spot orders, cancelAll account-wide (no symbol scope)."""
     await flow_spot_cancel_all_account_wide(spot_ws, qty=harness.spot_qty, num_orders_to_open=2)
+
+
+async def test_spot_ioc_no_cross(spot_ws, harness):  # pylint: disable=redefined-outer-name
+    """Spot IOC happy-path: a far-out IOC BUY crosses nothing, returns immediately
+    with no resting order (IOC never rests). Closes the spot-IOC happy-path hole
+    (IOC previously only appeared spot-side as a rejection)."""
+    await flow_spot_ioc_no_cross(spot_ws, qty=harness.spot_qty)
 
 
 # Perp order entry over ws-exec was brought up in layers and now works on devnet1
@@ -786,3 +797,10 @@ async def test_err_unauthorized_signature(harness):  # pylint: disable=redefined
     if harness.spot_rest_2 is None:
         pytest.skip("SPOT_*_2 not set in .env; signer-mismatch test needs a second account")
     flow_err_unauthorized_signature(harness.ws_url, harness.spot_rest, harness.spot_rest_2, qty=harness.spot_qty)
+
+
+async def test_err_spot_reduce_only_rejected(spot_ws, harness):  # pylint: disable=redefined-outer-name
+    """E7: reduce_only on a spot order is rejected client-side on the ws-exec build
+    path (ValueError), mirroring the REST guard — the transport never signs+sends
+    a reduceOnly field the validator forbids on spot."""
+    await flow_err_spot_reduce_only_rejected(spot_ws, qty=harness.spot_qty)

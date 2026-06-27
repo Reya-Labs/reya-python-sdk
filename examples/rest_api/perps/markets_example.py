@@ -29,7 +29,7 @@ async def main():
 
         # Get markets configuration
         print("\n--- Getting markets configuration ---")
-        config = await client.reference.get_market_definitions()
+        config = await client.reference.get_perp_market_definitions()
         print(f"Markets configuration: {config}")
 
         symbol = "ETHRUSDPERP"

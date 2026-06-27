@@ -134,7 +134,7 @@ class DataOperations:
 
     async def market_definition(self, symbol: str) -> MarketDefinition:
         """Get market configuration for a specific symbol."""
-        markets_config: list[MarketDefinition] = await self._t.client.reference.get_market_definitions()
+        markets_config: list[MarketDefinition] = await self._t.client.reference.get_perp_market_definitions()
         for config in markets_config:
             if config.symbol == symbol:
                 return config
