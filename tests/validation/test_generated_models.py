@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import sdk.open_api as rest_open_api
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
 from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
@@ -12,6 +13,7 @@ from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequ
 from sdk.open_api import CancelReason as RestCancelReason
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
+from sdk.open_api.api.reference_data_api import ReferenceDataApi
 
 pytestmark = pytest.mark.offline
 
@@ -49,6 +51,12 @@ def test_cancel_reason_enums_share_specs_values() -> None:
     assert CANCEL_REASONS == {reason.value for reason in RestCancelReason}
     assert CANCEL_REASONS == {reason.value for reason in WsInfoCancelReason}
     assert CANCEL_REASONS == {reason.value for reason in WsExecCancelReason}
+
+
+def test_rest_sdk_omits_removed_amm_liquidity_parameters_surface() -> None:
+    assert not hasattr(rest_open_api, "LiquidityParameters")
+    assert not hasattr(ReferenceDataApi, "get_liquidity_parameters")
+    assert hasattr(ReferenceDataApi, "get_perp_market_definitions")
 
 
 def test_rest_create_order_response_parses_cancel_reason_and_fill_range() -> None:

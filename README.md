@@ -36,9 +36,8 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Get historical candles via `/v2/candleHistory/{symbol}/{resolution}`
 
 - **Reference Data Resource**
-    - Get market definitions via `/v2/marketDefinitions`
+    - Get perp market definitions via `/v2/perpMarketDefinitions`
     - Get asset definitions via `/v2/assetDefinitions`
-    - Get liquidity parameters via `/v2/liquidityParameters`
     - Get global fee parameters via `/v2/globalFeeParameters`
     - Get fee tiers via `/v2/feeTiers`
 
@@ -202,9 +201,8 @@ ReyaTradingClient
 │   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
 │   └── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
 ├── reference                        # Reference Data resource
-│   ├── get_market_definitions()     # /v2/marketDefinitions
+│   ├── get_perp_market_definitions() # /v2/perpMarketDefinitions
 │   ├── get_asset_definitions()      # /v2/assetDefinitions
-│   ├── get_liquidity_parameters()   # /v2/liquidityParameters
 │   ├── get_global_fee_parameters()  # /v2/globalFeeParameters
 │   └── get_fee_tiers()              # /v2/feeTiers
 └── prices                           # Prices resource

@@ -641,7 +641,7 @@ async def harness():
         if SPOT_SYMBOL not in spot_markets:
             raise RuntimeError(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
         if PERP_SYMBOL not in perp_markets:
-            raise RuntimeError(f"{PERP_SYMBOL} not found in /marketDefinitions")
+            raise RuntimeError(f"{PERP_SYMBOL} not found in /perpMarketDefinitions")
         yield _WsExecHarness(
             ws_url=ws_url,
             spot_rest=spot_rest,

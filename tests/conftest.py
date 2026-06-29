@@ -611,7 +611,7 @@ async def perp_market_config(
             break
 
     if market_def is None:
-        pytest.skip(f"Perp market {symbol} not present in /v2/marketDefinitions")
+        pytest.skip(f"Perp market {symbol} not present in /v2/perpMarketDefinitions")
     assert market_def is not None  # narrows the Optional after the skip above
 
     # Fail loud rather than swallow the error with a fake price — a wrong oracle
@@ -718,7 +718,7 @@ def pytest_sessionfinish(session, exitstatus):  # pylint: disable=unused-argumen
             "\n[perp-skip canary] every [perp] param instance "
             f"({stats['total']}) skipped at setup while PERP credentials are present — "
             "perp coverage silently vanished (lazy fixture regression or perp market "
-            "missing from /v2/marketDefinitions). Set PERP_SKIP_CANARY=off to override."
+            "missing from /v2/perpMarketDefinitions). Set PERP_SKIP_CANARY=off to override."
         )
         session.exitstatus = 1
 

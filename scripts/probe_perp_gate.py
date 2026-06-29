@@ -1,6 +1,6 @@
 """Probe which perp markets on devnet have order-entry enabled.
 
-Walks every perp market in /v2/marketDefinitions and tries to post a tiny
+Walks every perp market in /v2/perpMarketDefinitions and tries to post a tiny
 far-from-market GTC sell as PERP_ACCOUNT_ID_1. Cancels each one immediately
 on success. Used to find which symbols are past the matching-engine
 PERP_OB_MARKET_IDS launch gate without doing any real trading.

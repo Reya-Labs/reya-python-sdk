@@ -7,7 +7,7 @@ Same architecture: REST bootstrap → WebSocket-driven adjustments → mass canc
 shutdown. Adaptations vs the spot bot:
 
 - Config: ``TradingConfig.from_env()`` (PERP_* env vars), not ``from_env_spot``.
-- Market def: ``/marketDefinitions`` (no base/quote token split — perps settle in
+- Market def: ``/perpMarketDefinitions`` (no base/quote token split — perps settle in
   rUSD; max_leverage drives margin sizing instead of token balances).
 - Balance: tracks rUSD collateral only. "Available budget" is a fraction of
   rUSD; per-order required margin is approximated as ``price * qty /
@@ -118,7 +118,7 @@ class OpenOrder:
 
 @dataclass
 class MarketParams:
-    """Subset of perp ``/marketDefinitions`` we actually use."""
+    """Subset of perp ``/perpMarketDefinitions`` we actually use."""
 
     symbol: str
     tick_size: Decimal
@@ -417,7 +417,7 @@ class WebSocketHandler:
 
 
 async def fetch_market_definition(client: ReyaTradingClient, symbol: str) -> MarketParams:
-    """Look up perp market params via ``/marketDefinitions``."""
+    """Look up perp market params via ``/perpMarketDefinitions``."""
     definitions = await client.reference.get_perp_market_definitions()
     for market in definitions:
         if market.symbol == symbol:
