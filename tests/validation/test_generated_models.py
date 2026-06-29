@@ -26,6 +26,7 @@ from sdk.open_api import CreateOrderRequest as RestCreateOrderRequest
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
 from sdk.open_api import ModifyOrderRequest as RestModifyOrderRequest
 from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
+from sdk.open_api import Order as RestOrder
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
 from sdk.open_api.api.market_data_api import MarketDataApi
@@ -120,6 +121,28 @@ def _base_modify_request_payload() -> dict[str, Any]:
     }
 
 
+def _base_order_response_payload() -> dict[str, Any]:
+    return {
+        "exchangeId": 2,
+        "symbol": "ETHRUSDPERP",
+        "accountId": 12345,
+        "orderId": "490346525705109504",
+        "qty": "1",
+        "execQty": "0",
+        "cumQty": "0",
+        "side": "B",
+        "limitPx": "2500",
+        "orderType": "LIMIT",
+        "triggerPx": "0",
+        "timeInForce": "GTC",
+        "reduceOnly": False,
+        "postOnly": True,
+        "status": "OPEN",
+        "createdAt": 1745000000,
+        "lastUpdateAt": 1745000001,
+    }
+
+
 def test_rest_create_order_request_accepts_trigger_without_qty() -> None:
     request = RestCreateOrderRequest.from_dict(_base_create_request_payload())
 
@@ -152,6 +175,50 @@ def test_ws_exec_modify_order_request_accepts_omitted_expires_after() -> None:
 
     assert request.expires_after is None
     assert "expiresAfter" not in request.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+def test_rest_order_response_omits_non_gtt_expires_after() -> None:
+    order = RestOrder.from_dict(_base_order_response_payload())
+
+    assert order is not None
+    assert order.expires_after is None
+    assert "expiresAfter" not in order.to_dict()
+
+
+def test_rest_order_response_includes_gtt_expires_after() -> None:
+    order = RestOrder.from_dict(
+        {
+            **_base_order_response_payload(),
+            "timeInForce": "GTT",
+            "expiresAfter": 1745000600,
+        }
+    )
+
+    assert order is not None
+    assert order.expires_after == 1745000600
+    assert order.to_dict()["expiresAfter"] == 1745000600
+
+
+def test_ws_info_order_response_omits_non_gtt_expires_after() -> None:
+    order = WsInfoOrder.model_validate(_base_order_response_payload())
+
+    assert order.expires_after is None
+    serialized = order.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert "expiresAfter" not in serialized
+
+
+def test_ws_info_order_response_includes_gtt_expires_after() -> None:
+    order = WsInfoOrder.model_validate(
+        {
+            **_base_order_response_payload(),
+            "timeInForce": "GTT",
+            "expiresAfter": 1745000600,
+        }
+    )
+
+    assert order.expires_after == 1745000600
+    serialized = order.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert serialized["expiresAfter"] == 1745000600
 
 
 def test_rest_sdk_omits_removed_amm_liquidity_parameters_surface() -> None:
@@ -340,26 +407,10 @@ def test_ws_exec_modify_order_response_parses_cancel_reason_and_fill_range() -> 
 def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:
     order = WsInfoOrder.model_validate(
         {
-            "exchangeId": 2,
-            "symbol": "ETHRUSDPERP",
-            "accountId": 12345,
-            "orderId": "490346525705109504",
-            "qty": "1",
-            "execQty": "0",
-            "cumQty": "0",
+            **_base_order_response_payload(),
             "firstFillId": "9001",
             "fillCount": 1,
-            "side": "B",
-            "limitPx": "2500",
-            "orderType": "LIMIT",
-            "triggerPx": "0",
-            "timeInForce": "GTC",
-            "expiresAfter": 0,
-            "reduceOnly": False,
-            "postOnly": True,
             "status": "CANCELLED",
-            "createdAt": 1745000000,
-            "lastUpdateAt": 1745000001,
             "cancelReason": "CANCEL_ALL_AFTER",
             "cancelReasonMessage": "cancel-on-disconnect fired",
         }
@@ -369,4 +420,6 @@ def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:
     assert order.cancel_reason_message == "cancel-on-disconnect fired"
     assert order.first_fill_id == "9001"
     assert order.fill_count == 1
-    assert order.model_dump(mode="json", by_alias=True)["cancelReason"] == "CANCEL_ALL_AFTER"
+    serialized = order.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert serialized["cancelReason"] == "CANCEL_ALL_AFTER"
+    assert "expiresAfter" not in serialized
