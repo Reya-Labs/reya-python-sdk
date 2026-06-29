@@ -14,11 +14,13 @@ from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
+from sdk.async_exec_api.modify_order_response import ModifyOrderResponse as WsExecModifyOrderResponse
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
 from sdk.open_api import AssetOraclePrice as RestAssetOraclePrice
 from sdk.open_api import CancelReason as RestCancelReason
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
+from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
 from sdk.open_api.api.market_data_api import MarketDataApi
@@ -73,6 +75,8 @@ def test_cancel_reason_enums_share_specs_values() -> None:
 def test_rest_sdk_omits_removed_amm_liquidity_parameters_surface() -> None:
     assert not hasattr(rest_open_api, "LiquidityParameters")
     assert not hasattr(ReferenceDataApi, "get_liquidity_parameters")
+    assert not hasattr(ReferenceDataApi, "get_market_definitions")
+    assert not hasattr(ReferenceDataApi, "get_market_definitions_with_http_info")
     assert hasattr(ReferenceDataApi, "get_perp_market_definitions")
 
 
@@ -173,6 +177,30 @@ def test_rest_create_order_response_parses_cancel_reason_and_fill_range() -> Non
     assert response.to_dict()["firstFillId"] == "9001"
 
 
+def test_rest_modify_order_response_parses_cancel_reason_and_fill_range() -> None:
+    response = RestModifyOrderResponse.from_dict(
+        {
+            "status": "CANCELLED",
+            "execQty": "0.25",
+            "cumQty": "1.25",
+            "orderId": "490346525705109504",
+            "clientOrderId": "42",
+            "cancelReason": "SELF_TRADE_PREVENTION",
+            "cancelReasonMessage": "self-trade prevention cancelled taker",
+            "firstFillId": "9002",
+            "fillCount": 1,
+        }
+    )
+
+    assert response is not None
+    assert response.cancel_reason == RestCancelReason.SELF_TRADE_PREVENTION
+    assert response.cancel_reason_message == "self-trade prevention cancelled taker"
+    assert response.first_fill_id == "9002"
+    assert response.fill_count == 1
+    assert response.to_dict()["cancelReason"] == "SELF_TRADE_PREVENTION"
+    assert response.to_dict()["firstFillId"] == "9002"
+
+
 def test_ws_exec_create_order_response_parses_cancel_reason_and_fill_range() -> None:
     response = WsExecCreateOrderResponse.model_validate(
         {
@@ -193,6 +221,28 @@ def test_ws_exec_create_order_response_parses_cancel_reason_and_fill_range() -> 
     assert response.first_fill_id == "9001"
     assert response.fill_count == 2
     assert response.model_dump(mode="json", by_alias=True)["cancelReason"] == "IOC_REMAINDER"
+
+
+def test_ws_exec_modify_order_response_parses_cancel_reason_and_fill_range() -> None:
+    response = WsExecModifyOrderResponse.model_validate(
+        {
+            "status": "CANCELLED",
+            "execQty": "0.25",
+            "cumQty": "1.25",
+            "orderId": "490346525705109504",
+            "clientOrderId": "42",
+            "cancelReason": "SELF_TRADE_PREVENTION",
+            "cancelReasonMessage": "self-trade prevention cancelled taker",
+            "firstFillId": "9002",
+            "fillCount": 1,
+        }
+    )
+
+    assert response.cancel_reason is WsExecCancelReason.SELF_TRADE_PREVENTION
+    assert response.cancel_reason_message == "self-trade prevention cancelled taker"
+    assert response.first_fill_id == "9002"
+    assert response.fill_count == 1
+    assert response.model_dump(mode="json", by_alias=True)["firstFillId"] == "9002"
 
 
 def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:
