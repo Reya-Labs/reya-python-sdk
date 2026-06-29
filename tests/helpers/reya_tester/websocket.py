@@ -55,7 +55,7 @@ class WebSocketState:
         # Unified state tracking using EventStore
         # Executions: list-based (search by predicate)
         self.perp_executions: EventStore[AsyncPerpExecution] = EventStore()
-        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.order_id))
+        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
 
         # Keyed stores: direct lookup by key
@@ -267,7 +267,7 @@ class WebSocketState:
             data = message.contents.get("data", [])
 
             if symbol not in self.market_spot_executions:
-                self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.taker_order_id))
 
             for e in data:
                 execution = AsyncSpotExecution.model_validate(e)
@@ -304,9 +304,9 @@ class WebSocketState:
             if is_market_channel:
                 symbol = message.channel.split("/")[3]
                 if symbol not in self.market_spot_executions:
-                    self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                    self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.taker_order_id))
                 self.market_spot_executions[symbol].add(exec_data)
-                logger.debug(f"Added market spot execution for {symbol}: {exec_data.order_id}")
+                logger.debug(f"Added market spot execution for {symbol}: {exec_data.taker_order_id}")
             else:
                 self.spot_executions.add(exec_data)
 

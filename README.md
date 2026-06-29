@@ -30,8 +30,8 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Cancel orders via `/v2/cancelOrder`
 
 - **Market Data Resource**
-    - Get all markets summary via `/v2/markets/summary`
-    - Get market summary via `/v2/market/{symbol}/summary`
+    - Get all perp markets summary via `/v2/perpMarkets/summary`
+    - Get perp market summary via `/v2/perpMarket/{symbol}/summary`
     - Get market perpetual executions via `/v2/market/{symbol}/perpExecutions`
     - Get historical candles via `/v2/candleHistory/{symbol}/{resolution}`
 
@@ -49,8 +49,8 @@ This ensures the SDK version always reflects compatibility with the underlying A
 ### WebSocket API Client (Resource-Oriented)
 
 - **Market Resources**
-    - Subscribe to all markets summary via `/v2/markets/summary`
-    - Subscribe to specific market summary via `/v2/market/{symbol}/summary`
+    - Subscribe to all perp markets summary via `/v2/perpMarkets/summary`
+    - Subscribe to specific perp market summary via `/v2/perpMarket/{symbol}/summary`
     - Monitor market perpetual executions via `/v2/market/{symbol}/perpExecutions`
 
 - **Wallet Resources**
@@ -198,8 +198,8 @@ ReyaTradingClient
 │   ├── create_order()               # /v2/createOrder (IOC, GTC, SL, TP)
 │   └── cancel_order()               # /v2/cancelOrder
 ├── markets                          # Market Data resource
-│   ├── get_markets_summary()        # /v2/markets/summary
-│   ├── get_market_summary()         # /v2/market/{symbol}/summary
+│   ├── get_perp_markets_summary()   # /v2/perpMarkets/summary
+│   ├── get_perp_market_summary()    # /v2/perpMarket/{symbol}/summary
 │   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
 │   ├── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
 │   ├── get_asset_oracle_prices()      # /v2/assetOraclePrices
@@ -219,10 +219,10 @@ The WebSocket API client is organized around resources:
 ```
 ReyaSocket
 ├── market
-│   ├── all_markets_summary             # /v2/markets/summary
+│   ├── all_markets_summary             # /v2/perpMarkets/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── market_summary(symbol)          # /v2/market/{symbol}/summary
+│   ├── market_summary(symbol)          # /v2/perpMarket/{symbol}/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
 │   └── market_perp_executions(symbol)  # /v2/market/{symbol}/perpExecutions

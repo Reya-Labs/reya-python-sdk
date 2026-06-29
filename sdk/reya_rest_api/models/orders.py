@@ -29,20 +29,21 @@ class LimitOrderParameters:
 class ModifyOrderParameters:
     """Parameters for modifying a resting order in place (spot or perp).
 
-    Target exactly one of `order_id` / `client_order_id` (`client_order_id=0`
-    is not a valid target). The four modifiable fields — `limit_px`, `qty`,
-    `post_only`, `expires_after` — are all required and carry the COMPLETE
-    post-modify state (no omitted-means-inherited shorthand). `qty` is the
-    TOTAL order quantity, not the remaining, and must exceed the filled amount.
+    Target by `order_id` or `client_order_id` (`client_order_id=0` is not a
+    valid target). When targeting by `order_id`, pass `client_order_id` too if
+    the resting order has a non-zero client id; omit it only when the resting
+    order has none. The four modifiable fields — `limit_px`, `qty`,
+    `post_only`, `expires_after` — carry the COMPLETE post-modify state (no
+    omitted-means-inherited shorthand). `qty` is the TOTAL order quantity, not
+    the remaining, and must exceed the filled amount.
 
     The EIP-712 signature covers the full post-modify state: the four
     modifiable fields at their new values plus the immutables restated from
     the resting order — `is_buy` (quantity sign), `time_in_force` (the resting
     order's TIF; only GTC is modifiable today, server-enforced), `trigger_px`,
-    `reduce_only`, and `resting_client_order_id` (the resting order's
-    clientOrderId, signed into `OrderDetails.clientOrderId` independent of the
-    targeting parameter; when targeting BY `client_order_id` it defaults to
-    that value).
+    `reduce_only`, and the resting order's non-zero client id (via
+    `client_order_id` or `resting_client_order_id`) signed into
+    `OrderDetails.clientOrderId`.
     """
 
     symbol: str
@@ -50,7 +51,7 @@ class ModifyOrderParameters:
     limit_px: str
     qty: str
     post_only: bool
-    expires_after: int
+    expires_after: Optional[int]
     time_in_force: TimeInForce
     order_id: Optional[int] = None
     client_order_id: Optional[int] = None

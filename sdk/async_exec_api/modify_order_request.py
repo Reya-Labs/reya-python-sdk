@@ -5,7 +5,7 @@ from sdk.async_exec_api.order_type import OrderType
 from sdk.async_exec_api.time_in_force import TimeInForce
 class ModifyOrderRequest(BaseModel):
   order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, is treated as the restated immutable client id.''', default=None, alias='''orderId''')
-  client_order_id: Optional[str] = Field(description='''Client-provided order ID of the order to modify (the same `clientOrderId` supplied in CreateOrderRequest), as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. When `orderId` is present, this field may be omitted if the resting order has no client id, or restated to match the resting order's client id; a mismatch is rejected with `INPUT_VALIDATION_ERROR`. The modification cannot assign a new `clientOrderId`; the resting order's value is preserved.''', default=None, alias='''clientOrderId''')
+  client_order_id: Optional[str] = Field(description='''Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. If the resting order has a non-zero client id, this field must be restated and must match it; omit only when the resting order has no client id. The modification cannot assign a new `clientOrderId`.''', default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   exchange_id: int = Field(alias='''exchangeId''')

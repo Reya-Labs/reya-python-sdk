@@ -158,14 +158,14 @@ async def wait_for_taker_spot_execution(
     """Poll the tester's wallet spot executions for the taker order's fill.
 
     Returns the FIRST (most recent endpoint ordering aside, matched by
-    order_id) execution belonging to `taker_order_id` so callers can assert
-    on `maker_order_id` — the queue-priority signal.
+    taker_order_id) execution belonging to `taker_order_id` so callers can
+    assert on `maker_order_id` — the queue-priority signal.
     """
     assert tester.owner_wallet_address is not None
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         executions = await tester.client.wallet.get_wallet_spot_executions(address=tester.owner_wallet_address)
-        matched = [e for e in (executions.data or []) if str(e.order_id) == str(taker_order_id)]
+        matched = [e for e in (executions.data or []) if str(e.taker_order_id) == str(taker_order_id)]
         if matched:
             return matched[-1]  # endpoint returns newest-first; [-1] is the FIRST fill of this order
         await asyncio.sleep(0.2)

@@ -36,6 +36,7 @@ class Order(BaseModel):
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     order_id: StrictStr = Field(alias="orderId")
+    client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID, as a decimal string (`uint64`). Present when the order has a non-zero client id; omitted otherwise.", alias="clientOrderId")
     qty: Optional[Annotated[str, Field(strict=True)]] = None
     exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
     cum_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="cumQty")
@@ -55,7 +56,7 @@ class Order(BaseModel):
     cancel_reason: Optional[CancelReason] = Field(default=None, alias="cancelReason")
     cancel_reason_message: Optional[StrictStr] = Field(default=None, description="Human-readable explanation of `cancelReason`. Present only when `cancelReason` is present.", alias="cancelReasonMessage")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "orderId", "qty", "execQty", "cumQty", "firstFillId", "fillCount", "side", "limitPx", "orderType", "triggerPx", "timeInForce", "expiresAfter", "reduceOnly", "postOnly", "status", "createdAt", "lastUpdateAt", "cancelReason", "cancelReasonMessage"]
+    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "orderId", "clientOrderId", "qty", "execQty", "cumQty", "firstFillId", "fillCount", "side", "limitPx", "orderType", "triggerPx", "timeInForce", "expiresAfter", "reduceOnly", "postOnly", "status", "createdAt", "lastUpdateAt", "cancelReason", "cancelReasonMessage"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -173,6 +174,7 @@ class Order(BaseModel):
             "symbol": obj.get("symbol"),
             "accountId": obj.get("accountId"),
             "orderId": obj.get("orderId"),
+            "clientOrderId": obj.get("clientOrderId"),
             "qty": obj.get("qty"),
             "execQty": obj.get("execQty"),
             "cumQty": obj.get("cumQty"),

@@ -2321,7 +2321,7 @@ class MarketDataApi:
     ) -> MarketSummary:
         """Get perp market summary
 
-        Alias of `/market/{symbol}/summary`, mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s
+        Preferred perp market summary route; replaces deprecated `/market/{symbol}/summary` and mirrors the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -2390,7 +2390,7 @@ class MarketDataApi:
     ) -> ApiResponse[MarketSummary]:
         """Get perp market summary
 
-        Alias of `/market/{symbol}/summary`, mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s
+        Preferred perp market summary route; replaces deprecated `/market/{symbol}/summary` and mirrors the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -2459,7 +2459,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp market summary
 
-        Alias of `/market/{symbol}/summary`, mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s
+        Preferred perp market summary route; replaces deprecated `/market/{symbol}/summary` and mirrors the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -2586,7 +2586,7 @@ class MarketDataApi:
     ) -> List[MarketSummary]:
         """Get perp market summaries
 
-        Alias of `/markets/summary`, mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
+        Preferred perp market summary route; replaces deprecated `/markets/summary` and mirrors the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2651,7 +2651,7 @@ class MarketDataApi:
     ) -> ApiResponse[List[MarketSummary]]:
         """Get perp market summaries
 
-        Alias of `/markets/summary`, mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
+        Preferred perp market summary route; replaces deprecated `/markets/summary` and mirrors the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2716,7 +2716,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp market summaries
 
-        Alias of `/markets/summary`, mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
+        Preferred perp market summary route; replaces deprecated `/markets/summary` and mirrors the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request

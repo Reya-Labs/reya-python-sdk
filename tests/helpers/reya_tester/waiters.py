@@ -230,7 +230,7 @@ class Waiters:
     ) -> SpotExecution:
         """Wait for spot execution confirmation via both REST and WebSocket.
 
-        Performs strict matching on order_id and validates all important fields.
+        Performs strict matching on taker_order_id and validates all important fields.
 
         Args:
             order_id: The order ID to match (required, raises if None).
@@ -240,7 +240,7 @@ class Waiters:
         if order_id is None:
             raise ValueError("order_id is required for reliable execution matching (got None)")
 
-        logger.info(f"⏳ Waiting for spot execution (order_id={order_id})...")
+        logger.info(f"⏳ Waiting for spot execution (taker_order_id={order_id})...")
 
         start_time = time.time()
         rest_execution = None
@@ -250,7 +250,7 @@ class Waiters:
         expected_order.order_id = order_id
 
         while time.time() - start_time < timeout:
-            # Search through spot executions using EventStore.get() (keyed by order_id)
+            # Search through spot executions using EventStore.get() (keyed by taker_order_id)
             if ws_execution is None:
                 ws_exec = self._t.ws.spot_executions.get(str(order_id))
                 if ws_exec:
@@ -277,7 +277,7 @@ class Waiters:
                     address=wallet_address
                 )
                 for execution in executions_list.data:
-                    if str(execution.order_id) == str(order_id):
+                    if str(execution.taker_order_id) == str(order_id):
                         elapsed_time = time.time() - start_time
                         logger.info(
                             f" ✅ Spot execution confirmed via REST: order_id={order_id} (took {elapsed_time:.2f}s)"

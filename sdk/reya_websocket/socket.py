@@ -57,8 +57,8 @@ WebSocketMessage = Union[
     UnsubscribedMessagePayload,
     ErrorMessagePayload,
     # Market channels
-    MarketsSummaryUpdatePayload,  # /v2/markets/summary
-    MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+    MarketsSummaryUpdatePayload,  # /v2/perpMarkets/summary
+    MarketSummaryUpdatePayload,  # /v2/perpMarket/{symbol}/summary
     SpotMarketsSummaryUpdatePayload,  # /v2/spotMarkets/summary
     SpotMarketSummaryUpdatePayload,  # /v2/spotMarket/{symbol}/summary
     MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
@@ -94,6 +94,7 @@ class ReyaSocket(WebSocketApp):
         "ping": PingMessagePayload,
         "pong": PongMessagePayload,
         # All markets summary (exact match)
+        "/v2/perpMarkets/summary": MarketsSummaryUpdatePayload,
         "/v2/markets/summary": MarketsSummaryUpdatePayload,
         "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
         # All prices (exact match)
@@ -196,7 +197,9 @@ class ReyaSocket(WebSocketApp):
             return self.CHANNEL_PAYLOAD_MAP[channel]
 
         # Pattern matching for parameterized channels
-        if "/v2/market/" in channel:
+        if "/v2/perpMarket/" in channel and channel.endswith("/summary"):
+            return MarketSummaryUpdatePayload
+        elif "/v2/market/" in channel:
             if channel.endswith("/summary"):
                 return MarketSummaryUpdatePayload
             elif channel.endswith("/perpExecutions"):

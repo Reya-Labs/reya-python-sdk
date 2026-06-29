@@ -99,7 +99,7 @@ class AllMarketsSummaryResource(SubscribableResource):
             socket: The WebSocket connection to use for this resource.
         """
         super().__init__(socket)
-        self.path = "/v2/markets/summary"
+        self.path = "/v2/perpMarkets/summary"
 
     def subscribe(self, batched: bool = False, **kwargs) -> None:
         """Subscribe to all markets summary data.
@@ -128,7 +128,7 @@ class MarketSummaryResource(SubscribableParameterizedResource):
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/v2/market/{symbol}/summary")
+        super().__init__(socket, "/v2/perpMarket/{symbol}/summary")
 
     def for_symbol(self, symbol: str) -> "MarketSummarySubscription":
         """Create a subscription for a specific market's summary.
@@ -177,7 +177,7 @@ class MarketSummarySubscription:
         """
         self.socket = socket
         self.symbol = symbol
-        self.path = f"/v2/market/{symbol}/summary"
+        self.path = f"/v2/perpMarket/{symbol}/summary"
 
     def subscribe(self, batched: bool = False) -> None:
         """Subscribe to market summary.

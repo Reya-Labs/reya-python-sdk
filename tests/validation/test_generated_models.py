@@ -11,8 +11,13 @@ import sdk.open_api as rest_open_api
 from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
+from sdk.async_api.deprecated_prices_channel import DeprecatedPricesChannel
+from sdk.async_api.markets_summary_channel import MarketsSummaryChannel
+from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
+from sdk.async_api.prices_update_payload import PricesUpdatePayload
+from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
@@ -29,6 +34,7 @@ from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import Order as RestOrder
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
+from sdk.open_api import SpotExecution as RestSpotExecution
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
 from sdk.reya_websocket.resources.prices import PricesResource
@@ -143,6 +149,7 @@ def _base_order_response_payload() -> dict[str, Any]:
         "symbol": "ETHRUSDPERP",
         "accountId": 12345,
         "orderId": "490346525705109504",
+        "clientOrderId": "42",
         "qty": "1",
         "execQty": "0",
         "cumQty": "0",
@@ -156,6 +163,25 @@ def _base_order_response_payload() -> dict[str, Any]:
         "status": "OPEN",
         "createdAt": 1745000000,
         "lastUpdateAt": 1745000001,
+    }
+
+
+def _base_spot_execution_payload() -> dict[str, Any]:
+    return {
+        "exchangeId": 2,
+        "symbol": "WETHRUSD",
+        "takerAccountId": 12345,
+        "makerAccountId": 67890,
+        "takerOrderId": "490346525705109504",
+        "makerOrderId": "490346525705109505",
+        "side": "B",
+        "qty": "1",
+        "price": "2500",
+        "takerFee": "0",
+        "type": "ORDER_MATCH",
+        "timestamp": 1745000000,
+        "sequenceNumber": 99,
+        "fillId": "9001",
     }
 
 
@@ -198,7 +224,9 @@ def test_rest_order_response_omits_non_gtt_expires_after() -> None:
 
     assert order is not None
     assert order.expires_after is None
+    assert order.client_order_id == "42"
     assert "expiresAfter" not in order.to_dict()
+    assert order.to_dict()["clientOrderId"] == "42"
 
 
 def test_rest_order_response_includes_gtt_expires_after() -> None:
@@ -219,8 +247,10 @@ def test_ws_info_order_response_omits_non_gtt_expires_after() -> None:
     order = WsInfoOrder.model_validate(_base_order_response_payload())
 
     assert order.expires_after is None
+    assert order.client_order_id == "42"
     serialized = order.model_dump(mode="json", by_alias=True, exclude_none=True)
     assert "expiresAfter" not in serialized
+    assert serialized["clientOrderId"] == "42"
 
 
 def test_ws_info_order_response_includes_gtt_expires_after() -> None:
@@ -292,6 +322,19 @@ def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None
     assert "poolPrice" not in serialized["data"][0]
 
 
+def test_ws_info_deprecated_prices_channel_is_explicitly_named() -> None:
+    payload = PricesUpdatePayload.model_validate(
+        {
+            "type": "channel_data",
+            "timestamp": 1747927089946,
+            "channel": "/v2/prices",
+            "data": [{"symbol": "ETHRUSDPERP", "oraclePrice": "2500", "updatedAt": 1747927089946}],
+        }
+    )
+
+    assert payload.channel is DeprecatedPricesChannel.SLASH_V2_SLASH_PRICES
+
+
 class _RecordingSocket:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str, dict[str, Any]]] = []
@@ -316,6 +359,22 @@ def test_reya_socket_routes_asset_oracle_prices_channel() -> None:
         ("subscribe", "/v2/assetOraclePrices", {"batched": True}),
         ("unsubscribe", "/v2/assetOraclePrices", {}),
     ]
+
+
+def test_reya_socket_routes_preferred_perp_markets_summary_channel() -> None:
+    assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/perpMarkets/summary"] is MarketsSummaryUpdatePayload
+    assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/markets/summary"] is MarketsSummaryUpdatePayload
+
+    payload = MarketsSummaryUpdatePayload.model_validate(
+        {
+            "type": "channel_data",
+            "timestamp": 1747927089946,
+            "channel": "/v2/perpMarkets/summary",
+            "data": [],
+        }
+    )
+
+    assert payload.channel is MarketsSummaryChannel.SLASH_V2_SLASH_PERP_MARKETS_SLASH_SUMMARY
 
 
 def test_rest_create_order_response_parses_cancel_reason_and_fill_range() -> None:
@@ -371,6 +430,21 @@ def test_rest_modify_order_response_parses_cancel_reason_and_fill_range() -> Non
     assert response.to_dict()["firstFillId"] == "9002"
 
 
+def test_rest_modify_order_response_omits_exec_qty_when_absent() -> None:
+    response = RestModifyOrderResponse.from_dict(
+        {
+            "status": "OPEN",
+            "cumQty": "0",
+            "orderId": "490346525705109504",
+            "clientOrderId": "42",
+        }
+    )
+
+    assert response is not None
+    assert response.exec_qty is None
+    assert "execQty" not in response.to_dict()
+
+
 def test_ws_exec_create_order_response_parses_cancel_reason_and_fill_range() -> None:
     response = WsExecCreateOrderResponse.model_validate(
         {
@@ -418,6 +492,51 @@ def test_ws_exec_modify_order_response_parses_cancel_reason_and_fill_range() -> 
     assert response.first_fill_id == "9002"
     assert response.fill_count == 1
     assert response.model_dump(mode="json", by_alias=True)["firstFillId"] == "9002"
+
+
+def test_ws_exec_modify_order_response_omits_exec_qty_when_absent() -> None:
+    response = WsExecModifyOrderResponse.model_validate(
+        {
+            "status": "OPEN",
+            "cumQty": "0",
+            "orderId": "490346525705109504",
+            "clientOrderId": "42",
+        }
+    )
+
+    assert response.exec_qty is None
+    assert "execQty" not in response.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+def test_rest_spot_execution_uses_taker_field_names() -> None:
+    execution = RestSpotExecution.from_dict(_base_spot_execution_payload())
+
+    assert execution is not None
+    assert execution.taker_account_id == 12345
+    assert execution.taker_order_id == "490346525705109504"
+    assert execution.taker_fee == "0"
+    assert not hasattr(execution, "account_id")
+    assert not hasattr(execution, "order_id")
+    assert not hasattr(execution, "fee")
+    serialized = execution.to_dict()
+    assert serialized["takerAccountId"] == 12345
+    assert serialized["takerOrderId"] == "490346525705109504"
+    assert serialized["takerFee"] == "0"
+
+
+def test_ws_info_spot_execution_uses_taker_field_names() -> None:
+    execution = WsInfoSpotExecution.model_validate(_base_spot_execution_payload())
+
+    assert execution.taker_account_id == 12345
+    assert execution.taker_order_id == "490346525705109504"
+    assert execution.taker_fee == "0"
+    assert not hasattr(execution, "account_id")
+    assert not hasattr(execution, "order_id")
+    assert not hasattr(execution, "fee")
+    serialized = execution.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert serialized["takerAccountId"] == 12345
+    assert serialized["takerOrderId"] == "490346525705109504"
+    assert serialized["takerFee"] == "0"
 
 
 def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:

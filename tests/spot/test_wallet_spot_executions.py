@@ -258,11 +258,13 @@ async def test_rest_get_wallet_spot_executions_filters_by_wallet(
     # Verify executions belong to taker's account
     taker_account_id = taker_tester.account_id
     for execution in taker_executions.data[:5]:  # Check first 5
-        # Execution should involve taker's account (as account_id or maker_account_id)
-        is_taker_execution = execution.account_id == taker_account_id or execution.maker_account_id == taker_account_id
+        # Execution should involve taker's account (as taker_account_id or maker_account_id)
+        is_taker_execution = (
+            execution.taker_account_id == taker_account_id or execution.maker_account_id == taker_account_id
+        )
         assert is_taker_execution, (
             f"Execution should involve taker account {taker_account_id}, "
-            f"got account_id={execution.account_id}, maker_account_id={execution.maker_account_id}"
+            f"got taker_account_id={execution.taker_account_id}, maker_account_id={execution.maker_account_id}"
         )
 
     logger.info(f"✅ All executions involve taker account {taker_account_id}")

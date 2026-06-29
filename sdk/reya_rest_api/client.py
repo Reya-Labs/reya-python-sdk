@@ -659,13 +659,15 @@ class ReyaTradingClient:
     async def modify_order(self, params: ModifyOrderParameters) -> ModifyOrderResponse:
         """
         Modify a resting order in place on either spot or perp markets. The
-        order keeps its `orderId` and `clientOrderId`. Target exactly one of
-        `params.order_id` / `params.client_order_id`. The four modifiable
-        fields (`limit_px`, `qty`, `post_only`, `expires_after`) all carry the
-        complete post-modify state; the immutables (`is_buy`, `time_in_force`,
-        `trigger_px`, `reduce_only`, `resting_client_order_id`) must restate
-        the resting order's values — both go into the fresh EIP-712 signature
-        over the full post-modify state.
+        order keeps its `orderId` and, if it has one, its `clientOrderId`.
+        Target by `order_id` or `client_order_id`; when `order_id` is present,
+        `client_order_id` restates the resting order's non-zero client id for
+        the signature. The four modifiable fields (`limit_px`, `qty`,
+        `post_only`, `expires_after`) all carry the complete post-modify state;
+        the immutables (`is_buy`, `time_in_force`, `trigger_px`, `reduce_only`,
+        `client_order_id` / `resting_client_order_id`) must restate the resting
+        order's values — both go into the fresh EIP-712 signature over the full
+        post-modify state.
         """
         payload, _nonce = self.build_modify_order_payload(params)
         return await self.orders.modify_order(ModifyOrderRequest(**payload))
@@ -680,10 +682,16 @@ class ReyaTradingClient:
         """
         has_order_id = params.order_id is not None
         has_client_order_id = params.client_order_id is not None
-        if has_order_id == has_client_order_id:
-            raise ValueError("Provide exactly one of order_id or client_order_id")
-        if has_client_order_id and params.client_order_id == 0:
+        if not has_order_id and not has_client_order_id:
+            raise ValueError("Provide order_id or client_order_id")
+        if not has_order_id and params.client_order_id == 0:
             raise ValueError("client_order_id 0 is not a valid modify target")
+        if (
+            not has_order_id
+            and params.resting_client_order_id
+            and params.resting_client_order_id != params.client_order_id
+        ):
+            raise ValueError("resting_client_order_id cannot differ when targeting by client_order_id")
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
         if self._signature_generator is None:
@@ -706,10 +714,14 @@ class ReyaTradingClient:
             raise ValueError("GTC orders must not expire (expires_after must be 0)")
 
         # The signed `OrderDetails.clientOrderId` is the RESTING order's
-        # clientOrderId — independent of the targeting parameter. When
-        # targeting BY client_order_id it defaults to that value (mirrors the
-        # TS SDK: restingClientOrderId ?? clientOrderId ?? 0).
-        signed_client_order_id = params.resting_client_order_id or params.client_order_id or 0
+        # clientOrderId. With orderId targeting, a non-zero value must be
+        # restated by `client_order_id` or `resting_client_order_id`; otherwise
+        # zero is the signature-only "none" sentinel. With clientOrderId
+        # targeting, the target is also the restated immutable client id.
+        if has_order_id:
+            signed_client_order_id = params.resting_client_order_id or params.client_order_id or 0
+        else:
+            signed_client_order_id = params.client_order_id or 0
         trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
 
         signature = self._signature_generator.sign_order(
@@ -732,10 +744,6 @@ class ReyaTradingClient:
 
         payload = {
             "orderId": str(params.order_id) if params.order_id is not None else None,
-            # clientOrderId is the resting order's signed clientOrderId (a restated
-            # immutable, 0 when the order has none) — NOT the targeting param. The
-            # ME targets by orderId when present, else by a non-zero clientOrderId.
-            "clientOrderId": str(signed_client_order_id),
             "symbol": params.symbol,
             "accountId": self.config.account_id,
             # Restated immutables (full-restate): the request carries every signed
@@ -756,6 +764,8 @@ class ReyaTradingClient:
             "signerWallet": self.signer_wallet_address,
             "deadline": deadline,
         }
+        if signed_client_order_id != 0:
+            payload["clientOrderId"] = str(signed_client_order_id)
         return payload, nonce
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:

@@ -90,7 +90,7 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
 
     taker_order_id = await taker_tester.orders.create_limit(taker_params)
 
-    # Wait for spot execution event via WebSocket (strict matching on order_id and all fields)
+    # Wait for spot execution event via WebSocket (strict matching on taker_order_id and all fields)
     expected_order = limit_order_params_to_order(taker_params, taker_tester.account_id)
     execution = await taker_tester.wait.for_spot_execution(taker_order_id, expected_order, timeout=5)
 
@@ -104,7 +104,7 @@ async def test_spot_ws_spot_executions(spot_config: SpotTestConfig, maker_tester
     assert (
         spot_config.circuit_breaker_floor <= exec_price <= spot_config.circuit_breaker_ceiling
     ), f"Fill price ${exec_price} should be within circuit breaker range"
-    logger.info(f"✅ Spot execution received: {execution.order_id}")
+    logger.info(f"✅ Spot execution received: {execution.taker_order_id}")
 
     # Verify no open orders
     await maker_tester.check.no_open_orders()

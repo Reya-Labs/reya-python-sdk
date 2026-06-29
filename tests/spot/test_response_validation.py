@@ -193,14 +193,14 @@ async def test_spot_execution_response_fields(
     Validates:
     - exchange_id: int (optional)
     - symbol: str
-    - account_id: int
+    - taker_account_id: int
     - maker_account_id: int
-    - order_id: str (optional)
+    - taker_order_id: str (optional)
     - maker_order_id: str (optional)
     - side: Side enum
     - qty: str (numeric, positive)
     - price: str (numeric, positive)
-    - fee: str (numeric)
+    - taker_fee: str (numeric)
     - type: ExecutionType enum
     - timestamp: int (unix timestamp)
     """
@@ -343,8 +343,7 @@ async def test_spot_execution_maker_vs_taker_fields(
     our own maker order at a price that will be matched by our taker.
 
     Validates:
-    - Taker execution: account_id = taker, order_id = taker's order
-    - Maker execution: account_id = maker, order_id = maker's order
+    - Taker execution: taker_account_id = taker, taker_order_id = taker's order
     - Both have same maker_account_id and maker_order_id (pointing to maker)
     - Both have matching qty, price, symbol
     """
@@ -420,9 +419,9 @@ async def test_spot_execution_maker_vs_taker_fields(
     assert len(maker_executions.data) > 0, "Maker should have at least one execution"
 
     # Find the matching executions
-    # Taker's execution: order_id = taker's order
-    # Maker's execution: maker_order_id = maker's order (the order_id field is always the taker's order)
-    taker_exec = next((e for e in taker_executions.data if str(e.order_id) == str(taker_order_id)), None)
+    # Taker's execution: taker_order_id = taker's order
+    # Maker's execution: maker_order_id = maker's order
+    taker_exec = next((e for e in taker_executions.data if str(e.taker_order_id) == str(taker_order_id)), None)
     maker_exec = next((e for e in maker_executions.data if str(e.maker_order_id) == str(maker_order_id)), None)
 
     assert taker_exec is not None, f"Taker execution for order {taker_order_id} not found"
@@ -431,8 +430,8 @@ async def test_spot_execution_maker_vs_taker_fields(
     logger.info("Found matching executions for both maker and taker")
 
     # Understanding the execution structure:
-    # - account_id: ALWAYS the taker's account
-    # - order_id: ALWAYS the taker's order
+    # - taker_account_id: ALWAYS the taker's account
+    # - taker_order_id: ALWAYS the taker's order
     # - maker_account_id: ALWAYS the maker's account
     # - maker_order_id: ALWAYS the maker's order
     # Both taker and maker see the SAME execution record with these fields
@@ -440,14 +439,14 @@ async def test_spot_execution_maker_vs_taker_fields(
     # Validate taker's view of the execution
     logger.info("\n📋 Validating TAKER's view of execution:")
     assert (
-        taker_exec.account_id == taker_tester.account_id
-    ), f"account_id should be taker's account {taker_tester.account_id}, got {taker_exec.account_id}"
-    logger.info(f"  ✅ account_id = {taker_exec.account_id} (taker's account)")
+        taker_exec.taker_account_id == taker_tester.account_id
+    ), f"taker_account_id should be taker's account {taker_tester.account_id}, got {taker_exec.taker_account_id}"
+    logger.info(f"  ✅ taker_account_id = {taker_exec.taker_account_id} (taker's account)")
 
-    assert str(taker_exec.order_id) == str(
+    assert str(taker_exec.taker_order_id) == str(
         taker_order_id
-    ), f"order_id should be taker's order {taker_order_id}, got {taker_exec.order_id}"
-    logger.info(f"  ✅ order_id = {taker_exec.order_id} (taker's order)")
+    ), f"taker_order_id should be taker's order {taker_order_id}, got {taker_exec.taker_order_id}"
+    logger.info(f"  ✅ taker_order_id = {taker_exec.taker_order_id} (taker's order)")
 
     assert (
         taker_exec.maker_account_id == maker_tester.account_id
@@ -462,14 +461,14 @@ async def test_spot_execution_maker_vs_taker_fields(
     # Validate maker's view of the execution (should be identical)
     logger.info("\n📋 Validating MAKER's view of execution:")
     assert (
-        maker_exec.account_id == taker_tester.account_id
-    ), f"account_id should be taker's account {taker_tester.account_id}, got {maker_exec.account_id}"
-    logger.info(f"  ✅ account_id = {maker_exec.account_id} (taker's account - same as taker's view)")
+        maker_exec.taker_account_id == taker_tester.account_id
+    ), f"taker_account_id should be taker's account {taker_tester.account_id}, got {maker_exec.taker_account_id}"
+    logger.info(f"  ✅ taker_account_id = {maker_exec.taker_account_id} (taker's account - same as taker's view)")
 
-    assert str(maker_exec.order_id) == str(
+    assert str(maker_exec.taker_order_id) == str(
         taker_order_id
-    ), f"order_id should be taker's order {taker_order_id}, got {maker_exec.order_id}"
-    logger.info(f"  ✅ order_id = {maker_exec.order_id} (taker's order - same as taker's view)")
+    ), f"taker_order_id should be taker's order {taker_order_id}, got {maker_exec.taker_order_id}"
+    logger.info(f"  ✅ taker_order_id = {maker_exec.taker_order_id} (taker's order - same as taker's view)")
 
     assert (
         maker_exec.maker_account_id == maker_tester.account_id

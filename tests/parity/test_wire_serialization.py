@@ -30,11 +30,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import (
-    LimitOrderParameters,
-    ModifyOrderParameters,
-    TriggerOrderParameters,
-)
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
 pytestmark = pytest.mark.offline
 
@@ -339,7 +335,6 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
 
     assert set(payload.keys()) == {
         "orderId",
-        "clientOrderId",
         "symbol",
         "accountId",
         "exchangeId",
@@ -372,11 +367,9 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
     # Targeting + auth.
     assert payload["orderId"] == "63552420354981888"  # orderId is a STRING on the wire
     assert isinstance(payload["orderId"], str)
-    # clientOrderId is the resting order's signed clientOrderId ("0" here — the
-    # GTT fixture targets by orderId and carries no clientOrderId). It is a
-    # decimal STRING on the wire (uint64), like orderId.
-    assert payload["clientOrderId"] == "0"
-    assert isinstance(payload["clientOrderId"], str)
+    # The fixture targets by orderId and has no resting clientOrderId. The
+    # signature uses 0 internally, but JSON omits absent clientOrderId.
+    assert "clientOrderId" not in payload
     assert payload["accountId"] == 12345
     assert payload["signerWallet"] == SIGNER_ADDRESS
     assert payload["signature"].startswith("0x")
@@ -393,10 +386,9 @@ def test_modify_payload_round_trips_generated_model(client: ReyaTradingClient) -
     body = ModifyOrderRequest(**payload).to_dict()
 
     # to_dict drops None optionals: triggerPx (None for LIMIT) disappears;
-    # clientOrderId stays (0 is the restated immutable, not None); orderId stays.
+    # clientOrderId is absent because this order has none; orderId stays.
     assert set(body.keys()) == {
         "orderId",
-        "clientOrderId",
         "symbol",
         "accountId",
         "exchangeId",
@@ -429,6 +421,18 @@ def test_modify_payload_client_order_id_targeting_wire_shape(client: ReyaTrading
     assert payload["clientOrderId"] == "777"
     body = ModifyOrderRequest(**payload).to_dict()
     assert "orderId" not in body
+    assert body["clientOrderId"] == "777"
+
+
+@pytest.mark.modify
+def test_modify_payload_order_id_targeting_with_restated_client_order_id(client: ReyaTradingClient) -> None:
+    """Targeting by order_id while restating a non-zero resting clientOrderId:
+    the body carries both ids, and orderId remains the canonical target."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
+    assert payload["orderId"] == "63552420354981888"
+    assert payload["clientOrderId"] == "777"
+    body = ModifyOrderRequest(**payload).to_dict()
+    assert body["orderId"] == "63552420354981888"
     assert body["clientOrderId"] == "777"
 
 

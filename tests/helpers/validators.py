@@ -164,11 +164,13 @@ def validate_spot_execution_fields(
     if log_details:
         logger.info(f"✅ symbol: {execution.symbol}")
 
-    # account_id
-    assert hasattr(execution, "account_id"), "Execution should have 'account_id'"
-    assert isinstance(execution.account_id, int), f"account_id should be int, got {type(execution.account_id)}"
+    # taker_account_id
+    assert hasattr(execution, "taker_account_id"), "Execution should have 'taker_account_id'"
+    assert isinstance(
+        execution.taker_account_id, int
+    ), f"taker_account_id should be int, got {type(execution.taker_account_id)}"
     if log_details:
-        logger.info(f"✅ account_id: {execution.account_id}")
+        logger.info(f"✅ taker_account_id: {execution.taker_account_id}")
 
     # maker_account_id
     assert hasattr(execution, "maker_account_id"), "Execution should have 'maker_account_id'"
@@ -178,11 +180,13 @@ def validate_spot_execution_fields(
     if log_details:
         logger.info(f"✅ maker_account_id: {execution.maker_account_id}")
 
-    # order_id (optional)
-    if execution.order_id is not None:
-        assert isinstance(execution.order_id, str), f"order_id should be str, got {type(execution.order_id)}"
+    # taker_order_id (optional)
+    if execution.taker_order_id is not None:
+        assert isinstance(
+            execution.taker_order_id, str
+        ), f"taker_order_id should be str, got {type(execution.taker_order_id)}"
         if log_details:
-            logger.info(f"✅ order_id: {execution.order_id}")
+            logger.info(f"✅ taker_order_id: {execution.taker_order_id}")
 
     # maker_order_id (optional)
     if execution.maker_order_id is not None:
@@ -215,12 +219,12 @@ def validate_spot_execution_fields(
     if log_details:
         logger.info(f"✅ price: {execution.price}")
 
-    # fee
-    assert hasattr(execution, "fee"), "Execution should have 'fee'"
-    assert isinstance(execution.fee, str), f"fee should be str, got {type(execution.fee)}"
-    assert _is_numeric_string(execution.fee), f"fee should be numeric: {execution.fee}"
+    # taker_fee
+    assert hasattr(execution, "taker_fee"), "Execution should have 'taker_fee'"
+    assert isinstance(execution.taker_fee, str), f"taker_fee should be str, got {type(execution.taker_fee)}"
+    assert _is_numeric_string(execution.taker_fee), f"taker_fee should be numeric: {execution.taker_fee}"
     if log_details:
-        logger.info(f"✅ fee: {execution.fee}")
+        logger.info(f"✅ taker_fee: {execution.taker_fee}")
 
     # type
     assert hasattr(execution, "type"), "Execution should have 'type'"
