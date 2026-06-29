@@ -862,7 +862,7 @@ class WalletDataApi:
     ) -> ExecutionBustList:
         """Get wallet execution busts
 
-        Returns up to 100 execution busts (failed fills) for a given wallet, covering both spot and perp markets.
+        Returns up to 100 execution busts (failed fills) for a given wallet, covering both spot and perp markets. Use the `symbol` suffix to distinguish spot from perp busts.
 
         :param address: (required)
         :type address: str
@@ -939,7 +939,7 @@ class WalletDataApi:
     ) -> ApiResponse[ExecutionBustList]:
         """Get wallet execution busts
 
-        Returns up to 100 execution busts (failed fills) for a given wallet, covering both spot and perp markets.
+        Returns up to 100 execution busts (failed fills) for a given wallet, covering both spot and perp markets. Use the `symbol` suffix to distinguish spot from perp busts.
 
         :param address: (required)
         :type address: str
@@ -1016,7 +1016,7 @@ class WalletDataApi:
     ) -> RESTResponseType:
         """Get wallet execution busts
 
-        Returns up to 100 execution busts (failed fills) for a given wallet, covering both spot and perp markets.
+        Returns up to 100 execution busts (failed fills) for a given wallet, covering both spot and perp markets. Use the `symbol` suffix to distinguish spot from perp busts.
 
         :param address: (required)
         :type address: str

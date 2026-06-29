@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
-class ExecutionBust(BaseModel): 
+class ExecutionBust(BaseModel):
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   exchange_id: int = Field(alias='''exchangeId''')
@@ -12,7 +12,7 @@ class ExecutionBust(BaseModel):
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   price: str = Field()
-  reason: str = Field(description='''Human Readable Reason String (decoded revert reason bytes)''')
+  reason: str = Field(description='''Human-readable reason string decoded from revert reason bytes.''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
   fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this bust to its ME fill (PRO-182).''', default=None, alias='''fillId''')
@@ -39,9 +39,9 @@ class ExecutionBust(BaseModel):
     known_object_properties = ['symbol', 'account_id', 'exchange_id', 'maker_account_id', 'order_id', 'maker_order_id', 'qty', 'side', 'price', 'reason', 'timestamp', 'sequence_number', 'fill_id', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0: 
+    if len(unknown_object_properties) == 0:
       return data
-  
+
     known_json_properties = ['symbol', 'accountId', 'exchangeId', 'makerAccountId', 'orderId', 'makerOrderId', 'qty', 'side', 'price', 'reason', 'timestamp', 'sequenceNumber', 'fillId', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:

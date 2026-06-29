@@ -37,7 +37,7 @@ class ExecutionBust(BaseModel):
     qty: Annotated[str, Field(strict=True)]
     side: Side
     price: Annotated[str, Field(strict=True)]
-    reason: StrictStr = Field(description="Human Readable Reason String (decoded revert reason bytes)")
+    reason: StrictStr = Field(description="Human-readable reason string decoded from revert reason bytes.")
     timestamp: Annotated[int, Field(strict=True, ge=0)]
     sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(alias="sequenceNumber")
     fill_id: Optional[StrictStr] = Field(default=None, description="Matching-engine fill nonce — a stable identifier to join this bust to its ME fill (PRO-182).", alias="fillId")
