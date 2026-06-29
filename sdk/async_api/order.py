@@ -5,6 +5,7 @@ from sdk.async_api.side import Side
 from sdk.async_api.order_type import OrderType
 from sdk.async_api.time_in_force import TimeInForce
 from sdk.async_api.order_status import OrderStatus
+from sdk.async_api.cancel_reason import CancelReason
 class Order(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
@@ -13,6 +14,8 @@ class Order(BaseModel):
   qty: Optional[str] = Field(default=None)
   exec_qty: Optional[str] = Field(default=None, alias='''execQty''')
   cum_qty: Optional[str] = Field(default=None, alias='''cumQty''')
+  first_fill_id: Optional[str] = Field(description='''Matching-engine fill nonce of the first fill this update represents. Together with fillCount it identifies the fills as a contiguous nonce range [firstFillId, firstFillId + fillCount - 1]. For a taker update, the first fill of its matching round; for a maker update, its single fill. Present only on fill updates; absent for non-fill updates and resting-order snapshots.''', default=None, alias='''firstFillId''')
+  fill_count: Optional[int] = Field(default=None, alias='''fillCount''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   limit_px: str = Field(alias='''limitPx''')
   order_type: OrderType = Field(description='''Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.''', alias='''orderType''')
@@ -24,6 +27,8 @@ class Order(BaseModel):
   status: OrderStatus = Field(description='''Order status''')
   created_at: int = Field(alias='''createdAt''')
   last_update_at: int = Field(alias='''lastUpdateAt''')
+  cancel_reason: Optional[CancelReason] = Field(description='''Why an order reached a terminal `CANCELLED` status. Present only when `status` is `CANCELLED`. `NO_LIQUIDITY` (IOC found no resting liquidity) and `IOC_REMAINDER` (IOC partially filled, remainder cancelled) are returned on `createOrder` responses; `GTT_EXPIRED`, `USER_CANCEL`, `MASS_CANCEL` and `CANCEL_ALL_AFTER` are delivered on the `walletOrderChanges` stream. `SELF_TRADE_PREVENTION` (the order would have matched your own resting order) appears on **both**: on the response when a self-crossing IOC or modify cancels the taker, and on the stream when a resting order is cancelled by an incoming self-cross.''', default=None, alias='''cancelReason''')
+  cancel_reason_message: Optional[str] = Field(description='''Human-readable explanation of `cancelReason`. Present only when `cancelReason` is present.''', default=None, alias='''cancelReasonMessage''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -44,13 +49,13 @@ class Order(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'qty', 'exec_qty', 'cum_qty', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'expires_after', 'reduce_only', 'post_only', 'status', 'created_at', 'last_update_at', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'qty', 'exec_qty', 'cum_qty', 'first_fill_id', 'fill_count', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'expires_after', 'reduce_only', 'post_only', 'status', 'created_at', 'last_update_at', 'cancel_reason', 'cancel_reason_message', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'qty', 'execQty', 'cumQty', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'expiresAfter', 'reduceOnly', 'postOnly', 'status', 'createdAt', 'lastUpdateAt', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'qty', 'execQty', 'cumQty', 'firstFillId', 'fillCount', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'expiresAfter', 'reduceOnly', 'postOnly', 'status', 'createdAt', 'lastUpdateAt', 'cancelReason', 'cancelReasonMessage', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):

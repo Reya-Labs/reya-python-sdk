@@ -19,6 +19,7 @@ sdk/open_api/models/cancel_all_after_request.py
 sdk/open_api/models/cancel_all_after_response.py
 sdk/open_api/models/cancel_order_request.py
 sdk/open_api/models/cancel_order_response.py
+sdk/open_api/models/cancel_reason.py
 sdk/open_api/models/candle_history_data.py
 sdk/open_api/models/create_order_request.py
 sdk/open_api/models/create_order_response.py

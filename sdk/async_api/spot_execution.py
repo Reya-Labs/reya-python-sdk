@@ -17,6 +17,7 @@ class SpotExecution(BaseModel):
   type: ExecutionType = Field(description='''Type of execution''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
+  fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -37,13 +38,13 @@ class SpotExecution(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'maker_account_id', 'order_id', 'maker_order_id', 'side', 'qty', 'price', 'fee', 'type', 'timestamp', 'sequence_number', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'maker_account_id', 'order_id', 'maker_order_id', 'side', 'qty', 'price', 'fee', 'type', 'timestamp', 'sequence_number', 'fill_id', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'makerAccountId', 'orderId', 'makerOrderId', 'side', 'qty', 'price', 'fee', 'type', 'timestamp', 'sequenceNumber', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'makerAccountId', 'orderId', 'makerOrderId', 'side', 'qty', 'price', 'fee', 'type', 'timestamp', 'sequenceNumber', 'fillId', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
