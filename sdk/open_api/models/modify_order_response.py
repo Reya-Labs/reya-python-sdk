@@ -27,7 +27,7 @@ from typing_extensions import Self
 
 class ModifyOrderResponse(BaseModel):
     """
-    Result of a modification, same shape as `CreateOrderResponse` plus `execQty` / `cumQty`. `orderId` is always the same ID the order had before the modification. If the modification crossed the book it executed immediately: `execQty` carries the quantity it filled and `status` reflects the outcome (`OPEN` for a partial fill leaving a remainder resting, `FILLED` for a complete fill, or `CANCELLED` when a non-post-only crossing modify self-matches the account's own resting liquidity — self-match prevention cancels the taker, so the order is removed and rests nowhere). Per-fill detail (prices, fees) is delivered on the wallet executions and `walletOrderChanges` streams, exactly as for `createOrder`.
+    Result of a modification. The response fields match `CreateOrderResponse`; `orderId` is always the same ID the order had before the modification. If the modification crossed the book it executed immediately: `execQty` carries the quantity it filled and `status` reflects the outcome (`OPEN` for a partial fill leaving a remainder resting, `FILLED` for a complete fill, or `CANCELLED` when a non-post-only crossing modify self-matches the account's own resting liquidity — self-match prevention cancels the taker, so the order is removed and rests nowhere). Per-fill detail (prices, fees) is delivered on the wallet executions and `walletOrderChanges` streams, exactly as for `createOrder`.
     """ # noqa: E501
     status: OrderStatus
     exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
