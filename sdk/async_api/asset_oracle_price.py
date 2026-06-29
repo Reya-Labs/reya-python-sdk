@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 
-class CollateralOraclePrice(BaseModel): 
+class AssetOraclePrice(BaseModel): 
   asset: str = Field()
   oracle_price: str = Field(alias='''oraclePrice''')
   updated_at: int = Field(alias='''updatedAt''')

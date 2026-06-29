@@ -42,7 +42,7 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Get fee tiers via `/v2/feeTiers`
 
 - **Prices Resource**
-    - Get collateral-only oracle prices via `/v2/collateralOraclePrices`
+    - Get asset oracle prices via `/v2/assetOraclePrices`
     - Get legacy market/collateral prices via `/v2/prices` (deprecated)
     - Get legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
@@ -59,7 +59,7 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Monitor wallet perpetual executions via `/v2/wallet/{address}/perpExecutions`
 
 - **Price Resources**
-    - Track collateral-only oracle prices via `/v2/collateralOraclePrices`
+    - Track asset oracle prices via `/v2/assetOraclePrices`
     - Track legacy market/collateral prices via `/v2/prices` (deprecated)
     - Track legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
@@ -202,7 +202,7 @@ ReyaTradingClient
 │   ├── get_market_summary()         # /v2/market/{symbol}/summary
 │   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
 │   ├── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
-│   ├── get_collateral_oracle_prices() # /v2/collateralOraclePrices
+│   ├── get_asset_oracle_prices()      # /v2/assetOraclePrices
 │   ├── get_prices()                 # /v2/prices (deprecated)
 │   └── get_price()                  # /v2/prices/{symbol} (deprecated)
 ├── reference                        # Reference Data resource
@@ -239,7 +239,7 @@ ReyaSocket
 │       ├── subscribe()
 │       └── unsubscribe()
 ├── prices
-│   ├── collateral_oracle_prices        # /v2/collateralOraclePrices
+│   ├── asset_oracle_prices             # /v2/assetOraclePrices
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
 │   ├── all_prices                      # /v2/prices (deprecated)

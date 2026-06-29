@@ -7,17 +7,17 @@ from typing import Any
 import pytest
 
 import sdk.open_api as rest_open_api
+from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
+from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
-from sdk.async_api.collateral_oracle_prices_channel import CollateralOraclePricesChannel
-from sdk.async_api.collateral_oracle_prices_update_payload import CollateralOraclePricesUpdatePayload
 from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
+from sdk.open_api import AssetOraclePrice as RestAssetOraclePrice
 from sdk.open_api import CancelReason as RestCancelReason
-from sdk.open_api import CollateralOraclePrice as RestCollateralOraclePrice
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
@@ -76,11 +76,13 @@ def test_rest_sdk_omits_removed_amm_liquidity_parameters_surface() -> None:
     assert hasattr(ReferenceDataApi, "get_perp_market_definitions")
 
 
-def test_rest_sdk_exposes_collateral_oracle_prices_surface() -> None:
-    assert hasattr(rest_open_api, "CollateralOraclePrice")
-    assert hasattr(MarketDataApi, "get_collateral_oracle_prices")
+def test_rest_sdk_exposes_asset_oracle_prices_surface() -> None:
+    assert hasattr(rest_open_api, "AssetOraclePrice")
+    assert not hasattr(rest_open_api, "CollateralOraclePrice")
+    assert hasattr(MarketDataApi, "get_asset_oracle_prices")
+    assert not hasattr(MarketDataApi, "get_collateral_oracle_prices")
 
-    price = RestCollateralOraclePrice.from_dict({"asset": "ETH", "oraclePrice": "2500", "updatedAt": 1747927089946})
+    price = RestAssetOraclePrice.from_dict({"asset": "ETH", "oraclePrice": "2500", "updatedAt": 1747927089946})
 
     assert price is not None
     assert price.asset == "ETH"
@@ -93,12 +95,12 @@ def test_rest_sdk_exposes_collateral_oracle_prices_surface() -> None:
     assert "poolPrice" not in price.to_dict()
 
 
-def test_ws_info_collateral_oracle_prices_payload_parses_without_pool_price() -> None:
-    payload = CollateralOraclePricesUpdatePayload.model_validate(
+def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None:
+    payload = AssetOraclePricesUpdatePayload.model_validate(
         {
             "type": "channel_data",
             "timestamp": 1747927089946,
-            "channel": "/v2/collateralOraclePrices",
+            "channel": "/v2/assetOraclePrices",
             "data": [
                 {
                     "asset": "ETH",
@@ -109,7 +111,7 @@ def test_ws_info_collateral_oracle_prices_payload_parses_without_pool_price() ->
         }
     )
 
-    assert payload.channel == CollateralOraclePricesChannel.SLASH_V2_SLASH_COLLATERAL_ORACLE_PRICES
+    assert payload.channel == AssetOraclePricesChannel.SLASH_V2_SLASH_ASSET_ORACLE_PRICES
     assert payload.data[0].asset == "ETH"
     assert payload.data[0].oracle_price == "2500"
     serialized = payload.model_dump(mode="json", by_alias=True)
@@ -132,18 +134,18 @@ class _RecordingSocket:
         self.messages.append(("unsubscribe", channel, kwargs))
 
 
-def test_reya_socket_routes_collateral_oracle_prices_channel() -> None:
-    assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/collateralOraclePrices"] is CollateralOraclePricesUpdatePayload
+def test_reya_socket_routes_asset_oracle_prices_channel() -> None:
+    assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/assetOraclePrices"] is AssetOraclePricesUpdatePayload
 
     socket = _RecordingSocket()
     prices = PricesResource(socket)  # type: ignore[arg-type]
 
-    prices.collateral_oracle_prices.subscribe(batched=True)
-    prices.collateral_oracle_prices.unsubscribe()
+    prices.asset_oracle_prices.subscribe(batched=True)
+    prices.asset_oracle_prices.unsubscribe()
 
     assert socket.messages == [
-        ("subscribe", "/v2/collateralOraclePrices", {"batched": True}),
-        ("unsubscribe", "/v2/collateralOraclePrices", {}),
+        ("subscribe", "/v2/assetOraclePrices", {"batched": True}),
+        ("unsubscribe", "/v2/assetOraclePrices", {}),
     ]
 
 

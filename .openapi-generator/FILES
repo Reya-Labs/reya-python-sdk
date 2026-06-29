@@ -15,13 +15,13 @@ sdk/open_api/models/account.py
 sdk/open_api/models/account_balance.py
 sdk/open_api/models/account_type.py
 sdk/open_api/models/asset_definition.py
+sdk/open_api/models/asset_oracle_price.py
 sdk/open_api/models/cancel_all_after_request.py
 sdk/open_api/models/cancel_all_after_response.py
 sdk/open_api/models/cancel_order_request.py
 sdk/open_api/models/cancel_order_response.py
 sdk/open_api/models/cancel_reason.py
 sdk/open_api/models/candle_history_data.py
-sdk/open_api/models/collateral_oracle_price.py
 sdk/open_api/models/create_order_request.py
 sdk/open_api/models/create_order_response.py
 sdk/open_api/models/depth.py

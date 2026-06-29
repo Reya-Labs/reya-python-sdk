@@ -7,4 +7,4 @@ class PriceUpdatePayload(BaseModel):
   type: ChannelDataMessageType = Field(description='''Message type for channel data updates''')
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
   channel: str = Field(description='''Channel pattern for specific price updates''')
-  data: Price = Field(description='''Deprecated AMM-era mixed market/collateral price shape. Use CollateralOraclePrice for collateral Stork oracle prices; use market summary/depth endpoints for market prices.''')
+  data: Price = Field(description='''Deprecated AMM-era mixed market/collateral price shape. Use AssetOraclePrice for asset Stork oracle prices; use market summary/depth endpoints for market prices.''')
