@@ -127,7 +127,7 @@ async def test_ws_exec_modify(ws_exec_market: WsExecMarket):
 
 async def test_ws_exec_modify_not_found_error_envelope(ws_exec_market: WsExecMarket):
     """Modifying a non-existent order surfaces the per-op error envelope as
-    WsExecOperationError with code ORDER_NOT_FOUND."""
+    WsExecOperationError with code ORDER_NOT_FOUND_ERROR."""
     m = ws_exec_market
 
     params = ModifyOrderParameters(
@@ -142,7 +142,7 @@ async def test_ws_exec_modify_not_found_error_envelope(ws_exec_market: WsExecMar
     )
     with pytest.raises(WsExecOperationError) as exc_info:
         await m.ws.modify_order(params)
-    assert exc_info.value.code == "ORDER_NOT_FOUND", f"Expected ORDER_NOT_FOUND, got {exc_info.value.code}"
+    assert exc_info.value.code == "ORDER_NOT_FOUND_ERROR", f"Expected ORDER_NOT_FOUND_ERROR, got {exc_info.value.code}"
     print(f"  [ws-exec {m.market_type}] not-found modify rejected OK code={exc_info.value.code}")
 
 
@@ -255,7 +255,7 @@ async def test_ws_exec_empty_modify_error_envelope(ws_exec_market: WsExecMarket)
     """Business-rejection envelope breadth: an exact restate (no field
     changed) maps through the ws-exec per-op error envelope as
     WsExecOperationError EMPTY_MODIFY_ERROR — a second, code-specific
-    modifyOrder rejection beyond ORDER_NOT_FOUND, deterministic and with no
+    modifyOrder rejection beyond ORDER_NOT_FOUND_ERROR, deterministic and with no
     counterparty needed. The resting order survives the rejection."""
     m = ws_exec_market
 

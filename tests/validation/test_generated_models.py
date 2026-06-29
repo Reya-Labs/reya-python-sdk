@@ -66,6 +66,13 @@ def test_ws_exec_request_error_code_exports_pro_405_codes() -> None:
     assert PRO_405_REQUEST_ERROR_CODES <= {code.value for code in WsExecRequestErrorCode}
 
 
+def test_request_error_code_uses_suffixed_order_not_found() -> None:
+    assert "ORDER_NOT_FOUND_ERROR" in {code.value for code in RestRequestErrorCode}
+    assert "ORDER_NOT_FOUND" not in {code.value for code in RestRequestErrorCode}
+    assert "ORDER_NOT_FOUND_ERROR" in {code.value for code in WsExecRequestErrorCode}
+    assert "ORDER_NOT_FOUND" not in {code.value for code in WsExecRequestErrorCode}
+
+
 def test_cancel_reason_enums_share_specs_values() -> None:
     assert CANCEL_REASONS == {reason.value for reason in RestCancelReason}
     assert CANCEL_REASONS == {reason.value for reason in WsInfoCancelReason}

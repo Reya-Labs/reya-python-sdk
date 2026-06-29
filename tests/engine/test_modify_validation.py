@@ -3,7 +3,7 @@ modifyOrder server-side validation tests parametrized over [spot, perp] — live
 e2e.
 
 - EMPTY_MODIFY_ERROR: an exact restate (no field changed) is rejected,
-- ORDER_NOT_FOUND: bogus targets, just-cancelled orders, and fully-filled
+- ORDER_NOT_FOUND_ERROR: bogus targets, just-cancelled orders, and fully-filled
   orders,
 - INPUT_VALIDATION_ERROR: zero px / zero qty / neither id / clientOrderId=0 —
   driven as RAW `ModifyOrderRequest`s through the generated OrderEntryApi
@@ -171,7 +171,7 @@ async def test_empty_modify_rejected(
 
 @pytest.mark.asyncio
 async def test_order_not_found(market_config: SpotTestConfig | PerpTestConfig, market_type: str, maker: ReyaTester):
-    """Both a bogus orderId and a just-cancelled order resolve to ORDER_NOT_FOUND."""
+    """Both a bogus orderId and a just-cancelled order resolve to ORDER_NOT_FOUND_ERROR."""
     bogus_params = ModifyOrderParameters(
         symbol=market_config.symbol,
         is_buy=True,
@@ -186,9 +186,9 @@ async def test_order_not_found(market_config: SpotTestConfig | PerpTestConfig, m
         await maker.client.modify_order(bogus_params)
     error_msg = str(exc_info.value)
     assert (
-        "ORDER_NOT_FOUND" in error_msg
-    ), f"[{market_type}] Expected ORDER_NOT_FOUND for bogus id, got: {error_msg[:200]}"
-    logger.info(f"[{market_type}] ✅ Bogus orderId rejected with ORDER_NOT_FOUND")
+        "ORDER_NOT_FOUND_ERROR" in error_msg
+    ), f"[{market_type}] Expected ORDER_NOT_FOUND_ERROR for bogus id, got: {error_msg[:200]}"
+    logger.info(f"[{market_type}] ✅ Bogus orderId rejected with ORDER_NOT_FOUND_ERROR")
 
     # A real order that was JUST cancelled is equally not-found.
     order = await rest_gtc(maker, market_config, price_multiplier=0.95)
@@ -199,9 +199,9 @@ async def test_order_not_found(market_config: SpotTestConfig | PerpTestConfig, m
         await maker.client.modify_order(full_state_modify_params(order, limit_px=str(market_config.price(0.96))))
     error_msg = str(exc_info.value)
     assert (
-        "ORDER_NOT_FOUND" in error_msg
-    ), f"[{market_type}] Expected ORDER_NOT_FOUND for cancelled order, got: {error_msg[:200]}"
-    logger.info(f"[{market_type}] ✅ Just-cancelled order rejected with ORDER_NOT_FOUND")
+        "ORDER_NOT_FOUND_ERROR" in error_msg
+    ), f"[{market_type}] Expected ORDER_NOT_FOUND_ERROR for cancelled order, got: {error_msg[:200]}"
+    logger.info(f"[{market_type}] ✅ Just-cancelled order rejected with ORDER_NOT_FOUND_ERROR")
 
     await maker.check.no_open_orders()
 
@@ -216,7 +216,7 @@ async def test_modify_after_full_fill_not_found(
     settlement_cleanup_guard,  # pylint: disable=unused-argument
 ):
     """A FULLY-FILLED order is no longer a live resting order — modifying its
-    stale snapshot resolves to ORDER_NOT_FOUND. The only test in this module
+    stale snapshot resolves to ORDER_NOT_FOUND_ERROR. The only test in this module
     that produces a fill, so it wires the per-market settlement cleanup (spot
     balance guard / perp baseline restore)."""
     await skip_if_external_config_liquidity(market_config, maker, "A deterministic full fill needs an empty book.")
@@ -239,9 +239,9 @@ async def test_modify_after_full_fill_not_found(
             )
         error_msg = str(exc_info.value)
         assert (
-            "ORDER_NOT_FOUND" in error_msg
-        ), f"[{market_type}] Expected ORDER_NOT_FOUND for filled order, got: {error_msg[:200]}"
-        logger.info(f"[{market_type}] ✅ Fully-filled order rejected with ORDER_NOT_FOUND")
+            "ORDER_NOT_FOUND_ERROR" in error_msg
+        ), f"[{market_type}] Expected ORDER_NOT_FOUND_ERROR for filled order, got: {error_msg[:200]}"
+        logger.info(f"[{market_type}] ✅ Fully-filled order rejected with ORDER_NOT_FOUND_ERROR")
     finally:
         await maker.orders.close_all(fail_if_none=False)
         await taker.orders.close_all(fail_if_none=False)
