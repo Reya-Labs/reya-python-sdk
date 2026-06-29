@@ -72,11 +72,27 @@ def test_ws_exec_request_error_code_exports_pro_405_codes() -> None:
     assert PRO_405_REQUEST_ERROR_CODES <= {code.value for code in WsExecRequestErrorCode}
 
 
-def test_request_error_code_uses_suffixed_order_not_found() -> None:
-    assert "ORDER_NOT_FOUND_ERROR" in {code.value for code in RestRequestErrorCode}
-    assert "ORDER_NOT_FOUND" not in {code.value for code in RestRequestErrorCode}
-    assert "ORDER_NOT_FOUND_ERROR" in {code.value for code in WsExecRequestErrorCode}
-    assert "ORDER_NOT_FOUND" not in {code.value for code in WsExecRequestErrorCode}
+def test_request_error_code_uses_error_suffix_convention() -> None:
+    suffixed_codes = {
+        "SYMBOL_NOT_FOUND_ERROR",
+        "NO_ACCOUNTS_FOUND_ERROR",
+        "NO_PRICES_FOUND_FOR_SYMBOL_ERROR",
+        "ORDER_NOT_FOUND_ERROR",
+    }
+    unsuffixed_codes = {
+        "SYMBOL_NOT_FOUND",
+        "NO_ACCOUNTS_FOUND",
+        "NO_PRICES_FOUND_FOR_SYMBOL",
+        "ORDER_NOT_FOUND",
+    }
+
+    rest_codes = {code.value for code in RestRequestErrorCode}
+    ws_exec_codes = {code.value for code in WsExecRequestErrorCode}
+
+    assert suffixed_codes <= rest_codes
+    assert not unsuffixed_codes & rest_codes
+    assert suffixed_codes <= ws_exec_codes
+    assert not unsuffixed_codes & ws_exec_codes
 
 
 def test_cancel_reason_enums_share_specs_values() -> None:

@@ -35,7 +35,7 @@ class DataOperations:
         """Fetch current market price for a symbol, retrying through transient price-feed gaps.
 
         Devnet's price endpoint (`GET /prices/{symbol}`) occasionally returns a
-        momentary `400 NO_PRICES_FOUND_FOR_SYMBOL` ("Price not found") during an
+        momentary `400 NO_PRICES_FOUND_FOR_SYMBOL_ERROR` ("Price not found") during an
         oracle-push / cache-refresh race. This is a precondition read for many
         tests, so a transient blip here would otherwise fail unrelated tests.
         Retry a few times with a short backoff; a sustained outage still raises.
@@ -53,12 +53,12 @@ class DataOperations:
             except ApiException as e:
                 # Only the transient price-feed gap is retryable; anything else is a real error.
                 error_text = str(e)
-                if "NO_PRICES_FOUND_FOR_SYMBOL" not in error_text and "Price not found" not in error_text:
+                if "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in error_text and "Price not found" not in error_text:
                     raise
                 last_exc = e
                 logger.warning(
                     f"⚠️ price feed gap for {symbol} (attempt {attempt + 1}/{max_attempts}): "
-                    "NO_PRICES_FOUND_FOR_SYMBOL; retrying in 0.3s"
+                    "NO_PRICES_FOUND_FOR_SYMBOL_ERROR; retrying in 0.3s"
                 )
             await asyncio.sleep(0.3)
 
