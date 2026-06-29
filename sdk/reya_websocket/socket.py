@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.collateral_oracle_prices_update_payload import CollateralOraclePricesUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
@@ -72,6 +73,7 @@ WebSocketMessage = Union[
     WalletExecutionBustUpdatePayload,  # /v2/wallet/{address}/executionBusts
     AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
     # Price channels
+    CollateralOraclePricesUpdatePayload,  # /v2/collateralOraclePrices
     PricesUpdatePayload,  # /v2/prices
     PriceUpdatePayload,  # /v2/prices/{symbol}
 ]
@@ -95,6 +97,7 @@ class ReyaSocket(WebSocketApp):
         "/v2/markets/summary": MarketsSummaryUpdatePayload,
         "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
         # All prices (exact match)
+        "/v2/collateralOraclePrices": CollateralOraclePricesUpdatePayload,
         "/v2/prices": PricesUpdatePayload,
     }
 

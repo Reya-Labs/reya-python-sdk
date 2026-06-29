@@ -42,8 +42,9 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Get fee tiers via `/v2/feeTiers`
 
 - **Prices Resource**
-    - Get all prices via `/v2/prices`
-    - Get price by symbol via `/v2/prices/{symbol}`
+    - Get collateral-only oracle prices via `/v2/collateralOraclePrices`
+    - Get legacy market/collateral prices via `/v2/prices` (deprecated)
+    - Get legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
 ### WebSocket API Client (Resource-Oriented)
 
@@ -58,8 +59,9 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Monitor wallet perpetual executions via `/v2/wallet/{address}/perpExecutions`
 
 - **Price Resources**
-    - Track prices for all markets via `/v2/prices`
-    - Track prices for specific market via `/v2/prices/{symbol}`
+    - Track collateral-only oracle prices via `/v2/collateralOraclePrices`
+    - Track legacy market/collateral prices via `/v2/prices` (deprecated)
+    - Track legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
 ## API Specifications
 
@@ -199,15 +201,15 @@ ReyaTradingClient
 │   ├── get_markets_summary()        # /v2/markets/summary
 │   ├── get_market_summary()         # /v2/market/{symbol}/summary
 │   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
-│   └── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
+│   ├── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
+│   ├── get_collateral_oracle_prices() # /v2/collateralOraclePrices
+│   ├── get_prices()                 # /v2/prices (deprecated)
+│   └── get_price()                  # /v2/prices/{symbol} (deprecated)
 ├── reference                        # Reference Data resource
 │   ├── get_perp_market_definitions() # /v2/perpMarketDefinitions
 │   ├── get_asset_definitions()      # /v2/assetDefinitions
 │   ├── get_global_fee_parameters()  # /v2/globalFeeParameters
 │   └── get_fee_tiers()              # /v2/feeTiers
-└── prices                           # Prices resource
-    ├── get_prices()                 # /v2/prices
-    └── get_price()                  # /v2/prices/{symbol}
 ```
 
 #### WebSocket API Structure
@@ -234,6 +236,16 @@ ReyaSocket
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
 │   └── perp_executions(address)        # /v2/wallet/{address}/perpExecutions
+│       ├── subscribe()
+│       └── unsubscribe()
+├── prices
+│   ├── collateral_oracle_prices        # /v2/collateralOraclePrices
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   ├── all_prices                      # /v2/prices (deprecated)
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   └── price(symbol)                   # /v2/prices/{symbol} (deprecated)
 │       ├── subscribe()
 │       └── unsubscribe()
 └── ping                                # /ping (heartbeat)

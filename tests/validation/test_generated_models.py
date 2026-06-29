@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 import sdk.open_api as rest_open_api
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
+from sdk.async_api.collateral_oracle_prices_channel import CollateralOraclePricesChannel
+from sdk.async_api.collateral_oracle_prices_update_payload import CollateralOraclePricesUpdatePayload
 from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
 from sdk.open_api import CancelReason as RestCancelReason
+from sdk.open_api import CollateralOraclePrice as RestCollateralOraclePrice
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
+from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
+from sdk.reya_websocket.resources.prices import PricesResource
+from sdk.reya_websocket.socket import ReyaSocket
 
 pytestmark = pytest.mark.offline
 
@@ -57,6 +65,77 @@ def test_rest_sdk_omits_removed_amm_liquidity_parameters_surface() -> None:
     assert not hasattr(rest_open_api, "LiquidityParameters")
     assert not hasattr(ReferenceDataApi, "get_liquidity_parameters")
     assert hasattr(ReferenceDataApi, "get_perp_market_definitions")
+
+
+def test_rest_sdk_exposes_collateral_oracle_prices_surface() -> None:
+    assert hasattr(rest_open_api, "CollateralOraclePrice")
+    assert hasattr(MarketDataApi, "get_collateral_oracle_prices")
+
+    price = RestCollateralOraclePrice.from_dict({"asset": "ETH", "oraclePrice": "2500", "updatedAt": 1747927089946})
+
+    assert price is not None
+    assert price.asset == "ETH"
+    assert price.oracle_price == "2500"
+    assert price.to_dict() == {
+        "asset": "ETH",
+        "oraclePrice": "2500",
+        "updatedAt": 1747927089946,
+    }
+    assert "poolPrice" not in price.to_dict()
+
+
+def test_ws_info_collateral_oracle_prices_payload_parses_without_pool_price() -> None:
+    payload = CollateralOraclePricesUpdatePayload.model_validate(
+        {
+            "type": "channel_data",
+            "timestamp": 1747927089946,
+            "channel": "/v2/collateralOraclePrices",
+            "data": [
+                {
+                    "asset": "ETH",
+                    "oraclePrice": "2500",
+                    "updatedAt": 1747927089946,
+                }
+            ],
+        }
+    )
+
+    assert payload.channel == CollateralOraclePricesChannel.SLASH_V2_SLASH_COLLATERAL_ORACLE_PRICES
+    assert payload.data[0].asset == "ETH"
+    assert payload.data[0].oracle_price == "2500"
+    serialized = payload.model_dump(mode="json", by_alias=True)
+    assert serialized["data"][0] == {
+        "asset": "ETH",
+        "oraclePrice": "2500",
+        "updatedAt": 1747927089946,
+    }
+    assert "poolPrice" not in serialized["data"][0]
+
+
+class _RecordingSocket:
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, str, dict[str, Any]]] = []
+
+    def send_subscribe(self, channel: str, **kwargs: Any) -> None:
+        self.messages.append(("subscribe", channel, kwargs))
+
+    def send_unsubscribe(self, channel: str, **kwargs: Any) -> None:
+        self.messages.append(("unsubscribe", channel, kwargs))
+
+
+def test_reya_socket_routes_collateral_oracle_prices_channel() -> None:
+    assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/collateralOraclePrices"] is CollateralOraclePricesUpdatePayload
+
+    socket = _RecordingSocket()
+    prices = PricesResource(socket)  # type: ignore[arg-type]
+
+    prices.collateral_oracle_prices.subscribe(batched=True)
+    prices.collateral_oracle_prices.unsubscribe()
+
+    assert socket.messages == [
+        ("subscribe", "/v2/collateralOraclePrices", {"batched": True}),
+        ("unsubscribe", "/v2/collateralOraclePrices", {}),
+    ]
 
 
 def test_rest_create_order_response_parses_cancel_reason_and_fill_range() -> None:

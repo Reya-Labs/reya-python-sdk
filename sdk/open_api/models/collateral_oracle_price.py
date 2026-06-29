@@ -17,19 +17,35 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class MassCancelResponse(BaseModel):
+class CollateralOraclePrice(BaseModel):
     """
-    MassCancelResponse
+    CollateralOraclePrice
     """ # noqa: E501
-    cancelled_count: Annotated[int, Field(strict=True, ge=0)] = Field(alias="cancelledCount")
+    asset: Annotated[str, Field(strict=True)]
+    oracle_price: Annotated[str, Field(strict=True)] = Field(alias="oraclePrice")
+    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["cancelledCount"]
+    __properties: ClassVar[List[str]] = ["asset", "oraclePrice", "updatedAt"]
+
+    @field_validator('asset')
+    def asset_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^[A-Za-z0-9]+$", value):
+            raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
+        return value
+
+    @field_validator('oracle_price')
+    def oracle_price_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -49,7 +65,7 @@ class MassCancelResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of MassCancelResponse from a JSON string"""
+        """Create an instance of CollateralOraclePrice from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -81,7 +97,7 @@ class MassCancelResponse(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of MassCancelResponse from a dict"""
+        """Create an instance of CollateralOraclePrice from a dict"""
         if obj is None:
             return None
 
@@ -89,7 +105,9 @@ class MassCancelResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "cancelledCount": obj.get("cancelledCount")
+            "asset": obj.get("asset"),
+            "oraclePrice": obj.get("oraclePrice"),
+            "updatedAt": obj.get("updatedAt")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

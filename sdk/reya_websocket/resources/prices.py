@@ -19,12 +19,18 @@ class PricesResource:
         """
         self.socket = socket
         self._all_prices = AllPricesResource(socket)
+        self._collateral_oracle_prices = CollateralOraclePricesResource(socket)
         self._price = PriceResource(socket)
 
     @property
     def all_prices(self) -> "AllPricesResource":
         """Access the all prices resource."""
         return self._all_prices
+
+    @property
+    def collateral_oracle_prices(self) -> "CollateralOraclePricesResource":
+        """Access collateral-only oracle prices."""
+        return self._collateral_oracle_prices
 
     def price(self, symbol: str) -> "PriceSubscription":
         """Get price data for a specific symbol.
@@ -61,6 +67,36 @@ class AllPricesResource(SubscribableResource):
 
     def unsubscribe(self, **kwargs) -> None:
         """Unsubscribe from all prices data.
+
+        Args:
+            **kwargs: Additional keyword arguments (unused).
+        """
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class CollateralOraclePricesResource(SubscribableResource):
+    """Resource for accessing collateral-only oracle prices."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        """Initialize the collateral oracle prices resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket)
+        self.path = "/v2/collateralOraclePrices"
+
+    def subscribe(self, batched: bool = False, **kwargs) -> None:
+        """Subscribe to collateral-only oracle prices.
+
+        Args:
+            batched: Whether to receive updates in batches.
+            **kwargs: Additional keyword arguments (unused).
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self, **kwargs) -> None:
+        """Unsubscribe from collateral-only oracle prices.
 
         Args:
             **kwargs: Additional keyword arguments (unused).
