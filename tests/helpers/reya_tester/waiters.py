@@ -305,7 +305,7 @@ class Waiters:
 
         NOTE: The REST API only has `getWalletOpenOrders` endpoint - there is NO
         endpoint to get order history or a specific order's final status. Therefore:
-        - WS tells us the ACTUAL status (FILLED, CANCELLED, REJECTED)
+        - WS tells us the ACTUAL status (FILLED or CANCELLED)
         - REST can only confirm "order is no longer open" (not the specific status)
 
         Returns the order_id if successful.
@@ -345,7 +345,7 @@ class Waiters:
                 orders: list[Order] = await self._t.client.get_open_orders()
                 order_ids = [order.order_id for order in orders]
 
-                # For FILLED/CANCELLED/REJECTED, order should not be in open orders
+                # For FILLED/CANCELLED, order should not be in open orders
                 if order_id not in order_ids:
                     elapsed_time = time.time() - start_time
                     logger.info(

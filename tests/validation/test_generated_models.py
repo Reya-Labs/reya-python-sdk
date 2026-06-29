@@ -11,12 +11,15 @@ from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
 from sdk.async_api.collateral_oracle_prices_channel import CollateralOraclePricesChannel
 from sdk.async_api.collateral_oracle_prices_update_payload import CollateralOraclePricesUpdatePayload
 from sdk.async_api.order import Order as WsInfoOrder
+from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
+from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
 from sdk.open_api import CancelReason as RestCancelReason
 from sdk.open_api import CollateralOraclePrice as RestCollateralOraclePrice
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
+from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
@@ -45,6 +48,12 @@ CANCEL_REASONS = {
     "MASS_CANCEL",
     "CANCEL_ALL_AFTER",
 }
+
+
+def test_order_status_enums_do_not_expose_rejected() -> None:
+    assert {status.value for status in RestOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
+    assert {status.value for status in WsInfoOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
+    assert {status.value for status in WsExecOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
 
 
 def test_rest_request_error_code_exports_pro_405_codes() -> None:

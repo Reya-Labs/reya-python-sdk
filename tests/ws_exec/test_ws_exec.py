@@ -162,8 +162,8 @@ async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None
     """Spot IOC happy-path over ws-exec. A far-out ($1) IOC BUY on an ETH-priced
     book crosses nothing, so the engine immediately cancels the unfilled order
     (IOC never rests). Asserts the transport carries the IOC and the response
-    reflects the no-fill IOC outcome — CANCELLED (not REJECTED) and execQty
-    absent/0. The matching engine assigns a Snowflake orderId to every order, so
+    reflects the no-fill IOC outcome: CANCELLED with execQty absent/0. The
+    matching engine assigns a Snowflake orderId to every order, so
     a no-cross IOC still carries an assigned orderId; it simply never rests,
     which the REST openOrders read-back confirms.
 
@@ -182,8 +182,8 @@ async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None
     print(
         f"  [spot] createOrder (IOC no-cross) OK status={resp.status} execQty={resp.exec_qty} orderId={resp.order_id}"
     )
-    if resp.status == OrderStatus.REJECTED:
-        raise RuntimeError(f"spot IOC no-cross unexpectedly REJECTED: {resp}")
+    if resp.status != OrderStatus.CANCELLED:
+        raise RuntimeError(f"spot IOC no-cross must be CANCELLED, got {resp.status}: {resp}")
     # The engine assigns an orderId to every order, including a no-cross IOC; it
     # is CANCELLED, not resting (no-rest is proven by the openOrders read-back
     # below). Mirrors tests/engine/test_ioc_orders.py.
