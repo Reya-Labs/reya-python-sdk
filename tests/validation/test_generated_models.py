@@ -14,13 +14,17 @@ from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
 from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
+from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
+from sdk.async_exec_api.modify_order_request import ModifyOrderRequest as WsExecModifyOrderRequest
 from sdk.async_exec_api.modify_order_response import ModifyOrderResponse as WsExecModifyOrderResponse
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
 from sdk.open_api import AssetOraclePrice as RestAssetOraclePrice
 from sdk.open_api import CancelReason as RestCancelReason
+from sdk.open_api import CreateOrderRequest as RestCreateOrderRequest
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
+from sdk.open_api import ModifyOrderRequest as RestModifyOrderRequest
 from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
@@ -78,6 +82,76 @@ def test_cancel_reason_enums_share_specs_values() -> None:
     assert CANCEL_REASONS == {reason.value for reason in RestCancelReason}
     assert CANCEL_REASONS == {reason.value for reason in WsInfoCancelReason}
     assert CANCEL_REASONS == {reason.value for reason in WsExecCancelReason}
+
+
+def _base_create_request_payload() -> dict[str, Any]:
+    return {
+        "exchangeId": 1,
+        "symbol": "ETHRUSDPERP",
+        "accountId": 12345,
+        "isBuy": True,
+        "limitPx": "2500",
+        "orderType": "STOP_LOSS",
+        "triggerPx": "2400",
+        "signature": "0x" + "11" * 65,
+        "nonce": "1778601294999111",
+        "signerWallet": "0x1234567890123456789012345678901234567890",
+        "deadline": 1747927089,
+    }
+
+
+def _base_modify_request_payload() -> dict[str, Any]:
+    return {
+        "orderId": "490346525705109504",
+        "symbol": "ETHRUSDPERP",
+        "accountId": 12345,
+        "exchangeId": 1,
+        "isBuy": True,
+        "orderType": "LIMIT",
+        "timeInForce": "GTC",
+        "reduceOnly": False,
+        "limitPx": "2500",
+        "qty": "0.5",
+        "postOnly": False,
+        "signature": "0x" + "22" * 65,
+        "nonce": "1778601294999112",
+        "signerWallet": "0x1234567890123456789012345678901234567890",
+        "deadline": 1747927089,
+    }
+
+
+def test_rest_create_order_request_accepts_trigger_without_qty() -> None:
+    request = RestCreateOrderRequest.from_dict(_base_create_request_payload())
+
+    assert request is not None
+    assert request.qty is None
+    serialized = request.to_dict()
+    assert "qty" not in serialized
+    assert "timeInForce" not in serialized
+
+
+def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
+    request = WsExecCreateOrderRequest.model_validate(_base_create_request_payload())
+
+    assert request.qty is None
+    serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert "qty" not in serialized
+    assert "timeInForce" not in serialized
+
+
+def test_rest_modify_order_request_accepts_omitted_expires_after() -> None:
+    request = RestModifyOrderRequest.from_dict(_base_modify_request_payload())
+
+    assert request is not None
+    assert request.expires_after is None
+    assert "expiresAfter" not in request.to_dict()
+
+
+def test_ws_exec_modify_order_request_accepts_omitted_expires_after() -> None:
+    request = WsExecModifyOrderRequest.model_validate(_base_modify_request_payload())
+
+    assert request.expires_after is None
+    assert "expiresAfter" not in request.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 def test_rest_sdk_omits_removed_amm_liquidity_parameters_surface() -> None:
