@@ -32,7 +32,7 @@ class CreateOrderResponse(BaseModel):
     status: OrderStatus
     exec_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="execQty")
     cum_qty: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="cumQty")
-    order_id: Optional[StrictStr] = Field(default=None, description="Engine-assigned order ID, generated for all order types including IOC. A no-cross IOC still receives an ID and is returned with status CANCELLED (it never rests).", alias="orderId")
+    order_id: StrictStr = Field(description="Engine-assigned order ID, generated for all order types including IOC. A no-cross IOC still receives an ID and is returned with status CANCELLED (it never rests).", alias="orderId")
     client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID echoed back from the request, as a decimal string (`uint64`).", alias="clientOrderId")
     cancel_reason: Optional[CancelReason] = Field(default=None, alias="cancelReason")
     cancel_reason_message: Optional[StrictStr] = Field(default=None, description="Human-readable explanation of `cancelReason`. Present only when `cancelReason` is present.", alias="cancelReasonMessage")

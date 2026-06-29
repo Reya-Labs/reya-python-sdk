@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 import sdk.open_api as rest_open_api
 from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
@@ -184,6 +185,11 @@ def test_rest_create_order_response_parses_cancel_reason_and_fill_range() -> Non
     assert response.to_dict()["firstFillId"] == "9001"
 
 
+def test_rest_create_order_response_requires_order_id() -> None:
+    with pytest.raises(ValidationError):
+        RestCreateOrderResponse.from_dict({"status": "CANCELLED"})
+
+
 def test_rest_modify_order_response_parses_cancel_reason_and_fill_range() -> None:
     response = RestModifyOrderResponse.from_dict(
         {
@@ -228,6 +234,11 @@ def test_ws_exec_create_order_response_parses_cancel_reason_and_fill_range() -> 
     assert response.first_fill_id == "9001"
     assert response.fill_count == 2
     assert response.model_dump(mode="json", by_alias=True)["cancelReason"] == "IOC_REMAINDER"
+
+
+def test_ws_exec_create_order_response_requires_order_id() -> None:
+    with pytest.raises(ValidationError):
+        WsExecCreateOrderResponse.model_validate({"status": "CANCELLED"})
 
 
 def test_ws_exec_modify_order_response_parses_cancel_reason_and_fill_range() -> None:
