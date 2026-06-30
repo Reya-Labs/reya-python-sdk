@@ -58,6 +58,8 @@ __all__ = [
     "MassCancelRequest",
     "MassCancelResponse",
     "ModifyOrderRequest",
+    "ModifyOrderRequest1AllOfNot",
+    "ModifyOrderRequest1AllOfNot1",
     "ModifyOrderResponse",
     "Order",
     "OrderStatus",
@@ -126,6 +128,8 @@ from sdk.open_api.models.market_summary import MarketSummary as MarketSummary
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest as MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse as MassCancelResponse
 from sdk.open_api.models.modify_order_request import ModifyOrderRequest as ModifyOrderRequest
+from sdk.open_api.models.modify_order_request1_all_of_not import ModifyOrderRequest1AllOfNot as ModifyOrderRequest1AllOfNot
+from sdk.open_api.models.modify_order_request1_all_of_not1 import ModifyOrderRequest1AllOfNot1 as ModifyOrderRequest1AllOfNot1
 from sdk.open_api.models.modify_order_response import ModifyOrderResponse as ModifyOrderResponse
 from sdk.open_api.models.order import Order as Order
 from sdk.open_api.models.order_status import OrderStatus as OrderStatus

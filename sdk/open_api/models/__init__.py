@@ -40,6 +40,8 @@ from sdk.open_api.models.market_summary import MarketSummary
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse
 from sdk.open_api.models.modify_order_request import ModifyOrderRequest
+from sdk.open_api.models.modify_order_request1_all_of_not import ModifyOrderRequest1AllOfNot
+from sdk.open_api.models.modify_order_request1_all_of_not1 import ModifyOrderRequest1AllOfNot1
 from sdk.open_api.models.modify_order_response import ModifyOrderResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus

@@ -37,6 +37,8 @@ sdk/open_api/models/market_summary.py
 sdk/open_api/models/mass_cancel_request.py
 sdk/open_api/models/mass_cancel_response.py
 sdk/open_api/models/modify_order_request.py
+sdk/open_api/models/modify_order_request1_all_of_not.py
+sdk/open_api/models/modify_order_request1_all_of_not1.py
 sdk/open_api/models/modify_order_response.py
 sdk/open_api/models/order.py
 sdk/open_api/models/order_status.py

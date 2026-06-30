@@ -32,18 +32,18 @@ class ModifyOrderParameters:
     Target by `order_id` or `client_order_id` (`client_order_id=0` is not a
     valid target). When targeting by `order_id`, pass `client_order_id` too if
     the resting order has a non-zero client id; omit it only when the resting
-    order has none. The four modifiable fields — `limit_px`, `qty`,
-    `post_only`, `expires_after` — carry the COMPLETE post-modify state (no
-    omitted-means-inherited shorthand). `qty` is the TOTAL order quantity, not
-    the remaining, and must exceed the filled amount.
+    order has none. The modifiable fields — `limit_px`, `qty`, `post_only`,
+    `expires_after`, and `trigger_px` for trigger orders — carry the COMPLETE
+    post-modify state (no omitted-means-inherited shorthand). `qty` is the TOTAL
+    order quantity, not the remaining, and must exceed the filled amount.
 
-    The EIP-712 signature covers the full post-modify state: the four
-    modifiable fields at their new values plus the immutables restated from
-    the resting order — `is_buy` (quantity sign), `time_in_force` (the resting
-    order's TIF; only GTC is modifiable today, server-enforced), `trigger_px`,
+    The EIP-712 signature covers the full post-modify state: the modifiable
+    fields at their new values plus the immutables restated from the resting
+    order — `is_buy` (quantity sign), `time_in_force` (the resting order's TIF),
     `reduce_only`, and the resting order's non-zero client id (via
     `client_order_id` or `resting_client_order_id`) signed into
-    `OrderDetails.clientOrderId`.
+    `OrderDetails.clientOrderId`. LIMIT modifies omit `trigger_px`; native SL/TP
+    trigger repricing depends on matching-engine trigger-order support.
     """
 
     symbol: str

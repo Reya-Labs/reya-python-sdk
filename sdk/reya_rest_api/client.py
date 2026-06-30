@@ -662,11 +662,12 @@ class ReyaTradingClient:
         order keeps its `orderId` and, if it has one, its `clientOrderId`.
         Target by `order_id` or `client_order_id`; when `order_id` is present,
         `client_order_id` restates the resting order's non-zero client id for
-        the signature. The four modifiable fields (`limit_px`, `qty`,
-        `post_only`, `expires_after`) all carry the complete post-modify state;
-        the immutables (`is_buy`, `time_in_force`, `trigger_px`, `reduce_only`,
-        `client_order_id` / `resting_client_order_id`) must restate the resting
-        order's values — both go into the fresh EIP-712 signature over the full
+        the signature. The modifiable fields (`limit_px`, `qty`, `post_only`,
+        `expires_after`, and `trigger_px` for trigger orders) all carry the
+        complete post-modify state; the immutables (`is_buy`, `time_in_force`,
+        `reduce_only`, `client_order_id` / `resting_client_order_id`) must
+        restate the resting order's values. LIMIT modifies omit `trigger_px`.
+        Both groups go into the fresh EIP-712 signature over the full
         post-modify state.
         """
         payload, _nonce = self.build_modify_order_payload(params)
