@@ -46,4 +46,3 @@ class ModifyOrderResponse(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
-
