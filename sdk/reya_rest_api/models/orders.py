@@ -29,10 +29,9 @@ class LimitOrderParameters:
 class ModifyOrderParameters:
     """Parameters for modifying a resting order in place (spot or perp).
 
-    Target by `order_id` or `client_order_id` (`client_order_id=0` is not a
-    valid target). When targeting by `order_id`, pass `client_order_id` too if
-    the resting order has a non-zero client id; omit it only when the resting
-    order has none. The modifiable fields — `limit_px`, `qty`, `post_only`,
+    Target by `order_id` or `client_order_id`. When targeting by `order_id`,
+    pass `client_order_id` too if the resting order has a non-zero client id;
+    omit it when the resting order has none. The modifiable fields — `limit_px`, `qty`, `post_only`,
     `expires_after`, and `trigger_px` for trigger orders — carry the COMPLETE
     post-modify state (no omitted-means-inherited shorthand). `qty` is the TOTAL
     order quantity, not the remaining, and must exceed the filled amount.

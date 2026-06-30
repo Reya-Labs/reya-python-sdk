@@ -144,9 +144,8 @@ def test_modify_with_neither_identifier_rejected(client: ReyaTradingClient) -> N
 
 @pytest.mark.modify
 def test_modify_with_client_order_id_zero_rejected(client: ReyaTradingClient) -> None:
-    """client_order_id=0 is the unset sentinel on the wire, so it can never
-    resolve to a resting order — rejected as a target."""
-    with pytest.raises(ValueError, match="client_order_id 0 is not a valid modify target"):
+    """client_order_id=0 is not a JSON no-tag placeholder."""
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
         client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=0))
 
 
@@ -208,12 +207,10 @@ def test_modify_order_id_targeting_client_order_id_restates_immutable(client: Re
 
 
 @pytest.mark.modify
-def test_modify_order_id_targeting_allows_explicit_client_order_id_zero(client: ReyaTradingClient) -> None:
-    """client_order_id=0 is accepted only with order_id and is sent exactly when
-    the caller supplies it."""
-    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=0))
-    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=0)
-    assert payload["clientOrderId"] == "0"
+def test_modify_order_id_targeting_rejects_explicit_client_order_id_zero(client: ReyaTradingClient) -> None:
+    """No-tag order-id targeting omits client_order_id instead of sending 0."""
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
+        client.build_modify_order_payload(_modify_params(client_order_id=0))
 
 
 @pytest.mark.modify
@@ -258,19 +255,32 @@ def test_modify_gtt_expiry_not_after_deadline_rejected(client: ReyaTradingClient
 def test_modify_gtc_with_expiry_rejected(client: ReyaTradingClient) -> None:
     """A GTC modify must not carry an expiry — GTC never expires. Pairing it
     with a non-zero expiresAfter is the legacy GTC-with-expiry shape (now GTT)."""
-    with pytest.raises(ValueError, match="GTC orders must not expire"):
+    with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
         client.build_modify_order_payload(_modify_params(time_in_force=TimeInForce.GTC))
 
 
 @pytest.mark.modify
 def test_modify_gtc_without_expiry_builds(client: ReyaTradingClient) -> None:
     """A GTC modify with no expiresAfter builds — GTC rests until cancelled.
-    expiresAfter serializes as the signed never-expires sentinel 0 (matching the
-    signed OrderDetails; the wire field is a numeric uint, never null)."""
+    The signer encodes no-expiry internally; JSON omits the field."""
     payload, _nonce = client.build_modify_order_payload(
         _modify_params(time_in_force=TimeInForce.GTC, expires_after=None)
     )
-    assert payload["expiresAfter"] == 0
+    assert "expiresAfter" not in payload
+
+
+def test_create_rejects_explicit_zero_client_order_id(client: ReyaTradingClient) -> None:
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.GTC,
+                client_order_id=0,
+            )
+        )
 
 
 # ============================================================================
