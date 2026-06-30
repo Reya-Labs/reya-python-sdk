@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 
-class AssetOraclePrice(BaseModel): 
+class AssetOraclePrice(BaseModel):
   asset: str = Field()
   oracle_price: str = Field(alias='''oraclePrice''')
   updated_at: int = Field(alias='''updatedAt''')
@@ -29,9 +29,9 @@ class AssetOraclePrice(BaseModel):
     known_object_properties = ['asset', 'oracle_price', 'updated_at', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0: 
+    if len(unknown_object_properties) == 0:
       return data
-  
+
     known_json_properties = ['asset', 'oraclePrice', 'updatedAt', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -39,4 +39,3 @@ class AssetOraclePrice(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
-
