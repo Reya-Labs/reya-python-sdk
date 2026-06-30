@@ -82,13 +82,16 @@ _REQUIRED_ENV = (
 )
 _MISSING_ENV = [_k for _k in _REQUIRED_ENV if not os.environ.get(_k)]
 
-pytestmark = pytest.mark.skipif(
-    bool(_MISSING_ENV),
-    reason=(
-        "ws-exec live tests need " + ", ".join(_REQUIRED_ENV) + " in the environment "
-        "(set REYA_WS_EXEC_URL + SPOT_*_1/PERP_*_1 to run); missing: " + ", ".join(_MISSING_ENV)
+pytestmark = [
+    pytest.mark.skipif(
+        bool(_MISSING_ENV),
+        reason=(
+            "ws-exec live tests need " + ", ".join(_REQUIRED_ENV) + " in the environment "
+            "(set REYA_WS_EXEC_URL + SPOT_*_1/PERP_*_1 to run); missing: " + ", ".join(_MISSING_ENV)
+        ),
     ),
-)
+    pytest.mark.asyncio(loop_scope="function"),
+]
 
 # ---- Test parameters --------------------------------------------------------
 
@@ -619,7 +622,7 @@ class _WsExecHarness:
     perp_qty: Decimal
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="module")
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
 async def harness():
     """Build REST clients, resolve market min-qtys, expose the ws-exec URL.
 
@@ -656,14 +659,14 @@ async def harness():
             await spot_rest_2.close()
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="module")
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
 async def spot_ws(harness):  # pylint: disable=redefined-outer-name
     """A connected ws-exec client authenticated as the spot account."""
     async with await _connect_ws_exec_client(harness.spot_rest, harness.ws_url) as client:
         yield client
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="module")
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
 async def perp_ws(harness):  # pylint: disable=redefined-outer-name
     """A connected ws-exec client authenticated as the perp account."""
     async with await _connect_ws_exec_client(harness.perp_rest, harness.ws_url) as client:

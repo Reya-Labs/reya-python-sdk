@@ -54,6 +54,23 @@ MIN_RUSD_BALANCE = 15.0
 DEFAULT_SPOT_ASSET = "ETH"
 
 
+class _ReyaEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    """Keep pytest-asyncio compatible with modules that clear the current loop."""
+
+    def get_event_loop(self):
+        try:
+            return super().get_event_loop()
+        except RuntimeError:
+            loop = self.new_event_loop()
+            self.set_event_loop(loop)
+            return loop
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    return _ReyaEventLoopPolicy()
+
+
 def pytest_addoption(parser):
     """Add custom command-line options for the live e2e suites."""
     parser.addoption(
