@@ -98,7 +98,7 @@ async def test_market_summary(reya_tester: ReyaTester):
     ``8cedb97 feat: update MarketSummary schema - remove and rename fields``.
     """
     symbol = "ETHRUSDPERP"
-    market_summary = await reya_tester.client.markets.get_market_summary(symbol)
+    market_summary = await reya_tester.client.markets.get_perp_market_summary(symbol)
     assert market_summary is not None
     assert market_summary.symbol == symbol
 
@@ -135,7 +135,7 @@ async def test_market_summary(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_markets_summary(reya_tester: ReyaTester):
-    markets_summary = await reya_tester.client.markets.get_markets_summary()
+    markets_summary = await reya_tester.client.markets.get_perp_markets_summary()
     assert markets_summary is not None
     assert len(markets_summary) > 0
 

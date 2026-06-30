@@ -40,7 +40,7 @@ async def main():
             print(f"Market trades: {trades}")
 
             print(f"\n--- Getting trackers for market {symbol} ---")
-            trackers = await client.markets.get_market_summary(symbol)
+            trackers = await client.markets.get_perp_market_summary(symbol)
             print(f"Market trackers: {trackers}")
 
 

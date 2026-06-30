@@ -95,7 +95,6 @@ class ReyaSocket(WebSocketApp):
         "pong": PongMessagePayload,
         # All markets summary (exact match)
         "/v2/perpMarkets/summary": MarketsSummaryUpdatePayload,
-        "/v2/markets/summary": MarketsSummaryUpdatePayload,
         "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
         # All prices (exact match)
         "/v2/assetOraclePrices": AssetOraclePricesUpdatePayload,

@@ -51,7 +51,7 @@ def on_open(ws):
 
 
 def handle_markets_summary_data(payload: MarketsSummaryUpdatePayload) -> None:
-    """Handle /v2/markets/summary channel data."""
+    """Handle /v2/perpMarkets/summary channel data."""
     logger.info("📊 All Markets Summary Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")

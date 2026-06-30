@@ -363,7 +363,7 @@ def test_reya_socket_routes_asset_oracle_prices_channel() -> None:
 
 def test_reya_socket_routes_preferred_perp_markets_summary_channel() -> None:
     assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/perpMarkets/summary"] is MarketsSummaryUpdatePayload
-    assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/markets/summary"] is MarketsSummaryUpdatePayload
+    assert "/v2/markets/summary" not in ReyaSocket.CHANNEL_PAYLOAD_MAP
 
     payload = MarketsSummaryUpdatePayload.model_validate(
         {
