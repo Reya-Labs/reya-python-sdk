@@ -4,8 +4,8 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_type import OrderType
 from sdk.async_exec_api.time_in_force import TimeInForce
 class ModifyOrderRequest(BaseModel):
-  order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, is treated as the restated immutable client id.''', default=None, alias='''orderId''')
-  client_order_id: Optional[str] = Field(description='''Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. If the resting order has a non-zero client id, this field must be restated and must match it; omit only when the resting order has no client id. The modification cannot assign a new `clientOrderId`.''', default=None, alias='''clientOrderId''')
+  order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, restates the resting order's immutable client id.''', default=None, alias='''orderId''')
+  client_order_id: Optional[str] = Field(description='''Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. If `orderId` is present, this field restates the resting order's immutable client id for signing; omit it when the resting order has no client id. `clientOrderId: "0"` is accepted only alongside `orderId` and is equivalent to omitting the field. The modification cannot assign a new `clientOrderId`.''', default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   exchange_id: int = Field(alias='''exchangeId''')

@@ -121,7 +121,6 @@ async def test_modify_while_create_in_flight(
         expires_after=0,
         time_in_force=TimeInForce.GTC,
         client_order_id=coid,
-        resting_client_order_id=coid,
     )
 
     try:
@@ -141,8 +140,7 @@ async def test_modify_while_create_in_flight(
         logger.info(f"[{market_type}] create+modify in-flight → create={create_outcome} modify={modify_outcome}")
 
         # Invariant (when the create landed): at most ONE resting order for the
-        # created orderId, and if present it is one whole state (Order doesn't
-        # expose the resting clientOrderId, so key off the engine orderId).
+        # created orderId, and if present it is one whole state.
         if create_outcome == "ok":
             assert not isinstance(create_res, BaseException)  # narrowed by create_outcome
             order_id = create_res.order_id

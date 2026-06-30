@@ -373,8 +373,8 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
     # Targeting + auth.
     assert payload["orderId"] == "63552420354981888"  # orderId is a STRING on the wire
     assert isinstance(payload["orderId"], str)
-    # The fixture targets by orderId and has no resting clientOrderId. The
-    # signature uses 0 internally, but JSON omits absent clientOrderId.
+    # The fixture targets by orderId and has no clientOrderId. The signature
+    # uses 0 internally, but JSON omits absent clientOrderId.
     assert "clientOrderId" not in payload
     assert payload["accountId"] == 12345
     assert payload["signerWallet"] == SIGNER_ADDRESS
@@ -432,7 +432,7 @@ def test_modify_payload_client_order_id_targeting_wire_shape(client: ReyaTrading
 
 @pytest.mark.modify
 def test_modify_payload_order_id_targeting_with_restated_client_order_id(client: ReyaTradingClient) -> None:
-    """Targeting by order_id while restating a non-zero resting clientOrderId:
+    """Targeting by order_id while restating a non-zero clientOrderId:
     the body carries both ids, and orderId remains the canonical target."""
     payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
     assert payload["orderId"] == "63552420354981888"

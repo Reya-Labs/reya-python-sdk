@@ -60,10 +60,8 @@ def full_state_modify_params(order: Order, **overrides: Any) -> ModifyOrderParam
     ``order_id``) unless ``order_id`` is also explicitly overridden, keeping
     the builder's exactly-one-target rule satisfied by default.
 
-    ``resting_client_order_id`` stays at the dataclass default (0) unless
-    overridden — the public ``Order`` model doesn't expose the resting
-    clientOrderId, so tests that created the order with a non-zero
-    clientOrderId must pass it explicitly.
+    With ``client_order_id`` targeting, the same value is also the restated
+    immutable signed into ``OrderDetails.clientOrderId``.
     """
     if order.qty is None:
         raise ValueError(f"Order {order.order_id} has no qty; cannot restate the post-modify state")

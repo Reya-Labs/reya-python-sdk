@@ -176,13 +176,12 @@ async def test_ws_exec_modify_by_client_order_id(ws_exec_market: WsExecMarket):
 
         new_qty = str(Decimal(m.min_qty) * 2)
         # full_state_modify_params clears order_id when client_order_id is
-        # overridden, so the wire payload omits orderId entirely; the resting
-        # clientOrderId must also be restated into the signed envelope.
+        # overridden, so the wire payload omits orderId entirely; the same
+        # clientOrderId is restated into the signed envelope.
         response = await m.ws.modify_order(
             full_state_modify_params(
                 order,
                 client_order_id=client_order_id,
-                resting_client_order_id=client_order_id,
                 limit_px=modified_px,
                 qty=new_qty,
             )

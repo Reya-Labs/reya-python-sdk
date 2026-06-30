@@ -505,7 +505,7 @@ def test_modify_order_builder_signature_parity(offline_client: ReyaTradingClient
     """Builder-level parity: ``build_modify_order_payload`` over matching
     inputs must emit the SAME pinned hex as the TS vector — proving modify
     == order signing over the post-modify struct through the real client
-    path (param mapping, TIF translation, resting-clientOrderId resolution),
+    path (param mapping, TIF translation, clientOrderId resolution),
     not just through a hand-fed ``sign_order``."""
     payload, nonce = offline_client.build_modify_order_payload(
         ModifyOrderParameters(
@@ -517,7 +517,7 @@ def test_modify_order_builder_signature_parity(offline_client: ReyaTradingClient
             expires_after=1745003600,
             time_in_force=TimeInForce.GTT,
             order_id=63552420354981888,
-            resting_client_order_id=42,
+            client_order_id=42,
             nonce=1700000000000005,
             deadline=1745000300,
         )

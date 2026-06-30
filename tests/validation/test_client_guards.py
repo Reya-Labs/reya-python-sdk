@@ -11,10 +11,9 @@ and asserts on the client-layer validation rules:
 - modify targeting: at least one of ``order_id`` / ``client_order_id``;
   when both are present, ``order_id`` targets and ``client_order_id`` restates
   the resting order's non-zero client id.
-- ``resting_client_order_id`` resolution: the SIGNED ``OrderDetails.clientOrderId``
-  is the resting order's id — defaulting to ``client_order_id`` when present,
-  or 0 under ``order_id`` targeting with no client id (verified by re-signing
-  with the expected values).
+- ``client_order_id`` resolution: the SIGNED ``OrderDetails.clientOrderId`` is
+  the resting order's id, or 0 under ``order_id`` targeting with no client id
+  (verified by re-signing with the expected values).
 - post-only gate-lift: postOnly=True + GTC flows AND is covered by the
   signature (the entry rejections — postOnly+IOC, GTT — are pinned in
   tests/parity/test_wire_serialization.py).
@@ -151,8 +150,15 @@ def test_modify_with_client_order_id_zero_rejected(client: ReyaTradingClient) ->
         client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=0))
 
 
+@pytest.mark.modify
+def test_modify_parameters_rejects_resting_client_order_id_alias() -> None:
+    """PRO-438 collapsed modify IDs to one client_order_id field."""
+    with pytest.raises(TypeError, match="resting_client_order_id"):
+        _modify_params(resting_client_order_id=42)
+
+
 # ============================================================================
-# resting_client_order_id resolution into the SIGNED OrderDetails.clientOrderId
+# client_order_id resolution into the SIGNED OrderDetails.clientOrderId
 # ============================================================================
 
 
@@ -183,9 +189,8 @@ def _expected_modify_signature(client: ReyaTradingClient, signed_client_order_id
 def test_modify_client_order_id_targeting_defaults_signed_client_order_id(
     client: ReyaTradingClient,
 ) -> None:
-    """Targeting by client_order_id without resting_client_order_id: the signed
-    clientOrderId defaults to the targeting value (TS SDK
-    ``restingClientOrderId ?? clientOrderId ?? 0`` parity)."""
+    """Targeting by client_order_id uses the same value as the signed
+    OrderDetails.clientOrderId."""
     payload, _nonce = client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=777))
     assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=777)
     # Sanity: the default actually matters — 0 would sign different bytes.
@@ -193,29 +198,28 @@ def test_modify_client_order_id_targeting_defaults_signed_client_order_id(
 
 
 @pytest.mark.modify
-def test_modify_order_id_targeting_explicit_resting_client_order_id_wins(client: ReyaTradingClient) -> None:
-    """When targeting by order_id, resting_client_order_id restates the
-    resting order's signed OrderDetails.clientOrderId."""
-    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777, resting_client_order_id=42))
-    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=42)
-    assert payload["signature"] != _expected_modify_signature(client, signed_client_order_id=777)
-    assert payload["clientOrderId"] == "42"
+def test_modify_order_id_targeting_client_order_id_restates_immutable(client: ReyaTradingClient) -> None:
+    """When targeting by order_id, client_order_id restates the resting order's
+    signed OrderDetails.clientOrderId."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
+    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=777)
+    assert payload["signature"] != _expected_modify_signature(client, signed_client_order_id=0)
+    assert payload["clientOrderId"] == "777"
 
 
 @pytest.mark.modify
-def test_modify_client_order_id_targeting_cannot_sign_different_client_id(client: ReyaTradingClient) -> None:
-    """Without order_id, clientOrderId is both the lookup key and the restated
-    immutable, so it cannot be overridden to a different signed value."""
-    with pytest.raises(ValueError, match="resting_client_order_id cannot differ"):
-        client.build_modify_order_payload(
-            _modify_params(order_id=None, client_order_id=777, resting_client_order_id=42)
-        )
+def test_modify_order_id_targeting_allows_explicit_client_order_id_zero(client: ReyaTradingClient) -> None:
+    """client_order_id=0 is accepted only with order_id and is sent exactly when
+    the caller supplies it."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=0))
+    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=0)
+    assert payload["clientOrderId"] == "0"
 
 
 @pytest.mark.modify
 def test_modify_order_id_targeting_signs_client_order_id_zero(client: ReyaTradingClient) -> None:
-    """Targeting by order_id without resting_client_order_id: the signed
-    clientOrderId falls back to 0, but the JSON field is omitted."""
+    """Targeting by order_id without client_order_id signs 0 and omits the
+    JSON field."""
     payload, _nonce = client.build_modify_order_payload(_modify_params())
     assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=0)
     assert "clientOrderId" not in payload

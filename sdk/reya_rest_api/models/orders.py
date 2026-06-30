@@ -40,10 +40,9 @@ class ModifyOrderParameters:
     The EIP-712 signature covers the full post-modify state: the modifiable
     fields at their new values plus the immutables restated from the resting
     order — `is_buy` (quantity sign), `time_in_force` (the resting order's TIF),
-    `reduce_only`, and the resting order's non-zero client id (via
-    `client_order_id` or `resting_client_order_id`) signed into
-    `OrderDetails.clientOrderId`. LIMIT modifies omit `trigger_px`; native SL/TP
-    trigger repricing depends on matching-engine trigger-order support.
+    `reduce_only`, and the resting order's client id (via `client_order_id`)
+    signed into `OrderDetails.clientOrderId`. LIMIT modifies omit `trigger_px`;
+    native SL/TP trigger repricing depends on matching-engine trigger-order support.
     """
 
     symbol: str
@@ -57,7 +56,6 @@ class ModifyOrderParameters:
     client_order_id: Optional[int] = None
     trigger_px: Optional[str] = None
     reduce_only: bool = False
-    resting_client_order_id: int = 0
     deadline: Optional[int] = None
     nonce: Optional[int] = None
 

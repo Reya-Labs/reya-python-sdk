@@ -667,8 +667,8 @@ class ReyaTradingClient:
         the signature. The modifiable fields (`limit_px`, `qty`, `post_only`,
         `expires_after`, and `trigger_px` for trigger orders) all carry the
         complete post-modify state; the immutables (`is_buy`, `time_in_force`,
-        `reduce_only`, `client_order_id` / `resting_client_order_id`) must
-        restate the resting order's values. LIMIT modifies omit `trigger_px`.
+        `reduce_only`, `client_order_id`) must restate the resting order's
+        values. LIMIT modifies omit `trigger_px`.
         Both groups go into the fresh EIP-712 signature over the full
         post-modify state.
         """
@@ -689,12 +689,6 @@ class ReyaTradingClient:
             raise ValueError("Provide order_id or client_order_id")
         if not has_order_id and params.client_order_id == 0:
             raise ValueError("client_order_id 0 is not a valid modify target")
-        if (
-            not has_order_id
-            and params.resting_client_order_id
-            and params.resting_client_order_id != params.client_order_id
-        ):
-            raise ValueError("resting_client_order_id cannot differ when targeting by client_order_id")
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
         if self._signature_generator is None:
@@ -716,15 +710,11 @@ class ReyaTradingClient:
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
             raise ValueError("GTC orders must not expire (expires_after must be 0)")
 
-        # The signed `OrderDetails.clientOrderId` is the RESTING order's
-        # clientOrderId. With orderId targeting, a non-zero value must be
-        # restated by `client_order_id` or `resting_client_order_id`; otherwise
-        # zero is the signature-only "none" sentinel. With clientOrderId
-        # targeting, the target is also the restated immutable client id.
-        if has_order_id:
-            signed_client_order_id = params.resting_client_order_id or params.client_order_id or 0
-        else:
-            signed_client_order_id = params.client_order_id or 0
+        # Single-field PRO-438 contract: client_order_id is both the lookup key
+        # when order_id is absent and the restated immutable signed into
+        # OrderDetails.clientOrderId. With order_id targeting, omit it for a
+        # no-tag resting order; explicit 0 is accepted only with order_id.
+        signed_client_order_id = params.client_order_id or 0
         trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
 
         signature = self._signature_generator.sign_order(
@@ -767,8 +757,8 @@ class ReyaTradingClient:
             "signerWallet": self.signer_wallet_address,
             "deadline": deadline,
         }
-        if signed_client_order_id != 0:
-            payload["clientOrderId"] = str(signed_client_order_id)
+        if params.client_order_id is not None:
+            payload["clientOrderId"] = str(params.client_order_id)
         return payload, nonce
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
