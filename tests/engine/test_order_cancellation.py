@@ -17,6 +17,7 @@ import time
 
 import pytest
 
+from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
@@ -90,6 +91,12 @@ async def test_mass_cancel_clears_multiple_orders(
     await asyncio.sleep(0.5)
     for order_id in placed:
         await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED)
+        ws_order = maker.ws.orders.get(str(order_id))
+        assert ws_order is not None, f"[{market_type}] missing WS mass-cancelled order {order_id}"
+        assert (
+            ws_order.cancel_reason == WsCancelReason.MASS_CANCEL
+        ), f"[{market_type}] expected MASS_CANCEL cancelReason for {order_id}, got {ws_order.cancel_reason}"
+        assert ws_order.cancel_reason_message
     await maker.check.no_open_orders()
 
 

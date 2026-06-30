@@ -154,7 +154,7 @@ class MarketMakerState:
         with self._lock:
             remaining_qty = qty - cum_qty
 
-            if status in ("FILLED", "CANCELLED", "REJECTED", "EXPIRED"):
+            if status in ("FILLED", "CANCELLED"):
                 if order_id in self.open_orders:
                     del self.open_orders[order_id]
                     logger.debug(f"📋 Order {order_id} removed (status: {status})")

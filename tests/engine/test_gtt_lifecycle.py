@@ -24,6 +24,7 @@ from decimal import Decimal
 
 import pytest
 
+from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -117,6 +118,12 @@ async def test_gtt_reaped_at_expiry(
 
     # Upper bound: reaped within a finite window AFTER expiry — no explicit cancel.
     await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=_REAP_WAIT_TIMEOUT_S)
+    ws_order = maker.ws.orders.get(str(order_id))
+    assert ws_order is not None, f"[{market_type}] missing WS cancelled GTT order {order_id}"
+    assert (
+        ws_order.cancel_reason == WsCancelReason.GTT_EXPIRED
+    ), f"[{market_type}] expected GTT_EXPIRED cancelReason, got {ws_order.cancel_reason}"
+    assert ws_order.cancel_reason_message
     lateness = time.time() - expires_after
     assert lateness <= GTT_REAP_DETECT_BOUND_S, (
         f"[{market_type}] GTT reap observed {lateness:.0f}s after expiry " f"(> {GTT_REAP_DETECT_BOUND_S}s bound)"

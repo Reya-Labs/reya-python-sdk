@@ -12,6 +12,7 @@ from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
 from sdk.async_api.deprecated_prices_channel import DeprecatedPricesChannel
+from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_channel import MarketsSummaryChannel
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order import Order as WsInfoOrder
@@ -362,8 +363,13 @@ def test_reya_socket_routes_asset_oracle_prices_channel() -> None:
 
 
 def test_reya_socket_routes_preferred_perp_markets_summary_channel() -> None:
+    # pylint: disable=protected-access
     assert ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/perpMarkets/summary"] is MarketsSummaryUpdatePayload
     assert "/v2/markets/summary" not in ReyaSocket.CHANNEL_PAYLOAD_MAP
+
+    socket = ReyaSocket()
+    assert socket._get_payload_type("/v2/perpMarket/BTCRUSDPERP/summary") is MarketSummaryUpdatePayload
+    assert socket._get_payload_type("/v2/market/BTCRUSDPERP/summary") is None
 
     payload = MarketsSummaryUpdatePayload.model_validate(
         {

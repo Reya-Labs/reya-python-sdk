@@ -199,9 +199,7 @@ class ReyaSocket(WebSocketApp):
         if "/v2/perpMarket/" in channel and channel.endswith("/summary"):
             return MarketSummaryUpdatePayload
         elif "/v2/market/" in channel:
-            if channel.endswith("/summary"):
-                return MarketSummaryUpdatePayload
-            elif channel.endswith("/perpExecutions"):
+            if channel.endswith("/perpExecutions"):
                 return MarketPerpExecutionUpdatePayload
             elif channel.endswith("/spotExecutions"):
                 return MarketSpotExecutionUpdatePayload

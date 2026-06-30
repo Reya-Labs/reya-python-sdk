@@ -14,6 +14,7 @@ import asyncio
 
 import pytest
 
+from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -88,6 +89,10 @@ async def test_ws_order_change_on_cancel(
     assert ws_order is not None, f"[{market_type}] expected WS order entry for {order_id}"
     status_value = ws_order.status.value if hasattr(ws_order.status, "value") else ws_order.status
     assert status_value == "CANCELLED", f"[{market_type}] expected CANCELLED, got {status_value}"
+    assert (
+        ws_order.cancel_reason == WsCancelReason.USER_CANCEL
+    ), f"[{market_type}] expected USER_CANCEL cancelReason, got {ws_order.cancel_reason}"
+    assert ws_order.cancel_reason_message
 
 
 @pytest.mark.asyncio

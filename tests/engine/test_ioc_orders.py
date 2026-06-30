@@ -17,6 +17,7 @@ from decimal import Decimal
 
 import pytest
 
+from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
@@ -92,7 +93,12 @@ async def test_ioc_no_liquidity_unfills_immediately(
         qty=market_config.min_qty,
         time_in_force=TimeInForce.IOC,
     )
-    order_id = await taker.orders.create_limit(params)
+    response = await taker.client.create_limit_order(params)
+    assert (
+        response.cancel_reason == CancelReason.NO_LIQUIDITY
+    ), f"[{market_type}] unfilled IOC should report NO_LIQUIDITY, got {response.cancel_reason}"
+    assert response.cancel_reason_message
+    order_id = response.order_id
     assert order_id is not None
 
     await asyncio.sleep(0.5)
@@ -138,7 +144,12 @@ async def test_ioc_partial_fill_when_maker_smaller(
         qty=taker_qty,
         time_in_force=TimeInForce.IOC,
     )
-    taker_order_id = await taker.orders.create_limit(taker_params)
+    response = await taker.client.create_limit_order(taker_params)
+    assert (
+        response.cancel_reason == CancelReason.IOC_REMAINDER
+    ), f"[{market_type}] partial IOC should report IOC_REMAINDER, got {response.cancel_reason}"
+    assert response.cancel_reason_message
+    taker_order_id = response.order_id
     assert taker_order_id is not None
 
     await asyncio.sleep(0.5)

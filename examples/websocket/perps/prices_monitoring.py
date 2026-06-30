@@ -1,7 +1,9 @@
 """
-Prices Monitoring - Monitor asset pair prices via WebSocket.
+Prices Monitoring - Monitor asset oracle prices via WebSocket.
 
-This example connects to the Reya WebSocket API and subscribes to price data streams.
+This example connects to the Reya WebSocket API and subscribes to the canonical
+asset oracle price stream. The legacy /v2/prices channels remain available for
+existing consumers but are deprecated.
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
@@ -19,6 +21,7 @@ import time
 
 from dotenv import load_dotenv
 
+from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
@@ -34,24 +37,40 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 # Create a logger for this module
 logger = logging.getLogger("reya.prices_monitoring")
 
-# Symbol to monitor
-SYMBOL = "ETHRUSDPERP"
+# Legacy symbol to monitor if you opt into /v2/prices/{symbol}.
+LEGACY_SYMBOL = "ETHRUSDPERP"
 
 
 def on_open(ws):
     """Handle WebSocket connection open event."""
-    logger.info(f"Connection established, subscribing to price data for {SYMBOL}")
+    logger.info("Connection established, subscribing to asset oracle prices")
 
-    # Subscribe to all prices
+    ws.prices.asset_oracle_prices.subscribe()
+
+    # Deprecated legacy channels:
     # ws.prices.all_prices.subscribe()
+    # ws.prices.price(LEGACY_SYMBOL).subscribe()
 
-    # Subscribe to price data for the specified symbol
-    ws.prices.price(SYMBOL).subscribe()
+
+def handle_asset_oracle_prices_data(payload: AssetOraclePricesUpdatePayload) -> None:
+    """Handle /v2/assetOraclePrices channel data."""
+    logger.info("💰 Asset Oracle Prices Update:")
+    logger.info(f"  ├─ Timestamp: {payload.timestamp}")
+    logger.info(f"  ├─ Channel: {payload.channel}")
+    logger.info(f"  └─ Assets Count: {len(payload.data)}")
+
+    for i, price in enumerate(payload.data[:5]):
+        logger.info(f"    Asset {i + 1}: {price.asset}")
+        logger.info(f"      ├─ Oracle Price: {price.oracle_price}")
+        logger.info(f"      └─ Updated At: {price.updated_at}")
+
+    if len(payload.data) > 5:
+        logger.info(f"    ... and {len(payload.data) - 5} more assets")
 
 
 def handle_all_prices_data(payload: PricesUpdatePayload) -> None:
-    """Handle /v2/prices channel data."""
-    logger.info("💰 All Prices Update:")
+    """Handle deprecated /v2/prices channel data."""
+    logger.info("💰 Deprecated Legacy Prices Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
     logger.info(f"  └─ Prices Count: {len(payload.data)}")
@@ -68,10 +87,10 @@ def handle_all_prices_data(payload: PricesUpdatePayload) -> None:
 
 
 def handle_single_price_data(payload: PriceUpdatePayload) -> None:
-    """Handle /v2/prices/:symbol channel data."""
+    """Handle deprecated /v2/prices/:symbol channel data."""
     price = payload.data
 
-    logger.info(f"💵 Price Update for {price.symbol}:")
+    logger.info(f"💵 Deprecated Legacy Price Update for {price.symbol}:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
     logger.info(f"  ├─ Oracle Price: {price.oracle_price or 'N/A'}")
@@ -88,7 +107,11 @@ def on_message(ws, message):
             logger.info(f"📦 Initial data received: {len(str(message.contents))} characters")
         return
 
-    # Handle price data updates
+    if isinstance(message, AssetOraclePricesUpdatePayload):
+        handle_asset_oracle_prices_data(message)
+        return
+
+    # Handle deprecated legacy price data updates
     if isinstance(message, PricesUpdatePayload):
         handle_all_prices_data(message)
         return
@@ -125,7 +148,7 @@ async def periodic_task(ws):
         counter += 1
         uptime = time.time() - start_time
 
-        logger.info(f"🔄 Monitoring {SYMBOL} prices (iteration {counter}) - Uptime: {uptime:.1f}s")
+        logger.info(f"🔄 Monitoring asset oracle prices (iteration {counter}) - Uptime: {uptime:.1f}s")
 
         # Monitor connection health
         active_subs = len(ws.active_subscriptions)
@@ -173,7 +196,7 @@ async def main():
         on_close=on_close,
     )
 
-    logger.info(f"Connecting to WebSocket to monitor {SYMBOL} prices")
+    logger.info("Connecting to WebSocket to monitor asset oracle prices")
     logger.info("Press Ctrl+C to exit")
 
     # Connect
