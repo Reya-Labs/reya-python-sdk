@@ -14,6 +14,8 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Any
+
 import argparse
 import asyncio
 import json
@@ -24,7 +26,6 @@ import time
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 from dotenv import load_dotenv
 
@@ -196,7 +197,9 @@ async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[l
     _assert(perp_definitions, "perp market definitions response was empty")
     _assert(spot_definitions, "spot market definitions response was empty")
 
-    perp_symbol = "ETHRUSDPERP" if any(m.symbol == "ETHRUSDPERP" for m in perp_definitions) else perp_definitions[0].symbol
+    perp_symbol = (
+        "ETHRUSDPERP" if any(m.symbol == "ETHRUSDPERP" for m in perp_definitions) else perp_definitions[0].symbol
+    )
     results = [
         _ok(
             "rest.referenceDefinitions",
@@ -221,7 +224,9 @@ async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[l
     _assert(legacy_prices, "deprecated /prices response was empty")
     _assert(legacy_price.symbol == perp_symbol, f"deprecated /prices/{{symbol}} returned {legacy_price.symbol}")
     deprecation_messages = [str(warning.message) for warning in captured if warning.category is DeprecationWarning]
-    _assert(any("/prices" in message for message in deprecation_messages), "missing SDK deprecation warning for /prices")
+    _assert(
+        any("/prices" in message for message in deprecation_messages), "missing SDK deprecation warning for /prices"
+    )
     results.append(
         _ok(
             "rest.deprecatedPrices",

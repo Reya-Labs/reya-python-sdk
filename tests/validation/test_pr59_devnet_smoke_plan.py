@@ -1,7 +1,8 @@
 """Offline checks for the repeatable PR 59 devnet smoke plan."""
 
-import importlib
 from types import SimpleNamespace
+
+import importlib
 
 import pytest
 
