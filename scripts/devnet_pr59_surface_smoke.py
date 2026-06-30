@@ -147,7 +147,7 @@ def _assert_recent_ms(value: int | float, label: str, max_age_ms: int) -> None:
 
 
 def _describe_asset_prices(prices: list[Any], max_age_ms: int) -> str:
-    _assert(prices, "asset oracle prices response was empty")
+    _assert(bool(prices), "asset oracle prices response was empty")
     assets: list[str] = []
     for price in prices:
         _assert(price.asset, "asset oracle price asset was empty")
@@ -159,7 +159,7 @@ def _describe_asset_prices(prices: list[Any], max_age_ms: int) -> str:
 
 
 def _describe_perp_summaries(summaries: list[Any], symbol: str, max_age_ms: int) -> str:
-    _assert(summaries, "perp markets summary response was empty")
+    _assert(bool(summaries), "perp markets summary response was empty")
     symbols = {summary.symbol for summary in summaries}
     _assert(symbol in symbols, f"{symbol} missing from perp markets summary")
     for summary in summaries:
@@ -194,8 +194,8 @@ def run_static_sdk_checks() -> CheckResult:
 async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[list[CheckResult], str]:
     perp_definitions = await client.reference.get_perp_market_definitions()
     spot_definitions = await client.reference.get_spot_market_definitions()
-    _assert(perp_definitions, "perp market definitions response was empty")
-    _assert(spot_definitions, "spot market definitions response was empty")
+    _assert(bool(perp_definitions), "perp market definitions response was empty")
+    _assert(bool(spot_definitions), "spot market definitions response was empty")
 
     perp_symbol = (
         "ETHRUSDPERP" if any(m.symbol == "ETHRUSDPERP" for m in perp_definitions) else perp_definitions[0].symbol
@@ -221,7 +221,7 @@ async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[l
         warnings.simplefilter("always", DeprecationWarning)
         legacy_prices = await client.markets.get_prices()
         legacy_price = await client.markets.get_price(perp_symbol)
-    _assert(legacy_prices, "deprecated /prices response was empty")
+    _assert(bool(legacy_prices), "deprecated /prices response was empty")
     _assert(legacy_price.symbol == perp_symbol, f"deprecated /prices/{{symbol}} returned {legacy_price.symbol}")
     deprecation_messages = [str(warning.message) for warning in captured if warning.category is DeprecationWarning]
     _assert(
@@ -248,52 +248,52 @@ def _extract_contents_data(contents: dict[str, Any] | None) -> Any:
 def _validate_ws_data(channel: str, data: Any, max_age_ms: int) -> str:
     if channel == "/v2/assetOraclePrices":
         if isinstance(data, list) and data and isinstance(data[0], dict):
-            payload = AssetOraclePricesUpdatePayload.model_validate(
+            asset_payload = AssetOraclePricesUpdatePayload.model_validate(
                 {"type": "channel_data", "timestamp": time.time() * 1000, "channel": channel, "data": data}
             )
         elif isinstance(data, AssetOraclePricesUpdatePayload):
-            payload = data
+            asset_payload = data
         else:
             raise AssertionError(f"unexpected asset oracle WS payload shape: {type(data).__name__}")
-        return _describe_asset_prices(payload.data, max_age_ms=max_age_ms)
+        return _describe_asset_prices(asset_payload.data, max_age_ms=max_age_ms)
 
     if channel == "/v2/perpMarkets/summary":
         if isinstance(data, list) and data and isinstance(data[0], dict):
-            payload = MarketsSummaryUpdatePayload.model_validate(
+            markets_payload = MarketsSummaryUpdatePayload.model_validate(
                 {"type": "channel_data", "timestamp": time.time() * 1000, "channel": channel, "data": data}
             )
         elif isinstance(data, MarketsSummaryUpdatePayload):
-            payload = data
+            markets_payload = data
         else:
             raise AssertionError(f"unexpected perp markets summary WS payload shape: {type(data).__name__}")
-        symbol = payload.data[0].symbol
-        return _describe_perp_summaries(payload.data, symbol, max_age_ms=max_age_ms)
+        symbol = markets_payload.data[0].symbol
+        return _describe_perp_summaries(markets_payload.data, symbol, max_age_ms=max_age_ms)
 
     if channel.startswith("/v2/perpMarket/") and channel.endswith("/summary"):
         if isinstance(data, dict):
-            payload = MarketSummaryUpdatePayload.model_validate(
+            market_payload = MarketSummaryUpdatePayload.model_validate(
                 {"type": "channel_data", "timestamp": time.time() * 1000, "channel": channel, "data": data}
             )
         elif isinstance(data, MarketSummaryUpdatePayload):
-            payload = data
+            market_payload = data
         else:
             raise AssertionError(f"unexpected perp market summary WS payload shape: {type(data).__name__}")
-        _assert(payload.data.symbol in channel, f"{channel} returned {payload.data.symbol}")
-        if payload.data.mark_price is not None:
-            _assert_positive_decimal(payload.data.mark_price, f"{payload.data.symbol}.markPrice")
-        return f"{payload.data.symbol} summary parsed"
+        _assert(market_payload.data.symbol in channel, f"{channel} returned {market_payload.data.symbol}")
+        if market_payload.data.mark_price is not None:
+            _assert_positive_decimal(market_payload.data.mark_price, f"{market_payload.data.symbol}.markPrice")
+        return f"{market_payload.data.symbol} summary parsed"
 
     if channel == "/v2/prices":
         if isinstance(data, list) and data and isinstance(data[0], dict):
-            payload = PricesUpdatePayload.model_validate(
+            prices_payload = PricesUpdatePayload.model_validate(
                 {"type": "channel_data", "timestamp": time.time() * 1000, "channel": channel, "data": data}
             )
         elif isinstance(data, PricesUpdatePayload):
-            payload = data
+            prices_payload = data
         else:
             raise AssertionError(f"unexpected legacy prices WS payload shape: {type(data).__name__}")
-        _assert(payload.data, "legacy prices WS data was empty")
-        return f"{len(payload.data)} legacy price row(s)"
+        _assert(bool(prices_payload.data), "legacy prices WS data was empty")
+        return f"{len(prices_payload.data)} legacy price row(s)"
 
     raise AssertionError(f"no validator for channel {channel}")
 
@@ -309,7 +309,7 @@ def run_websocket_checks(symbol: str, timeout_s: float, max_age_ms: int) -> list
     details_by_check: dict[str, list[str]] = {check_id: [] for check_id in expected_channels.values()}
     seen_channels: set[str] = set()
     errors: queue.Queue[str] = queue.Queue()
-    done = queue.Queue()
+    done: queue.Queue[bool] = queue.Queue()
 
     def on_open(ws: ReyaSocket) -> None:
         ws.prices.asset_oracle_prices.subscribe()
@@ -366,8 +366,9 @@ def run_websocket_checks(symbol: str, timeout_s: float, max_age_ms: int) -> list
             time.sleep(0.1)
     finally:
         ws.close()
-        if ws._thread is not None:  # pylint: disable=protected-access
-            ws._thread.join(timeout=2)
+        websocket_thread = getattr(ws, "_thread", None)
+        if websocket_thread is not None:
+            websocket_thread.join(timeout=2)
 
     missing = set(expected_channels) - seen_channels
     _assert(not missing, f"timed out waiting for WS data from: {sorted(missing)}")
