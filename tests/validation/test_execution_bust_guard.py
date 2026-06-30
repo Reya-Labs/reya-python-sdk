@@ -9,8 +9,8 @@ import pytest
 from tests.conftest import _unexpected_execution_bust_changes
 
 
-def _bust(order_id: str, reason: str):
-    return SimpleNamespace(order_id=order_id, reason=reason)
+def _bust(taker_order_id: str, reason: str):
+    return SimpleNamespace(taker_order_id=taker_order_id, reason=reason)
 
 
 @pytest.mark.offline
@@ -23,7 +23,7 @@ def test_reduce_only_busts_are_allowed_by_session_guard() -> None:
         ]
     }
 
-    assert _unexpected_execution_bust_changes(start, end) == {}
+    assert not _unexpected_execution_bust_changes(start, end)
 
 
 @pytest.mark.offline

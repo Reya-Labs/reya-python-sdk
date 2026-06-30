@@ -27,8 +27,8 @@ class CancelOrderRequest(BaseModel):
     """
     CancelOrderRequest
     """ # noqa: E501
-    order_id: Optional[StrictStr] = Field(default=None, description="Internal matching engine order ID to cancel. Provide `orderId`, or a non-zero `clientOrderId` when `orderId` is absent; if both are supplied the server treats `orderId` as the canonical identifier and `clientOrderId` is ignored. For spot markets, this is the order ID returned in the CreateOrderResponse.", alias="orderId")
-    client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID for tracking and correlation, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. This is the same clientOrderId provided in CreateOrderRequest.", alias="clientOrderId")
+    order_id: Optional[StrictStr] = Field(default=None, description="Internal matching engine order ID to cancel. Provide `orderId`, or a non-zero `clientOrderId` when `orderId` is absent; JSON Schema validates target presence only and the server enforces the non-zero `clientOrderId` rule. If both are supplied the server treats `orderId` as the canonical identifier and `clientOrderId` is ignored. For spot markets, this is the order ID returned in the CreateOrderResponse.", alias="orderId")
+    client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID for tracking and correlation, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero; JSON Schema validates presence only and the server enforces the non-zero rule. This is the same clientOrderId provided in CreateOrderRequest.", alias="clientOrderId")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     signature: StrictStr = Field(description="EIP-712 signature over the `OrderCancel(uint64 verifyingChainId, uint64 deadline, OrderCancelDetails cancel)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.")

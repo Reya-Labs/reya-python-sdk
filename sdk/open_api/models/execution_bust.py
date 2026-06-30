@@ -29,10 +29,10 @@ class ExecutionBust(BaseModel):
     ExecutionBust
     """ # noqa: E501
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
-    account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
+    taker_account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="takerAccountId")
     exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     maker_account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="makerAccountId")
-    order_id: StrictStr = Field(description="Order ID for the taker", alias="orderId")
+    taker_order_id: StrictStr = Field(description="Taker order ID", alias="takerOrderId")
     maker_order_id: StrictStr = Field(description="Order ID for the maker", alias="makerOrderId")
     qty: Annotated[str, Field(strict=True)]
     side: Side
@@ -42,7 +42,7 @@ class ExecutionBust(BaseModel):
     sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(alias="sequenceNumber")
     fill_id: Optional[StrictStr] = Field(default=None, description="Matching-engine fill nonce — a stable identifier to join this bust to its ME fill (PRO-182).", alias="fillId")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["symbol", "accountId", "exchangeId", "makerAccountId", "orderId", "makerOrderId", "qty", "side", "price", "reason", "timestamp", "sequenceNumber", "fillId"]
+    __properties: ClassVar[List[str]] = ["symbol", "takerAccountId", "exchangeId", "makerAccountId", "takerOrderId", "makerOrderId", "qty", "side", "price", "reason", "timestamp", "sequenceNumber", "fillId"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -124,10 +124,10 @@ class ExecutionBust(BaseModel):
 
         _obj = cls.model_validate({
             "symbol": obj.get("symbol"),
-            "accountId": obj.get("accountId"),
+            "takerAccountId": obj.get("takerAccountId"),
             "exchangeId": obj.get("exchangeId"),
             "makerAccountId": obj.get("makerAccountId"),
-            "orderId": obj.get("orderId"),
+            "takerOrderId": obj.get("takerOrderId"),
             "makerOrderId": obj.get("makerOrderId"),
             "qty": obj.get("qty"),
             "side": obj.get("side"),
@@ -143,5 +143,3 @@ class ExecutionBust(BaseModel):
                 _obj.additional_properties[_key] = obj.get(_key)
 
         return _obj
-
-

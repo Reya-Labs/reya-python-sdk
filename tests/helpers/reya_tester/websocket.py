@@ -64,7 +64,7 @@ class WebSocketState:
         self.balances: EventStore[AsyncAccountBalance] = EventStore(key_fn=lambda x: x.asset)
 
         # Bust stores (unified spot + perp)
-        self.execution_busts: EventStore[AsyncExecutionBust] = EventStore(key_fn=lambda x: str(x.order_id))
+        self.execution_busts: EventStore[AsyncExecutionBust] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.market_execution_busts: dict[str, EventStore[AsyncExecutionBust]] = {}
 
         # Market-level stores (by symbol)
@@ -319,16 +319,16 @@ class WebSocketState:
         for bust_data in message.data:
             logger.info(
                 f"💥 Execution bust received: symbol={bust_data.symbol}, "
-                f"order_id={bust_data.order_id}, maker_order_id={bust_data.maker_order_id}, "
+                f"taker_order_id={bust_data.taker_order_id}, maker_order_id={bust_data.maker_order_id}, "
                 f"side={bust_data.side.value if hasattr(bust_data.side, 'value') else bust_data.side}, "
                 f"qty={bust_data.qty}, reason={bust_data.reason}"
             )
             if is_market_channel:
                 symbol = message.channel.split("/")[3]
                 if symbol not in self.market_execution_busts:
-                    self.market_execution_busts[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                    self.market_execution_busts[symbol] = EventStore(key_fn=lambda x: str(x.taker_order_id))
                 self.market_execution_busts[symbol].add(bust_data)
-                logger.debug(f"Added market execution bust for {symbol}: {bust_data.order_id}")
+                logger.debug(f"Added market execution bust for {symbol}: {bust_data.taker_order_id}")
             else:
                 self.execution_busts.add(bust_data)
 

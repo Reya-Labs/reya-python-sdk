@@ -421,7 +421,7 @@ async def test_tampered_signature(market_config: SpotTestConfig | PerpTestConfig
 @pytest.mark.perp
 @pytest.mark.trigger
 @pytest.mark.asyncio
-async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
+async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester, perp_market_config: PerpTestConfig):
     """TP/SL trigger orders cannot be modified. Under full-restate the typed SDK
     restates `orderType=LIMIT`, which mismatches the resting trigger order's
     type, so the matching engine rejects it via the immutable-match
@@ -431,11 +431,16 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
     so there is no spot analogue to parametrize. The orderType immutable-match
     itself is market-independent (proven on both markets transitively by the
     full-restate raw-modify cases above)."""
-    oracle_price = float(await perp_maker_tester.data.current_price(PERP_SYMBOL))
+    oracle_price = float(await perp_maker_tester.data.current_price(perp_market_config.symbol))
     far_trigger_px = str(round(oracle_price * 10, 2))
 
     trigger_params = (
-        TriggerOrderBuilder().symbol(PERP_SYMBOL).sell().trigger_price(far_trigger_px).take_profit().build()
+        TriggerOrderBuilder()
+        .symbol(perp_market_config.symbol)
+        .sell()
+        .trigger_price(far_trigger_px)
+        .take_profit()
+        .build()
     )
     try:
         response = await perp_maker_tester.orders.create_trigger(trigger_params)
@@ -448,10 +453,10 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
 
     try:
         modify_params = ModifyOrderParameters(
-            symbol=PERP_SYMBOL,
+            symbol=perp_market_config.symbol,
             is_buy=False,
             limit_px=str(round(oracle_price * 9, 2)),
-            qty=min_qty,
+            qty=perp_market_config.min_qty,
             post_only=False,
             expires_after=0,
             time_in_force=TimeInForce.GTC,
@@ -468,7 +473,9 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
     finally:
         try:
             await perp_maker_tester.client.cancel_order(
-                order_id=trigger_order_id, symbol=PERP_SYMBOL, account_id=perp_maker_tester.account_id
+                order_id=trigger_order_id,
+                symbol=perp_market_config.symbol,
+                account_id=perp_maker_tester.account_id,
             )
         except ApiException as e:
             logger.warning(f"Trigger order cleanup cancel failed (may already be gone): {e}")

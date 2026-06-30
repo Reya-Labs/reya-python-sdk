@@ -12,6 +12,7 @@ from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
 from sdk.async_api.deprecated_prices_channel import DeprecatedPricesChannel
+from sdk.async_api.execution_bust import ExecutionBust as WsInfoExecutionBust
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_channel import MarketsSummaryChannel
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
@@ -30,6 +31,7 @@ from sdk.open_api import AssetOraclePrice as RestAssetOraclePrice
 from sdk.open_api import CancelReason as RestCancelReason
 from sdk.open_api import CreateOrderRequest as RestCreateOrderRequest
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
+from sdk.open_api import ExecutionBust as RestExecutionBust
 from sdk.open_api import ModifyOrderRequest as RestModifyOrderRequest
 from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import Order as RestOrder
@@ -180,6 +182,24 @@ def _base_spot_execution_payload() -> dict[str, Any]:
         "price": "2500",
         "takerFee": "0",
         "type": "ORDER_MATCH",
+        "timestamp": 1745000000,
+        "sequenceNumber": 99,
+        "fillId": "9001",
+    }
+
+
+def _base_execution_bust_payload() -> dict[str, Any]:
+    return {
+        "exchangeId": 2,
+        "symbol": "WETHRUSD",
+        "takerAccountId": 12345,
+        "makerAccountId": 67890,
+        "takerOrderId": "490346525705109504",
+        "makerOrderId": "490346525705109505",
+        "side": "B",
+        "qty": "1",
+        "price": "2500",
+        "reason": "Account below required margin",
         "timestamp": 1745000000,
         "sequenceNumber": 99,
         "fillId": "9001",
@@ -543,6 +563,31 @@ def test_ws_info_spot_execution_uses_taker_field_names() -> None:
     assert serialized["takerAccountId"] == 12345
     assert serialized["takerOrderId"] == "490346525705109504"
     assert serialized["takerFee"] == "0"
+
+
+def test_rest_execution_bust_uses_taker_field_names() -> None:
+    bust = RestExecutionBust.from_dict(_base_execution_bust_payload())
+
+    assert bust is not None
+    assert bust.taker_account_id == 12345
+    assert bust.taker_order_id == "490346525705109504"
+    assert not hasattr(bust, "account_id")
+    assert not hasattr(bust, "order_id")
+    serialized = bust.to_dict()
+    assert serialized["takerAccountId"] == 12345
+    assert serialized["takerOrderId"] == "490346525705109504"
+
+
+def test_ws_info_execution_bust_uses_taker_field_names() -> None:
+    bust = WsInfoExecutionBust.model_validate(_base_execution_bust_payload())
+
+    assert bust.taker_account_id == 12345
+    assert bust.taker_order_id == "490346525705109504"
+    assert not hasattr(bust, "account_id")
+    assert not hasattr(bust, "order_id")
+    serialized = bust.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert serialized["takerAccountId"] == 12345
+    assert serialized["takerOrderId"] == "490346525705109504"
 
 
 def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:

@@ -500,7 +500,9 @@ class Waiters:
                         found = self._t.ws.execution_busts.find_last(lambda b: str(b.maker_order_id) == str(order_id))
                     if found is not None:
                         elapsed = time.time() - start_time
-                        logger.info(f" ✅ Bust confirmed via WS: order_id={found.order_id} (took {elapsed:.2f}s)")
+                        logger.info(
+                            f" ✅ Bust confirmed via WS: taker_order_id={found.taker_order_id} (took {elapsed:.2f}s)"
+                        )
                         ws_bust = found
                 else:
                     # Wait for any bust
@@ -508,15 +510,19 @@ class Waiters:
                         ws_bust = self._t.ws.execution_busts.last
                         elapsed = time.time() - start_time
                         if ws_bust is not None:
-                            logger.info(f" ✅ Bust confirmed via WS: order_id={ws_bust.order_id} (took {elapsed:.2f}s)")
+                            logger.info(
+                                f" ✅ Bust confirmed via WS: taker_order_id={ws_bust.taker_order_id} (took {elapsed:.2f}s)"
+                            )
 
             # Once WS confirms, verify via REST
             if ws_bust is not None and rest_bust is None:
                 busts = await self._t.data.execution_busts()
                 for bust in busts:
-                    if str(bust.order_id) == str(ws_bust.order_id):
+                    if str(bust.taker_order_id) == str(ws_bust.taker_order_id):
                         elapsed = time.time() - start_time
-                        logger.info(f" ✅ Bust confirmed via REST: order_id={bust.order_id} (took {elapsed:.2f}s)")
+                        logger.info(
+                            f" ✅ Bust confirmed via REST: taker_order_id={bust.taker_order_id} (took {elapsed:.2f}s)"
+                        )
                         rest_bust = bust
                         break
 

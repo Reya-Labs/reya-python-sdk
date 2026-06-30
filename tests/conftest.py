@@ -163,7 +163,8 @@ _EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = ("reduce-only order size above positi
 
 
 def _execution_bust_identity(bust: Any) -> tuple[Any, Any, Any]:
-    return (getattr(bust, "fill_id", None), getattr(bust, "order_id", None), getattr(bust, "sequence_number", None))
+    taker_order_id = getattr(bust, "taker_order_id", getattr(bust, "order_id", None))
+    return (getattr(bust, "fill_id", None), taker_order_id, getattr(bust, "sequence_number", None))
 
 
 def _is_expected_execution_bust(bust: Any) -> bool:
