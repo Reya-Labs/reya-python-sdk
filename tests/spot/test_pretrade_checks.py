@@ -69,8 +69,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
         pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
-        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Insufficient balance: required X, available Y'
-        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "INSUFFICIENT_BALANCE_ERROR" in error_msg, f"Expected INSUFFICIENT_BALANCE_ERROR, got: {e}"
         assert "Insufficient balance" in error_msg, f"Expected 'Insufficient balance' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
@@ -126,8 +125,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
         pytest.fail(f"Order exceeding balance should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
-        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Insufficient balance: required X, available Y'
-        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "INSUFFICIENT_BALANCE_ERROR" in error_msg, f"Expected INSUFFICIENT_BALANCE_ERROR, got: {e}"
         assert "Insufficient balance" in error_msg, f"Expected 'Insufficient balance' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")

@@ -63,10 +63,10 @@ class ModifyOrderParameters:
 class TriggerOrderParameters:
     """Parameters for a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
 
-    `qty` is the signed quantity to execute when the trigger fires — it must be
-    set explicitly. There is no safe default: signing a smaller-than-expected qty
-    silently produces a partial close, which can leave the user with the wrong
-    risk after a stop hits.
+    Trigger orders omit `qty` on the REST/WS JSON contract and sign
+    `OrderDetails.quantity = 0`; executable size is derived when the trigger
+    fires. The deprecated `qty` field is retained only so older callers receive
+    a targeted client-side error instead of a server 400.
 
     `limit_px` is the worst-acceptable execution price after the trigger fires;
     if omitted the client signs a sentinel — a very high value for buys, a very
@@ -76,10 +76,10 @@ class TriggerOrderParameters:
 
     symbol: str
     is_buy: bool
-    qty: str
     trigger_px: str
     trigger_type: OrderType
     limit_px: Optional[str] = None
+    qty: Optional[str] = None
     reduce_only: Optional[bool] = None
     client_order_id: Optional[int] = None
     deadline: Optional[int] = None

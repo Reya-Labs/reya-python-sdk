@@ -278,14 +278,13 @@ async def flow_perp_create_trigger_and_cancel(
     client: ReyaWsExecClient,
     trigger_type: OrderType,
     trigger_px: str,
-    qty: Decimal,
+    _qty: Decimal,
     label: str,
 ) -> None:
     resp = await client.create_trigger_order(
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=False,
-            qty=str(qty),
             trigger_px=trigger_px,
             trigger_type=trigger_type,
         )

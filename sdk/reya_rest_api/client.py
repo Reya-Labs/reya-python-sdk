@@ -381,6 +381,8 @@ class ReyaTradingClient:
         if self._signature_generator is None:
             raise ValueError("Signature generator is required for order signing")
         _reject_zero_client_order_id(params.client_order_id)
+        if params.qty is not None:
+            raise ValueError("qty on TP/SL trigger orders is not supported; omit qty")
 
         market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
@@ -425,7 +427,7 @@ class ReyaTradingClient:
             exchange_id=self.config.dex_id,
             order_type=int(order_type_int),
             is_buy=params.is_buy,
-            qty=Decimal(params.qty),
+            qty=Decimal(0),
             limit_price=limit_price,
             trigger_price=Decimal(params.trigger_px),
             time_in_force=int(TimeInForceInt.GTC),
@@ -447,11 +449,10 @@ class ReyaTradingClient:
             # rejects with INVALID_ARGUMENT. format(..., "f") renders a plain
             # decimal for any tick size or caller-supplied price.
             "limitPx": format(limit_price, "f"),
-            "qty": params.qty,
             "triggerPx": str(params.trigger_px),
             "orderType": params.trigger_type.value,
             "reduceOnly": None,
-            "expiresAfter": expires_after,
+            "expiresAfter": None,
             "clientOrderId": (str(params.client_order_id) if params.client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),

@@ -498,7 +498,7 @@ class Waiters:
                     if found is None:
                         # Try matching as maker_order_id
                         found = self._t.ws.execution_busts.find_last(lambda b: str(b.maker_order_id) == str(order_id))
-                    if found:
+                    if found is not None:
                         elapsed = time.time() - start_time
                         logger.info(f" ✅ Bust confirmed via WS: order_id={found.order_id} (took {elapsed:.2f}s)")
                         ws_bust = found
@@ -520,7 +520,7 @@ class Waiters:
                         rest_bust = bust
                         break
 
-            if ws_bust and rest_bust:
+            if ws_bust is not None and rest_bust is not None:
                 return rest_bust
 
             await asyncio.sleep(0.2)

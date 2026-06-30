@@ -141,7 +141,7 @@ async def test_modify_flags_only(
     # expiry) is deferred until GTT is on devnet1. The off-chain server enforces
     # the same rule as defense-in-depth (covered by the off-chain handler tests).
     future_expiry = int(time.time()) + 3600
-    with pytest.raises(ValueError, match="GTC orders must not expire"):
+    with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
         await maker.client.modify_order(full_state_modify_params(order, expires_after=future_expiry))
     logger.info(f"[{market_type}] ✅ non-zero expiresAfter on a GTC rejected client-side before send")
 

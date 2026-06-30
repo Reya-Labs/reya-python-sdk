@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from typing import Optional  # noqa: E402
+from typing import Any, Optional  # noqa: E402
 
 import asyncio  # noqa: E402
 import os  # noqa: E402
@@ -159,17 +159,47 @@ def _busts_guard_api_url() -> str:
     return os.environ.get("REYA_API_URL", default_api_url)
 
 
-async def _fetch_execution_bust_counts(wallets: list[str]) -> Optional[dict[str, int]]:
-    """Fetch the executionBusts count per wallet via a throwaway read-only
-    API client. Returns None when the API is unreachable (offline/unit runs)."""
+_EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = ("reduce-only order size above position size",)
+
+
+def _execution_bust_identity(bust: Any) -> tuple[Any, Any, Any]:
+    return (getattr(bust, "fill_id", None), getattr(bust, "order_id", None), getattr(bust, "sequence_number", None))
+
+
+def _is_expected_execution_bust(bust: Any) -> bool:
+    reason = (getattr(bust, "reason", None) or "").lower()
+    return any(snippet in reason for snippet in _EXPECTED_EXECUTION_BUST_REASON_SNIPPETS)
+
+
+def _unexpected_execution_bust_changes(
+    start_busts: dict[str, list[Any]], end_busts: dict[str, list[Any]]
+) -> dict[str, tuple[int, int]]:
+    changed: dict[str, tuple[int, int]] = {}
+    for address, wallet_start_busts in start_busts.items():
+        wallet_end_busts = end_busts.get(address, [])
+        if len(wallet_end_busts) < len(wallet_start_busts):
+            changed[address] = (len(wallet_start_busts), len(wallet_end_busts))
+            continue
+
+        start_ids = {_execution_bust_identity(bust) for bust in wallet_start_busts}
+        new_busts = [bust for bust in wallet_end_busts if _execution_bust_identity(bust) not in start_ids]
+        unexpected_busts = [bust for bust in new_busts if not _is_expected_execution_bust(bust)]
+        if unexpected_busts:
+            changed[address] = (len(wallet_start_busts), len(wallet_end_busts))
+    return changed
+
+
+async def _fetch_execution_busts(wallets: list[str]) -> Optional[dict[str, list[Any]]]:
+    """Fetch executionBusts per wallet via a throwaway read-only API client.
+    Returns None when the API is unreachable (offline/unit runs)."""
     api_client = ApiClient(Configuration(host=_busts_guard_api_url()))
     try:
         wallet_api = WalletDataApi(api_client)
-        counts: dict[str, int] = {}
+        busts: dict[str, list[Any]] = {}
         for address in wallets:
             bust_list = await wallet_api.get_wallet_execution_busts(address=address)
-            counts[address] = len(bust_list.data or [])
-        return counts
+            busts[address] = list(bust_list.data or [])
+        return busts
     except (ApiException, OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Execution-busts guard: API unreachable, guard disabled: {e}")
         return None
@@ -202,24 +232,21 @@ async def execution_busts_guard(request):
         yield
         return
 
-    start_counts = await _fetch_execution_bust_counts(wallets)
-    if start_counts is None:
+    start_busts = await _fetch_execution_busts(wallets)
+    if start_busts is None:
         yield
         return
 
+    start_counts = {address: len(busts) for address, busts in start_busts.items()}
     logger.info(f"🛡️ Execution-busts guard armed: baseline {start_counts}")
     yield
 
-    end_counts = await _fetch_execution_bust_counts(wallets)
-    if end_counts is None:
+    end_busts = await _fetch_execution_busts(wallets)
+    if end_busts is None:
         logger.warning("Execution-busts guard: API unreachable at session end; skipping final check")
         return
 
-    changed = {
-        address: (start_counts[address], end_counts.get(address))
-        for address in start_counts
-        if end_counts.get(address) != start_counts[address]
-    }
+    changed = _unexpected_execution_bust_changes(start_busts, end_busts)
     assert not changed, (
         "Execution busts changed during the test session (settlement regression): "
         f"{{wallet: (start, end)}} = {changed}"

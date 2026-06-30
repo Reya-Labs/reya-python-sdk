@@ -24,11 +24,10 @@ e2e.
 - the signature envelope is required (missing signature / zero nonce / missing
   signerWallet → HTTP 400),
 - cross-account ownership: account B cannot modify account A's resting order
-  (MODIFY_ORDER_OTHER_ERROR).
-- TP/SL trigger orders are not modifiable: the typed SDK restates
-  orderType=LIMIT, mismatching the resting trigger order, so the engine
-  rejects with MODIFY_IMMUTABLE_MISMATCH (INPUT_VALIDATION_ERROR). Trigger
-  orders are a perp-only surface, so this case stays perp-pinned.
+  (authorization error).
+- TP/SL trigger orders are not modifiable once the backend accepts native
+  trigger creates. Trigger orders are a perp-only surface, so this case stays
+  perp-pinned.
 
 The modifyOrder validation surface (signature recovery, nonce single-use,
 immutable-match, input validation, ownership) is transport- and
@@ -329,7 +328,7 @@ async def test_immutable_mismatch_raw(
 async def test_required_fields_and_negative_values_raw(
     market_config: SpotTestConfig | PerpTestConfig, market_type: str, maker: ReyaTester
 ):
-    """The four modifiable fields are REQUIRED on the wire (no
+    """The GTC-applicable modifiable fields are REQUIRED on the wire (no
     omitted-means-inherited shorthand), and negative limitPx/qty are rejected
     — INPUT_VALIDATION_ERROR for every case, resting order untouched.
 
@@ -346,7 +345,7 @@ async def test_required_fields_and_negative_values_raw(
     good_px = str(market_config.price(0.96))
 
     url = f"{maker.client.config.api_url}/modifyOrder"
-    omit_cases = ["limitPx", "qty", "postOnly", "expiresAfter"]
+    omit_cases = ["limitPx", "qty", "postOnly"]
     negative_cases = [("limitPx", f"-{good_px}"), ("qty", f"-{market_config.min_qty}")]
 
     try:
@@ -432,21 +431,18 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester):
     so there is no spot analogue to parametrize. The orderType immutable-match
     itself is market-independent (proven on both markets transitively by the
     full-restate raw-modify cases above)."""
-    market_def = await perp_maker_tester.get_market_definition(PERP_SYMBOL)
-    min_qty = str(market_def.min_order_qty)
     oracle_price = float(await perp_maker_tester.data.current_price(PERP_SYMBOL))
     far_trigger_px = str(round(oracle_price * 10, 2))
 
     trigger_params = (
-        TriggerOrderBuilder()
-        .symbol(PERP_SYMBOL)
-        .sell()
-        .qty(min_qty)
-        .trigger_price(far_trigger_px)
-        .take_profit()
-        .build()
+        TriggerOrderBuilder().symbol(PERP_SYMBOL).sell().trigger_price(far_trigger_px).take_profit().build()
     )
-    response = await perp_maker_tester.orders.create_trigger(trigger_params)
+    try:
+        response = await perp_maker_tester.orders.create_trigger(trigger_params)
+    except ApiException as e:
+        if "qty must be greater than 0, got 0" in str(e):
+            pytest.skip("Devnet does not yet accept spec-shaped TP/SL creates with omitted qty")
+        raise
     assert response.order_id is not None
     trigger_order_id = response.order_id
 
@@ -532,8 +528,8 @@ async def test_modify_unauthorized_cross_account(
     maker: ReyaTester,
     taker: ReyaTester,
 ):
-    """Account B cannot modify account A's resting order: the ME ownership check
-    (account_id mismatch) rejects it, surfaced as MODIFY_ORDER_OTHER_ERROR. The
+    """Account B cannot modify account A's resting order: the ownership check
+    (account_id mismatch) rejects it with an authorization error. The
     maker's order is left resting."""
     maker_order = await rest_gtc(maker, market_config, price_multiplier=0.95, is_buy=True)
     original_px, original_qty = maker_order.limit_px, maker_order.qty
@@ -547,9 +543,9 @@ async def test_modify_unauthorized_cross_account(
             )
         error_msg = str(exc_info.value)
         assert (
-            "MODIFY_ORDER_OTHER_ERROR" in error_msg
-        ), f"[{market_type}] expected MODIFY_ORDER_OTHER_ERROR (cross-account UNAUTHORIZED), got: {error_msg[:200]}"
-        logger.info(f"[{market_type}] ✅ Cross-account modify rejected with MODIFY_ORDER_OTHER_ERROR")
+            "Unauthorized: order" in error_msg and "does not belong to account" in error_msg
+        ), f"[{market_type}] expected cross-account ownership rejection, got: {error_msg[:200]}"
+        logger.info(f"[{market_type}] ✅ Cross-account modify rejected with ownership error")
 
         untouched = await maker.data.open_order(maker_order.order_id)
         assert untouched is not None, "Maker's order must survive a cross-account modify attempt"

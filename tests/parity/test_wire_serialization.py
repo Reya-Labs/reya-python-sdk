@@ -70,13 +70,14 @@ def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=False,
-            qty="0.01",
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
         )
     )
     assert payload["limitPx"] == "0.001"  # == market tick size
     assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
+    assert "qty" not in payload
+    assert "expiresAfter" not in payload
 
 
 def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
@@ -85,7 +86,6 @@ def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClien
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=True,
-            qty="0.01",
             trigger_px="1000000",
             trigger_type=OrderType.TAKE_PROFIT,
         )
@@ -102,7 +102,6 @@ def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClie
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=False,
-            qty="0.01",
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
             limit_px="0.0000001",
@@ -274,10 +273,23 @@ def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient) -> None:
             TriggerOrderParameters(
                 symbol=PERP_SYMBOL,
                 is_buy=False,
-                qty="0.01",
                 trigger_px="1000",
                 trigger_type=OrderType.STOP_LOSS,
                 reduce_only=True,
+            )
+        )
+
+
+def test_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
+    """TP/SL trigger creates omit qty; callers must not send a JSON sentinel."""
+    with pytest.raises(ValueError, match="qty on TP/SL trigger orders is not supported"):
+        client.build_create_trigger_order_payload(
+            TriggerOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=False,
+                trigger_px="1000",
+                trigger_type=OrderType.STOP_LOSS,
+                qty="0.01",
             )
         )
 

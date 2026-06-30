@@ -238,7 +238,7 @@ async def test_ws_exec_modify_flags_and_expires_after_envelope(ws_exec_market: W
         # expiresAfter is rejected by the shared client coupling guard in
         # build_modify_order_payload with a ValueError before signing/sending.
         future_expiry = int(time.time()) + 3600
-        with pytest.raises(ValueError, match="GTC orders must not expire"):
+        with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
             await m.ws.modify_order(full_state_modify_params(order, expires_after=future_expiry))
         print(f"  [ws-exec {m.market_type}] non-zero expiresAfter on GTC rejected client-side before send")
 

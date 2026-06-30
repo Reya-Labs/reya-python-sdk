@@ -302,7 +302,7 @@ class TriggerOrderBuilder:
 
     _symbol: str = "ETHRUSDPERP"
     _is_buy: bool = True
-    _qty: str = "0.01"
+    _qty: str | None = None
     _trigger_px: str = "4000.0"
     _limit_px: str = "4000.0"
     _trigger_type: OrderType = field(default_factory=lambda: OrderType.TAKE_PROFIT)
@@ -330,7 +330,7 @@ class TriggerOrderBuilder:
         return self
 
     def qty(self, qty: str) -> TriggerOrderBuilder:
-        """Set the quantity to execute when the trigger fires."""
+        """Deprecated: TP/SL trigger creates omit qty and derive executable size."""
         self._qty = qty
         return self
 

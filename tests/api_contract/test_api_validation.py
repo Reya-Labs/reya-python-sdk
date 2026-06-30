@@ -85,8 +85,7 @@ async def test_spot_order_invalid_signature(spot_config: SpotTestConfig, spot_te
         pytest.fail(f"Order with invalid signature should have been rejected, got: {response}")
     except ApiException as e:
         error_msg = str(e)
-        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Invalid signature'
-        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "UNAUTHORIZED_SIGNATURE_ERROR" in error_msg, f"Expected UNAUTHORIZED_SIGNATURE_ERROR, got: {e}"
         assert "Invalid signature" in error_msg, f"Expected 'Invalid signature' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
@@ -650,8 +649,7 @@ async def test_spot_order_qty_below_minimum(spot_config: SpotTestConfig, spot_te
         pytest.fail(f"Order with qty below minimum should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
-        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order quantity X is below minimum order base Y'
-        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "PRICE_QTY_BOUNDS_ERROR" in error_msg, f"Expected PRICE_QTY_BOUNDS_ERROR, got: {e}"
         assert "is below minimum order base" in error_msg, f"Expected 'is below minimum order base' message, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
@@ -697,18 +695,18 @@ async def test_spot_order_qty_not_step_multiple(spot_config: SpotTestConfig, spo
         pytest.fail(f"Order with non-step qty should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
-        # Accept either CREATE_ORDER_OTHER_ERROR or INPUT_VALIDATION_ERROR
+        # Accept the specific price/qty code, plus older validation surfaces
         # (which validator fires first depends on prior-test rate-limit/open-
-        # order-cap state). When CREATE_ORDER_OTHER_ERROR fires, also assert
+        # order-cap state). When a price/qty validator fires, also assert
         # on a "spacing"/"step" message body so the qty-step regression check
         # still catches a silent validator regression.
-        if "CREATE_ORDER_OTHER_ERROR" in error_msg:
+        if "PRICE_QTY_BOUNDS_ERROR" in error_msg:
             lowered = error_msg.lower()
             assert "spacing" in lowered or "step" in lowered, f"Qty-step regression candidate: {e}"
         else:
             assert (
                 "INPUT_VALIDATION_ERROR" in error_msg
-            ), f"Expected CREATE_ORDER_OTHER_ERROR or INPUT_VALIDATION_ERROR, got: {e}"
+            ), f"Expected PRICE_QTY_BOUNDS_ERROR or INPUT_VALIDATION_ERROR, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:200]}")
 
@@ -753,8 +751,7 @@ async def test_spot_order_price_not_tick_multiple(spot_config: SpotTestConfig, s
         pytest.fail(f"Order with non-tick-multiple price should have been rejected, got: {order_id}")
     except ApiException as e:
         error_msg = str(e)
-        # Expect: error=CREATE_ORDER_OTHER_ERROR message='Order price X does not conform to price spacing Y'
-        assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {e}"
+        assert "PRICE_QTY_BOUNDS_ERROR" in error_msg, f"Expected PRICE_QTY_BOUNDS_ERROR, got: {e}"
         assert (
             "does not conform to price spacing" in error_msg
         ), f"Expected 'does not conform to price spacing' message, got: {e}"
@@ -819,8 +816,7 @@ async def test_spot_cancel_invalid_signature(spot_config: SpotTestConfig, spot_t
         pytest.fail(f"Cancel with invalid signature should have been rejected, got: {response}")
     except ApiException as e:
         error_msg = str(e)
-        # Expect: error=CANCEL_ORDER_OTHER_ERROR message='Invalid signature: unable to recover signer from signature'
-        assert "CANCEL_ORDER_OTHER_ERROR" in error_msg, f"Expected CANCEL_ORDER_OTHER_ERROR, got: {e}"
+        assert "UNAUTHORIZED_SIGNATURE_ERROR" in error_msg, f"Expected UNAUTHORIZED_SIGNATURE_ERROR, got: {e}"
         assert (
             "Invalid signature: unable to recover signer from signature" in error_msg
         ), f"Expected 'Invalid signature: unable to recover signer from signature' message, got: {e}"
@@ -1746,9 +1742,9 @@ async def test_spot_order_missing_nonce(spot_config: SpotTestConfig, spot_tester
         pytest.fail(f"Order without nonce should have been rejected, got: {response}")
     except ApiException as e:
         error_msg = str(e).lower()
-        assert "nonce" in error_msg or "CREATE_ORDER_OTHER_ERROR" in str(
-            e
-        ), f"Expected nonce validation error, got: {e}"
+        assert (
+            "nonce" in error_msg or "UNAUTHORIZED_SIGNATURE_ERROR" in str(e) or "INPUT_VALIDATION_ERROR" in str(e)
+        ), f"Expected nonce/signature validation error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
 
