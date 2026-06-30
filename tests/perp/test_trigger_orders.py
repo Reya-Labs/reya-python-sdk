@@ -19,19 +19,16 @@ from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameter
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 
-# Trigger orders (TP/SL) currently route through the matching engine as plain
-# LIMIT IOCs via the perpOB facade — the ME's dedicated trigger queue isn't
-# implemented yet (see `feat/perpOB-7-trigger-queue` planning + comments in
-# packages/api/src/controllers/tradingPrivateV2.controller.matching-engine.ts).
-# As a result the on-chain trigger-execution semantics these tests assert on
-# (price-crossed → fired, position-closed → cancelled, etc.) don't match
-# what the system actually does, so every test in this file fails for
-# reasons unrelated to the SDK.
+# Trigger orders (TP/SL) are accepted as account-visible facade records while
+# the ME's dedicated trigger queue is still pending. They do not fire on
+# triggerPrice or contribute executable book liquidity yet, so the on-chain
+# trigger-execution semantics these tests assert on (price-crossed → fired,
+# position-closed → cancelled, etc.) do not match current devnet behavior.
 #
 # todo: p1: remove this module-level skip once the ME trigger queue lands and
-# trigger orders execute via their own dispatch path rather than as LIMIT IOCs.
+# trigger orders execute via their native trigger path.
 pytestmark = pytest.mark.skip(
-    reason="ME trigger queue not yet implemented; trigger orders are routed as LIMIT IOCs today (perpOB facade). Re-enable once the dedicated trigger-execution path ships."
+    reason="ME trigger queue not yet implemented; trigger facade orders do not fire yet. Re-enable once the dedicated trigger-execution path ships."
 )
 
 

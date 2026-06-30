@@ -30,27 +30,27 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Cancel orders via `/v2/cancelOrder`
 
 - **Market Data Resource**
-    - Get all markets summary via `/v2/markets/summary`
-    - Get market summary via `/v2/market/{symbol}/summary`
+    - Get all perp markets summary via `/v2/perpMarkets/summary`
+    - Get perp market summary via `/v2/perpMarket/{symbol}/summary`
     - Get market perpetual executions via `/v2/market/{symbol}/perpExecutions`
     - Get historical candles via `/v2/candleHistory/{symbol}/{resolution}`
 
 - **Reference Data Resource**
-    - Get market definitions via `/v2/marketDefinitions`
+    - Get perp market definitions via `/v2/perpMarketDefinitions`
     - Get asset definitions via `/v2/assetDefinitions`
-    - Get liquidity parameters via `/v2/liquidityParameters`
     - Get global fee parameters via `/v2/globalFeeParameters`
     - Get fee tiers via `/v2/feeTiers`
 
 - **Prices Resource**
-    - Get all prices via `/v2/prices`
-    - Get price by symbol via `/v2/prices/{symbol}`
+    - Get asset oracle prices via `/v2/assetOraclePrices`
+    - Get legacy market/collateral prices via `/v2/prices` (deprecated)
+    - Get legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
 ### WebSocket API Client (Resource-Oriented)
 
 - **Market Resources**
-    - Subscribe to all markets summary via `/v2/markets/summary`
-    - Subscribe to specific market summary via `/v2/market/{symbol}/summary`
+    - Subscribe to all perp markets summary via `/v2/perpMarkets/summary`
+    - Subscribe to specific perp market summary via `/v2/perpMarket/{symbol}/summary`
     - Monitor market perpetual executions via `/v2/market/{symbol}/perpExecutions`
 
 - **Wallet Resources**
@@ -59,8 +59,9 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Monitor wallet perpetual executions via `/v2/wallet/{address}/perpExecutions`
 
 - **Price Resources**
-    - Track prices for all markets via `/v2/prices`
-    - Track prices for specific market via `/v2/prices/{symbol}`
+    - Track asset oracle prices via `/v2/assetOraclePrices`
+    - Track legacy market/collateral prices via `/v2/prices` (deprecated)
+    - Track legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
 ## API Specifications
 
@@ -197,19 +198,18 @@ ReyaTradingClient
 │   ├── create_order()               # /v2/createOrder (IOC, GTC, SL, TP)
 │   └── cancel_order()               # /v2/cancelOrder
 ├── markets                          # Market Data resource
-│   ├── get_markets_summary()        # /v2/markets/summary
-│   ├── get_market_summary()         # /v2/market/{symbol}/summary
+│   ├── get_perp_markets_summary()   # /v2/perpMarkets/summary
+│   ├── get_perp_market_summary()    # /v2/perpMarket/{symbol}/summary
 │   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
-│   └── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
+│   ├── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
+│   ├── get_asset_oracle_prices()      # /v2/assetOraclePrices
+│   ├── get_prices()                 # /v2/prices (deprecated)
+│   └── get_price()                  # /v2/prices/{symbol} (deprecated)
 ├── reference                        # Reference Data resource
-│   ├── get_market_definitions()     # /v2/marketDefinitions
+│   ├── get_perp_market_definitions() # /v2/perpMarketDefinitions
 │   ├── get_asset_definitions()      # /v2/assetDefinitions
-│   ├── get_liquidity_parameters()   # /v2/liquidityParameters
 │   ├── get_global_fee_parameters()  # /v2/globalFeeParameters
 │   └── get_fee_tiers()              # /v2/feeTiers
-└── prices                           # Prices resource
-    ├── get_prices()                 # /v2/prices
-    └── get_price()                  # /v2/prices/{symbol}
 ```
 
 #### WebSocket API Structure
@@ -219,10 +219,10 @@ The WebSocket API client is organized around resources:
 ```
 ReyaSocket
 ├── market
-│   ├── all_markets_summary             # /v2/markets/summary
+│   ├── all_markets_summary             # /v2/perpMarkets/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── market_summary(symbol)          # /v2/market/{symbol}/summary
+│   ├── market_summary(symbol)          # /v2/perpMarket/{symbol}/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
 │   └── market_perp_executions(symbol)  # /v2/market/{symbol}/perpExecutions
@@ -236,6 +236,16 @@ ReyaSocket
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
 │   └── perp_executions(address)        # /v2/wallet/{address}/perpExecutions
+│       ├── subscribe()
+│       └── unsubscribe()
+├── prices
+│   ├── asset_oracle_prices             # /v2/assetOraclePrices
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   ├── all_prices                      # /v2/prices (deprecated)
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   └── price(symbol)                   # /v2/prices/{symbol} (deprecated)
 │       ├── subscribe()
 │       └── unsubscribe()
 └── ping                                # /ping (heartbeat)

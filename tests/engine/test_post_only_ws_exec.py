@@ -101,14 +101,14 @@ async def _open_order_ids(rest: ReyaTradingClient) -> set[str]:
 
 async def _oracle_price(rest: ReyaTradingClient, symbol: str, max_attempts: int = 5) -> float:
     """Oracle price for the liquidity gate, retrying through the transient
-    NO_PRICES_FOUND_FOR_SYMBOL feed gap (mirrors DataOperations.current_price)."""
+    NO_PRICES_FOUND_FOR_SYMBOL_ERROR feed gap (mirrors DataOperations.current_price)."""
     last_exc: Exception | None = None
     for _ in range(max_attempts):
         try:
             price = await rest.markets.get_price(symbol)
             return float(price.oracle_price)
         except ApiException as exc:
-            if "NO_PRICES_FOUND_FOR_SYMBOL" not in str(exc) and "Price not found" not in str(exc):
+            if "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in str(exc) and "Price not found" not in str(exc):
                 raise
             last_exc = exc
         await asyncio.sleep(0.3)

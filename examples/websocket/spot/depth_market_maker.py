@@ -154,7 +154,7 @@ class MarketMakerState:
         with self._lock:
             remaining_qty = qty - cum_qty
 
-            if status in ("FILLED", "CANCELLED", "REJECTED", "EXPIRED"):
+            if status in ("FILLED", "CANCELLED"):
                 if order_id in self.open_orders:
                     del self.open_orders[order_id]
                     logger.debug(f"📋 Order {order_id} removed (status: {status})")
@@ -167,10 +167,10 @@ class MarketMakerState:
                 )
                 logger.debug(f"📋 Order {order_id} updated: {status}, remaining={remaining_qty}")
 
-    def log_execution(self, order_id: str, qty: str, price: str, side: str, maker_account_id: int) -> None:
+    def log_execution(self, order_id: str, qty: str, price: str, side: str, counterparty_account_id: int) -> None:
         """Log a spot execution."""
         side_str = "BOUGHT" if side == "B" else "SOLD"
-        logger.info(f"🔔 FILL: {side_str} {qty} @ ${price} (order {order_id}, counterparty: {maker_account_id})")
+        logger.info(f"🔔 FILL: {side_str} {qty} @ ${price} (order {order_id}, counterparty: {counterparty_account_id})")
 
     def remove_order(self, order_id: str) -> None:
         """Remove an order from local state (thread-safe). Used when cancel fails with 'Order not found'."""
@@ -393,14 +393,17 @@ class WebSocketHandler:
             for execution in message.data:
                 if execution.symbol != self.state.symbol:
                     continue
-                if execution.order_id is None:
+                is_taker = execution.taker_account_id == self.state.account_id
+                order_id = execution.taker_order_id if is_taker else execution.maker_order_id
+                counterparty_account_id = execution.maker_account_id if is_taker else execution.taker_account_id
+                if order_id is None:
                     continue
                 self.state.log_execution(
-                    order_id=execution.order_id,
+                    order_id=order_id,
                     qty=execution.qty,
                     price=execution.price,
                     side=execution.side.value,
-                    maker_account_id=execution.maker_account_id,
+                    counterparty_account_id=counterparty_account_id,
                 )
             return
 

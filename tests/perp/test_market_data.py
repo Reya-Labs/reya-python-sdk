@@ -90,6 +90,20 @@ async def test_all_prices(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
+async def test_asset_oracle_prices(reya_tester: ReyaTester):
+    prices = await reya_tester.client.markets.get_asset_oracle_prices()
+    assert prices is not None
+    assert len(prices) > 0, "Should have at least one asset oracle price"
+
+    current_time = int(time.time() * 1000)
+    for sample_price in prices:
+        assert sample_price.asset, "Asset should not be empty"
+        assert 0 < float(sample_price.oracle_price) < 10**18, "Oracle price should be a valid positive number"
+        assert sample_price.updated_at > current_time - (60 * 60 * 1000), "Updated timestamp should be recent"
+        assert sample_price.updated_at <= current_time + (60 * 1000), "Updated timestamp should not be in future"
+
+
+@pytest.mark.asyncio
 async def test_market_summary(reya_tester: ReyaTester):
     """Validate the v2.3.0 MarketSummary shape: oiQty (single), markPrice, throttledMidPrice.
 
@@ -98,7 +112,7 @@ async def test_market_summary(reya_tester: ReyaTester):
     ``8cedb97 feat: update MarketSummary schema - remove and rename fields``.
     """
     symbol = "ETHRUSDPERP"
-    market_summary = await reya_tester.client.markets.get_market_summary(symbol)
+    market_summary = await reya_tester.client.markets.get_perp_market_summary(symbol)
     assert market_summary is not None
     assert market_summary.symbol == symbol
 
@@ -135,7 +149,7 @@ async def test_market_summary(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_markets_summary(reya_tester: ReyaTester):
-    markets_summary = await reya_tester.client.markets.get_markets_summary()
+    markets_summary = await reya_tester.client.markets.get_perp_markets_summary()
     assert markets_summary is not None
     assert len(markets_summary) > 0
 

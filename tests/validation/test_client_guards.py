@@ -8,12 +8,12 @@ and asserts on the client-layer validation rules:
 - ``timeout_ms`` bounds: 0 (disarm) or [5000, 60000]; out-of-range raises
   BEFORE a nonce is consumed (a rejected arm must not burn the per-wallet
   nonce counter).
-- modify targeting: exactly one of ``order_id`` / ``client_order_id``
-  (``client_order_id=0`` is not a valid target).
-- ``resting_client_order_id`` resolution: the SIGNED ``OrderDetails.clientOrderId``
-  is the resting order's id — defaulting to the targeting ``client_order_id``,
-  overridden by an explicit ``resting_client_order_id``, and 0 under
-  ``order_id`` targeting (verified by re-signing with the expected values).
+- modify targeting: at least one of ``order_id`` / ``client_order_id``;
+  when both are present, ``order_id`` targets and ``client_order_id`` restates
+  the resting order's non-zero client id.
+- ``client_order_id`` resolution: the SIGNED ``OrderDetails.clientOrderId`` is
+  the resting order's id, or 0 under ``order_id`` targeting with no client id
+  (verified by re-signing with the expected values).
 - post-only gate-lift: postOnly=True + GTC flows AND is covered by the
   signature (the entry rejections — postOnly+IOC, GTT — are pinned in
   tests/parity/test_wire_serialization.py).
@@ -99,7 +99,7 @@ def test_cancel_all_after_in_range_timeout_builds(client: ReyaTradingClient, tim
 
 
 # ============================================================================
-# modifyOrder targeting (exactly one of order_id / client_order_id)
+# modifyOrder targeting
 # ============================================================================
 
 
@@ -128,27 +128,36 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
 
 
 @pytest.mark.modify
-def test_modify_with_both_identifiers_rejected(client: ReyaTradingClient) -> None:
-    with pytest.raises(ValueError, match="exactly one of order_id or client_order_id"):
-        client.build_modify_order_payload(_modify_params(client_order_id=777))
+def test_modify_with_both_identifiers_builds_and_restates_client_id(client: ReyaTradingClient) -> None:
+    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
+
+    assert payload["orderId"] == "63552420354981888"
+    assert payload["clientOrderId"] == "777"
+    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=777)
 
 
 @pytest.mark.modify
 def test_modify_with_neither_identifier_rejected(client: ReyaTradingClient) -> None:
-    with pytest.raises(ValueError, match="exactly one of order_id or client_order_id"):
+    with pytest.raises(ValueError, match="Provide order_id or client_order_id"):
         client.build_modify_order_payload(_modify_params(order_id=None))
 
 
 @pytest.mark.modify
 def test_modify_with_client_order_id_zero_rejected(client: ReyaTradingClient) -> None:
-    """client_order_id=0 is the unset sentinel on the wire, so it can never
-    resolve to a resting order — rejected as a target."""
-    with pytest.raises(ValueError, match="client_order_id 0 is not a valid modify target"):
+    """client_order_id=0 is not a JSON no-tag placeholder."""
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
         client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=0))
 
 
+@pytest.mark.modify
+def test_modify_parameters_rejects_resting_client_order_id_alias() -> None:
+    """PRO-438 collapsed modify IDs to one client_order_id field."""
+    with pytest.raises(TypeError, match="resting_client_order_id"):
+        _modify_params(resting_client_order_id=42)
+
+
 # ============================================================================
-# resting_client_order_id resolution into the SIGNED OrderDetails.clientOrderId
+# client_order_id resolution into the SIGNED OrderDetails.clientOrderId
 # ============================================================================
 
 
@@ -179,9 +188,8 @@ def _expected_modify_signature(client: ReyaTradingClient, signed_client_order_id
 def test_modify_client_order_id_targeting_defaults_signed_client_order_id(
     client: ReyaTradingClient,
 ) -> None:
-    """Targeting by client_order_id without resting_client_order_id: the signed
-    clientOrderId defaults to the targeting value (TS SDK
-    ``restingClientOrderId ?? clientOrderId ?? 0`` parity)."""
+    """Targeting by client_order_id uses the same value as the signed
+    OrderDetails.clientOrderId."""
     payload, _nonce = client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=777))
     assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=777)
     # Sanity: the default actually matters — 0 would sign different bytes.
@@ -189,22 +197,29 @@ def test_modify_client_order_id_targeting_defaults_signed_client_order_id(
 
 
 @pytest.mark.modify
-def test_modify_explicit_resting_client_order_id_wins(client: ReyaTradingClient) -> None:
-    """An explicit resting_client_order_id beats the targeting client_order_id
-    in the signed OrderDetails.clientOrderId."""
-    payload, _nonce = client.build_modify_order_payload(
-        _modify_params(order_id=None, client_order_id=777, resting_client_order_id=42)
-    )
-    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=42)
-    assert payload["signature"] != _expected_modify_signature(client, signed_client_order_id=777)
+def test_modify_order_id_targeting_client_order_id_restates_immutable(client: ReyaTradingClient) -> None:
+    """When targeting by order_id, client_order_id restates the resting order's
+    signed OrderDetails.clientOrderId."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
+    assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=777)
+    assert payload["signature"] != _expected_modify_signature(client, signed_client_order_id=0)
+    assert payload["clientOrderId"] == "777"
+
+
+@pytest.mark.modify
+def test_modify_order_id_targeting_rejects_explicit_client_order_id_zero(client: ReyaTradingClient) -> None:
+    """No-tag order-id targeting omits client_order_id instead of sending 0."""
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
+        client.build_modify_order_payload(_modify_params(client_order_id=0))
 
 
 @pytest.mark.modify
 def test_modify_order_id_targeting_signs_client_order_id_zero(client: ReyaTradingClient) -> None:
-    """Targeting by order_id without resting_client_order_id: the signed
-    clientOrderId falls back to 0."""
+    """Targeting by order_id without client_order_id signs 0 and omits the
+    JSON field."""
     payload, _nonce = client.build_modify_order_payload(_modify_params())
     assert payload["signature"] == _expected_modify_signature(client, signed_client_order_id=0)
+    assert "clientOrderId" not in payload
 
 
 # ============================================================================
@@ -240,19 +255,32 @@ def test_modify_gtt_expiry_not_after_deadline_rejected(client: ReyaTradingClient
 def test_modify_gtc_with_expiry_rejected(client: ReyaTradingClient) -> None:
     """A GTC modify must not carry an expiry — GTC never expires. Pairing it
     with a non-zero expiresAfter is the legacy GTC-with-expiry shape (now GTT)."""
-    with pytest.raises(ValueError, match="GTC orders must not expire"):
+    with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
         client.build_modify_order_payload(_modify_params(time_in_force=TimeInForce.GTC))
 
 
 @pytest.mark.modify
 def test_modify_gtc_without_expiry_builds(client: ReyaTradingClient) -> None:
     """A GTC modify with no expiresAfter builds — GTC rests until cancelled.
-    expiresAfter serializes as the signed never-expires sentinel 0 (matching the
-    signed OrderDetails; the wire field is a numeric uint, never null)."""
+    The signer encodes no-expiry internally; JSON omits the field."""
     payload, _nonce = client.build_modify_order_payload(
         _modify_params(time_in_force=TimeInForce.GTC, expires_after=None)
     )
-    assert payload["expiresAfter"] == 0
+    assert "expiresAfter" not in payload
+
+
+def test_create_rejects_explicit_zero_client_order_id(client: ReyaTradingClient) -> None:
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.GTC,
+                client_order_id=0,
+            )
+        )
 
 
 # ============================================================================

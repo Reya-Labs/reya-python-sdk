@@ -82,13 +82,16 @@ _REQUIRED_ENV = (
 )
 _MISSING_ENV = [_k for _k in _REQUIRED_ENV if not os.environ.get(_k)]
 
-pytestmark = pytest.mark.skipif(
-    bool(_MISSING_ENV),
-    reason=(
-        "ws-exec live tests need " + ", ".join(_REQUIRED_ENV) + " in the environment "
-        "(set REYA_WS_EXEC_URL + SPOT_*_1/PERP_*_1 to run); missing: " + ", ".join(_MISSING_ENV)
+pytestmark = [
+    pytest.mark.skipif(
+        bool(_MISSING_ENV),
+        reason=(
+            "ws-exec live tests need " + ", ".join(_REQUIRED_ENV) + " in the environment "
+            "(set REYA_WS_EXEC_URL + SPOT_*_1/PERP_*_1 to run); missing: " + ", ".join(_MISSING_ENV)
+        ),
     ),
-)
+    pytest.mark.asyncio(loop_scope="function"),
+]
 
 # ---- Test parameters --------------------------------------------------------
 
@@ -162,8 +165,8 @@ async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None
     """Spot IOC happy-path over ws-exec. A far-out ($1) IOC BUY on an ETH-priced
     book crosses nothing, so the engine immediately cancels the unfilled order
     (IOC never rests). Asserts the transport carries the IOC and the response
-    reflects the no-fill IOC outcome — CANCELLED (not REJECTED) and execQty
-    absent/0. The matching engine assigns a Snowflake orderId to every order, so
+    reflects the no-fill IOC outcome: CANCELLED with execQty absent/0. The
+    matching engine assigns a Snowflake orderId to every order, so
     a no-cross IOC still carries an assigned orderId; it simply never rests,
     which the REST openOrders read-back confirms.
 
@@ -182,8 +185,8 @@ async def flow_spot_ioc_no_cross(client: ReyaWsExecClient, qty: Decimal) -> None
     print(
         f"  [spot] createOrder (IOC no-cross) OK status={resp.status} execQty={resp.exec_qty} orderId={resp.order_id}"
     )
-    if resp.status == OrderStatus.REJECTED:
-        raise RuntimeError(f"spot IOC no-cross unexpectedly REJECTED: {resp}")
+    if resp.status != OrderStatus.CANCELLED:
+        raise RuntimeError(f"spot IOC no-cross must be CANCELLED, got {resp.status}: {resp}")
     # The engine assigns an orderId to every order, including a no-cross IOC; it
     # is CANCELLED, not resting (no-rest is proven by the openOrders read-back
     # below). Mirrors tests/engine/test_ioc_orders.py.
@@ -278,14 +281,13 @@ async def flow_perp_create_trigger_and_cancel(
     client: ReyaWsExecClient,
     trigger_type: OrderType,
     trigger_px: str,
-    qty: Decimal,
+    _qty: Decimal,
     label: str,
 ) -> None:
     resp = await client.create_trigger_order(
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=False,
-            qty=str(qty),
             trigger_px=trigger_px,
             trigger_type=trigger_type,
         )
@@ -620,7 +622,7 @@ class _WsExecHarness:
     perp_qty: Decimal
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="module")
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
 async def harness():
     """Build REST clients, resolve market min-qtys, expose the ws-exec URL.
 
@@ -641,7 +643,7 @@ async def harness():
         if SPOT_SYMBOL not in spot_markets:
             raise RuntimeError(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
         if PERP_SYMBOL not in perp_markets:
-            raise RuntimeError(f"{PERP_SYMBOL} not found in /marketDefinitions")
+            raise RuntimeError(f"{PERP_SYMBOL} not found in /perpMarketDefinitions")
         yield _WsExecHarness(
             ws_url=ws_url,
             spot_rest=spot_rest,
@@ -657,14 +659,14 @@ async def harness():
             await spot_rest_2.close()
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="module")
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
 async def spot_ws(harness):  # pylint: disable=redefined-outer-name
     """A connected ws-exec client authenticated as the spot account."""
     async with await _connect_ws_exec_client(harness.spot_rest, harness.ws_url) as client:
         yield client
 
 
-@pytest_asyncio.fixture(loop_scope="session", scope="module")
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
 async def perp_ws(harness):  # pylint: disable=redefined-outer-name
     """A connected ws-exec client authenticated as the perp account."""
     async with await _connect_ws_exec_client(harness.perp_rest, harness.ws_url) as client:

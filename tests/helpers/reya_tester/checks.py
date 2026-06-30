@@ -289,7 +289,9 @@ class Checks:
             spot_execution.exchange_id == self._t.client.config.dex_id
         ), "check_spot_execution: Exchange ID does not match"
         assert spot_execution.symbol == expected_order.symbol, "check_spot_execution: Symbol does not match"
-        assert spot_execution.account_id == expected_order.account_id, "check_spot_execution: Account ID does not match"
+        assert (
+            spot_execution.taker_account_id == expected_order.account_id
+        ), "check_spot_execution: Taker account ID does not match"
         assert spot_execution.qty == (
             expected_order.qty if expected_qty is None else expected_qty
         ), "check_spot_execution: Quantity does not match"

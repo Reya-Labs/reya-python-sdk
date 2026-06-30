@@ -52,15 +52,15 @@ from .models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerO
 #                      Bounds how long a signed payload may be submitted;
 #                      irrelevant once the order rests.
 #   - `expiresAfter` — the on-chain ORDER LIFETIME, enforced at settlement and by
-#                      the matching engine (`expiresAfter == 0` => never expires).
-#                      THIS is what keeps a resting order alive.
-# The two are independent. GTC and IOC always sign `expiresAfter = 0` (GTC rests
-# until filled or cancelled; IOC never rests, so its lifetime is moot) with a
-# short entry-only `deadline`. Only GTT orders carry a non-zero `expiresAfter`,
-# which must be greater than the `deadline` (the order has to outlive its own
-# entry window). The matching engine accepts `expiresAfter == 0` as "no expiry".
+#                      the matching engine. The signed no-expiry encoding is
+#                      zero, but REST/WS JSON omits `expiresAfter` for no-expiry.
+# The two are independent. GTC and IOC sign the no-expiry value (GTC rests until
+# filled or cancelled; IOC never rests, so its lifetime is moot) with a short
+# entry-only `deadline`. Only GTT orders carry a non-zero `expiresAfter`, which
+# must be greater than the `deadline` (the order has to outlive its own entry
+# window).
 DEFAULT_DEADLINE_S = 60  # signature-validity window (entry only), all order types.
-PERPETUAL_LIFETIME = 0  # `expiresAfter` sentinel: never expires (GTC rests; IOC moot).
+PERPETUAL_LIFETIME = 0  # signed no-expiry encoding (GTC rests; IOC moot).
 
 # cancelAllAfter (dead-man's-switch) countdown bounds. `timeoutMs` must be 0
 # (disarm) or within [min, max]; each call replaces the running countdown.
@@ -74,6 +74,20 @@ CANCEL_ALL_AFTER_MAX_TIMEOUT_MS = 60_000
 # market-type-conditional wire fields like `reduceOnly` without an extra network
 # round-trip.
 _SPOT_MARKET_ID_OFFSET = 10_000_000_000
+
+
+def _reject_zero_client_order_id(client_order_id: Optional[int]) -> None:
+    if client_order_id == 0:
+        raise ValueError("client_order_id must be omitted rather than set to 0")
+
+
+def _strip_absent_json_fields(payload: dict) -> dict:
+    """Drop optional JSON fields that are absent after signature construction."""
+    return {
+        key: value
+        for key, value in payload.items()
+        if value is not None and not (key == "expiresAfter" and value == PERPETUAL_LIFETIME)
+    }
 
 
 _ORDER_TYPE_TO_INT: dict[OrderType, OrderTypeInt] = {
@@ -253,14 +267,16 @@ class ReyaTradingClient:
         is_spot_market = market_id >= _SPOT_MARKET_ID_OFFSET
         is_ioc = params.time_in_force == TimeInForce.IOC
         is_perp_ioc = is_ioc and not is_spot_market
+        _reject_zero_client_order_id(params.client_order_id)
 
         nonce = self._get_next_nonce()
 
         # `deadline` (entry-time signature validity) and `expiresAfter` (on-chain
         # order lifetime) are independent — see the constants block. Defaults:
         #   - deadline     → now + 60s for every order type (short entry window)
-        #   - expiresAfter → 0 / perpetual (GTC rests until filled or cancelled;
-        #                    IOC never rests, so its lifetime is moot)
+        #   - expiresAfter → omitted in JSON for no-expiry orders; signed as
+        #                    the no-expiry value (GTC rests until filled or
+        #                    cancelled; IOC never rests, so its lifetime is moot)
         # An explicit `params.deadline` / `params.expires_after` overrides each
         # field independently.
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
@@ -268,16 +284,15 @@ class ReyaTradingClient:
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
         # TIF <-> expiresAfter coupling (mirrors the off-chain validator + the ME):
-        # GTC never expires (expiresAfter must be 0); GTT always expires
-        # (expiresAfter non-zero and strictly after the deadline). IOC never rests,
-        # so its lifetime is moot. Fail fast before signing.
+        # GTC never expires; GTT always expires strictly after the deadline.
+        # IOC never rests, so its lifetime is moot. Fail fast before signing.
         if params.time_in_force == TimeInForce.GTT:
             if expires_after == 0:
                 raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
             if expires_after <= deadline:
                 raise ValueError("GTT expires_after must be greater than deadline")
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
-            raise ValueError("GTC orders must not expire (expires_after must be 0)")
+            raise ValueError("GTC orders must omit expires_after")
 
         # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
         # be ABSENT on spot ("not supported for spot markets") and perp GTC
@@ -338,7 +353,7 @@ class ReyaTradingClient:
             "signerWallet": self.signer_wallet_address,
             "deadline": deadline,
         }
-        return payload, nonce
+        return _strip_absent_json_fields(payload), nonce
 
     async def create_limit_order(self, params: LimitOrderParameters) -> CreateOrderResponse:
         """
@@ -365,15 +380,17 @@ class ReyaTradingClient:
             raise ValueError("Account ID is required for order signing")
         if self._signature_generator is None:
             raise ValueError("Signature generator is required for order signing")
+        _reject_zero_client_order_id(params.client_order_id)
+        if params.qty is not None:
+            raise ValueError("qty on TP/SL trigger orders is not supported; omit qty")
 
         market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = self._get_next_nonce()
 
-        # A TP/SL rests until its trigger fires, so its on-chain LIFETIME
-        # (`expiresAfter`) is 0 / perpetual — otherwise the stop is silently
-        # killed and the position left unprotected. `deadline` is the independent
-        # entry-time signature-validity window (now decoupled from `expiresAfter`;
-        # the deployed matching engine accepts `expiresAfter == 0`). An explicit
+        # A TP/SL rests until its trigger fires, so its on-chain lifetime signs
+        # the no-expiry value and omits `expiresAfter` from JSON; otherwise the
+        # stop is silently killed and the position left unprotected. `deadline`
+        # is the independent entry-time signature-validity window. An explicit
         # `params.deadline` still wins.
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
         expires_after = PERPETUAL_LIFETIME
@@ -410,7 +427,7 @@ class ReyaTradingClient:
             exchange_id=self.config.dex_id,
             order_type=int(order_type_int),
             is_buy=params.is_buy,
-            qty=Decimal(params.qty),
+            qty=Decimal(0),
             limit_price=limit_price,
             trigger_price=Decimal(params.trigger_px),
             time_in_force=int(TimeInForceInt.GTC),
@@ -432,18 +449,17 @@ class ReyaTradingClient:
             # rejects with INVALID_ARGUMENT. format(..., "f") renders a plain
             # decimal for any tick size or caller-supplied price.
             "limitPx": format(limit_price, "f"),
-            "qty": params.qty,
             "triggerPx": str(params.trigger_px),
             "orderType": params.trigger_type.value,
             "reduceOnly": None,
-            "expiresAfter": expires_after,
+            "expiresAfter": None,
             "clientOrderId": (str(params.client_order_id) if params.client_order_id is not None else None),
             "signature": signature,
             "nonce": str(nonce),
             "signerWallet": self.signer_wallet_address,
             "deadline": deadline,
         }
-        return payload, nonce
+        return _strip_absent_json_fields(payload), nonce
 
     async def create_trigger_order(self, params: TriggerOrderParameters) -> CreateOrderResponse:
         """
@@ -464,9 +480,9 @@ class ReyaTradingClient:
         client_order_id: Optional[int] = None,
     ) -> CancelOrderResponse:
         """
-        Cancel a single open order. At least one of `order_id` or
-        `client_order_id` must be provided. Works on both spot and perp
-        markets.
+        Cancel a single open order. Provide `order_id`, or a non-zero
+        `client_order_id` when `order_id` is absent. Works on both spot
+        and perp markets.
 
         Precedence note: the off-chain matching-engine controller accepts
         both fields and prefers `order_id` as the canonical identifier
@@ -506,6 +522,7 @@ class ReyaTradingClient:
             raise ValueError("symbol is required to cancel an order")
         if order_id is None and client_order_id is None:
             raise ValueError("Provide either order_id or client_order_id")
+        _reject_zero_client_order_id(client_order_id)
 
         resolved_account_id = account_id if account_id is not None else self.config.account_id
         if resolved_account_id is None:
@@ -529,15 +546,17 @@ class ReyaTradingClient:
             deadline=deadline,
         )
 
-        return {
-            "symbol": symbol,
-            "accountId": resolved_account_id,
-            "orderId": order_id,
-            "clientOrderId": (str(client_order_id) if client_order_id is not None else None),
-            "signature": signature,
-            "nonce": str(nonce),
-            "deadline": deadline,
-        }
+        return _strip_absent_json_fields(
+            {
+                "symbol": symbol,
+                "accountId": resolved_account_id,
+                "orderId": order_id,
+                "clientOrderId": (str(client_order_id) if client_order_id is not None else None),
+                "signature": signature,
+                "nonce": str(nonce),
+                "deadline": deadline,
+            }
+        )
 
     async def mass_cancel(
         self,
@@ -659,13 +678,17 @@ class ReyaTradingClient:
     async def modify_order(self, params: ModifyOrderParameters) -> ModifyOrderResponse:
         """
         Modify a resting order in place on either spot or perp markets. The
-        order keeps its `orderId` and `clientOrderId`. Target exactly one of
-        `params.order_id` / `params.client_order_id`. The four modifiable
-        fields (`limit_px`, `qty`, `post_only`, `expires_after`) all carry the
-        complete post-modify state; the immutables (`is_buy`, `time_in_force`,
-        `trigger_px`, `reduce_only`, `resting_client_order_id`) must restate
-        the resting order's values — both go into the fresh EIP-712 signature
-        over the full post-modify state.
+        order keeps its `orderId` and, if it has one, its `clientOrderId`.
+        Target by `order_id` or `client_order_id`; when `order_id` is present,
+        `client_order_id` restates the resting order's non-zero client id for
+        the signature, and is omitted when the resting order has none. The
+        modifiable fields (`limit_px`, `qty`, `post_only`, `expires_after`, and
+        `trigger_px` for trigger orders) all carry the complete post-modify
+        state; the immutables (`is_buy`, `time_in_force`, `reduce_only`,
+        `client_order_id`) must restate the resting order's values. LIMIT
+        modifies omit `trigger_px`.
+        Both groups go into the fresh EIP-712 signature over the full
+        post-modify state.
         """
         payload, _nonce = self.build_modify_order_payload(params)
         return await self.orders.modify_order(ModifyOrderRequest(**payload))
@@ -680,10 +703,9 @@ class ReyaTradingClient:
         """
         has_order_id = params.order_id is not None
         has_client_order_id = params.client_order_id is not None
-        if has_order_id == has_client_order_id:
-            raise ValueError("Provide exactly one of order_id or client_order_id")
-        if has_client_order_id and params.client_order_id == 0:
-            raise ValueError("client_order_id 0 is not a valid modify target")
+        if not has_order_id and not has_client_order_id:
+            raise ValueError("Provide order_id or client_order_id")
+        _reject_zero_client_order_id(params.client_order_id)
         if self.config.account_id is None:
             raise ValueError("Account ID is required for order signing")
         if self._signature_generator is None:
@@ -695,7 +717,7 @@ class ReyaTradingClient:
 
         # TIF <-> expiresAfter coupling, checked against the RESTING order's
         # immutable TIF (a modify cannot change TIF — the caller passes the
-        # resting order's TIF). GTC never expires; GTT must expire after deadline.
+        # resting order's TIF). GTC omits expiry; GTT must expire after deadline.
         expires_after = params.expires_after or 0
         if params.time_in_force == TimeInForce.GTT:
             if expires_after == 0:
@@ -703,13 +725,13 @@ class ReyaTradingClient:
             if expires_after <= deadline:
                 raise ValueError("GTT expires_after must be greater than deadline")
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
-            raise ValueError("GTC orders must not expire (expires_after must be 0)")
+            raise ValueError("GTC orders must omit expires_after")
 
-        # The signed `OrderDetails.clientOrderId` is the RESTING order's
-        # clientOrderId — independent of the targeting parameter. When
-        # targeting BY client_order_id it defaults to that value (mirrors the
-        # TS SDK: restingClientOrderId ?? clientOrderId ?? 0).
-        signed_client_order_id = params.resting_client_order_id or params.client_order_id or 0
+        # Single-field PRO-438 contract: client_order_id is both the lookup key
+        # when order_id is absent and the restated immutable signed into
+        # OrderDetails.clientOrderId. With order_id targeting, omit it for a
+        # no-tag resting order.
+        signed_client_order_id = params.client_order_id or 0
         trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
 
         signature = self._signature_generator.sign_order(
@@ -732,10 +754,6 @@ class ReyaTradingClient:
 
         payload = {
             "orderId": str(params.order_id) if params.order_id is not None else None,
-            # clientOrderId is the resting order's signed clientOrderId (a restated
-            # immutable, 0 when the order has none) — NOT the targeting param. The
-            # ME targets by orderId when present, else by a non-zero clientOrderId.
-            "clientOrderId": str(signed_client_order_id),
             "symbol": params.symbol,
             "accountId": self.config.account_id,
             # Restated immutables (full-restate): the request carries every signed
@@ -756,7 +774,9 @@ class ReyaTradingClient:
             "signerWallet": self.signer_wallet_address,
             "deadline": deadline,
         }
-        return payload, nonce
+        if params.client_order_id is not None:
+            payload["clientOrderId"] = str(params.client_order_id)
+        return _strip_absent_json_fields(payload), nonce
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         wallet = wallet_address or self.owner_wallet_address

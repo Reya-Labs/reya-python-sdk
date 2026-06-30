@@ -40,7 +40,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.modify]
 # Modify error codes a race can legitimately surface (substring-matched in the
 # REST ApiException message, as the rest of the suite does).
 _KNOWN_CODES = (
-    "ORDER_NOT_FOUND",
+    "ORDER_NOT_FOUND_ERROR",
     "EMPTY_MODIFY_ERROR",
     "INVALID_NONCE_ERROR",
     "MODIFY_ORDER_OTHER_ERROR",
@@ -94,7 +94,7 @@ async def test_modify_while_create_in_flight(
 ) -> None:
     """A modify targeted by clientOrderId fired CONCURRENTLY with the create of
     that order. Both carry nonces, so each is ok / INVALID_NONCE; the modify can
-    also land before the order exists (ORDER_NOT_FOUND). Invariant: at most ONE
+    also land before the order exists (ORDER_NOT_FOUND_ERROR). Invariant: at most ONE
     resting order for the clientOrderId, carrying one WHOLE state (never a torn
     blend)."""
     coid = int(time.time() * 1_000_000)
@@ -121,7 +121,6 @@ async def test_modify_while_create_in_flight(
         expires_after=0,
         time_in_force=TimeInForce.GTC,
         client_order_id=coid,
-        resting_client_order_id=coid,
     )
 
     try:
@@ -135,14 +134,13 @@ async def test_modify_while_create_in_flight(
         assert create_outcome in ("ok", "INVALID_NONCE_ERROR"), f"[{market_type}] create outcome={create_outcome}"
         assert modify_outcome in (
             "ok",
-            "ORDER_NOT_FOUND",
+            "ORDER_NOT_FOUND_ERROR",
             "INVALID_NONCE_ERROR",
         ), f"[{market_type}] modify-in-flight outcome={modify_outcome}"
         logger.info(f"[{market_type}] create+modify in-flight → create={create_outcome} modify={modify_outcome}")
 
         # Invariant (when the create landed): at most ONE resting order for the
-        # created orderId, and if present it is one whole state (Order doesn't
-        # expose the resting clientOrderId, so key off the engine orderId).
+        # created orderId, and if present it is one whole state.
         if create_outcome == "ok":
             assert not isinstance(create_res, BaseException)  # narrowed by create_outcome
             order_id = create_res.order_id
@@ -257,12 +255,12 @@ async def test_modify_cancel_race(
         cancel_outcome = classify(cancel_res)
         assert modify_outcome in (
             "ok",
-            "ORDER_NOT_FOUND",
+            "ORDER_NOT_FOUND_ERROR",
             "INVALID_NONCE_ERROR",
         ), f"[{market_type}] modify outcome={modify_outcome}"
         assert cancel_outcome in (
             "ok",
-            "ORDER_NOT_FOUND",
+            "ORDER_NOT_FOUND_ERROR",
             "INVALID_NONCE_ERROR",
         ), f"[{market_type}] cancel outcome={cancel_outcome}"
         logger.info(f"[{market_type}] modify+cancel race → modify={modify_outcome} cancel={cancel_outcome}")

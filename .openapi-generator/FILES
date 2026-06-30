@@ -15,10 +15,12 @@ sdk/open_api/models/account.py
 sdk/open_api/models/account_balance.py
 sdk/open_api/models/account_type.py
 sdk/open_api/models/asset_definition.py
+sdk/open_api/models/asset_oracle_price.py
 sdk/open_api/models/cancel_all_after_request.py
 sdk/open_api/models/cancel_all_after_response.py
 sdk/open_api/models/cancel_order_request.py
 sdk/open_api/models/cancel_order_response.py
+sdk/open_api/models/cancel_reason.py
 sdk/open_api/models/candle_history_data.py
 sdk/open_api/models/create_order_request.py
 sdk/open_api/models/create_order_response.py
@@ -30,12 +32,13 @@ sdk/open_api/models/execution_type.py
 sdk/open_api/models/fee_tier_parameters.py
 sdk/open_api/models/global_fee_parameters.py
 sdk/open_api/models/level.py
-sdk/open_api/models/liquidity_parameters.py
 sdk/open_api/models/market_definition.py
 sdk/open_api/models/market_summary.py
 sdk/open_api/models/mass_cancel_request.py
 sdk/open_api/models/mass_cancel_response.py
 sdk/open_api/models/modify_order_request.py
+sdk/open_api/models/modify_order_request1_all_of_not.py
+sdk/open_api/models/modify_order_request1_all_of_not1.py
 sdk/open_api/models/modify_order_response.py
 sdk/open_api/models/order.py
 sdk/open_api/models/order_status.py

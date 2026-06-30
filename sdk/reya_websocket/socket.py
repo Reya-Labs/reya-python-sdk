@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
@@ -56,8 +57,8 @@ WebSocketMessage = Union[
     UnsubscribedMessagePayload,
     ErrorMessagePayload,
     # Market channels
-    MarketsSummaryUpdatePayload,  # /v2/markets/summary
-    MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+    MarketsSummaryUpdatePayload,  # /v2/perpMarkets/summary
+    MarketSummaryUpdatePayload,  # /v2/perpMarket/{symbol}/summary
     SpotMarketsSummaryUpdatePayload,  # /v2/spotMarkets/summary
     SpotMarketSummaryUpdatePayload,  # /v2/spotMarket/{symbol}/summary
     MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
@@ -72,6 +73,7 @@ WebSocketMessage = Union[
     WalletExecutionBustUpdatePayload,  # /v2/wallet/{address}/executionBusts
     AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
     # Price channels
+    AssetOraclePricesUpdatePayload,  # /v2/assetOraclePrices
     PricesUpdatePayload,  # /v2/prices
     PriceUpdatePayload,  # /v2/prices/{symbol}
 ]
@@ -92,9 +94,10 @@ class ReyaSocket(WebSocketApp):
         "ping": PingMessagePayload,
         "pong": PongMessagePayload,
         # All markets summary (exact match)
-        "/v2/markets/summary": MarketsSummaryUpdatePayload,
+        "/v2/perpMarkets/summary": MarketsSummaryUpdatePayload,
         "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
         # All prices (exact match)
+        "/v2/assetOraclePrices": AssetOraclePricesUpdatePayload,
         "/v2/prices": PricesUpdatePayload,
     }
 
@@ -193,10 +196,10 @@ class ReyaSocket(WebSocketApp):
             return self.CHANNEL_PAYLOAD_MAP[channel]
 
         # Pattern matching for parameterized channels
-        if "/v2/market/" in channel:
-            if channel.endswith("/summary"):
-                return MarketSummaryUpdatePayload
-            elif channel.endswith("/perpExecutions"):
+        if "/v2/perpMarket/" in channel and channel.endswith("/summary"):
+            return MarketSummaryUpdatePayload
+        elif "/v2/market/" in channel:
+            if channel.endswith("/perpExecutions"):
                 return MarketPerpExecutionUpdatePayload
             elif channel.endswith("/spotExecutions"):
                 return MarketSpotExecutionUpdatePayload

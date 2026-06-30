@@ -65,7 +65,7 @@ async def test_perp_order_invalid_signature_rejected(perp_maker_tester: ReyaTest
     with pytest.raises(ApiException) as exc_info:
         await perp_maker_tester.client.orders.create_order(create_order_request=request)
     error_msg = str(exc_info.value)
-    assert "CREATE_ORDER_OTHER_ERROR" in error_msg, f"Expected CREATE_ORDER_OTHER_ERROR, got: {error_msg[:200]}"
+    assert "UNAUTHORIZED_SIGNATURE_ERROR" in error_msg, f"Expected UNAUTHORIZED_SIGNATURE_ERROR, got: {error_msg[:200]}"
     assert "Invalid signature" in error_msg, f"Expected 'Invalid signature', got: {error_msg[:200]}"
     logger.info("✅ Perp-market invalid signature rejected like spot")
 

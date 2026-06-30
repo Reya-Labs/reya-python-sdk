@@ -60,10 +60,8 @@ def full_state_modify_params(order: Order, **overrides: Any) -> ModifyOrderParam
     ``order_id``) unless ``order_id`` is also explicitly overridden, keeping
     the builder's exactly-one-target rule satisfied by default.
 
-    ``resting_client_order_id`` stays at the dataclass default (0) unless
-    overridden — the public ``Order`` model doesn't expose the resting
-    clientOrderId, so tests that created the order with a non-zero
-    clientOrderId must pass it explicitly.
+    With ``client_order_id`` targeting, the same value is also the restated
+    immutable signed into ``OrderDetails.clientOrderId``.
     """
     if order.qty is None:
         raise ValueError(f"Order {order.order_id} has no qty; cannot restate the post-modify state")
@@ -304,7 +302,7 @@ class TriggerOrderBuilder:
 
     _symbol: str = "ETHRUSDPERP"
     _is_buy: bool = True
-    _qty: str = "0.01"
+    _qty: str | None = None
     _trigger_px: str = "4000.0"
     _limit_px: str = "4000.0"
     _trigger_type: OrderType = field(default_factory=lambda: OrderType.TAKE_PROFIT)
@@ -332,7 +330,7 @@ class TriggerOrderBuilder:
         return self
 
     def qty(self, qty: str) -> TriggerOrderBuilder:
-        """Set the quantity to execute when the trigger fires."""
+        """Deprecated: TP/SL trigger creates omit qty and derive executable size."""
         self._qty = qty
         return self
 

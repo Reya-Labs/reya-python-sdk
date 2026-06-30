@@ -256,15 +256,15 @@ async def execute_spot_transfer(
         order_fully_matched = True
         logger.info("        ✓ Sell order fully matched")
 
-    # Get transaction hash from spot executions. IOC orders may return
-    # ``order_id=None`` per the CreateOrderResponse spec — gate the loop so
-    # we don't false-match on the first historical execution with no order id.
+    # Get transaction hash from spot executions. IOC orders may return no
+    # order id on the create response — gate the loop so we don't false-match
+    # on the first historical execution with no taker order id.
     tx_hash = None
     if buy_order_id is not None:
         try:
             spot_executions = await receiver_client.get_spot_executions()
             for execution in spot_executions.data:
-                if execution.order_id == buy_order_id:
+                if execution.taker_order_id == buy_order_id:
                     tx_hash = execution.additional_properties.get("transactionHash")
                     if not tx_hash:
                         tx_hash = execution.additional_properties.get("txHash")

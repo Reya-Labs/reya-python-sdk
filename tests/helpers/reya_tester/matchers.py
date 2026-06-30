@@ -35,7 +35,7 @@ class ExecutionMatcher:
     """Unified matching for perp and spot executions.
 
     Provides static methods for matching executions against expected orders,
-    handling the differences between perp (no order_id) and spot (has order_id).
+    handling the differences between perp and spot naming.
     """
 
     @staticmethod
@@ -79,7 +79,7 @@ class ExecutionMatcher:
         """Match a spot execution against expected values.
 
         Performs strict matching on ALL important fields:
-        - order_id, account_id, symbol, side, qty
+        - taker_order_id, taker_account_id, symbol, side, qty
 
         Args:
             execution: The spot execution to check.
@@ -88,9 +88,9 @@ class ExecutionMatcher:
         Returns:
             True if execution matches expected values.
         """
-        if str(execution.order_id) != str(expected.order_id):
+        if str(execution.taker_order_id) != str(expected.order_id):
             return False
-        if execution.account_id != expected.account_id:
+        if execution.taker_account_id != expected.account_id:
             return False
         if execution.symbol != expected.symbol:
             return False
@@ -142,10 +142,12 @@ class FieldValidator:
         """
         result = ValidationResult()
 
-        if str(execution.order_id) != str(expected.order_id):
-            result.add_error(f"order_id mismatch: expected {expected.order_id}, got {execution.order_id}")
-        if execution.account_id != expected.account_id:
-            result.add_error(f"account_id mismatch: expected {expected.account_id}, got {execution.account_id}")
+        if str(execution.taker_order_id) != str(expected.order_id):
+            result.add_error(f"taker_order_id mismatch: expected {expected.order_id}, got {execution.taker_order_id}")
+        if execution.taker_account_id != expected.account_id:
+            result.add_error(
+                f"taker_account_id mismatch: expected {expected.account_id}, got {execution.taker_account_id}"
+            )
         if execution.symbol != expected.symbol:
             result.add_error(f"symbol mismatch: expected {expected.symbol}, got {execution.symbol}")
 

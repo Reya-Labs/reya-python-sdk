@@ -43,6 +43,7 @@ import time
 
 import pytest
 
+from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.open_api.models.cancel_all_after_response import CancelAllAfterResponse
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
@@ -158,6 +159,12 @@ async def test_cod_fires_cancels_all_orders(
     # per order (WS is the authoritative status source in for_order_state).
     for order_id in order_ids:
         await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED)
+        ws_order = maker.ws.orders.get(str(order_id))
+        assert ws_order is not None, f"[{market_type}] missing WS cancelled order {order_id}"
+        assert (
+            ws_order.cancel_reason == WsCancelReason.CANCEL_ALL_AFTER
+        ), f"[{market_type}] expected CANCEL_ALL_AFTER cancelReason for {order_id}, got {ws_order.cancel_reason}"
+        assert ws_order.cancel_reason_message
     logger.info(f"[{market_type}] ✅ WS delivered CANCELLED orderChanges for all {len(order_ids)} orders")
 
 

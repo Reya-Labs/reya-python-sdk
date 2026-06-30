@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_type import OrderType
 from sdk.async_exec_api.time_in_force import TimeInForce
-class CreateOrderRequest(BaseModel): 
+class CreateOrderRequest(BaseModel):
   exchange_id: int = Field(alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
@@ -20,7 +20,7 @@ class CreateOrderRequest(BaseModel):
   signer_wallet: str = Field(alias='''signerWallet''')
   deadline: int = Field()
   expires_after: Optional[int] = Field(default=None, alias='''expiresAfter''')
-  client_order_id: Optional[str] = Field(description='''Client-provided order ID for tracking and correlation, as a decimal string. Maps to the on-chain `OrderDetails.clientOrderId` (`uint64`) — signed as part of the EIP-712 payload but not enforced on-chain. Carried as a string (full `uint64` range [0, 2^64-1]) to preserve precision, like `orderId` and `nonce`.''', default=None, alias='''clientOrderId''')
+  client_order_id: Optional[str] = Field(description='''Client-provided order ID for tracking and correlation, as a decimal string. Maps to the on-chain `OrderDetails.clientOrderId` (`uint64`) — signed as part of the EIP-712 payload but not enforced on-chain. Omit when the order has no client id; provided values must be non-zero and are carried as strings to preserve precision, like `orderId` and `nonce`.''', default=None, alias='''clientOrderId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -44,9 +44,9 @@ class CreateOrderRequest(BaseModel):
     known_object_properties = ['exchange_id', 'symbol', 'account_id', 'is_buy', 'limit_px', 'qty', 'order_type', 'time_in_force', 'trigger_px', 'reduce_only', 'post_only', 'signature', 'nonce', 'signer_wallet', 'deadline', 'expires_after', 'client_order_id', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0: 
+    if len(unknown_object_properties) == 0:
       return data
-  
+
     known_json_properties = ['exchangeId', 'symbol', 'accountId', 'isBuy', 'limitPx', 'qty', 'orderType', 'timeInForce', 'triggerPx', 'reduceOnly', 'postOnly', 'signature', 'nonce', 'signerWallet', 'deadline', 'expiresAfter', 'clientOrderId', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -54,4 +54,3 @@ class CreateOrderRequest(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
-

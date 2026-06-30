@@ -30,11 +30,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import (
-    LimitOrderParameters,
-    ModifyOrderParameters,
-    TriggerOrderParameters,
-)
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
 pytestmark = pytest.mark.offline
 
@@ -74,13 +70,14 @@ def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=False,
-            qty="0.01",
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
         )
     )
     assert payload["limitPx"] == "0.001"  # == market tick size
     assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
+    assert "qty" not in payload
+    assert "expiresAfter" not in payload
 
 
 def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
@@ -89,7 +86,6 @@ def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClien
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=True,
-            qty="0.01",
             trigger_px="1000000",
             trigger_type=OrderType.TAKE_PROFIT,
         )
@@ -106,7 +102,6 @@ def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClie
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
             is_buy=False,
-            qty="0.01",
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
             limit_px="0.0000001",
@@ -117,8 +112,8 @@ def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClie
 
 
 def test_limit_payload_decouples_deadline_from_expires_after(client: ReyaTradingClient) -> None:
-    """GTC limit: ``expiresAfter`` is 0 / perpetual and ``deadline`` is a short,
-    independent unix-seconds window — not the old far-future
+    """GTC limit: ``expiresAfter`` is omitted from JSON and ``deadline`` is a
+    short, independent unix-seconds window — not the old far-future
     ``deadline == expiresAfter`` lifetime stopgap."""
     before = int(time.time())
     payload, _ = client.build_create_limit_order_payload(
@@ -130,11 +125,9 @@ def test_limit_payload_decouples_deadline_from_expires_after(client: ReyaTrading
             time_in_force=TimeInForce.GTC,
         )
     )
-    # Perpetual lifetime — rests until filled or cancelled.
-    assert payload["expiresAfter"] == 0
-    # A near-future unix-seconds deadline, decoupled from (and not equal to) expiresAfter.
+    assert "expiresAfter" not in payload
+    # A near-future unix-seconds deadline, decoupled from order lifetime.
     assert before <= payload["deadline"] <= before + 600
-    assert payload["deadline"] != payload["expiresAfter"]
 
 
 def test_limit_payload_post_only_defaults_false(client: ReyaTradingClient) -> None:
@@ -243,7 +236,7 @@ def test_gtt_expiry_not_after_deadline_rejected(client: ReyaTradingClient) -> No
 def test_gtc_with_expiry_rejected(client: ReyaTradingClient) -> None:
     """GTC never expires — pairing it with a non-zero ``expiresAfter`` is the
     legacy GTC-with-expiry shape that is now GTT. Rejected at entry."""
-    with pytest.raises(ValueError, match="GTC orders must not expire"):
+    with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
         client.build_create_limit_order_payload(
             LimitOrderParameters(
                 symbol=PERP_SYMBOL,
@@ -280,10 +273,23 @@ def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient) -> None:
             TriggerOrderParameters(
                 symbol=PERP_SYMBOL,
                 is_buy=False,
-                qty="0.01",
                 trigger_px="1000",
                 trigger_type=OrderType.STOP_LOSS,
                 reduce_only=True,
+            )
+        )
+
+
+def test_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
+    """TP/SL trigger creates omit qty; callers must not send a JSON sentinel."""
+    with pytest.raises(ValueError, match="qty on TP/SL trigger orders is not supported"):
+        client.build_create_trigger_order_payload(
+            TriggerOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=False,
+                trigger_px="1000",
+                trigger_type=OrderType.STOP_LOSS,
+                qty="0.01",
             )
         )
 
@@ -305,6 +311,12 @@ def test_cancel_accepts_both_identifiers(client: ReyaTradingClient) -> None:
     )
     assert payload["orderId"] == "123"
     assert payload["clientOrderId"] == "456"
+
+
+def test_cancel_rejects_zero_client_order_id_target(client: ReyaTradingClient) -> None:
+    """client_order_id=0 is not a JSON no-tag placeholder."""
+    with pytest.raises(ValueError, match="client_order_id must be omitted"):
+        client.build_cancel_order_payload(symbol=PERP_SYMBOL, client_order_id=0)
 
 
 def _modify_params(**overrides: Any) -> ModifyOrderParameters:
@@ -332,21 +344,18 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
 
 @pytest.mark.modify
 def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
-    """The modify body always carries ALL FOUR post-modify fields (limitPx, qty,
-    postOnly, expiresAfter — no omitted-means-inherited shorthand), the
-    targeting identifier, and signerWallet, with the documented wire types."""
+    """The modify body carries the post-modify fields, target identifier, and
+    signerWallet, with unset optional JSON fields omitted."""
     payload, nonce = client.build_modify_order_payload(_modify_params())
 
     assert set(payload.keys()) == {
         "orderId",
-        "clientOrderId",
         "symbol",
         "accountId",
         "exchangeId",
         "isBuy",
         "orderType",
         "timeInForce",
-        "triggerPx",
         "reduceOnly",
         "limitPx",
         "qty",
@@ -367,16 +376,14 @@ def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
     assert payload["orderType"] == "LIMIT"
     assert payload["timeInForce"] == "GTT"
     assert payload["reduceOnly"] is False
-    assert payload["triggerPx"] is None  # LIMIT carries no trigger
+    assert "triggerPx" not in payload  # LIMIT carries no trigger
     assert isinstance(payload["exchangeId"], int)
     # Targeting + auth.
     assert payload["orderId"] == "63552420354981888"  # orderId is a STRING on the wire
     assert isinstance(payload["orderId"], str)
-    # clientOrderId is the resting order's signed clientOrderId ("0" here — the
-    # GTT fixture targets by orderId and carries no clientOrderId). It is a
-    # decimal STRING on the wire (uint64), like orderId.
-    assert payload["clientOrderId"] == "0"
-    assert isinstance(payload["clientOrderId"], str)
+    # The fixture targets by orderId and has no clientOrderId. The signature
+    # uses 0 internally, but JSON omits absent clientOrderId.
+    assert "clientOrderId" not in payload
     assert payload["accountId"] == 12345
     assert payload["signerWallet"] == SIGNER_ADDRESS
     assert payload["signature"].startswith("0x")
@@ -393,10 +400,9 @@ def test_modify_payload_round_trips_generated_model(client: ReyaTradingClient) -
     body = ModifyOrderRequest(**payload).to_dict()
 
     # to_dict drops None optionals: triggerPx (None for LIMIT) disappears;
-    # clientOrderId stays (0 is the restated immutable, not None); orderId stays.
+    # clientOrderId is absent because this order has none; orderId stays.
     assert set(body.keys()) == {
         "orderId",
-        "clientOrderId",
         "symbol",
         "accountId",
         "exchangeId",
@@ -425,10 +431,22 @@ def test_modify_payload_client_order_id_targeting_wire_shape(client: ReyaTrading
     """Targeting by client_order_id: the body carries clientOrderId as a decimal
     string (uint64) and omits orderId."""
     payload, _nonce = client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=777))
-    assert payload["orderId"] is None
+    assert "orderId" not in payload
     assert payload["clientOrderId"] == "777"
     body = ModifyOrderRequest(**payload).to_dict()
     assert "orderId" not in body
+    assert body["clientOrderId"] == "777"
+
+
+@pytest.mark.modify
+def test_modify_payload_order_id_targeting_with_restated_client_order_id(client: ReyaTradingClient) -> None:
+    """Targeting by order_id while restating a non-zero clientOrderId:
+    the body carries both ids, and orderId remains the canonical target."""
+    payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
+    assert payload["orderId"] == "63552420354981888"
+    assert payload["clientOrderId"] == "777"
+    body = ModifyOrderRequest(**payload).to_dict()
+    assert body["orderId"] == "63552420354981888"
     assert body["clientOrderId"] == "777"
 
 

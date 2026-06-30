@@ -127,7 +127,7 @@ async def test_ws_exec_modify(ws_exec_market: WsExecMarket):
 
 async def test_ws_exec_modify_not_found_error_envelope(ws_exec_market: WsExecMarket):
     """Modifying a non-existent order surfaces the per-op error envelope as
-    WsExecOperationError with code ORDER_NOT_FOUND."""
+    WsExecOperationError with code ORDER_NOT_FOUND_ERROR."""
     m = ws_exec_market
 
     params = ModifyOrderParameters(
@@ -142,7 +142,7 @@ async def test_ws_exec_modify_not_found_error_envelope(ws_exec_market: WsExecMar
     )
     with pytest.raises(WsExecOperationError) as exc_info:
         await m.ws.modify_order(params)
-    assert exc_info.value.code == "ORDER_NOT_FOUND", f"Expected ORDER_NOT_FOUND, got {exc_info.value.code}"
+    assert exc_info.value.code == "ORDER_NOT_FOUND_ERROR", f"Expected ORDER_NOT_FOUND_ERROR, got {exc_info.value.code}"
     print(f"  [ws-exec {m.market_type}] not-found modify rejected OK code={exc_info.value.code}")
 
 
@@ -176,13 +176,12 @@ async def test_ws_exec_modify_by_client_order_id(ws_exec_market: WsExecMarket):
 
         new_qty = str(Decimal(m.min_qty) * 2)
         # full_state_modify_params clears order_id when client_order_id is
-        # overridden, so the wire payload omits orderId entirely; the resting
-        # clientOrderId must also be restated into the signed envelope.
+        # overridden, so the wire payload omits orderId entirely; the same
+        # clientOrderId is restated into the signed envelope.
         response = await m.ws.modify_order(
             full_state_modify_params(
                 order,
                 client_order_id=client_order_id,
-                resting_client_order_id=client_order_id,
                 limit_px=modified_px,
                 qty=new_qty,
             )
@@ -239,7 +238,7 @@ async def test_ws_exec_modify_flags_and_expires_after_envelope(ws_exec_market: W
         # expiresAfter is rejected by the shared client coupling guard in
         # build_modify_order_payload with a ValueError before signing/sending.
         future_expiry = int(time.time()) + 3600
-        with pytest.raises(ValueError, match="GTC orders must not expire"):
+        with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
             await m.ws.modify_order(full_state_modify_params(order, expires_after=future_expiry))
         print(f"  [ws-exec {m.market_type}] non-zero expiresAfter on GTC rejected client-side before send")
 
@@ -255,7 +254,7 @@ async def test_ws_exec_empty_modify_error_envelope(ws_exec_market: WsExecMarket)
     """Business-rejection envelope breadth: an exact restate (no field
     changed) maps through the ws-exec per-op error envelope as
     WsExecOperationError EMPTY_MODIFY_ERROR — a second, code-specific
-    modifyOrder rejection beyond ORDER_NOT_FOUND, deterministic and with no
+    modifyOrder rejection beyond ORDER_NOT_FOUND_ERROR, deterministic and with no
     counterparty needed. The resting order survives the rejection."""
     m = ws_exec_market
 
