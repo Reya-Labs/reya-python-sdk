@@ -464,9 +464,9 @@ class ReyaTradingClient:
         client_order_id: Optional[int] = None,
     ) -> CancelOrderResponse:
         """
-        Cancel a single open order. At least one of `order_id` or
-        `client_order_id` must be provided. Works on both spot and perp
-        markets.
+        Cancel a single open order. Provide `order_id`, or a non-zero
+        `client_order_id` when `order_id` is absent. Works on both spot
+        and perp markets.
 
         Precedence note: the off-chain matching-engine controller accepts
         both fields and prefers `order_id` as the canonical identifier
@@ -506,6 +506,8 @@ class ReyaTradingClient:
             raise ValueError("symbol is required to cancel an order")
         if order_id is None and client_order_id is None:
             raise ValueError("Provide either order_id or client_order_id")
+        if order_id is None and client_order_id == 0:
+            raise ValueError("client_order_id 0 is not a valid cancel target")
 
         resolved_account_id = account_id if account_id is not None else self.config.account_id
         if resolved_account_id is None:

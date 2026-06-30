@@ -303,6 +303,12 @@ def test_cancel_accepts_both_identifiers(client: ReyaTradingClient) -> None:
     assert payload["clientOrderId"] == "456"
 
 
+def test_cancel_rejects_zero_client_order_id_target(client: ReyaTradingClient) -> None:
+    """client_order_id=0 is the no-client-id sentinel, not a valid sole cancel target."""
+    with pytest.raises(ValueError, match="client_order_id 0 is not a valid cancel target"):
+        client.build_cancel_order_payload(symbol=PERP_SYMBOL, client_order_id=0)
+
+
 def _modify_params(**overrides: Any) -> ModifyOrderParameters:
     """A complete, valid post-modify state targeting by order_id.
 
