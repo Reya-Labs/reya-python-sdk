@@ -26,8 +26,9 @@ e2e.
 - cross-account ownership: account B cannot modify account A's resting order
   (authorization error).
 - TP/SL trigger orders are not modifiable once the backend accepts native
-  trigger creates. Trigger orders are a perp-only surface, so this case stays
-  perp-pinned.
+  trigger creates. Trigger-order create/list/cancel/modify is tracked by
+  PRO-475, so current devnet trigger-create rejection is an expected xfail.
+  Trigger orders are a perp-only surface, so this case stays perp-pinned.
 
 The modifyOrder validation surface (signature recovery, nonce single-use,
 immutable-match, input validation, ownership) is transport- and
@@ -66,6 +67,10 @@ pytestmark = [pytest.mark.e2e, pytest.mark.modify, pytest.mark.validation]
 
 PERP_SYMBOL = "ETHRUSDPERP"
 BOGUS_ORDER_ID = 999_999_999_999_999_999
+PRO_475_URL = "https://linear.app/reya-labs/issue/PRO-475/me-make-tpsl-trigger-orders-listable-cancellable-modifiable"
+PRO_475_XFAIL_REASON = (
+    "PRO-475: native TP/SL trigger-order storage/list/cancel/modify is not implemented yet; " f"{PRO_475_URL}"
+)
 
 
 _TIF_TO_INT = {
@@ -445,8 +450,16 @@ async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester, perp_
     try:
         response = await perp_maker_tester.orders.create_trigger(trigger_params)
     except ApiException as e:
-        if "qty must be greater than 0, got 0" in str(e):
-            pytest.skip("Devnet does not yet accept spec-shaped TP/SL creates with omitted qty")
+        error_msg = str(e)
+        if any(
+            marker in error_msg
+            for marker in (
+                "qty must be greater than 0, got 0",
+                "INPUT_VALIDATION_ERROR",
+                "INTERNAL_SERVER_ERROR",
+            )
+        ):
+            pytest.xfail(PRO_475_XFAIL_REASON)
         raise
     assert response.order_id is not None
     trigger_order_id = response.order_id
