@@ -307,6 +307,102 @@ def test_rest_order_history_list_parses_filled_order_projection() -> None:
     assert history.to_dict()["data"][0]["sequenceNumber"] == 123456
 
 
+def test_rest_order_history_list_parses_non_fill_event_projection() -> None:
+    history = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109505",
+                    "status": "OPEN",
+                    "execQty": "0",
+                    "cumQty": "0",
+                    "sequenceNumber": 123457,
+                    "lastUpdateAt": 1745000002,
+                }
+            ],
+            "meta": {
+                "limit": 100,
+                "count": 1,
+                "startTime": 1745000002,
+                "endTime": 1745000002,
+            },
+        }
+    )
+
+    assert history is not None
+    assert history.data[0].sequence_number == 123457
+    assert history.data[0].first_fill_id is None
+    assert history.data[0].fill_count is None
+    serialized_order = history.to_dict()["data"][0]
+    assert serialized_order["sequenceNumber"] == 123457
+    assert "firstFillId" not in serialized_order
+    assert "fillCount" not in serialized_order
+
+
+def test_rest_order_history_pagination_meta_supports_inclusive_end_time_dedup() -> None:
+    first_page = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109506",
+                    "sequenceNumber": 2002,
+                    "lastUpdateAt": 1745000002,
+                },
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109505",
+                    "sequenceNumber": 2001,
+                    "lastUpdateAt": 1745000001,
+                },
+            ],
+            "meta": {
+                "limit": 2,
+                "count": 2,
+                "startTime": 1745000002,
+                "endTime": 1745000001,
+            },
+        }
+    )
+    second_page = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109505",
+                    "sequenceNumber": 2001,
+                    "lastUpdateAt": 1745000001,
+                },
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109504",
+                    "sequenceNumber": 2000,
+                    "lastUpdateAt": 1745000000,
+                },
+            ],
+            "meta": {
+                "limit": 2,
+                "count": 2,
+                "startTime": 1745000001,
+                "endTime": 1745000000,
+            },
+        }
+    )
+
+    assert first_page is not None
+    assert second_page is not None
+    assert first_page.meta.end_time == 1745000001
+    assert second_page.data[0].last_update_at == first_page.meta.end_time
+    assert second_page.data[0].sequence_number == first_page.data[-1].sequence_number
+
+    seen_sequence_numbers = {order.sequence_number for order in first_page.data}
+    deduped_second_page = [order for order in second_page.data if order.sequence_number not in seen_sequence_numbers]
+
+    assert [order.order_id for order in deduped_second_page] == ["490346525705109504"]
+    assert second_page.to_dict()["meta"]["endTime"] == 1745000000
+
+
 def test_rest_open_order_snapshot_omits_order_sequence_number() -> None:
     order = RestOrder.from_dict(_base_order_response_payload())
 

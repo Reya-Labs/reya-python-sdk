@@ -63,6 +63,22 @@ async def _wait_for_history_order(
     raise AssertionError(f"order {order_id} not found in orderHistory; first seen ids: {seen_ids}")
 
 
+async def _assert_time_window_refetch_contains_order(tester: ReyaTester, expected_order: Order) -> None:
+    assert expected_order.sequence_number is not None
+
+    history = await tester.client.get_order_history(
+        start_time=expected_order.last_update_at,
+        end_time=expected_order.last_update_at,
+    )
+
+    sequence_numbers = {order.sequence_number for order in history.data}
+    assert expected_order.sequence_number in sequence_numbers
+    assert history.meta.count == len(history.data)
+    assert history.meta.start_time == expected_order.last_update_at
+    assert history.meta.end_time == expected_order.last_update_at
+    assert all(order.last_update_at == expected_order.last_update_at for order in history.data)
+
+
 def _assert_filled_order_projection(
     order: Order,
     *,
@@ -165,3 +181,6 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
 
     assert maker_history_order.fill_count == 1, "maker should map to one fill"
     assert taker_history_order.fill_count == 1, "single-level taker should map to one fill"
+
+    await _assert_time_window_refetch_contains_order(maker, maker_history_order)
+    await _assert_time_window_refetch_contains_order(taker, taker_history_order)
