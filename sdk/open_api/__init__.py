@@ -62,6 +62,7 @@ __all__ = [
     "ModifyOrderRequest1AllOfNot1",
     "ModifyOrderResponse",
     "Order",
+    "OrderHistoryList",
     "OrderStatus",
     "OrderType",
     "PaginationMeta",
@@ -132,6 +133,7 @@ from sdk.open_api.models.modify_order_request1_all_of_not import ModifyOrderRequ
 from sdk.open_api.models.modify_order_request1_all_of_not1 import ModifyOrderRequest1AllOfNot1 as ModifyOrderRequest1AllOfNot1
 from sdk.open_api.models.modify_order_response import ModifyOrderResponse as ModifyOrderResponse
 from sdk.open_api.models.order import Order as Order
+from sdk.open_api.models.order_history_list import OrderHistoryList as OrderHistoryList
 from sdk.open_api.models.order_status import OrderStatus as OrderStatus
 from sdk.open_api.models.order_type import OrderType as OrderType
 from sdk.open_api.models.pagination_meta import PaginationMeta as PaginationMeta

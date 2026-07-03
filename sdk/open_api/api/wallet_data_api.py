@@ -23,6 +23,7 @@ from sdk.open_api.models.account import Account
 from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.execution_bust_list import ExecutionBustList
 from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
@@ -1126,6 +1127,306 @@ class WalletDataApi:
         return self.api_client.param_serialize(
             method='GET',
             resource_path='/wallet/{address}/executionBusts',
+            path_params=_path_params,
+            query_params=_query_params,
+            header_params=_header_params,
+            body=_body_params,
+            post_params=_form_params,
+            files=_files,
+            auth_settings=_auth_settings,
+            collection_formats=_collection_formats,
+            _host=_host,
+            _request_auth=_request_auth
+        )
+
+
+
+
+    @validate_call
+    async def get_wallet_order_history(
+        self,
+        address: Annotated[str, Field(strict=True)],
+        start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against each order update timestamp.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against each order update timestamp. Results are returned newest-first; to page backward through history, pass the oldest timestamp from the previous page.")] = None,
+        _request_timeout: Union[
+            None,
+            Annotated[StrictFloat, Field(gt=0)],
+            Tuple[
+                Annotated[StrictFloat, Field(gt=0)],
+                Annotated[StrictFloat, Field(gt=0)]
+            ]
+        ] = None,
+        _request_auth: Optional[Dict[StrictStr, Any]] = None,
+        _content_type: Optional[StrictStr] = None,
+        _headers: Optional[Dict[StrictStr, Any]] = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> OrderHistoryList:
+        """Get wallet order history
+
+        Returns order-history rows for a given wallet.
+
+        :param address: (required)
+        :type address: str
+        :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against each order update timestamp.
+        :type start_time: int
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against each order update timestamp. Results are returned newest-first; to page backward through history, pass the oldest timestamp from the previous page.
+        :type end_time: int
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """ # noqa: E501
+
+        _param = self._get_wallet_order_history_serialize(
+            address=address,
+            start_time=start_time,
+            end_time=end_time,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index
+        )
+
+        _response_types_map: Dict[str, Optional[str]] = {
+            '200': "OrderHistoryList",
+            '400': "RequestError",
+            '500': "ServerError",
+        }
+        response_data = await self.api_client.call_api(
+            *_param,
+            _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        ).data
+
+
+    @validate_call
+    async def get_wallet_order_history_with_http_info(
+        self,
+        address: Annotated[str, Field(strict=True)],
+        start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against each order update timestamp.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against each order update timestamp. Results are returned newest-first; to page backward through history, pass the oldest timestamp from the previous page.")] = None,
+        _request_timeout: Union[
+            None,
+            Annotated[StrictFloat, Field(gt=0)],
+            Tuple[
+                Annotated[StrictFloat, Field(gt=0)],
+                Annotated[StrictFloat, Field(gt=0)]
+            ]
+        ] = None,
+        _request_auth: Optional[Dict[StrictStr, Any]] = None,
+        _content_type: Optional[StrictStr] = None,
+        _headers: Optional[Dict[StrictStr, Any]] = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> ApiResponse[OrderHistoryList]:
+        """Get wallet order history
+
+        Returns order-history rows for a given wallet.
+
+        :param address: (required)
+        :type address: str
+        :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against each order update timestamp.
+        :type start_time: int
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against each order update timestamp. Results are returned newest-first; to page backward through history, pass the oldest timestamp from the previous page.
+        :type end_time: int
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """ # noqa: E501
+
+        _param = self._get_wallet_order_history_serialize(
+            address=address,
+            start_time=start_time,
+            end_time=end_time,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index
+        )
+
+        _response_types_map: Dict[str, Optional[str]] = {
+            '200': "OrderHistoryList",
+            '400': "RequestError",
+            '500': "ServerError",
+        }
+        response_data = await self.api_client.call_api(
+            *_param,
+            _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        )
+
+
+    @validate_call
+    async def get_wallet_order_history_without_preload_content(
+        self,
+        address: Annotated[str, Field(strict=True)],
+        start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against each order update timestamp.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against each order update timestamp. Results are returned newest-first; to page backward through history, pass the oldest timestamp from the previous page.")] = None,
+        _request_timeout: Union[
+            None,
+            Annotated[StrictFloat, Field(gt=0)],
+            Tuple[
+                Annotated[StrictFloat, Field(gt=0)],
+                Annotated[StrictFloat, Field(gt=0)]
+            ]
+        ] = None,
+        _request_auth: Optional[Dict[StrictStr, Any]] = None,
+        _content_type: Optional[StrictStr] = None,
+        _headers: Optional[Dict[StrictStr, Any]] = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> RESTResponseType:
+        """Get wallet order history
+
+        Returns order-history rows for a given wallet.
+
+        :param address: (required)
+        :type address: str
+        :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against each order update timestamp.
+        :type start_time: int
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against each order update timestamp. Results are returned newest-first; to page backward through history, pass the oldest timestamp from the previous page.
+        :type end_time: int
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """ # noqa: E501
+
+        _param = self._get_wallet_order_history_serialize(
+            address=address,
+            start_time=start_time,
+            end_time=end_time,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index
+        )
+
+        _response_types_map: Dict[str, Optional[str]] = {
+            '200': "OrderHistoryList",
+            '400': "RequestError",
+            '500': "ServerError",
+        }
+        response_data = await self.api_client.call_api(
+            *_param,
+            _request_timeout=_request_timeout
+        )
+        return response_data.response
+
+
+    def _get_wallet_order_history_serialize(
+        self,
+        address,
+        start_time,
+        end_time,
+        _request_auth,
+        _content_type,
+        _headers,
+        _host_index,
+    ) -> RequestSerialized:
+
+        _host = None
+
+        _collection_formats: Dict[str, str] = {
+        }
+
+        _path_params: Dict[str, str] = {}
+        _query_params: List[Tuple[str, str]] = []
+        _header_params: Dict[str, Optional[str]] = _headers or {}
+        _form_params: List[Tuple[str, str]] = []
+        _files: Dict[
+            str, Union[str, bytes, List[str], List[bytes], List[Tuple[str, bytes]]]
+        ] = {}
+        _body_params: Optional[bytes] = None
+
+        # process the path parameters
+        if address is not None:
+            _path_params['address'] = address
+        # process the query parameters
+        if start_time is not None:
+
+            _query_params.append(('startTime', start_time))
+
+        if end_time is not None:
+
+            _query_params.append(('endTime', end_time))
+
+        # process the header parameters
+        # process the form parameters
+        # process the body parameter
+
+
+        # set the HTTP header `Accept`
+        if 'Accept' not in _header_params:
+            _header_params['Accept'] = self.api_client.select_header_accept(
+                [
+                    'application/json'
+                ]
+            )
+
+
+        # authentication setting
+        _auth_settings: List[str] = [
+        ]
+
+        return self.api_client.param_serialize(
+            method='GET',
+            resource_path='/wallet/{address}/orderHistory',
             path_params=_path_params,
             query_params=_query_params,
             header_params=_header_params,

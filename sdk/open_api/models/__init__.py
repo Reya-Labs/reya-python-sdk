@@ -44,6 +44,7 @@ from sdk.open_api.models.modify_order_request1_all_of_not import ModifyOrderRequ
 from sdk.open_api.models.modify_order_request1_all_of_not1 import ModifyOrderRequest1AllOfNot1
 from sdk.open_api.models.modify_order_response import ModifyOrderResponse
 from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.pagination_meta import PaginationMeta

@@ -1,0 +1,178 @@
+"""
+Order-history end-to-end coverage for the matching-engine orderbook path.
+
+The live devnet1 API currently skips this test until off-chain PR #2762
+(`/v2/wallet/{address}/orderHistory`) is deployed onto the perpOB API branch.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from collections.abc import Callable
+
+import pytest
+
+from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_history_list import OrderHistoryList
+from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.side import Side
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api.models import LimitOrderParameters
+from tests.helpers import ReyaTester
+from tests.helpers.market_config import PerpTestConfig
+from tests.helpers.order_lifecycle import assert_px_qty
+
+_REQUIRED_ORDER_HISTORY_E2E_ENV = (
+    "PERP_ACCOUNT_ID_1",
+    "PERP_PRIVATE_KEY_1",
+    "PERP_WALLET_ADDRESS_1",
+    "PERP_ACCOUNT_ID_2",
+    "PERP_PRIVATE_KEY_2",
+    "PERP_WALLET_ADDRESS_2",
+)
+
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.perp,
+    pytest.mark.skipif(
+        not all(os.environ.get(name) for name in _REQUIRED_ORDER_HISTORY_E2E_ENV),
+        reason="orderHistory E2E requires configured live perp maker/taker accounts",
+    ),
+]
+
+
+async def _skip_if_order_history_not_deployed(tester: ReyaTester) -> None:
+    try:
+        await tester.client.get_order_history()
+    except ApiException as exc:
+        if exc.status == 404:
+            pytest.skip("orderHistory REST is not deployed on this API yet; requires off-chain PR #2762")
+        raise
+
+
+async def _wait_for_history_order(
+    tester: ReyaTester,
+    order_id: str,
+    predicate: Callable[[Order], bool],
+    timeout_s: float = 15.0,
+) -> Order:
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    last_history: OrderHistoryList | None = None
+
+    while asyncio.get_running_loop().time() < deadline:
+        last_history = await tester.client.get_order_history()
+        for order in last_history.data:
+            if order.order_id == order_id and predicate(order):
+                return order
+        await asyncio.sleep(0.5)
+
+    seen_ids = [order.order_id for order in (last_history.data if last_history else [])[:10]]
+    raise AssertionError(f"order {order_id} not found in orderHistory; first seen ids: {seen_ids}")
+
+
+def _assert_filled_order_projection(
+    order: Order,
+    *,
+    account_id: int,
+    symbol: str,
+    side: Side,
+    limit_px: str,
+    qty: str,
+) -> None:
+    assert order.exchange_id >= 0
+    assert order.account_id == account_id
+    assert order.symbol == symbol
+    assert order.side == side
+    assert_px_qty(order, limit_px, qty)
+    assert order.order_type == OrderType.LIMIT
+    assert order.time_in_force in (TimeInForce.GTC, TimeInForce.IOC)
+    assert order.status == OrderStatus.FILLED
+    assert order.created_at > 0
+    assert order.last_update_at >= order.created_at
+    assert order.first_fill_id is not None
+    assert int(order.first_fill_id) > 0
+    assert order.fill_count is not None
+    assert order.fill_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_perp_order_history_records_maker_and_taker_fill_e2e(
+    perp_market_config: PerpTestConfig,
+    perp_maker_tester: ReyaTester,
+    perp_taker_tester: ReyaTester,
+) -> None:
+    """Maker GTC + taker IOC fill should appear in wallet orderHistory."""
+    market_config = perp_market_config
+    maker = perp_maker_tester
+    taker = perp_taker_tester
+
+    await _skip_if_order_history_not_deployed(maker)
+    await _skip_if_order_history_not_deployed(taker)
+
+    await market_config.refresh_order_book(maker.data)
+    await maker.orders.close_all(fail_if_none=False)
+    await taker.orders.close_all(fail_if_none=False)
+
+    if market_config.has_any_external_liquidity:
+        pytest.skip("external liquidity present — orderHistory assertions require a controlled maker/taker fill")
+
+    cross_px = str(market_config.price(0.99))
+    qty = market_config.min_qty
+
+    maker_order_id = await maker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=market_config.symbol,
+            is_buy=True,
+            limit_px=cross_px,
+            qty=qty,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert maker_order_id is not None
+    await maker.wait.for_order_creation(maker_order_id)
+
+    taker_response = await taker.client.create_limit_order(
+        LimitOrderParameters(
+            symbol=market_config.symbol,
+            is_buy=False,
+            limit_px=cross_px,
+            qty=qty,
+            time_in_force=TimeInForce.IOC,
+        )
+    )
+    taker_order_id = taker_response.order_id
+    assert taker_order_id is not None
+
+    maker_history_order = await _wait_for_history_order(
+        maker,
+        maker_order_id,
+        lambda order: order.status == OrderStatus.FILLED and order.first_fill_id is not None,
+    )
+    taker_history_order = await _wait_for_history_order(
+        taker,
+        taker_order_id,
+        lambda order: order.status == OrderStatus.FILLED and order.first_fill_id is not None,
+    )
+
+    _assert_filled_order_projection(
+        maker_history_order,
+        account_id=maker.account_id,
+        symbol=market_config.symbol,
+        side=Side.B,
+        limit_px=cross_px,
+        qty=qty,
+    )
+    _assert_filled_order_projection(
+        taker_history_order,
+        account_id=taker.account_id,
+        symbol=market_config.symbol,
+        side=Side.A,
+        limit_px=cross_px,
+        qty=qty,
+    )
+
+    assert maker_history_order.fill_count == 1, "maker should map to one fill"
+    assert taker_history_order.fill_count == 1, "single-level taker should map to one fill"

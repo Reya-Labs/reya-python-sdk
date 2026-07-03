@@ -35,11 +35,13 @@ from sdk.open_api import ExecutionBust as RestExecutionBust
 from sdk.open_api import ModifyOrderRequest as RestModifyOrderRequest
 from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import Order as RestOrder
+from sdk.open_api import OrderHistoryList as RestOrderHistoryList
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
 from sdk.open_api import SpotExecution as RestSpotExecution
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
+from sdk.open_api.api.wallet_data_api import WalletDataApi
 from sdk.reya_websocket.resources.prices import PricesResource
 from sdk.reya_websocket.socket import ReyaSocket
 
@@ -264,6 +266,36 @@ def test_rest_order_response_includes_gtt_expires_after() -> None:
     assert order.to_dict()["expiresAfter"] == 1745000600
 
 
+def test_rest_order_history_list_parses_filled_order_projection() -> None:
+    history = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "status": "FILLED",
+                    "execQty": "1",
+                    "cumQty": "1",
+                    "firstFillId": "1869408744486469632",
+                    "fillCount": 1,
+                }
+            ],
+            "meta": {
+                "limit": 100,
+                "count": 1,
+                "startTime": 1745000001,
+                "endTime": 1745000000,
+            },
+        }
+    )
+
+    assert history is not None
+    assert history.meta.count == 1
+    assert history.data[0].status == RestOrderStatus.FILLED
+    assert history.data[0].first_fill_id == "1869408744486469632"
+    assert history.data[0].fill_count == 1
+    assert history.to_dict()["data"][0]["firstFillId"] == "1869408744486469632"
+
+
 def test_ws_info_order_response_omits_non_gtt_expires_after() -> None:
     order = WsInfoOrder.model_validate(_base_order_response_payload())
 
@@ -313,6 +345,12 @@ def test_rest_sdk_exposes_asset_oracle_prices_surface() -> None:
         "updatedAt": 1747927089946,
     }
     assert "poolPrice" not in price.to_dict()
+
+
+def test_rest_sdk_exposes_wallet_order_history_surface() -> None:
+    assert hasattr(rest_open_api, "OrderHistoryList")
+    assert hasattr(WalletDataApi, "get_wallet_order_history")
+    assert hasattr(WalletDataApi, "get_wallet_order_history_with_http_info")
 
 
 def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None:

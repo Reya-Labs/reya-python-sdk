@@ -41,6 +41,7 @@ sdk/open_api/models/modify_order_request1_all_of_not.py
 sdk/open_api/models/modify_order_request1_all_of_not1.py
 sdk/open_api/models/modify_order_response.py
 sdk/open_api/models/order.py
+sdk/open_api/models/order_history_list.py
 sdk/open_api/models/order_status.py
 sdk/open_api/models/order_type.py
 sdk/open_api/models/pagination_meta.py

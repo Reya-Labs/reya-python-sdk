@@ -35,6 +35,7 @@ from sdk.open_api.models.mass_cancel_response import MassCancelResponse
 from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.modify_order_response import ModifyOrderResponse
 from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
@@ -789,6 +790,21 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available.")
         return await self.wallet.get_wallet_open_orders(address=wallet)
+
+    async def get_order_history(
+        self,
+        wallet_address: Optional[str] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> OrderHistoryList:
+        wallet = wallet_address or self.owner_wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available.")
+        return await self.wallet.get_wallet_order_history(
+            address=wallet,
+            start_time=start_time,
+            end_time=end_time,
+        )
 
     async def get_configuration(self) -> WalletConfiguration:
         wallet = self.owner_wallet_address
