@@ -1,8 +1,8 @@
 """
 Order-history end-to-end coverage for the matching-engine orderbook path.
 
-The live devnet1 API currently skips this test until off-chain PR #2762
-(`/v2/wallet/{address}/orderHistory`) is deployed onto the perpOB API branch.
+This live devnet1 test expects `/v2/wallet/{address}/orderHistory` to be
+deployed on the perpOB API branch.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from collections.abc import Callable
 
 import pytest
 
-from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.order_status import OrderStatus
@@ -42,15 +41,6 @@ pytestmark = [
         reason="orderHistory E2E requires configured live perp maker/taker accounts",
     ),
 ]
-
-
-async def _skip_if_order_history_not_deployed(tester: ReyaTester) -> None:
-    try:
-        await tester.client.get_order_history()
-    except ApiException as exc:
-        if exc.status == 404:
-            pytest.skip("orderHistory REST is not deployed on this API yet; requires off-chain PR #2762")
-        raise
 
 
 async def _wait_for_history_order(
@@ -110,9 +100,6 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
     market_config = perp_market_config
     maker = perp_maker_tester
     taker = perp_taker_tester
-
-    await _skip_if_order_history_not_deployed(maker)
-    await _skip_if_order_history_not_deployed(taker)
 
     await market_config.refresh_order_book(maker.data)
     await maker.orders.close_all(fail_if_none=False)
