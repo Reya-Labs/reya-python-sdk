@@ -112,7 +112,7 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
     perp_maker_tester: ReyaTester,
     perp_taker_tester: ReyaTester,
 ) -> None:
-    """Maker GTC + taker IOC fill should appear in wallet orderHistory."""
+    """Crossing maker/taker GTC fill should appear in wallet orderHistory."""
     market_config = perp_market_config
     maker = perp_maker_tester
     taker = perp_taker_tester
@@ -145,7 +145,7 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
             is_buy=False,
             limit_px=cross_px,
             qty=qty,
-            time_in_force=TimeInForce.IOC,
+            time_in_force=TimeInForce.GTC,
         )
     )
     taker_order_id = taker_response.order_id
