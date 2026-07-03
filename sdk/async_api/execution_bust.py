@@ -1,7 +1,41 @@
 from __future__ import annotations
-from typing import Any, Dict, Optional
+from typing import Union, Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
+from sdk.async_api.execution_bust_reason_name_only import ExecutionBustReasonNameOnly
+from sdk.async_api.execution_bust_reason_account_not_found import ExecutionBustReasonAccountNotFound
+from sdk.async_api.execution_bust_reason_exchange_not_found import ExecutionBustReasonExchangeNotFound
+from sdk.async_api.execution_bust_reason_market_not_found import ExecutionBustReasonMarketNotFound
+from sdk.async_api.execution_bust_reason_unauthorized import ExecutionBustReasonUnauthorized
+from sdk.async_api.execution_bust_reason_unauthorized_signer import ExecutionBustReasonUnauthorizedSigner
+from sdk.async_api.execution_bust_reason_unauthorized_matching_engine_publisher import ExecutionBustReasonUnauthorizedMatchingEnginePublisher
+from sdk.async_api.execution_bust_reason_signer_nonce_already_used import ExecutionBustReasonSignerNonceAlreadyUsed
+from sdk.async_api.execution_bust_reason_mark_price_stale import ExecutionBustReasonMarkPriceStale
+from sdk.async_api.execution_bust_reason_passive_perp_price_deviation_too_large import ExecutionBustReasonPassivePerpPriceDeviationTooLarge
+from sdk.async_api.execution_bust_reason_spot_price_deviation_too_large import ExecutionBustReasonSpotPriceDeviationTooLarge
+from sdk.async_api.execution_bust_reason_stale_price_detected import ExecutionBustReasonStalePriceDetected
+from sdk.async_api.execution_bust_reason_account_below_im import ExecutionBustReasonAccountBelowIm
+from sdk.async_api.execution_bust_reason_reduce_only_condition_failed import ExecutionBustReasonReduceOnlyConditionFailed
+from sdk.async_api.execution_bust_reason_order_expired import ExecutionBustReasonOrderExpired
+from sdk.async_api.execution_bust_reason_max_quantity_exceeded import ExecutionBustReasonMaxQuantityExceeded
+from sdk.async_api.execution_bust_reason_market_type_mismatch import ExecutionBustReasonMarketTypeMismatch
+from sdk.async_api.execution_bust_reason_market_id_mismatch import ExecutionBustReasonMarketIdMismatch
+from sdk.async_api.execution_bust_reason_base_delta_wrong_spacing import ExecutionBustReasonBaseDeltaWrongSpacing
+from sdk.async_api.execution_bust_reason_price_wrong_spacing import ExecutionBustReasonPriceWrongSpacing
+from sdk.async_api.execution_bust_reason_invalid_fill_price import ExecutionBustReasonInvalidFillPrice
+from sdk.async_api.execution_bust_reason_fill_exceeds_order_base_delta import ExecutionBustReasonFillExceedsOrderBaseDelta
+from sdk.async_api.execution_bust_reason_feature_unavailable import ExecutionBustReasonFeatureUnavailable
+from sdk.async_api.execution_bust_reason_collateral_is_not_quote import ExecutionBustReasonCollateralIsNotQuote
+from sdk.async_api.execution_bust_reason_collateral_cap_exceeded import ExecutionBustReasonCollateralCapExceeded
+from sdk.async_api.execution_bust_reason_collateral_pool_collision import ExecutionBustReasonCollateralPoolCollision
+from sdk.async_api.execution_bust_reason_open_interest_exceeded import ExecutionBustReasonOpenInterestExceeded
+from sdk.async_api.execution_bust_reason_account_type import ExecutionBustReasonAccountType
+from sdk.async_api.execution_bust_reason_negative_account_real_balance import ExecutionBustReasonNegativeAccountRealBalance
+from sdk.async_api.execution_bust_reason_account_insolvent import ExecutionBustReasonAccountInsolvent
+from sdk.async_api.execution_bust_reason_same_account_id import ExecutionBustReasonSameAccountId
+from sdk.async_api.execution_bust_reason_decoded_legacy import ExecutionBustReasonDecodedLegacy
+from sdk.async_api.execution_bust_reason_unknown import ExecutionBustReasonUnknown
+from sdk.async_api.execution_bust_reason_unmapped import ExecutionBustReasonUnmapped
 class ExecutionBust(BaseModel):
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   taker_account_id: int = Field(alias='''takerAccountId''')
@@ -12,7 +46,7 @@ class ExecutionBust(BaseModel):
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   price: str = Field()
-  reason: str = Field(description='''Human-readable reason string decoded from revert reason bytes.''')
+  reason: Union[ExecutionBustReasonNameOnly, ExecutionBustReasonAccountNotFound, ExecutionBustReasonExchangeNotFound, ExecutionBustReasonMarketNotFound, ExecutionBustReasonUnauthorized, ExecutionBustReasonUnauthorizedSigner, ExecutionBustReasonUnauthorizedMatchingEnginePublisher, ExecutionBustReasonSignerNonceAlreadyUsed, ExecutionBustReasonMarkPriceStale, Union[ExecutionBustReasonPassivePerpPriceDeviationTooLarge, ExecutionBustReasonSpotPriceDeviationTooLarge], ExecutionBustReasonStalePriceDetected, ExecutionBustReasonAccountBelowIm, ExecutionBustReasonReduceOnlyConditionFailed, ExecutionBustReasonOrderExpired, ExecutionBustReasonMaxQuantityExceeded, ExecutionBustReasonMarketTypeMismatch, ExecutionBustReasonMarketIdMismatch, ExecutionBustReasonBaseDeltaWrongSpacing, ExecutionBustReasonPriceWrongSpacing, ExecutionBustReasonInvalidFillPrice, ExecutionBustReasonFillExceedsOrderBaseDelta, ExecutionBustReasonFeatureUnavailable, ExecutionBustReasonCollateralIsNotQuote, ExecutionBustReasonCollateralCapExceeded, ExecutionBustReasonCollateralPoolCollision, ExecutionBustReasonOpenInterestExceeded, ExecutionBustReasonAccountType, ExecutionBustReasonNegativeAccountRealBalance, ExecutionBustReasonAccountInsolvent, ExecutionBustReasonSameAccountId, ExecutionBustReasonDecodedLegacy, ExecutionBustReasonUnknown, ExecutionBustReasonUnmapped] = Field(description='''Machine-readable decoded execution-bust reason. This is a discriminated union keyed by `reasonName`. Known contract errors have strict typed shapes; decoded-but-unmodeled ABI errors use the `ExecutionBustReasonUnmapped` fallback with string-valued `args`.''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
   fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this bust to its ME fill (PRO-182).''', default=None, alias='''fillId''')

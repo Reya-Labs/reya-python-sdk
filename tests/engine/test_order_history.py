@@ -92,6 +92,8 @@ def _assert_filled_order_projection(
     assert order.status == OrderStatus.FILLED
     assert order.created_at > 0
     assert order.last_update_at >= order.created_at
+    assert order.sequence_number is not None
+    assert order.sequence_number >= 0
     assert order.first_fill_id is not None
     assert int(order.first_fill_id) > 0
     assert order.fill_count is not None
