@@ -17,6 +17,8 @@ from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePaylo
 from sdk.async_api.markets_summary_channel import MarketsSummaryChannel
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order import Order as WsInfoOrder
+from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_api.prices_update_payload import PricesUpdatePayload
 from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
@@ -35,11 +37,13 @@ from sdk.open_api import ExecutionBust as RestExecutionBust
 from sdk.open_api import ModifyOrderRequest as RestModifyOrderRequest
 from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import Order as RestOrder
+from sdk.open_api import OrderHistoryList as RestOrderHistoryList
 from sdk.open_api import OrderStatus as RestOrderStatus
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
 from sdk.open_api import SpotExecution as RestSpotExecution
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
+from sdk.open_api.api.wallet_data_api import WalletDataApi
 from sdk.reya_websocket.resources.prices import PricesResource
 from sdk.reya_websocket.socket import ReyaSocket
 
@@ -64,6 +68,7 @@ CANCEL_REASONS = {
     "USER_CANCEL",
     "MASS_CANCEL",
     "CANCEL_ALL_AFTER",
+    "FEED_RESET",
 }
 
 
@@ -199,7 +204,12 @@ def _base_execution_bust_payload() -> dict[str, Any]:
         "side": "B",
         "qty": "1",
         "price": "2500",
-        "reason": "Account below required margin",
+        "reason": {
+            "reasonName": "AccountBelowIM",
+            "accountId": 12345,
+            "delta": "-0.05",
+            "shortfall": "0.05",
+        },
         "timestamp": 1745000000,
         "sequenceNumber": 99,
         "fillId": "9001",
@@ -264,6 +274,143 @@ def test_rest_order_response_includes_gtt_expires_after() -> None:
     assert order.to_dict()["expiresAfter"] == 1745000600
 
 
+def test_rest_order_history_list_parses_filled_order_projection() -> None:
+    history = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "status": "FILLED",
+                    "execQty": "1",
+                    "cumQty": "1",
+                    "firstFillId": "1869408744486469632",
+                    "fillCount": 1,
+                    "sequenceNumber": 123456,
+                }
+            ],
+            "meta": {
+                "limit": 100,
+                "count": 1,
+                "startTime": 1745000001,
+                "endTime": 1745000000,
+            },
+        }
+    )
+
+    assert history is not None
+    assert history.meta.count == 1
+    assert history.data[0].status == RestOrderStatus.FILLED
+    assert history.data[0].first_fill_id == "1869408744486469632"
+    assert history.data[0].fill_count == 1
+    assert history.data[0].sequence_number == 123456
+    assert history.to_dict()["data"][0]["firstFillId"] == "1869408744486469632"
+    assert history.to_dict()["data"][0]["sequenceNumber"] == 123456
+
+
+def test_rest_order_history_list_parses_non_fill_event_projection() -> None:
+    history = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109505",
+                    "status": "OPEN",
+                    "execQty": "0",
+                    "cumQty": "0",
+                    "sequenceNumber": 123457,
+                    "lastUpdateAt": 1745000002,
+                }
+            ],
+            "meta": {
+                "limit": 100,
+                "count": 1,
+                "startTime": 1745000002,
+                "endTime": 1745000002,
+            },
+        }
+    )
+
+    assert history is not None
+    assert history.data[0].sequence_number == 123457
+    assert history.data[0].first_fill_id is None
+    assert history.data[0].fill_count is None
+    serialized_order = history.to_dict()["data"][0]
+    assert serialized_order["sequenceNumber"] == 123457
+    assert "firstFillId" not in serialized_order
+    assert "fillCount" not in serialized_order
+
+
+def test_rest_order_history_pagination_meta_supports_inclusive_end_time_dedup() -> None:
+    first_page = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109506",
+                    "sequenceNumber": 2002,
+                    "lastUpdateAt": 1745000002,
+                },
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109505",
+                    "sequenceNumber": 2001,
+                    "lastUpdateAt": 1745000001,
+                },
+            ],
+            "meta": {
+                "limit": 2,
+                "count": 2,
+                "startTime": 1745000002,
+                "endTime": 1745000001,
+            },
+        }
+    )
+    second_page = RestOrderHistoryList.from_dict(
+        {
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109505",
+                    "sequenceNumber": 2001,
+                    "lastUpdateAt": 1745000001,
+                },
+                {
+                    **_base_order_response_payload(),
+                    "orderId": "490346525705109504",
+                    "sequenceNumber": 2000,
+                    "lastUpdateAt": 1745000000,
+                },
+            ],
+            "meta": {
+                "limit": 2,
+                "count": 2,
+                "startTime": 1745000001,
+                "endTime": 1745000000,
+            },
+        }
+    )
+
+    assert first_page is not None
+    assert second_page is not None
+    assert first_page.meta.end_time == 1745000001
+    assert second_page.data[0].last_update_at == first_page.meta.end_time
+    assert second_page.data[0].sequence_number == first_page.data[-1].sequence_number
+
+    seen_sequence_numbers = {order.sequence_number for order in first_page.data}
+    deduped_second_page = [order for order in second_page.data if order.sequence_number not in seen_sequence_numbers]
+
+    assert [order.order_id for order in deduped_second_page] == ["490346525705109504"]
+    assert second_page.to_dict()["meta"]["endTime"] == 1745000000
+
+
+def test_rest_open_order_snapshot_omits_order_sequence_number() -> None:
+    order = RestOrder.from_dict(_base_order_response_payload())
+
+    assert order is not None
+    assert order.sequence_number is None
+    assert "sequenceNumber" not in order.to_dict()
+
+
 def test_ws_info_order_response_omits_non_gtt_expires_after() -> None:
     order = WsInfoOrder.model_validate(_base_order_response_payload())
 
@@ -313,6 +460,12 @@ def test_rest_sdk_exposes_asset_oracle_prices_surface() -> None:
         "updatedAt": 1747927089946,
     }
     assert "poolPrice" not in price.to_dict()
+
+
+def test_rest_sdk_exposes_wallet_order_history_surface() -> None:
+    assert hasattr(rest_open_api, "OrderHistoryList")
+    assert hasattr(WalletDataApi, "get_wallet_order_history")
+    assert hasattr(WalletDataApi, "get_wallet_order_history_with_http_info")
 
 
 def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None:
@@ -401,6 +554,25 @@ def test_reya_socket_routes_preferred_perp_markets_summary_channel() -> None:
     )
 
     assert payload.channel is MarketsSummaryChannel.SLASH_V2_SLASH_PERP_MARKETS_SLASH_SUMMARY
+
+
+def test_reya_socket_parses_order_changes_subscribe_ack_with_snapshot_cursor() -> None:
+    socket = ReyaSocket()
+
+    message = socket._parse_message(  # pylint: disable=protected-access
+        {
+            "type": "subscribed",
+            "channel": "/v2/wallet/0x1234567890123456789012345678901234567890/orderChanges",
+            "contents": {
+                "data": [_base_order_response_payload()],
+                "snapshotSequenceNumber": 123456,
+            },
+        }
+    )
+
+    assert isinstance(message, OrderChangesSubscribedPayload)
+    assert message.contents.snapshot_sequence_number == 123456
+    assert message.contents.data[0].sequence_number is None
 
 
 def test_rest_create_order_response_parses_cancel_reason_and_fill_range() -> None:
@@ -576,6 +748,7 @@ def test_rest_execution_bust_uses_taker_field_names() -> None:
     serialized = bust.to_dict()
     assert serialized["takerAccountId"] == 12345
     assert serialized["takerOrderId"] == "490346525705109504"
+    assert serialized["reason"]["reasonName"] == "AccountBelowIM"
 
 
 def test_ws_info_execution_bust_uses_taker_field_names() -> None:
@@ -588,6 +761,7 @@ def test_ws_info_execution_bust_uses_taker_field_names() -> None:
     serialized = bust.model_dump(mode="json", by_alias=True, exclude_none=True)
     assert serialized["takerAccountId"] == 12345
     assert serialized["takerOrderId"] == "490346525705109504"
+    assert serialized["reason"]["reasonName"] == "AccountBelowIM"
 
 
 def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:
@@ -596,6 +770,7 @@ def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:
             **_base_order_response_payload(),
             "firstFillId": "9001",
             "fillCount": 1,
+            "sequenceNumber": 123457,
             "status": "CANCELLED",
             "cancelReason": "CANCEL_ALL_AFTER",
             "cancelReasonMessage": "cancel-on-disconnect fired",
@@ -606,6 +781,50 @@ def test_ws_info_order_parses_cancel_reason_and_fill_range() -> None:
     assert order.cancel_reason_message == "cancel-on-disconnect fired"
     assert order.first_fill_id == "9001"
     assert order.fill_count == 1
+    assert order.sequence_number == 123457
     serialized = order.model_dump(mode="json", by_alias=True, exclude_none=True)
     assert serialized["cancelReason"] == "CANCEL_ALL_AFTER"
+    assert serialized["sequenceNumber"] == 123457
     assert "expiresAfter" not in serialized
+
+
+def test_ws_info_order_changes_update_payload_parses_sequence_numbers() -> None:
+    payload = OrderChangeUpdatePayload.model_validate(
+        {
+            "type": "channel_data",
+            "timestamp": 1745000002,
+            "channel": "/v2/wallet/0x1234567890123456789012345678901234567890/orderChanges",
+            "data": [
+                {
+                    **_base_order_response_payload(),
+                    "status": "FILLED",
+                    "execQty": "1",
+                    "cumQty": "1",
+                    "sequenceNumber": 123458,
+                }
+            ],
+        }
+    )
+
+    assert payload.data[0].sequence_number == 123458
+    serialized = payload.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert serialized["data"][0]["sequenceNumber"] == 123458
+
+
+def test_ws_info_order_changes_subscribed_payload_parses_snapshot_cursor() -> None:
+    payload = OrderChangesSubscribedPayload.model_validate(
+        {
+            "type": "subscribed",
+            "channel": "/v2/wallet/0x1234567890123456789012345678901234567890/orderChanges",
+            "contents": {
+                "data": [_base_order_response_payload()],
+                "snapshotSequenceNumber": 123456,
+            },
+        }
+    )
+
+    assert payload.contents.snapshot_sequence_number == 123456
+    assert payload.contents.data[0].sequence_number is None
+    serialized = payload.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert serialized["contents"]["snapshotSequenceNumber"] == 123456
+    assert "sequenceNumber" not in serialized["contents"]["data"][0]

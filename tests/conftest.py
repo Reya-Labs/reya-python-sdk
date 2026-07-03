@@ -176,7 +176,10 @@ def _busts_guard_api_url() -> str:
     return os.environ.get("REYA_API_URL", default_api_url)
 
 
-_EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = ("reduce-only order size above position size",)
+_EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = (
+    "reduce-only order size above position size",
+    "reduceonlyconditionfailed",
+)
 
 
 def _execution_bust_identity(bust: Any) -> tuple[Any, Any, Any]:
@@ -184,8 +187,32 @@ def _execution_bust_identity(bust: Any) -> tuple[Any, Any, Any]:
     return (getattr(bust, "fill_id", None), taker_order_id, getattr(bust, "sequence_number", None))
 
 
+def _execution_bust_reason_text(bust: Any) -> str:
+    reason = getattr(bust, "reason", None)
+    if reason is None:
+        return ""
+    if isinstance(reason, str):
+        return reason
+
+    actual_reason = getattr(reason, "actual_instance", None)
+    if actual_reason is not None:
+        reason = actual_reason
+
+    reason_name = getattr(reason, "reason_name", None)
+    if reason_name is not None:
+        return str(reason_name)
+
+    to_dict = getattr(reason, "to_dict", None)
+    if callable(to_dict):
+        reason_dict = to_dict()
+        if isinstance(reason_dict, dict):
+            return str(reason_dict.get("reasonName") or reason_dict.get("reason_name") or reason_dict)
+
+    return str(reason)
+
+
 def _is_expected_execution_bust(bust: Any) -> bool:
-    reason = (getattr(bust, "reason", None) or "").lower()
+    reason = _execution_bust_reason_text(bust).lower()
     return any(snippet in reason for snippet in _EXPECTED_EXECUTION_BUST_REASON_SNIPPETS)
 
 

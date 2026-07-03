@@ -26,6 +26,7 @@ from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecuti
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
@@ -54,6 +55,7 @@ WebSocketMessage = Union[
     PingMessagePayload,
     PongMessagePayload,
     SubscribedMessagePayload,
+    OrderChangesSubscribedPayload,
     UnsubscribedMessagePayload,
     ErrorMessagePayload,
     # Market channels
@@ -252,6 +254,10 @@ class ReyaSocket(WebSocketApp):
                 return cast(WebSocketMessage, PongMessagePayload.model_validate(message))
 
             elif message_type == "subscribed":
+                channel = message.get("channel", "")
+                if isinstance(channel, str) and channel.endswith("/orderChanges"):
+                    return cast(WebSocketMessage, OrderChangesSubscribedPayload.model_validate(message))
+
                 # Handle case where server returns contents as empty list instead of dict
                 # Convert list to None to match the expected model type
                 if "contents" in message and isinstance(message["contents"], list):

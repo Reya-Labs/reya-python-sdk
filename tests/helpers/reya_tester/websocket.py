@@ -23,6 +23,7 @@ from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBu
 from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
 from sdk.async_api.position import Position as AsyncPosition
 from sdk.async_api.position_update_payload import PositionUpdatePayload
@@ -218,7 +219,10 @@ class WebSocketState:
         logger.info(f"Received message: {type(message).__name__}")
 
         # Handle subscribed messages with initial snapshots
-        if isinstance(message, SubscribedMessagePayload):
+        if isinstance(message, OrderChangesSubscribedPayload):
+            self._handle_order_changes_subscribed(message)
+
+        elif isinstance(message, SubscribedMessagePayload):
             self._handle_subscribed(message)
 
         # Handle perp executions
@@ -282,6 +286,17 @@ class WebSocketState:
                 balance = AsyncAccountBalance.model_validate(b)
                 self.balances.add(balance)
             logger.info(f"Stored balances snapshot: {len(data)} balance(s)")
+
+    def _handle_order_changes_subscribed(self, message: OrderChangesSubscribedPayload) -> None:
+        """Handle orderChanges subscription confirmation with typed snapshot cursor."""
+        logger.info(
+            "✅ Subscribed to %s at sequence %s",
+            message.channel,
+            message.contents.snapshot_sequence_number,
+        )
+        for order in message.contents.data:
+            self.orders.add(order)
+        logger.info(f"Stored orderChanges snapshot: {len(message.contents.data)} order(s)")
 
     def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
         """Handle perp execution updates."""

@@ -173,7 +173,8 @@ async def test_perp_reduce_only_rejected_without_position(
             order_id=str(response.order_id),
             timeout=15,
         )
-        bust_reason_lower = (bust.reason or "").lower()
+        bust_reason = getattr(bust.reason, "value", bust.reason)
+        bust_reason_lower = str(bust_reason or "").lower()
         assert (
             "reduce" in bust_reason_lower or "position" in bust_reason_lower
         ), f"expected reduce-only revert reason on bust, got: {bust.reason!r}"
