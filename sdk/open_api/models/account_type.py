@@ -34,3 +34,5 @@ class AccountType(str, Enum):
     def from_json(cls, json_str: str) -> Self:
         """Create an instance of AccountType from a JSON string"""
         return cls(json.loads(json_str))
+
+

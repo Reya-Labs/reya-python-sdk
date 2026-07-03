@@ -36,7 +36,7 @@ from sdk.async_api.execution_bust_reason_same_account_id import ExecutionBustRea
 from sdk.async_api.execution_bust_reason_decoded_legacy import ExecutionBustReasonDecodedLegacy
 from sdk.async_api.execution_bust_reason_unknown import ExecutionBustReasonUnknown
 from sdk.async_api.execution_bust_reason_unmapped import ExecutionBustReasonUnmapped
-class ExecutionBust(BaseModel):
+class ExecutionBust(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   taker_account_id: int = Field(alias='''takerAccountId''')
   exchange_id: int = Field(alias='''exchangeId''')
@@ -73,9 +73,9 @@ class ExecutionBust(BaseModel):
     known_object_properties = ['symbol', 'taker_account_id', 'exchange_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'qty', 'side', 'price', 'reason', 'timestamp', 'sequence_number', 'fill_id', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0:
+    if len(unknown_object_properties) == 0: 
       return data
-
+  
     known_json_properties = ['symbol', 'takerAccountId', 'exchangeId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'qty', 'side', 'price', 'reason', 'timestamp', 'sequenceNumber', 'fillId', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -83,3 +83,4 @@ class ExecutionBust(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
+

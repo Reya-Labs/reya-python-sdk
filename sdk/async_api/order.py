@@ -6,7 +6,7 @@ from sdk.async_api.order_type import OrderType
 from sdk.async_api.time_in_force import TimeInForce
 from sdk.async_api.order_status import OrderStatus
 from sdk.async_api.cancel_reason import CancelReason
-class Order(BaseModel):
+class Order(BaseModel): 
   exchange_id: int = Field(alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
@@ -54,9 +54,9 @@ class Order(BaseModel):
     known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'sequence_number', 'client_order_id', 'qty', 'exec_qty', 'cum_qty', 'first_fill_id', 'fill_count', 'side', 'limit_px', 'order_type', 'trigger_px', 'time_in_force', 'expires_after', 'reduce_only', 'post_only', 'status', 'created_at', 'last_update_at', 'cancel_reason', 'cancel_reason_message', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0:
+    if len(unknown_object_properties) == 0: 
       return data
-
+  
     known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'sequenceNumber', 'clientOrderId', 'qty', 'execQty', 'cumQty', 'firstFillId', 'fillCount', 'side', 'limitPx', 'orderType', 'triggerPx', 'timeInForce', 'expiresAfter', 'reduceOnly', 'postOnly', 'status', 'createdAt', 'lastUpdateAt', 'cancelReason', 'cancelReasonMessage', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -64,3 +64,4 @@ class Order(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
+

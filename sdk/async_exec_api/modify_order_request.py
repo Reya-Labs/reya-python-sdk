@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_type import OrderType
 from sdk.async_exec_api.time_in_force import TimeInForce
-class ModifyOrderRequest(BaseModel):
+class ModifyOrderRequest(BaseModel): 
   order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, restates the resting order's immutable client id.''', default=None, alias='''orderId''')
   client_order_id: Optional[str] = Field(description='''Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero; JSON Schema validates presence only and the server enforces the non-zero rule. If `orderId` is present, this field restates the resting order's immutable client id for signing; omit it when the resting order has no client id. Do not send a placeholder value. The modification cannot assign a new `clientOrderId`.''', default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
@@ -45,9 +45,9 @@ class ModifyOrderRequest(BaseModel):
     known_object_properties = ['order_id', 'client_order_id', 'symbol', 'account_id', 'exchange_id', 'is_buy', 'order_type', 'time_in_force', 'trigger_px', 'reduce_only', 'limit_px', 'qty', 'post_only', 'expires_after', 'signature', 'nonce', 'signer_wallet', 'deadline', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0:
+    if len(unknown_object_properties) == 0: 
       return data
-
+  
     known_json_properties = ['orderId', 'clientOrderId', 'symbol', 'accountId', 'exchangeId', 'isBuy', 'orderType', 'timeInForce', 'triggerPx', 'reduceOnly', 'limitPx', 'qty', 'postOnly', 'expiresAfter', 'signature', 'nonce', 'signerWallet', 'deadline', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -55,3 +55,4 @@ class ModifyOrderRequest(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
+

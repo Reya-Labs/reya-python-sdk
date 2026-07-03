@@ -847,7 +847,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -869,7 +869,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -924,7 +924,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -946,7 +946,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1001,7 +1001,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1023,7 +1023,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1099,13 +1099,13 @@ class WalletDataApi:
             _path_params['address'] = address
         # process the query parameters
         if start_time is not None:
-
+            
             _query_params.append(('startTime', start_time))
-
+            
         if end_time is not None:
-
+            
             _query_params.append(('endTime', end_time))
-
+            
         # process the header parameters
         # process the form parameters
         # process the body parameter
@@ -1413,7 +1413,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1429,13 +1429,13 @@ class WalletDataApi:
     ) -> OrderHistoryList:
         """Get wallet order history
 
-        Returns up to 100 historical matching-engine order state updates for a wallet, newest first. Each row is one public `Order` projection emitted by the matching engine for one of the wallet's accounts, covering both spot and perp markets once the matching-engine order-history writer is enabled for the environment.  This endpoint is for retail/account-history views and support tooling. It is not intended for market-maker ingestion, audit logs, or high-throughput reconciliation. The backing service stores bounded history per account and can automatically exclude high-throughput accounts from persistence; market makers should capture their own durable order timeline from the `orderChanges` WebSocket stream.  Pagination follows the same descending time-window convention as the wallet execution endpoints. `startTime` and `endTime` are millisecond POSIX timestamps matched against each row's matching-engine event time (`lastUpdateAt`). Results are returned newest-first; `meta.startTime` is the newest returned row timestamp and `meta.endTime` is the oldest returned row timestamp. Because `endTime` is an inclusive upper bound, clients that pass the previous `meta.endTime` may receive boundary rows again and should deduplicate overlap by `Order.sequenceNumber`. Clients that do not need to preserve same-millisecond boundary ties may page backward with `endTime = meta.endTime - 1`.
+        Returns up to 100 historical matching-engine order state updates for a wallet, newest first. Each row is one public `Order` projection emitted by the matching engine for one of the wallet's accounts, covering both spot and perp markets once the matching-engine order-history writer is enabled for the environment.  This endpoint is for retail/account-history views and support tooling. It is not intended for market-maker ingestion, audit logs, or high-throughput reconciliation. The backing service stores bounded history per account and can automatically exclude high-throughput accounts from persistence; market makers should capture their own durable order timeline from the `orderChanges` WebSocket stream.  Pagination follows the same descending time-window convention as the wallet execution endpoints. `startTime` and `endTime` are millisecond POSIX timestamps matched against each row's matching-engine event time (`lastUpdateAt`). Results are returned newest-first; `meta.startTime` is the newest returned row timestamp and `meta.endTime` is the oldest returned row timestamp. Because `endTime` is an inclusive upper bound, clients that pass the previous `meta.endTime` may receive boundary rows again and should deduplicate overlap by `Order.sequenceNumber`. Clients that do not need to preserve same-millisecond boundary ties may page backward with `endTime = meta.endTime - 1`. 
 
         :param address: (required)
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1490,7 +1490,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1506,13 +1506,13 @@ class WalletDataApi:
     ) -> ApiResponse[OrderHistoryList]:
         """Get wallet order history
 
-        Returns up to 100 historical matching-engine order state updates for a wallet, newest first. Each row is one public `Order` projection emitted by the matching engine for one of the wallet's accounts, covering both spot and perp markets once the matching-engine order-history writer is enabled for the environment.  This endpoint is for retail/account-history views and support tooling. It is not intended for market-maker ingestion, audit logs, or high-throughput reconciliation. The backing service stores bounded history per account and can automatically exclude high-throughput accounts from persistence; market makers should capture their own durable order timeline from the `orderChanges` WebSocket stream.  Pagination follows the same descending time-window convention as the wallet execution endpoints. `startTime` and `endTime` are millisecond POSIX timestamps matched against each row's matching-engine event time (`lastUpdateAt`). Results are returned newest-first; `meta.startTime` is the newest returned row timestamp and `meta.endTime` is the oldest returned row timestamp. Because `endTime` is an inclusive upper bound, clients that pass the previous `meta.endTime` may receive boundary rows again and should deduplicate overlap by `Order.sequenceNumber`. Clients that do not need to preserve same-millisecond boundary ties may page backward with `endTime = meta.endTime - 1`.
+        Returns up to 100 historical matching-engine order state updates for a wallet, newest first. Each row is one public `Order` projection emitted by the matching engine for one of the wallet's accounts, covering both spot and perp markets once the matching-engine order-history writer is enabled for the environment.  This endpoint is for retail/account-history views and support tooling. It is not intended for market-maker ingestion, audit logs, or high-throughput reconciliation. The backing service stores bounded history per account and can automatically exclude high-throughput accounts from persistence; market makers should capture their own durable order timeline from the `orderChanges` WebSocket stream.  Pagination follows the same descending time-window convention as the wallet execution endpoints. `startTime` and `endTime` are millisecond POSIX timestamps matched against each row's matching-engine event time (`lastUpdateAt`). Results are returned newest-first; `meta.startTime` is the newest returned row timestamp and `meta.endTime` is the oldest returned row timestamp. Because `endTime` is an inclusive upper bound, clients that pass the previous `meta.endTime` may receive boundary rows again and should deduplicate overlap by `Order.sequenceNumber`. Clients that do not need to preserve same-millisecond boundary ties may page backward with `endTime = meta.endTime - 1`. 
 
         :param address: (required)
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1567,7 +1567,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1583,13 +1583,13 @@ class WalletDataApi:
     ) -> RESTResponseType:
         """Get wallet order history
 
-        Returns up to 100 historical matching-engine order state updates for a wallet, newest first. Each row is one public `Order` projection emitted by the matching engine for one of the wallet's accounts, covering both spot and perp markets once the matching-engine order-history writer is enabled for the environment.  This endpoint is for retail/account-history views and support tooling. It is not intended for market-maker ingestion, audit logs, or high-throughput reconciliation. The backing service stores bounded history per account and can automatically exclude high-throughput accounts from persistence; market makers should capture their own durable order timeline from the `orderChanges` WebSocket stream.  Pagination follows the same descending time-window convention as the wallet execution endpoints. `startTime` and `endTime` are millisecond POSIX timestamps matched against each row's matching-engine event time (`lastUpdateAt`). Results are returned newest-first; `meta.startTime` is the newest returned row timestamp and `meta.endTime` is the oldest returned row timestamp. Because `endTime` is an inclusive upper bound, clients that pass the previous `meta.endTime` may receive boundary rows again and should deduplicate overlap by `Order.sequenceNumber`. Clients that do not need to preserve same-millisecond boundary ties may page backward with `endTime = meta.endTime - 1`.
+        Returns up to 100 historical matching-engine order state updates for a wallet, newest first. Each row is one public `Order` projection emitted by the matching engine for one of the wallet's accounts, covering both spot and perp markets once the matching-engine order-history writer is enabled for the environment.  This endpoint is for retail/account-history views and support tooling. It is not intended for market-maker ingestion, audit logs, or high-throughput reconciliation. The backing service stores bounded history per account and can automatically exclude high-throughput accounts from persistence; market makers should capture their own durable order timeline from the `orderChanges` WebSocket stream.  Pagination follows the same descending time-window convention as the wallet execution endpoints. `startTime` and `endTime` are millisecond POSIX timestamps matched against each row's matching-engine event time (`lastUpdateAt`). Results are returned newest-first; `meta.startTime` is the newest returned row timestamp and `meta.endTime` is the oldest returned row timestamp. Because `endTime` is an inclusive upper bound, clients that pass the previous `meta.endTime` may receive boundary rows again and should deduplicate overlap by `Order.sequenceNumber`. Clients that do not need to preserve same-millisecond boundary ties may page backward with `endTime = meta.endTime - 1`. 
 
         :param address: (required)
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1665,13 +1665,13 @@ class WalletDataApi:
             _path_params['address'] = address
         # process the query parameters
         if start_time is not None:
-
+            
             _query_params.append(('startTime', start_time))
-
+            
         if end_time is not None:
-
+            
             _query_params.append(('endTime', end_time))
-
+            
         # process the header parameters
         # process the form parameters
         # process the body parameter
@@ -1713,7 +1713,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[StrictStr], Field(description="Filter perp executions by type. Omit to return executions of all types.")] = None,
         _request_timeout: Union[
             None,
@@ -1736,7 +1736,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param type: Filter perp executions by type. Omit to return executions of all types.
         :type type: str
@@ -1794,7 +1794,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[StrictStr], Field(description="Filter perp executions by type. Omit to return executions of all types.")] = None,
         _request_timeout: Union[
             None,
@@ -1817,7 +1817,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param type: Filter perp executions by type. Omit to return executions of all types.
         :type type: str
@@ -1875,7 +1875,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[StrictStr], Field(description="Filter perp executions by type. Omit to return executions of all types.")] = None,
         _request_timeout: Union[
             None,
@@ -1898,7 +1898,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param type: Filter perp executions by type. Omit to return executions of all types.
         :type type: str
@@ -1978,17 +1978,17 @@ class WalletDataApi:
             _path_params['address'] = address
         # process the query parameters
         if start_time is not None:
-
+            
             _query_params.append(('startTime', start_time))
-
+            
         if end_time is not None:
-
+            
             _query_params.append(('endTime', end_time))
-
+            
         if type is not None:
-
+            
             _query_params.append(('type', type))
-
+            
         # process the header parameters
         # process the form parameters
         # process the body parameter
@@ -2293,7 +2293,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -2315,7 +2315,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2370,7 +2370,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -2392,7 +2392,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2447,7 +2447,7 @@ class WalletDataApi:
         self,
         address: Annotated[str, Field(strict=True)],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
-        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -2469,7 +2469,7 @@ class WalletDataApi:
         :type address: str
         :param start_time: Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.
         :type start_time: int
-        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows. For orderHistory, deduplicate overlap by `Order.sequenceNumber`; otherwise subtract 1ms when same-ms boundary ties are not relevant.
+        :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2545,13 +2545,13 @@ class WalletDataApi:
             _path_params['address'] = address
         # process the query parameters
         if start_time is not None:
-
+            
             _query_params.append(('startTime', start_time))
-
+            
         if end_time is not None:
-
+            
             _query_params.append(('endTime', end_time))
-
+            
         # process the header parameters
         # process the form parameters
         # process the body parameter
@@ -2584,3 +2584,5 @@ class WalletDataApi:
             _host=_host,
             _request_auth=_request_auth
         )
+
+

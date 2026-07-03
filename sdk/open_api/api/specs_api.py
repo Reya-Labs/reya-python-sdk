@@ -258,7 +258,7 @@ class SpecsApi:
         if 'Accept' not in _header_params:
             _header_params['Accept'] = self.api_client.select_header_accept(
                 [
-                    'application/yaml',
+                    'application/yaml', 
                     'application/json'
                 ]
             )
@@ -507,7 +507,7 @@ class SpecsApi:
         if 'Accept' not in _header_params:
             _header_params['Accept'] = self.api_client.select_header_accept(
                 [
-                    'application/yaml',
+                    'application/yaml', 
                     'application/json'
                 ]
             )
@@ -531,3 +531,5 @@ class SpecsApi:
             _host=_host,
             _request_auth=_request_auth
         )
+
+

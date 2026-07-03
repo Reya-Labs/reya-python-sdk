@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_api.side import Side
 from sdk.async_api.execution_type import ExecutionType
-class SpotExecution(BaseModel):
+class SpotExecution(BaseModel): 
   exchange_id: Optional[int] = Field(default=None, alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   taker_account_id: int = Field(alias='''takerAccountId''')
@@ -41,9 +41,9 @@ class SpotExecution(BaseModel):
     known_object_properties = ['exchange_id', 'symbol', 'taker_account_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'side', 'qty', 'price', 'taker_fee', 'type', 'timestamp', 'sequence_number', 'fill_id', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0:
+    if len(unknown_object_properties) == 0: 
       return data
-
+  
     known_json_properties = ['exchangeId', 'symbol', 'takerAccountId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'side', 'qty', 'price', 'takerFee', 'type', 'timestamp', 'sequenceNumber', 'fillId', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -51,3 +51,4 @@ class SpotExecution(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
+
