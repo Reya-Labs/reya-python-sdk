@@ -30,7 +30,7 @@ from typing_extensions import Self
 
 class Order(BaseModel):
     """
-    Represents a state of an order. Emitted as openOrders snapshots, orderChanges WS events, and orderHistory REST rows. For event-style emissions (orderChanges WS, orderHistory REST), `lastUpdateAt` reflects the matching-engine event time and a single order produces one row per state transition (OPEN, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED). Event-style emissions include `sequenceNumber`; resting snapshots omit it.
+    Represents a public order state. Emitted as openOrders snapshots, orderChanges WS events, and orderHistory REST rows. For event-style emissions (orderChanges WS, orderHistory REST), `lastUpdateAt` reflects the matching-engine event time and a single order may produce multiple rows as it moves through the public `OPEN`, `FILLED`, and `CANCELLED` statuses. Matching-engine partial-fill states surface as `OPEN`; request-level rejects are returned as errors rather than order-status rows. Event-style emissions include `sequenceNumber`; resting snapshots omit it.
     """ # noqa: E501
     exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
