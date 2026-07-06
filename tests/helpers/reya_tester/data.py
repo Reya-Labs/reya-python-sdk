@@ -55,6 +55,28 @@ class DataOperations:
 
         raise RuntimeError(f"Current mark price for {symbol} unavailable after {max_attempts} attempts") from last_exc
 
+    async def asset_oracle_price(self, asset: str, max_attempts: int = 5) -> str:
+        """Fetch current asset oracle price, retrying through transient market-data gaps."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(max_attempts):
+            try:
+                current_price = (await self._t.client.get_asset_oracle_price(asset)).oracle_price
+                logger.info(f"💰 Current asset oracle price for {asset}: ${float(current_price):.2f}")
+                return current_price
+            except ApiException as e:
+                error_text = str(e)
+                if "Price not found" not in error_text and "market data not found" not in error_text:
+                    raise
+                last_exc = e
+                logger.warning(
+                    f"⚠️ asset oracle price gap for {asset} (attempt {attempt + 1}/{max_attempts}); " "retrying in 0.3s"
+                )
+            await asyncio.sleep(0.3)
+
+        raise RuntimeError(
+            f"Current asset oracle price for {asset} unavailable after {max_attempts} attempts"
+        ) from last_exc
+
     async def positions(self) -> dict[str, Position]:
         """Get all current positions."""
         positions_list: list[Position] = await self._t.client.get_positions()

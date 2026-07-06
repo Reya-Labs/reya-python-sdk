@@ -1236,15 +1236,16 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
     logger.info(f"   Min Balance: {selected_market.min_balance}")
     logger.info("=" * 60)
 
-    # Fetch oracle price using PERP symbol (e.g., ETHRUSDPERP, BTCRUSDPERP)
-    oracle_symbol = selected_market.oracle_symbol
+    # Fetch asset oracle price without going through the deprecated /prices endpoint
+    # or a perp mark-price substitute.
+    oracle_asset = {"WETH": "ETH", "WBTC": "BTC"}.get(selected_market.base_asset, selected_market.base_asset)
 
     try:
-        price_str = await maker_tester_session.data.current_price(oracle_symbol)
+        price_str = await maker_tester_session.data.asset_oracle_price(oracle_asset)
         oracle_price = float(price_str)
         logger.info(f"📊 Fetched {spot_asset} oracle price: ${oracle_price:.2f}")
     except (OSError, RuntimeError, ValueError) as e:
-        logger.warning(f"Failed to fetch oracle price for {oracle_symbol}: {e}")
+        logger.warning(f"Failed to fetch oracle price for {oracle_asset}: {e}")
         # Fallback prices per asset
         fallback_prices = {"ETH": 3000.0, "BTC": 80000.0}
         oracle_price = fallback_prices.get(spot_asset, 1000.0)
