@@ -1,5 +1,7 @@
 """Offline guards for the /v2/prices deprecation migration."""
 
+# pylint: disable=redefined-outer-name
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -59,7 +61,7 @@ class _FakeMarkets:
 
 
 @pytest.fixture
-def client() -> ReyaTradingClient:
+def trading_client() -> ReyaTradingClient:
     config = TradingConfig(
         api_url="https://invalid.example/v2",
         chain_id=89346162,
@@ -74,22 +76,24 @@ def client() -> ReyaTradingClient:
 
 
 @pytest.mark.asyncio
-async def test_asset_oracle_price_helper_uses_asset_oracle_prices_endpoint(client: ReyaTradingClient) -> None:
-    price = await client.get_asset_oracle_price("eth")
+async def test_asset_oracle_price_helper_uses_asset_oracle_prices_endpoint(
+    trading_client: ReyaTradingClient,
+) -> None:
+    price = await trading_client.get_asset_oracle_price("eth")
 
     assert price.asset == "ETH"
     assert price.oracle_price == "2500"
-    assert client.markets.calls == [("get_asset_oracle_prices", None)]  # type: ignore[attr-defined]
+    assert trading_client.markets.calls == [("get_asset_oracle_prices", None)]  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
-async def test_market_price_helpers_use_market_summary_endpoint(client: ReyaTradingClient) -> None:
-    mark_price = await client.get_market_mark_price("ETHRUSDPERP")
-    mid_price = await client.get_market_mid_price("ETHRUSDPERP")
+async def test_market_price_helpers_use_market_summary_endpoint(trading_client: ReyaTradingClient) -> None:
+    mark_price = await trading_client.get_market_mark_price("ETHRUSDPERP")
+    mid_price = await trading_client.get_market_mid_price("ETHRUSDPERP")
 
     assert mark_price == "2500"
     assert mid_price == "2501"
-    assert client.markets.calls == [  # type: ignore[attr-defined]
+    assert trading_client.markets.calls == [  # type: ignore[attr-defined]
         ("get_perp_market_summary", "ETHRUSDPERP"),
         ("get_perp_market_summary", "ETHRUSDPERP"),
     ]
