@@ -1,6 +1,6 @@
 import pytest
 
-import tests.helpers.ws_exec_prerequisites as ws_exec_prerequisites
+from tests.helpers import ws_exec_prerequisites
 from tests.helpers.ws_exec_prerequisites import ws_exec_account_env_vars, ws_exec_prerequisite_missing
 
 

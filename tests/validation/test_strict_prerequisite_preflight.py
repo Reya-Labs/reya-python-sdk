@@ -53,4 +53,4 @@ def test_missing_spot_env_is_detected_before_execution_busts_guard_api_calls(mon
 def test_non_strict_items_do_not_disable_execution_busts_guard(monkeypatch):
     monkeypatch.delenv("REYA_WS_EXEC_URL", raising=False)
 
-    assert _strict_prerequisite_missing_env([_Item(set())]) == []
+    assert not _strict_prerequisite_missing_env([_Item(set())])

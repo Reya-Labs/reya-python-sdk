@@ -1,6 +1,6 @@
 import pytest
 
-import tests.helpers.spot_prerequisites as spot_prerequisites
+from tests.helpers import spot_prerequisites
 from tests.helpers.spot_prerequisites import missing_env_vars, spot_prerequisite_missing
 
 
