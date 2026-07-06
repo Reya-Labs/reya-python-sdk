@@ -38,13 +38,14 @@ class DataOperations:
                 current_price = await self._t.client.get_market_mark_price(symbol)
                 logger.info(f"💰 Current mark price for {symbol}: ${float(current_price):.2f}")
                 return current_price
-            except ApiException as e:
+            except (ApiException, RuntimeError) as e:
                 # Only transient market-data gaps are retryable; anything else is a real error.
                 error_text = str(e)
                 if (
                     "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in error_text
                     and "Price not found" not in error_text
                     and "market data not found" not in error_text
+                    and "did not include markPrice" not in error_text
                 ):
                     raise
                 last_exc = e

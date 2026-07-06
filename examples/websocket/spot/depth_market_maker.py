@@ -354,11 +354,12 @@ class WebSocketHandler:
 
         # Handle market summary price updates
         if isinstance(message, SpotMarketSummaryUpdatePayload):
-            if message.data and message.data.oracle_price:
-                price = Decimal(message.data.oracle_price)
-                if self.state.market_params:
-                    price = round_to_tick(price, self.state.market_params.tick_size)
-                self.state.update_price(price)
+            if not message.data or message.data.oracle_price is None:
+                raise RuntimeError(f"Spot market summary for {self.state.oracle_symbol} missing oraclePrice")
+            price = Decimal(message.data.oracle_price)
+            if self.state.market_params:
+                price = round_to_tick(price, self.state.market_params.tick_size)
+            self.state.update_price(price)
             return
 
         # Handle balance updates
@@ -449,8 +450,9 @@ async def fetch_initial_state(
     # Fetch spot market reference price
     logger.info(f"   Fetching spot market summary for {state.oracle_symbol}...")
     summary = await client.markets.get_spot_market_summary(state.oracle_symbol)
-    if summary.oracle_price:
-        state.reference_price = round_to_tick(Decimal(summary.oracle_price), market_params.tick_size)
+    if summary.oracle_price is None:
+        raise RuntimeError(f"Spot market summary for {state.oracle_symbol} missing oraclePrice")
+    state.reference_price = round_to_tick(Decimal(summary.oracle_price), market_params.tick_size)
 
     # Fetch account balances
     logger.info("   Fetching account balances...")

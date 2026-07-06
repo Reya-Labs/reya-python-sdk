@@ -1,6 +1,6 @@
 """Market-related WebSocket resources for v2 API."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sdk.reya_websocket.resources.common import SubscribableParameterizedResource, SubscribableResource
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class MarketResource:
     """Container for all market-related WebSocket resources for v2 API."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: "ReyaSocket") -> None:
         """Initialize the market resource container.
 
         Args:
@@ -110,7 +110,7 @@ class MarketResource:
 class AllMarketsSummaryResource(SubscribableResource):
     """Resource for accessing all markets summary data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: "ReyaSocket") -> None:
         """Initialize the all markets summary resource.
 
         Args:
@@ -119,7 +119,7 @@ class AllMarketsSummaryResource(SubscribableResource):
         super().__init__(socket)
         self.path = "/v2/perpMarkets/summary"
 
-    def subscribe(self, batched: bool = False, **kwargs) -> None:
+    def subscribe(self, batched: bool = False, **kwargs: Any) -> None:
         """Subscribe to all markets summary data.
 
         Args:
@@ -128,7 +128,7 @@ class AllMarketsSummaryResource(SubscribableResource):
         """
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
-    def unsubscribe(self, **kwargs) -> None:
+    def unsubscribe(self, **kwargs: Any) -> None:
         """Unsubscribe from all markets summary data.
 
         Args:
@@ -140,7 +140,7 @@ class AllMarketsSummaryResource(SubscribableResource):
 class MarketSummaryResource(SubscribableParameterizedResource):
     """Resource for accessing perp market summary data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: "ReyaSocket") -> None:
         """Initialize the market summary resource.
 
         Args:
@@ -163,7 +163,7 @@ class MarketSummaryResource(SubscribableParameterizedResource):
 class AllSpotMarketsSummaryResource(SubscribableResource):
     """Resource for accessing all spot markets summary data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: "ReyaSocket") -> None:
         """Initialize the all spot markets summary resource.
 
         Args:
@@ -172,7 +172,7 @@ class AllSpotMarketsSummaryResource(SubscribableResource):
         super().__init__(socket)
         self.path = "/v2/spotMarkets/summary"
 
-    def subscribe(self, batched: bool = False, **kwargs) -> None:
+    def subscribe(self, batched: bool = False, **kwargs: Any) -> None:
         """Subscribe to all spot markets summary data.
 
         Args:
@@ -181,7 +181,7 @@ class AllSpotMarketsSummaryResource(SubscribableResource):
         """
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
-    def unsubscribe(self, **kwargs) -> None:
+    def unsubscribe(self, **kwargs: Any) -> None:
         """Unsubscribe from all spot markets summary data.
 
         Args:
@@ -193,7 +193,7 @@ class AllSpotMarketsSummaryResource(SubscribableResource):
 class SpotMarketSummaryResource(SubscribableParameterizedResource):
     """Resource for accessing spot market summary data."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: "ReyaSocket") -> None:
         """Initialize the spot market summary resource.
 
         Args:
@@ -239,7 +239,7 @@ class MarketPerpExecutionsResource(SubscribableParameterizedResource):
 class MarketSummarySubscription:
     """Manages a subscription to perp market summary for a specific symbol."""
 
-    def __init__(self, socket: "ReyaSocket", symbol: str):
+    def __init__(self, socket: "ReyaSocket", symbol: str) -> None:
         """Initialize a market summary subscription.
 
         Args:
@@ -266,7 +266,7 @@ class MarketSummarySubscription:
 class SpotMarketSummarySubscription:
     """Manages a subscription to spot market summary for a specific symbol."""
 
-    def __init__(self, socket: "ReyaSocket", symbol: str):
+    def __init__(self, socket: "ReyaSocket", symbol: str) -> None:
         """Initialize a spot market summary subscription.
 
         Args:

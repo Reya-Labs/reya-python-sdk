@@ -113,8 +113,13 @@ async def _mark_price(rest: ReyaTradingClient, symbol: str, max_attempts: int = 
     for _ in range(max_attempts):
         try:
             return float(await rest.get_market_mark_price(symbol))
-        except ApiException as exc:
-            if "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in str(exc) and "Price not found" not in str(exc):
+        except (ApiException, RuntimeError) as exc:
+            error_text = str(exc)
+            if (
+                "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in error_text
+                and "Price not found" not in error_text
+                and "did not include markPrice" not in error_text
+            ):
                 raise
             last_exc = exc
         await asyncio.sleep(0.3)
