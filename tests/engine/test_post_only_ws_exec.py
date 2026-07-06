@@ -73,7 +73,18 @@ WOULD_CROSS_PX = str(SAFE_NO_MATCH_SELL_PRICE)
 
 # The would-cross counterparty needs a second SPOT account to rest the
 # engineered ask; missing SPOT_*_2 fails loudly by default.
+_PROBER_ENV = ws_exec_account_env_vars("SPOT", 1)
 _COUNTERPARTY_ENV = ws_exec_account_env_vars("SPOT", 2)
+_WOULD_CROSS_ENV = ("REYA_WS_EXEC_URL",) + _PROBER_ENV + _COUNTERPARTY_ENV
+
+
+def _preflight_would_cross_prerequisites() -> None:
+    missing = missing_env_vars(_WOULD_CROSS_ENV)
+    if missing:
+        ws_exec_prerequisite_missing(
+            "ws-exec post-only would-cross spot probe needs REYA_WS_EXEC_URL, Spot Account 1, and Spot Account 2",
+            missing_env=missing,
+        )
 
 
 async def _wait_for_open_order(rest: ReyaTradingClient, order_id: str, timeout_s: float = 10.0) -> Order:
@@ -128,12 +139,7 @@ class _RestDepthOps:
 async def counterparty_rest():
     """A started REST client for SPOT account 2 — rests the engineered
     counterparty ask for the would-cross probe."""
-    missing = missing_env_vars(_COUNTERPARTY_ENV)
-    if missing:
-        ws_exec_prerequisite_missing(
-            "would-cross counterparty needs Spot Account 2 configuration",
-            missing_env=missing,
-        )
+    _preflight_would_cross_prerequisites()
     rest2 = ReyaTradingClient(TradingConfig.from_env_spot(account_number=2))
     await rest2.start()
     try:
@@ -192,12 +198,7 @@ async def test_ws_exec_post_only_would_cross_error_envelope(  # pylint: disable=
     (test_post_only_rejection.py); this pins only the ws-exec error-envelope
     mapping, which is transport-uniform across markets.
     """
-    if not os.environ.get("REYA_WS_EXEC_URL"):
-        ws_exec_prerequisite_missing(
-            "ws-exec post-only would-cross spot probe needs REYA_WS_EXEC_URL",
-            missing_env=["REYA_WS_EXEC_URL"],
-        )
-
+    _preflight_would_cross_prerequisites()
     config = TradingConfig.from_env_spot(account_number=1)
     rest = ReyaTradingClient(config)
     await rest.start()

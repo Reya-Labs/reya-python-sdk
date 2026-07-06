@@ -48,6 +48,7 @@ from tests.helpers.spot_prerequisites import (  # noqa: E402
     spot_account_env_vars,
     spot_prerequisite_missing,
 )
+from tests.helpers.ws_exec_prerequisites import ws_exec_account_env_vars  # noqa: E402
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
@@ -57,6 +58,16 @@ MIN_RUSD_BALANCE = 15.0
 
 # Default asset if not specified via CLI
 DEFAULT_SPOT_ASSET = "ETH"
+
+_STRICT_SPOT_PREREQUISITE_MARKER = "strict_spot_prerequisites"
+_STRICT_WS_EXEC_PREREQUISITE_MARKER = "strict_ws_exec_prerequisites"
+_STRICT_SPOT_ENV = spot_account_env_vars(1) + spot_account_env_vars(2)
+_STRICT_WS_EXEC_ENV = (
+    ("REYA_WS_EXEC_URL",)
+    + ws_exec_account_env_vars("SPOT", 1)
+    + ws_exec_account_env_vars("SPOT", 2)
+    + ws_exec_account_env_vars("PERP", 1)
+)
 
 
 class _ReyaEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
@@ -102,6 +113,12 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.spot)
         elif market == "perp":
             item.add_marker(pytest.mark.perp)
+
+        item_path = str(item.path)
+        if "/tests/spot/" in item_path or item.get_closest_marker("spot") is not None:
+            item.add_marker(_STRICT_SPOT_PREREQUISITE_MARKER)
+        if "/tests/ws_exec/" in item_path or item_path.endswith("_ws_exec.py"):
+            item.add_marker(_STRICT_WS_EXEC_PREREQUISITE_MARKER)
 
 
 @pytest.fixture(scope="session")
@@ -179,6 +196,34 @@ def _busts_guard_api_url() -> str:
     else:
         default_api_url = "https://api-devnet.reya-cronos.network/v2"
     return os.environ.get("REYA_API_URL", default_api_url)
+
+
+def _unique_missing_env_vars(env_vars: tuple[str, ...]) -> list[str]:
+    """Return missing env var names once, preserving prerequisite order."""
+    missing: list[str] = []
+    seen: set[str] = set()
+    for name in env_vars:
+        if name not in seen and not os.environ.get(name):
+            missing.append(name)
+            seen.add(name)
+    return missing
+
+
+def _strict_prerequisite_missing_env(items) -> list[str]:
+    """Env gaps that should fail selected spot/ws-exec tests before any guard API call.
+
+    Market-definition and balance prerequisites are checked by the owning
+    fixtures after REST clients are intentionally configured. This helper only
+    covers environment prerequisites that can be decided without touching the
+    network, so the session-wide execution-bust guard cannot race those
+    controlled failures with unrelated read-only API calls.
+    """
+    env_vars: tuple[str, ...] = ()
+    if any(item.get_closest_marker(_STRICT_SPOT_PREREQUISITE_MARKER) for item in items):
+        env_vars += _STRICT_SPOT_ENV
+    if any(item.get_closest_marker(_STRICT_WS_EXEC_PREREQUISITE_MARKER) for item in items):
+        env_vars += _STRICT_WS_EXEC_ENV
+    return _unique_missing_env_vars(env_vars)
 
 
 _EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = (
@@ -274,6 +319,15 @@ async def execution_busts_guard(request):
     if all(item.get_closest_marker("offline") for item in request.session.items):
         # Offline-only session (e.g. `pytest -m offline` / tests/parity) —
         # the guard's API calls are the only network traffic; stay silent.
+        yield
+        return
+
+    missing_strict_env = _strict_prerequisite_missing_env(request.session.items)
+    if missing_strict_env:
+        logger.info(
+            "Execution-busts guard inactive until strict test prerequisites are configured; missing env vars: "
+            f"{', '.join(missing_strict_env)}"
+        )
         yield
         return
 
