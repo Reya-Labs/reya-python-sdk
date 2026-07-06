@@ -13,6 +13,7 @@ shutdown. Adaptations vs the spot bot:
   rUSD; per-order required margin is approximated as ``price * qty /
   max_leverage``. Conservative on purpose — this is a depth source, not an
   alpha generator.
+- Price reference: ``/perpMarket/{symbol}/summary`` markPrice.
 - WS executions: ``ws.wallet.perp_executions(wallet)`` instead of
   ``spot_executions``.
 
@@ -51,8 +52,8 @@ from decimal import ROUND_DOWN, Decimal
 from dotenv import load_dotenv  # pip install python-dotenv
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
-from sdk.async_api.price_update_payload import PriceUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
 from sdk.open_api.exceptions import ApiException
@@ -75,10 +76,8 @@ logger = logging.getLogger("perp_market_maker_ws")
 
 # Market configuration (defaults, can be overridden via command line).
 # Defaults assume the standard devnet1 / cronos / mainnet ETH perp listing.
-# Default to the perp symbol as its own oracle reference. /v2/prices/{symbol}
-# returns `oraclePrice` for perp symbols on every env, whereas spot oracle
-# pairs (e.g. "ETHRUSD") are not registered on perp-only envs like devnet1.
-# Override with --oracle-symbol if you want to peg to a different reference.
+# Default to the perp symbol as its own mark-price reference.
+# Override with --oracle-symbol if you want to peg to a different perp summary.
 DEFAULT_SYMBOL = "ETHRUSDPERP"
 DEFAULT_ORACLE_SYMBOL = "ETHRUSDPERP"
 DEFAULT_MAX_SPREAD_PCT = Decimal("0.01")  # ±1% from reference price
@@ -320,7 +319,7 @@ def compute_available_margin(
 
 
 class WebSocketHandler:
-    """Subscribes to oracle price, wallet balances, order changes, perp executions."""
+    """Subscribes to mark price, wallet balances, order changes, perp executions."""
 
     def __init__(self, state: MarketMakerState):
         self.state = state
@@ -336,12 +335,12 @@ class WebSocketHandler:
             logger.error("No wallet address set in state")
             return
 
-        ws.prices.price(self.state.oracle_symbol).subscribe()
+        ws.market.summary(self.state.oracle_symbol).subscribe()
         ws.wallet.balances(wallet).subscribe()
         ws.wallet.order_changes(wallet).subscribe()
         ws.wallet.perp_executions(wallet).subscribe()
 
-        logger.info(f"   ✅ Subscribed to /v2/prices/{self.state.oracle_symbol}")
+        logger.info(f"   ✅ Subscribed to /v2/perpMarket/{self.state.oracle_symbol}/summary")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/accountBalances")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/openOrders")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/perpExecutions")
@@ -353,9 +352,9 @@ class WebSocketHandler:
             self._connected.set()
             return
 
-        if isinstance(message, PriceUpdatePayload):
-            if message.data and message.data.oracle_price:
-                price = Decimal(message.data.oracle_price)
+        if isinstance(message, MarketSummaryUpdatePayload):
+            if message.data and message.data.mark_price:
+                price = Decimal(message.data.mark_price)
                 if self.state.market_params:
                     price = round_to_tick(price, self.state.market_params.tick_size)
                 self.state.update_price(price)
@@ -437,10 +436,9 @@ async def fetch_initial_state(client: ReyaTradingClient, state: MarketMakerState
     if not market_params or not account_id:
         raise RuntimeError("Market params and account_id must be set before fetching initial state")
 
-    logger.info(f"   Fetching oracle price for {state.oracle_symbol}...")
-    price_info = await client.markets.get_price(state.oracle_symbol)
-    if price_info and price_info.oracle_price:
-        state.reference_price = round_to_tick(Decimal(price_info.oracle_price), market_params.tick_size)
+    logger.info(f"   Fetching mark price for {state.oracle_symbol}...")
+    mark_price = await client.get_market_mark_price(state.oracle_symbol)
+    state.reference_price = round_to_tick(Decimal(mark_price), market_params.tick_size)
 
     logger.info("   Fetching account balances...")
     balances = await client.get_account_balances()
@@ -836,7 +834,7 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal) -> None
 
         min_price = state.reference_price * (1 - state.max_spread_pct)
         max_price = state.reference_price * (1 + state.max_spread_pct)
-        logger.info(f"   Reference Price: ${state.reference_price} (from {oracle_symbol} oracle)")
+        logger.info(f"   Reference Price: ${state.reference_price} (from {oracle_symbol} markPrice)")
         logger.info(f"   Price Range:     ${min_price:.2f} – ${max_price:.2f} (±{state.max_spread_pct * 100}%)")
         logger.info(f"   Tick Size:       {market_params.tick_size}")
         logger.info(f"   Min Order Qty:   {market_params.min_order_qty}")
@@ -930,7 +928,7 @@ def parse_args() -> argparse.Namespace:
         "--oracle-symbol",
         type=str,
         default=DEFAULT_ORACLE_SYMBOL,
-        help=f"Oracle reference symbol (default: {DEFAULT_ORACLE_SYMBOL})",
+        help=f"Perp summary reference symbol (default: {DEFAULT_ORACLE_SYMBOL})",
     )
     parser.add_argument(
         "--max-spread",

@@ -3,7 +3,7 @@
 Spot Market Maker (WebSocket Version) - Maintains realistic depth around current ETH price.
 
 This version uses WebSocket for real-time updates instead of REST polling:
-- Price updates via /v2/prices/{symbol}
+- Price updates via /v2/spotMarket/{symbol}/summary
 - Balance updates via /v2/wallet/{address}/accountBalances
 - Order changes via /v2/wallet/{address}/openOrders
 - Spot executions via /v2/wallet/{address}/spotExecutions
@@ -38,7 +38,7 @@ from dotenv import load_dotenv  # pip install python-dotenv
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
-from sdk.async_api.price_update_payload import PriceUpdatePayload
+from sdk.async_api.spot_market_summary_update_payload import SpotMarketSummaryUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
 from sdk.open_api.exceptions import ApiException
@@ -329,15 +329,15 @@ class WebSocketHandler:
             logger.error("No wallet address set in state")
             return
 
-        # Subscribe to price updates for oracle symbol
-        ws.prices.price(self.state.oracle_symbol).subscribe()
+        # Subscribe to spot market summary updates for reference pricing.
+        ws.market.spot_summary(self.state.oracle_symbol).subscribe()
 
         # Subscribe to wallet channels
         ws.wallet.balances(wallet).subscribe()
         ws.wallet.order_changes(wallet).subscribe()
         ws.wallet.spot_executions(wallet).subscribe()
 
-        logger.info(f"   ✅ Subscribed to /v2/prices/{self.state.oracle_symbol}")
+        logger.info(f"   ✅ Subscribed to /v2/spotMarket/{self.state.oracle_symbol}/summary")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/accountBalances")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/openOrders")
         logger.info(f"   ✅ Subscribed to /v2/wallet/{wallet}/spotExecutions")
@@ -352,8 +352,8 @@ class WebSocketHandler:
             self._connected.set()
             return
 
-        # Handle price updates
-        if isinstance(message, PriceUpdatePayload):
+        # Handle market summary price updates
+        if isinstance(message, SpotMarketSummaryUpdatePayload):
             if message.data and message.data.oracle_price:
                 price = Decimal(message.data.oracle_price)
                 if self.state.market_params:
@@ -446,11 +446,11 @@ async def fetch_initial_state(
     if not market_params or not account_id:
         raise RuntimeError("Market params and account_id must be set before fetching initial state")
 
-    # Fetch oracle price
-    logger.info(f"   Fetching oracle price for {state.oracle_symbol}...")
-    price_info = await client.markets.get_price(state.oracle_symbol)
-    if price_info and price_info.oracle_price:
-        state.reference_price = round_to_tick(Decimal(price_info.oracle_price), market_params.tick_size)
+    # Fetch spot market reference price
+    logger.info(f"   Fetching spot market summary for {state.oracle_symbol}...")
+    summary = await client.markets.get_spot_market_summary(state.oracle_symbol)
+    if summary.oracle_price:
+        state.reference_price = round_to_tick(Decimal(summary.oracle_price), market_params.tick_size)
 
     # Fetch account balances
     logger.info("   Fetching account balances...")
@@ -940,7 +940,7 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal):
         min_price = state.reference_price * (1 - state.max_spread_pct)
         max_price = state.reference_price * (1 + state.max_spread_pct)
 
-        logger.info(f"   Reference Price: ${state.reference_price} (from {oracle_symbol} oracle)")
+        logger.info(f"   Reference Price: ${state.reference_price} (from {oracle_symbol} summary)")
         logger.info(f"   Price Range:     ${min_price:.2f} - ${max_price:.2f} (±{state.max_spread_pct * 100}%)")
         logger.info(f"   Tick Size:       {market_params.tick_size}")
         logger.info(f"   Min Order Qty:   {market_params.min_order_qty}")

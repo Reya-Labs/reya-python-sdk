@@ -30,8 +30,6 @@ from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribe
 from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.price_update_payload import PriceUpdatePayload
-from sdk.async_api.prices_update_payload import PricesUpdatePayload
 from sdk.async_api.spot_market_summary_update_payload import SpotMarketSummaryUpdatePayload
 from sdk.async_api.spot_markets_summary_update_payload import SpotMarketsSummaryUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
@@ -76,8 +74,6 @@ WebSocketMessage = Union[
     AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
     # Price channels
     AssetOraclePricesUpdatePayload,  # /v2/assetOraclePrices
-    PricesUpdatePayload,  # /v2/prices
-    PriceUpdatePayload,  # /v2/prices/{symbol}
 ]
 
 
@@ -98,9 +94,8 @@ class ReyaSocket(WebSocketApp):
         # All markets summary (exact match)
         "/v2/perpMarkets/summary": MarketsSummaryUpdatePayload,
         "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
-        # All prices (exact match)
+        # Asset oracle prices (exact match)
         "/v2/assetOraclePrices": AssetOraclePricesUpdatePayload,
-        "/v2/prices": PricesUpdatePayload,
     }
 
     def __init__(
@@ -224,8 +219,6 @@ class ReyaSocket(WebSocketApp):
                 return WalletExecutionBustUpdatePayload
             elif channel.endswith("/accountBalances"):
                 return AccountBalanceUpdatePayload
-        elif "/v2/prices/" in channel and channel != "/v2/prices":
-            return PriceUpdatePayload
 
         return None
 

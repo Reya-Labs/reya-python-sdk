@@ -32,6 +32,8 @@ This ensures the SDK version always reflects compatibility with the underlying A
 - **Market Data Resource**
     - Get all perp markets summary via `/v2/perpMarkets/summary`
     - Get perp market summary via `/v2/perpMarket/{symbol}/summary`
+    - Get all spot markets summary via `/v2/spotMarkets/summary`
+    - Get spot market summary via `/v2/spotMarket/{symbol}/summary`
     - Get market perpetual executions via `/v2/market/{symbol}/perpExecutions`
     - Get historical candles via `/v2/candleHistory/{symbol}/{resolution}`
 
@@ -43,14 +45,14 @@ This ensures the SDK version always reflects compatibility with the underlying A
 
 - **Prices Resource**
     - Get asset oracle prices via `/v2/assetOraclePrices`
-    - Get legacy market/collateral prices via `/v2/prices` (deprecated)
-    - Get legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
 ### WebSocket API Client (Resource-Oriented)
 
 - **Market Resources**
     - Subscribe to all perp markets summary via `/v2/perpMarkets/summary`
     - Subscribe to specific perp market summary via `/v2/perpMarket/{symbol}/summary`
+    - Subscribe to all spot markets summary via `/v2/spotMarkets/summary`
+    - Subscribe to specific spot market summary via `/v2/spotMarket/{symbol}/summary`
     - Monitor market perpetual executions via `/v2/market/{symbol}/perpExecutions`
 
 - **Wallet Resources**
@@ -60,8 +62,6 @@ This ensures the SDK version always reflects compatibility with the underlying A
 
 - **Price Resources**
     - Track asset oracle prices via `/v2/assetOraclePrices`
-    - Track legacy market/collateral prices via `/v2/prices` (deprecated)
-    - Track legacy price by symbol via `/v2/prices/{symbol}` (deprecated)
 
 ## API Specifications
 
@@ -200,11 +200,11 @@ ReyaTradingClient
 ├── markets                          # Market Data resource
 │   ├── get_perp_markets_summary()   # /v2/perpMarkets/summary
 │   ├── get_perp_market_summary()    # /v2/perpMarket/{symbol}/summary
+│   ├── get_spot_markets_summary()   # /v2/spotMarkets/summary
+│   ├── get_spot_market_summary()    # /v2/spotMarket/{symbol}/summary
 │   ├── get_market_perp_executions() # /v2/market/{symbol}/perpExecutions
 │   ├── get_candles()                # /v2/candleHistory/{symbol}/{resolution}
-│   ├── get_asset_oracle_prices()      # /v2/assetOraclePrices
-│   ├── get_prices()                 # /v2/prices (deprecated)
-│   └── get_price()                  # /v2/prices/{symbol} (deprecated)
+│   └── get_asset_oracle_prices()    # /v2/assetOraclePrices
 ├── reference                        # Reference Data resource
 │   ├── get_perp_market_definitions() # /v2/perpMarketDefinitions
 │   ├── get_asset_definitions()      # /v2/assetDefinitions
@@ -225,6 +225,12 @@ ReyaSocket
 │   ├── market_summary(symbol)          # /v2/perpMarket/{symbol}/summary
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
+│   ├── all_spot_markets_summary        # /v2/spotMarkets/summary
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
+│   ├── spot_summary(symbol)            # /v2/spotMarket/{symbol}/summary
+│   │   ├── subscribe()
+│   │   └── unsubscribe()
 │   └── market_perp_executions(symbol)  # /v2/market/{symbol}/perpExecutions
 │       ├── subscribe()
 │       └── unsubscribe()
@@ -242,12 +248,6 @@ ReyaSocket
 │   ├── asset_oracle_prices             # /v2/assetOraclePrices
 │   │   ├── subscribe()
 │   │   └── unsubscribe()
-│   ├── all_prices                      # /v2/prices (deprecated)
-│   │   ├── subscribe()
-│   │   └── unsubscribe()
-│   └── price(symbol)                   # /v2/prices/{symbol} (deprecated)
-│       ├── subscribe()
-│       └── unsubscribe()
 └── ping                                # /ping (heartbeat)
     ├── send_pong()
     └── receive_ping()

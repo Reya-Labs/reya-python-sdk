@@ -25,7 +25,8 @@ def test_smoke_plan_tracks_pr59_manual_gap_surfaces() -> None:
         "ws.assetOraclePrices",
         "rest.perpMarketsSummary",
         "ws.perpMarketsSummary",
-        "rest.deprecatedPrices",
+        "rest.spotMarketsSummary",
+        "ws.spotMarketsSummary",
         "sdk.removedAmmSurfaces",
     } <= checks_by_id.keys()
 
@@ -33,6 +34,11 @@ def test_smoke_plan_tracks_pr59_manual_gap_surfaces() -> None:
     assert asset_ws.kind is smoke_check_kind.WEBSOCKET
     assert asset_ws.target == "/v2/assetOraclePrices"
     assert "asset oracle" in asset_ws.reason.lower()
+
+    spot_ws = checks_by_id["ws.spotMarketsSummary"]
+    assert spot_ws.kind is smoke_check_kind.WEBSOCKET
+    assert spot_ws.target == "/v2/spotMarkets/summary + /v2/spotMarket/{symbol}/summary"
+    assert "spot market summary" in spot_ws.reason.lower()
 
     removed_surfaces = checks_by_id["sdk.removedAmmSurfaces"]
     assert removed_surfaces.kind is smoke_check_kind.SDK_STATIC

@@ -11,7 +11,6 @@ import sdk.open_api as rest_open_api
 from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
-from sdk.async_api.deprecated_prices_channel import DeprecatedPricesChannel
 from sdk.async_api.execution_bust import ExecutionBust as WsInfoExecutionBust
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_channel import MarketsSummaryChannel
@@ -20,7 +19,6 @@ from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
-from sdk.async_api.prices_update_payload import PricesUpdatePayload
 from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
@@ -494,19 +492,6 @@ def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None
         "updatedAt": 1747927089946,
     }
     assert "poolPrice" not in serialized["data"][0]
-
-
-def test_ws_info_deprecated_prices_channel_is_explicitly_named() -> None:
-    payload = PricesUpdatePayload.model_validate(
-        {
-            "type": "channel_data",
-            "timestamp": 1747927089946,
-            "channel": "/v2/prices",
-            "data": [{"symbol": "ETHRUSDPERP", "oraclePrice": "2500", "updatedAt": 1747927089946}],
-        }
-    )
-
-    assert payload.channel is DeprecatedPricesChannel.SLASH_V2_SLASH_PRICES
 
 
 class _RecordingSocket:

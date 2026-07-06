@@ -106,20 +106,19 @@ async def _open_order_ids(rest: ReyaTradingClient) -> set[str]:
     return {str(order.order_id) for order in await rest.get_open_orders()}
 
 
-async def _oracle_price(rest: ReyaTradingClient, symbol: str, max_attempts: int = 5) -> float:
-    """Oracle price for the liquidity gate, retrying through the transient
+async def _mark_price(rest: ReyaTradingClient, symbol: str, max_attempts: int = 5) -> float:
+    """Mark price for the liquidity gate, retrying through the transient
     NO_PRICES_FOUND_FOR_SYMBOL_ERROR feed gap (mirrors DataOperations.current_price)."""
     last_exc: Exception | None = None
     for _ in range(max_attempts):
         try:
-            price = await rest.markets.get_price(symbol)
-            return float(price.oracle_price)
+            return float(await rest.get_market_mark_price(symbol))
         except ApiException as exc:
             if "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in str(exc) and "Price not found" not in str(exc):
                 raise
             last_exc = exc
         await asyncio.sleep(0.3)
-    raise RuntimeError(f"Oracle price for {symbol} unavailable after {max_attempts} attempts") from last_exc
+    raise RuntimeError(f"Mark price for {symbol} unavailable after {max_attempts} attempts") from last_exc
 
 
 class _RestDepthOps:
@@ -212,11 +211,11 @@ async def test_ws_exec_post_only_would_cross_error_envelope(  # pylint: disable=
         ws = ReyaWsExecClient(rest_client=rest, ws_url=os.environ["REYA_WS_EXEC_URL"])
         await ws.connect()
 
-        oracle = await _oracle_price(rest, oracle_symbol)
+        mark_price = await _mark_price(rest, oracle_symbol)
         await skip_if_external_liquidity(
             cast(DataOperations, _RestDepthOps(rest)),
             SPOT_SYMBOL,
-            oracle,
+            mark_price,
             reason_prefix="post-only would-cross (ws-exec)",
         )
 

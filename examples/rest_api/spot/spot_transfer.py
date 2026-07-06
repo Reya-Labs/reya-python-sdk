@@ -59,11 +59,11 @@ ASSET_TO_SYMBOL = {
 }
 
 # Mapping from asset to oracle symbol (perp symbol) for fetching oracle prices
-ASSET_TO_ORACLE_SYMBOL = {
-    "ETH": "ETHRUSDPERP",
-    "WETH": "ETHRUSDPERP",
-    "BTC": "BTCRUSDPERP",
-    "WBTC": "BTCRUSDPERP",
+ASSET_TO_PRICE_ASSET = {
+    "ETH": "ETH",
+    "WETH": "ETH",
+    "BTC": "BTC",
+    "WBTC": "BTC",
     "REYA": "REYA",
 }
 
@@ -87,9 +87,8 @@ async def get_account_balance(client: ReyaTradingClient, account_id: int, asset:
 
 async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
     """
-    Fetch the current oracle price for an asset from the v2/prices API.
+    Fetch the current oracle price for an asset from the v2/assetOraclePrices API.
 
-    The oracle price is fetched from the corresponding perp market (e.g., ETHRUSDPERP for ETH).
     This ensures transfers happen at a price within the ±5% circuit breaker limit.
 
     Args:
@@ -102,21 +101,19 @@ async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
     Raises:
         SystemExit: If oracle price cannot be fetched
     """
-    oracle_symbol = ASSET_TO_ORACLE_SYMBOL.get(asset.upper())
+    price_asset = ASSET_TO_PRICE_ASSET.get(asset.upper())
 
-    if not oracle_symbol:
-        logger.error(f"❌ No oracle symbol mapping for {asset}. Supported: {list(ASSET_TO_ORACLE_SYMBOL.keys())}")
+    if not price_asset:
+        logger.error(f"❌ No oracle asset mapping for {asset}. Supported: {list(ASSET_TO_PRICE_ASSET.keys())}")
         sys.exit(1)
 
     try:
-        price_data = await client.markets.get_price(symbol=oracle_symbol)
-        # Pydantic models have no ``__bool__``, so guard on the field directly.
-        if price_data.oracle_price:
-            oracle_price = Decimal(price_data.oracle_price)
-            logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
-            return oracle_price
+        price_data = await client.get_asset_oracle_price(price_asset)
+        oracle_price = Decimal(price_data.oracle_price)
+        logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
+        return oracle_price
     except (OSError, RuntimeError, ApiException) as e:
-        logger.warning(f"⚠️ Failed to fetch oracle price for {oracle_symbol}: {e}")
+        logger.warning(f"⚠️ Failed to fetch oracle price for {price_asset}: {e}")
 
     # Fall back to configured price if oracle is unavailable. ``is not None``
     # so a legitimate ``Decimal('0')`` sentinel (e.g. a free-transfer asset)

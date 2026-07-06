@@ -20,6 +20,8 @@ class MarketResource:
         self.socket = socket
         self._all_markets_summary = AllMarketsSummaryResource(socket)
         self._market_summary = MarketSummaryResource(socket)
+        self._all_spot_markets_summary = AllSpotMarketsSummaryResource(socket)
+        self._spot_market_summary = SpotMarketSummaryResource(socket)
         self._market_perp_executions = MarketPerpExecutionsResource(socket)
         self._market_spot_executions = MarketSpotExecutionsResource(socket)
         self._market_execution_busts = MarketExecutionBustsResource(socket)
@@ -30,16 +32,32 @@ class MarketResource:
         """Access the all markets summary resource."""
         return self._all_markets_summary
 
+    @property
+    def all_spot_markets_summary(self) -> "AllSpotMarketsSummaryResource":
+        """Access the all spot markets summary resource."""
+        return self._all_spot_markets_summary
+
     def summary(self, symbol: str) -> "MarketSummarySubscription":
         """Get market summary for a specific symbol.
 
         Args:
-            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
+            symbol: The perp trading symbol (e.g., "BTCRUSDPERP").
 
         Returns:
             A subscription object for the specified market summary.
         """
         return self._market_summary.for_symbol(symbol)
+
+    def spot_summary(self, symbol: str) -> "SpotMarketSummarySubscription":
+        """Get spot market summary for a specific symbol.
+
+        Args:
+            symbol: The spot trading symbol (e.g., "WETHRUSD").
+
+        Returns:
+            A subscription object for the specified spot market summary.
+        """
+        return self._spot_market_summary.for_symbol(symbol)
 
     def perp_executions(self, symbol: str) -> "MarketPerpExecutionsSubscription":
         """Get perpetual executions for a specific symbol.
@@ -120,7 +138,7 @@ class AllMarketsSummaryResource(SubscribableResource):
 
 
 class MarketSummaryResource(SubscribableParameterizedResource):
-    """Resource for accessing market summary data."""
+    """Resource for accessing perp market summary data."""
 
     def __init__(self, socket: "ReyaSocket"):
         """Initialize the market summary resource.
@@ -140,6 +158,59 @@ class MarketSummaryResource(SubscribableParameterizedResource):
             A subscription object for the specified market summary.
         """
         return MarketSummarySubscription(self.socket, symbol)
+
+
+class AllSpotMarketsSummaryResource(SubscribableResource):
+    """Resource for accessing all spot markets summary data."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        """Initialize the all spot markets summary resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket)
+        self.path = "/v2/spotMarkets/summary"
+
+    def subscribe(self, batched: bool = False, **kwargs) -> None:
+        """Subscribe to all spot markets summary data.
+
+        Args:
+            batched: Whether to receive updates in batches.
+            **kwargs: Additional keyword arguments (unused).
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self, **kwargs) -> None:
+        """Unsubscribe from all spot markets summary data.
+
+        Args:
+            **kwargs: Additional keyword arguments (unused).
+        """
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class SpotMarketSummaryResource(SubscribableParameterizedResource):
+    """Resource for accessing spot market summary data."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        """Initialize the spot market summary resource.
+
+        Args:
+            socket: The WebSocket connection to use for this resource.
+        """
+        super().__init__(socket, "/v2/spotMarket/{symbol}/summary")
+
+    def for_symbol(self, symbol: str) -> "SpotMarketSummarySubscription":
+        """Create a subscription for a specific spot market's summary.
+
+        Args:
+            symbol: The spot trading symbol (e.g., "WETHRUSD").
+
+        Returns:
+            A subscription object for the specified spot market summary.
+        """
+        return SpotMarketSummarySubscription(self.socket, symbol)
 
 
 class MarketPerpExecutionsResource(SubscribableParameterizedResource):
@@ -166,14 +237,14 @@ class MarketPerpExecutionsResource(SubscribableParameterizedResource):
 
 
 class MarketSummarySubscription:
-    """Manages a subscription to market summary for a specific symbol."""
+    """Manages a subscription to perp market summary for a specific symbol."""
 
     def __init__(self, socket: "ReyaSocket", symbol: str):
         """Initialize a market summary subscription.
 
         Args:
             socket: The WebSocket connection to use for this subscription.
-            symbol: The trading symbol (e.g., "BTCRUSDPERP", "ETHRUSD").
+            symbol: The perp trading symbol (e.g., "BTCRUSDPERP").
         """
         self.socket = socket
         self.symbol = symbol
@@ -189,6 +260,33 @@ class MarketSummarySubscription:
 
     def unsubscribe(self) -> None:
         """Unsubscribe from market summary."""
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class SpotMarketSummarySubscription:
+    """Manages a subscription to spot market summary for a specific symbol."""
+
+    def __init__(self, socket: "ReyaSocket", symbol: str):
+        """Initialize a spot market summary subscription.
+
+        Args:
+            socket: The WebSocket connection to use for this subscription.
+            symbol: The spot trading symbol (e.g., "WETHRUSD").
+        """
+        self.socket = socket
+        self.symbol = symbol
+        self.path = f"/v2/spotMarket/{symbol}/summary"
+
+    def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to spot market summary.
+
+        Args:
+            batched: Whether to receive updates in batches.
+        """
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self) -> None:
+        """Unsubscribe from spot market summary."""
         self.socket.send_unsubscribe(channel=self.path)
 
 
