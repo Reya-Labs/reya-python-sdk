@@ -2,10 +2,9 @@
 
 Exercises every supported operation and variant of the ws-exec WebSocket
 order-entry service, plus the highest-signal error modes, against a live
-deployment. These are *integration* tests: the whole module is skipped
-unless `REYA_WS_EXEC_URL` and PERP_*_1 credentials are set. Spot credential,
-market-definition, and second-account gaps fail by default so spot coverage
-cannot silently disappear. Point `REYA_WS_EXEC_URL` at the target relayer, e.g.
+deployment. These are *integration* tests: missing `REYA_WS_EXEC_URL`, account
+credentials, or market definitions fail by default so WS exec coverage cannot
+silently disappear. Point `REYA_WS_EXEC_URL` at the target relayer, e.g.
 `REYA_WS_EXEC_URL=wss://ws-exec-devnet.reya-cronos.network`.
 
 Happy paths (11) — all driven via :class:`ReyaWsExecClient`:
@@ -60,7 +59,6 @@ from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
 from sdk.reya_ws_exec import ReyaWsExecClient
-from tests.helpers.spot_prerequisites import missing_env_vars, spot_account_env_vars, spot_prerequisite_missing
 from tests.helpers.ws_exec_harness import (
     assert_per_op_error,
     assert_top_level_error,
@@ -68,31 +66,19 @@ from tests.helpers.ws_exec_harness import (
     raw_recv_until,
     raw_send_envelope,
 )
+from tests.helpers.ws_exec_prerequisites import missing_env_vars, ws_exec_account_env_vars, ws_exec_prerequisite_missing
 
 load_dotenv()
 
-# Live ws-exec integration tests are gated on a relayer URL + perp signing creds.
-# Spot signing creds are checked inside the harness so missing SPOT_* fails
-# loudly instead of collecting as a green module-level skip.
-_MODULE_SKIP_ENV = (
-    "REYA_WS_EXEC_URL",
-    "PERP_PRIVATE_KEY_1",
-    "PERP_ACCOUNT_ID_1",
-)
-_SPOT_ACCOUNT_1_ENV = spot_account_env_vars(1)
-_SPOT_ACCOUNT_2_ENV = spot_account_env_vars(2)
-_MISSING_ENV = missing_env_vars(_MODULE_SKIP_ENV)
+# Live ws-exec integration tests require a relayer URL plus spot/perp signing
+# credentials. Check inside the harness so missing env fails loudly instead of
+# collecting as a green module-level skip.
+_REQUIRED_WS_EXEC_ENV = ("REYA_WS_EXEC_URL",)
+_SPOT_ACCOUNT_1_ENV = ws_exec_account_env_vars("SPOT", 1)
+_SPOT_ACCOUNT_2_ENV = ws_exec_account_env_vars("SPOT", 2)
+_PERP_ACCOUNT_1_ENV = ws_exec_account_env_vars("PERP", 1)
 
-pytestmark = [
-    pytest.mark.skipif(
-        bool(_MISSING_ENV),
-        reason=(
-            "ws-exec live tests need " + ", ".join(_MODULE_SKIP_ENV) + " in the environment "
-            "(set REYA_WS_EXEC_URL + PERP_*_1 to run); missing: " + ", ".join(_MISSING_ENV)
-        ),
-    ),
-    pytest.mark.asyncio(loop_scope="function"),
-]
+pytestmark = [pytest.mark.asyncio(loop_scope="function")]
 
 # ---- Test parameters --------------------------------------------------------
 
@@ -126,7 +112,6 @@ PERP_REDUCE_ONLY_LIMIT_PX = "1"
 PERP_TP_TRIGGER_PX = "1000000"
 PERP_SL_TRIGGER_PX = "1"
 
-DEFAULT_WS_EXEC_URL = "wss://ws-exec-testnet.reya.xyz"
 RECV_TIMEOUT_S = 15.0
 
 
@@ -628,14 +613,16 @@ class _WsExecHarness:
 async def harness():
     """Build REST clients, resolve market min-qtys, expose the ws-exec URL.
 
-    Module-scoped: one set of clients shared across every ws-exec flow. The
-    module-level skipif guarantees the required env is present before we get
-    here, so a missing-creds path would be a real error, not a skip."""
-    missing_spot_1 = missing_env_vars(_SPOT_ACCOUNT_1_ENV)
-    if missing_spot_1:
-        spot_prerequisite_missing("ws-exec spot tests need Spot Account 1 configuration", missing_env=missing_spot_1)
+    One set of clients is shared across every ws-exec flow. Missing env fails
+    here instead of collecting as a green module-level skip."""
+    missing_required = missing_env_vars(_REQUIRED_WS_EXEC_ENV + _SPOT_ACCOUNT_1_ENV + _PERP_ACCOUNT_1_ENV)
+    if missing_required:
+        ws_exec_prerequisite_missing(
+            "ws-exec live tests need REYA_WS_EXEC_URL, Spot Account 1, and Perp Account 1 configuration",
+            missing_env=missing_required,
+        )
 
-    ws_url = os.environ.get("REYA_WS_EXEC_URL", DEFAULT_WS_EXEC_URL)
+    ws_url = os.environ["REYA_WS_EXEC_URL"]
     spot_rest = await _build_rest_client(perp=False, account_number=1)
     perp_rest = await _build_rest_client(perp=True)
     spot_account_2_missing_env = missing_env_vars(_SPOT_ACCOUNT_2_ENV)
@@ -647,9 +634,9 @@ async def harness():
         spot_markets = {m.symbol: m for m in await spot_rest.reference.get_spot_market_definitions()}
         perp_markets = {m.symbol: m for m in await perp_rest.reference.get_perp_market_definitions()}
         if SPOT_SYMBOL not in spot_markets:
-            spot_prerequisite_missing(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
+            ws_exec_prerequisite_missing(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
         if PERP_SYMBOL not in perp_markets:
-            raise RuntimeError(f"{PERP_SYMBOL} not found in /perpMarketDefinitions")
+            ws_exec_prerequisite_missing(f"{PERP_SYMBOL} not found in /perpMarketDefinitions")
         yield _WsExecHarness(
             ws_url=ws_url,
             spot_rest=spot_rest,
@@ -804,7 +791,7 @@ async def test_err_order_deadline_passed(harness):  # pylint: disable=redefined-
 async def test_err_unauthorized_signature(harness):  # pylint: disable=redefined-outer-name
     """E6: declared signerWallet != recovered signer -> rejected. Requires SPOT_*_2."""
     if harness.spot_rest_2 is None:
-        spot_prerequisite_missing(
+        ws_exec_prerequisite_missing(
             "SPOT_*_2 not set in .env; signer-mismatch spot test needs a second account",
             missing_env=harness.spot_account_2_missing_env,
         )

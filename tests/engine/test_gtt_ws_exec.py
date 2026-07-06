@@ -17,8 +17,8 @@ over BOTH markets via the shared ``ws_exec_market`` fixture:
 
 ws-exec routes createOrder through the shared TIF-agnostic handler (it has no
 REST dispatcher order-class allow-list), so this also guards that a GTT is never
-misrouted on the ws-exec transport. Each market is skipped independently if its
-credentials (or REYA_WS_EXEC_URL) are absent (see ``ws_exec_market``).
+misrouted on the ws-exec transport. Missing ws-exec URL/account prerequisites
+fail by default (see ``ws_exec_market``).
 """
 
 from __future__ import annotations

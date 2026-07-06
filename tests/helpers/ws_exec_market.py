@@ -7,8 +7,8 @@ ws-exec client reuses the REST ``build_*_payload`` signing path verbatim, so the
 two transports put byte-identical signed envelopes on the wire). This builder
 yields a connected ws-exec client for a given market plus the symbol / min_qty /
 passive resting price the transport tests need. Spot missing-prerequisite paths
-fail by default so coverage cannot silently disappear; non-spot missing env keeps
-the existing skip behavior.
+and ws-exec URL/credential gaps fail by default so coverage cannot silently
+disappear.
 """
 
 from __future__ import annotations
@@ -18,13 +18,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-import pytest
 from dotenv import load_dotenv
 
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_ws_exec import ReyaWsExecClient
-from tests.helpers.spot_prerequisites import missing_env_vars, spot_account_env_vars, spot_prerequisite_missing
+from tests.helpers.ws_exec_prerequisites import missing_env_vars, ws_exec_account_env_vars, ws_exec_prerequisite_missing
 
 load_dotenv()
 
@@ -39,8 +38,8 @@ _PERP_REST_BUY_PX = "100"
 
 # Both markets need the ws-exec URL; each market needs its own account creds.
 _COMMON_ENV = ("REYA_WS_EXEC_URL",)
-_SPOT_ENV = spot_account_env_vars(1)
-_PERP_ENV = ("PERP_PRIVATE_KEY_1", "PERP_ACCOUNT_ID_1", "PERP_WALLET_ADDRESS_1")
+_SPOT_ENV = ws_exec_account_env_vars("SPOT", 1)
+_PERP_ENV = ws_exec_account_env_vars("PERP", 1)
 
 WS_EXEC_MARKETS = ("spot", "perp")
 
@@ -61,9 +60,9 @@ class WsExecMarket:
 async def build_ws_exec_market(market_type: str) -> AsyncIterator[WsExecMarket]:
     """Build a connected ws-exec client + market metadata for ``market_type``.
 
-    Spot missing-prerequisite paths fail by default; perp missing env still skips.
-    Cleans up the REST + ws clients on exit even when a test fails. Mirrors the
-    per-suite spot harnesses it replaces."""
+    Missing ws-exec URL/account prerequisites fail by default. Cleans up the
+    REST + ws clients on exit even when a test fails. Mirrors the per-suite spot
+    harnesses it replaces."""
     if market_type not in WS_EXEC_MARKETS:
         raise ValueError(f"unknown ws-exec market: {market_type!r}")
 
@@ -71,9 +70,7 @@ async def build_ws_exec_market(market_type: str) -> AsyncIterator[WsExecMarket]:
     missing = missing_env_vars(_COMMON_ENV + market_env)
     if missing:
         reason = f"ws-exec {market_type} tests need {', '.join(_COMMON_ENV + market_env)}"
-        if market_type == "spot":
-            spot_prerequisite_missing(reason, missing_env=missing)
-        pytest.skip(f"{reason}; missing: {', '.join(missing)}")
+        ws_exec_prerequisite_missing(reason, missing_env=missing)
 
     if market_type == "spot":
         config = TradingConfig.from_env_spot(account_number=1)
@@ -91,12 +88,12 @@ async def build_ws_exec_market(market_type: str) -> AsyncIterator[WsExecMarket]:
         if market_type == "spot":
             spot_defs = {d.symbol: d for d in await rest.reference.get_spot_market_definitions()}
             if symbol not in spot_defs:
-                spot_prerequisite_missing(f"{symbol} not found in /v2/spotMarketDefinitions")
+                ws_exec_prerequisite_missing(f"{symbol} not found in /v2/spotMarketDefinitions")
             min_qty = str(spot_defs[symbol].min_order_qty)
         else:
             perp_defs = {d.symbol: d for d in await rest.reference.get_perp_market_definitions()}
             if symbol not in perp_defs:
-                pytest.skip(f"{symbol} not found in perp market definitions")
+                ws_exec_prerequisite_missing(f"{symbol} not found in /v2/perpMarketDefinitions")
             min_qty = str(perp_defs[symbol].min_order_qty)
         ws = ReyaWsExecClient(rest_client=rest, ws_url=os.environ["REYA_WS_EXEC_URL"])
         await ws.connect()
