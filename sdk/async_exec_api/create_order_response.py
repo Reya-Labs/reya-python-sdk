@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_status import OrderStatus
 from sdk.async_exec_api.cancel_reason import CancelReason
-class CreateOrderResponse(BaseModel):
+class CreateOrderResponse(BaseModel): 
   status: OrderStatus = Field(description='''Order status''')
   exec_qty: Optional[str] = Field(default=None, alias='''execQty''')
   cum_qty: Optional[str] = Field(default=None, alias='''cumQty''')
@@ -36,9 +36,9 @@ class CreateOrderResponse(BaseModel):
     known_object_properties = ['status', 'exec_qty', 'cum_qty', 'order_id', 'client_order_id', 'cancel_reason', 'cancel_reason_message', 'first_fill_id', 'fill_count', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
-    if len(unknown_object_properties) == 0:
+    if len(unknown_object_properties) == 0: 
       return data
-
+  
     known_json_properties = ['status', 'execQty', 'cumQty', 'orderId', 'clientOrderId', 'cancelReason', 'cancelReasonMessage', 'firstFillId', 'fillCount', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
@@ -46,3 +46,4 @@ class CreateOrderResponse(BaseModel):
         additional_properties[obj_key] = data.pop(obj_key, None)
     data['additional_properties'] = additional_properties
     return data
+

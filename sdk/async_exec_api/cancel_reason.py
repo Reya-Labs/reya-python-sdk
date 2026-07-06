@@ -1,6 +1,6 @@
 from enum import Enum
 
-class CancelReason(Enum):
+class CancelReason(Enum): 
   NO_LIQUIDITY = "NO_LIQUIDITY"
   IOC_REMAINDER = "IOC_REMAINDER"
   SELF_TRADE_PREVENTION = "SELF_TRADE_PREVENTION"

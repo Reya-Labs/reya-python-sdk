@@ -30,12 +30,11 @@ if ! command -v openapi-generator-cli &> /dev/null; then
 fi
 
 
-# Generate Python SDK directly to Python SDK repo
-# Calculate parent directory of the project (one level up from ROOT_DIR)
-PARENT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-PYTHON_SDK_REPO="$PARENT_DIR/reya-python-sdk"
+# Generate Python SDK into this checkout by default. PYTHON_SDK_REPO can be set
+# when intentionally generating into another checkout.
+PYTHON_SDK_REPO="${PYTHON_SDK_REPO:-$ROOT_DIR}"
 if [ -d "$PYTHON_SDK_REPO" ]; then
-    echo -e "${GREEN}🐍 Generating Python SDK to dedicated repo...${NC}"
+    echo -e "${GREEN}🐍 Generating Python SDK to $PYTHON_SDK_REPO...${NC}"
     # Create the target directory structure first
     rm -rf "$PYTHON_SDK_REPO/sdk/open_api"
     

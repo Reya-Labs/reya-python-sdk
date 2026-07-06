@@ -83,3 +83,5 @@ class ModifyOrderRequest1AllOfNot1(BaseModel):
             "clientOrderId": obj.get("clientOrderId")
         })
         return _obj
+
+
