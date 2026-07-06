@@ -22,9 +22,8 @@ byte-identical signed envelopes on the wire):
   and a raw correctly-signed frame that bypasses the guard is rejected
   server-side with INPUT_VALIDATION_ERROR through the per-op error envelope.
 
-Each market is skipped independently if its credentials (or REYA_WS_EXEC_URL)
-are absent (see ``ws_exec_market``). The raw negative probe reuses the
-raw-WebSocket helpers from tests/helpers/ws_exec_harness.py.
+WS exec URL/credential gaps fail by default (see ``ws_exec_market``). The raw
+negative probe reuses the raw-WebSocket helpers from tests/helpers/ws_exec_harness.py.
 """
 
 from __future__ import annotations
@@ -55,6 +54,7 @@ from tests.helpers.liquidity_detector import SAFE_NO_MATCH_SELL_PRICE, skip_if_e
 from tests.helpers.reya_tester.data import DataOperations
 from tests.helpers.ws_exec_harness import assert_per_op_error, raw_connect, raw_recv_until, raw_send_envelope
 from tests.helpers.ws_exec_market import WsExecMarket
+from tests.helpers.ws_exec_prerequisites import missing_env_vars, ws_exec_account_env_vars, ws_exec_prerequisite_missing
 
 load_dotenv()
 
@@ -72,12 +72,19 @@ SPOT_SYMBOL = "WETHRUSD"
 WOULD_CROSS_PX = str(SAFE_NO_MATCH_SELL_PRICE)
 
 # The would-cross counterparty needs a second SPOT account to rest the
-# engineered ask (same optionality pattern as the ws_exec harness's spot creds).
-_COUNTERPARTY_ENV = (
-    "SPOT_PRIVATE_KEY_2",
-    "SPOT_ACCOUNT_ID_2",
-    "SPOT_WALLET_ADDRESS_2",
-)
+# engineered ask; missing SPOT_*_2 fails loudly by default.
+_PROBER_ENV = ws_exec_account_env_vars("SPOT", 1)
+_COUNTERPARTY_ENV = ws_exec_account_env_vars("SPOT", 2)
+_WOULD_CROSS_ENV = ("REYA_WS_EXEC_URL",) + _PROBER_ENV + _COUNTERPARTY_ENV
+
+
+def _preflight_would_cross_prerequisites() -> None:
+    missing = missing_env_vars(_WOULD_CROSS_ENV)
+    if missing:
+        ws_exec_prerequisite_missing(
+            "ws-exec post-only would-cross spot probe needs REYA_WS_EXEC_URL, Spot Account 1, and Spot Account 2",
+            missing_env=missing,
+        )
 
 
 async def _wait_for_open_order(rest: ReyaTradingClient, order_id: str, timeout_s: float = 10.0) -> Order:
@@ -131,12 +138,8 @@ class _RestDepthOps:
 @pytest_asyncio.fixture(loop_scope="session", scope="module")
 async def counterparty_rest():
     """A started REST client for SPOT account 2 — rests the engineered
-    counterparty ask for the would-cross probe. Skips when SPOT_*_2 is absent."""
-    missing = [_k for _k in _COUNTERPARTY_ENV if not os.environ.get(_k)]
-    if missing:
-        pytest.skip(
-            "would-cross counterparty needs " + ", ".join(_COUNTERPARTY_ENV) + "; missing: " + ", ".join(missing)
-        )
+    counterparty ask for the would-cross probe."""
+    _preflight_would_cross_prerequisites()
     rest2 = ReyaTradingClient(TradingConfig.from_env_spot(account_number=2))
     await rest2.start()
     try:
@@ -195,6 +198,7 @@ async def test_ws_exec_post_only_would_cross_error_envelope(  # pylint: disable=
     (test_post_only_rejection.py); this pins only the ws-exec error-envelope
     mapping, which is transport-uniform across markets.
     """
+    _preflight_would_cross_prerequisites()
     config = TradingConfig.from_env_spot(account_number=1)
     rest = ReyaTradingClient(config)
     await rest.start()
@@ -202,11 +206,9 @@ async def test_ws_exec_post_only_would_cross_error_envelope(  # pylint: disable=
     try:
         markets = {mkt.symbol: mkt for mkt in await rest.reference.get_spot_market_definitions()}
         if SPOT_SYMBOL not in markets:
-            pytest.skip(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
+            ws_exec_prerequisite_missing(f"{SPOT_SYMBOL} not found in /spotMarketDefinitions")
         min_qty = str(markets[SPOT_SYMBOL].min_order_qty)
         oracle_symbol = f"{markets[SPOT_SYMBOL].base_asset}RUSDPERP"
-        if not os.environ.get("REYA_WS_EXEC_URL"):
-            pytest.skip("ws-exec post-only would-cross needs REYA_WS_EXEC_URL")
         ws = ReyaWsExecClient(rest_client=rest, ws_url=os.environ["REYA_WS_EXEC_URL"])
         await ws.connect()
 

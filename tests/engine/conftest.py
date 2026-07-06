@@ -16,8 +16,8 @@ from tests.helpers.ws_exec_market import WS_EXEC_MARKETS, build_ws_exec_market
 async def ws_exec_market(request):
     """Market-parametrized ([spot, perp]) connected ws-exec harness.
 
-    Every engine ws-exec test that takes this fixture runs once per market; a
-    market whose credentials (or the ws-exec URL) are absent is skipped, not
-    failed. Module-scoped so one connection set is shared across a suite."""
+    Every engine ws-exec test that takes this fixture runs once per market.
+    Missing ws-exec URL/account prerequisites fail by default. Module-scoped so
+    one connection set is shared across a suite."""
     async with build_ws_exec_market(request.param) as market:
         yield market

@@ -17,6 +17,7 @@ from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.market_config import SpotTestConfig
 from tests.helpers.reya_tester import logger
+from tests.helpers.spot_prerequisites import spot_prerequisite_missing
 
 
 @pytest.mark.spot
@@ -44,7 +45,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
             break
 
     if rusd_balance is None or rusd_balance <= 0:
-        pytest.skip("No RUSD balance available for this test")
+        spot_prerequisite_missing("No RUSD balance available for spot pre-trade buy coverage")
     assert rusd_balance is not None  # narrow after the skip above
 
     logger.info(f"Current RUSD balance: {rusd_balance}")
@@ -104,7 +105,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
             break
 
     if asset_balance is None or asset_balance <= 0:
-        pytest.skip(f"No {base_asset} balance available for this test")
+        spot_prerequisite_missing(f"No {base_asset} balance available for spot pre-trade sell coverage")
     assert asset_balance is not None  # narrow after the skip above
 
     logger.info(f"Current {base_asset} balance: {asset_balance}")

@@ -43,6 +43,12 @@ from tests.helpers.market_config import (  # noqa: E402
 )
 from tests.helpers.reya_tester import logger  # noqa: E402
 from tests.helpers.settlement import make_settlement_probe  # noqa: E402
+from tests.helpers.spot_prerequisites import (  # noqa: E402
+    missing_env_vars,
+    spot_account_env_vars,
+    spot_prerequisite_missing,
+)
+from tests.helpers.ws_exec_prerequisites import ws_exec_account_env_vars  # noqa: E402
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
@@ -52,6 +58,16 @@ MIN_RUSD_BALANCE = 15.0
 
 # Default asset if not specified via CLI
 DEFAULT_SPOT_ASSET = "ETH"
+
+_STRICT_SPOT_PREREQUISITE_MARKER = "strict_spot_prerequisites"
+_STRICT_WS_EXEC_PREREQUISITE_MARKER = "strict_ws_exec_prerequisites"
+_STRICT_SPOT_ENV = spot_account_env_vars(1) + spot_account_env_vars(2)
+_STRICT_WS_EXEC_ENV = (
+    ("REYA_WS_EXEC_URL",)
+    + ws_exec_account_env_vars("SPOT", 1)
+    + ws_exec_account_env_vars("SPOT", 2)
+    + ws_exec_account_env_vars("PERP", 1)
+)
 
 
 class _ReyaEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
@@ -97,6 +113,12 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.spot)
         elif market == "perp":
             item.add_marker(pytest.mark.perp)
+
+        item_path = str(item.path)
+        if "/tests/spot/" in item_path or item.get_closest_marker("spot") is not None:
+            item.add_marker(_STRICT_SPOT_PREREQUISITE_MARKER)
+        if "/tests/ws_exec/" in item_path or item_path.endswith("_ws_exec.py"):
+            item.add_marker(_STRICT_WS_EXEC_PREREQUISITE_MARKER)
 
 
 @pytest.fixture(scope="session")
@@ -174,6 +196,34 @@ def _busts_guard_api_url() -> str:
     else:
         default_api_url = "https://api-devnet.reya-cronos.network/v2"
     return os.environ.get("REYA_API_URL", default_api_url)
+
+
+def _unique_missing_env_vars(env_vars: tuple[str, ...]) -> list[str]:
+    """Return missing env var names once, preserving prerequisite order."""
+    missing: list[str] = []
+    seen: set[str] = set()
+    for name in env_vars:
+        if name not in seen and not os.environ.get(name):
+            missing.append(name)
+            seen.add(name)
+    return missing
+
+
+def _strict_prerequisite_missing_env(items) -> list[str]:
+    """Env gaps that should fail selected spot/ws-exec tests before any guard API call.
+
+    Market-definition and balance prerequisites are checked by the owning
+    fixtures after REST clients are intentionally configured. This helper only
+    covers environment prerequisites that can be decided without touching the
+    network, so the session-wide execution-bust guard cannot race those
+    controlled failures with unrelated read-only API calls.
+    """
+    env_vars: tuple[str, ...] = ()
+    if any(item.get_closest_marker(_STRICT_SPOT_PREREQUISITE_MARKER) for item in items):
+        env_vars += _STRICT_SPOT_ENV
+    if any(item.get_closest_marker(_STRICT_WS_EXEC_PREREQUISITE_MARKER) for item in items):
+        env_vars += _STRICT_WS_EXEC_ENV
+    return _unique_missing_env_vars(env_vars)
 
 
 _EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = (
@@ -269,6 +319,15 @@ async def execution_busts_guard(request):
     if all(item.get_closest_marker("offline") for item in request.session.items):
         # Offline-only session (e.g. `pytest -m offline` / tests/parity) —
         # the guard's API calls are the only network traffic; stay silent.
+        yield
+        return
+
+    missing_strict_env = _strict_prerequisite_missing_env(request.session.items)
+    if missing_strict_env:
+        logger.info(
+            "Execution-busts guard inactive until strict test prerequisites are configured; missing env vars: "
+            f"{', '.join(missing_strict_env)}"
+        )
         yield
         return
 
@@ -385,12 +444,21 @@ async def maker_tester_session():
     """
     load_dotenv()
 
+    required_env = spot_account_env_vars(1)
+    missing = missing_env_vars(required_env)
+    if missing:
+        spot_prerequisite_missing(
+            "Missing Spot Account 1 configuration for spot tests",
+            missing_env=missing,
+        )
+
     # Maker uses Spot Account 1
     tester = ReyaTester(spot_account_number=1)
 
     if not tester.owner_wallet_address or not tester.account_id:
-        pytest.skip(
-            "Missing Spot Account 1 configuration (SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1) for spot tests"
+        spot_prerequisite_missing(
+            "Missing Spot Account 1 configuration for spot tests",
+            missing_env=missing_env_vars(required_env),
         )
 
     logger.info(f"🔧 SESSION: Maker account initialized: {tester.account_id}")
@@ -425,12 +493,21 @@ async def taker_tester_session():
     """
     load_dotenv()
 
+    required_env = spot_account_env_vars(2)
+    missing = missing_env_vars(required_env)
+    if missing:
+        spot_prerequisite_missing(
+            "Missing Spot Account 2 configuration for spot tests",
+            missing_env=missing,
+        )
+
     # Taker uses Spot Account 2
     tester = ReyaTester(spot_account_number=2)
 
     if not tester.owner_wallet_address or not tester.account_id:
-        pytest.skip(
-            "Missing Spot Account 2 configuration (SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2) for spot tests"
+        spot_prerequisite_missing(
+            "Missing Spot Account 2 configuration for spot tests",
+            missing_env=missing_env_vars(required_env),
         )
 
     logger.info(f"🔧 SESSION: Taker account initialized: {tester.account_id}")
@@ -653,9 +730,9 @@ async def _restore_to_baseline(  # pylint: disable=redefined-outer-name
 # ============================================================================
 # Any test (in any directory) can take `market_config` + `maker`/`taker` and
 # run once per market type. ALL resolution is lazy (request.getfixturevalue)
-# so an env configured for only one market never spins up the other market's
-# sessions — the missing-credential pytest.skip then applies only to that
-# market's param instances instead of tanking the suite.
+# so an env configured for only one market never spins up the other market's sessions.
+# Spot missing-prerequisite paths fail by default via spot_prerequisite_missing;
+# non-spot missing-prerequisite paths keep their existing skip behavior.
 
 _DEFAULT_MARKET_TYPES = ("spot", "perp")
 
@@ -1145,7 +1222,10 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
     # Validate the selected asset is available
     if spot_asset not in spot_market_configs:
         available = sorted(spot_market_configs.keys())
-        pytest.skip(f"Asset '{spot_asset}' not available. Available assets: {', '.join(available)}")
+        spot_prerequisite_missing(
+            f"Asset '{spot_asset}' not available in /v2/spotMarketDefinitions. "
+            f"Available assets: {', '.join(available) or '<none>'}"
+        )
 
     selected_market: SpotMarketConfig = spot_market_configs[spot_asset]
 
@@ -1323,7 +1403,7 @@ async def spot_balance_guard(
         for msg in insufficient:
             logger.error(f"   - {msg}")
         logger.error(f"   Required minimums: {min_asset_balance} {base_asset}, {MIN_RUSD_BALANCE} RUSD per account")
-        pytest.skip(f"Insufficient balances for SPOT tests: {', '.join(insufficient)}")
+        spot_prerequisite_missing(f"Insufficient balances for SPOT tests: {', '.join(insufficient)}")
 
     logger.info("✅ Balance check passed - proceeding with SPOT tests")
     logger.info("=" * 60)
@@ -1454,7 +1534,12 @@ async def spot_balance_guard(
             if asset_needed > 0:
                 # Account needs more asset - buy from external asks
                 if not has_external_asks:
-                    logger.warning(f"⚠️ {account_name} needs {asset_needed} {base_asset} but no external asks available")
+                    logger.warning(
+                        "⚠️ %s needs %s %s but no external asks available",
+                        account_name,
+                        asset_needed,
+                        base_asset,
+                    )
                     return
 
                 qty = str(asset_needed.quantize(min_qty))

@@ -24,8 +24,8 @@ tests/helpers/ws_exec_harness.py — the high-level client rejects an out-of-ran
 timeoutMs locally (and never builds a tampered signature), so the negative
 probes must go over a raw socket with a hand-built (correctly signed) payload;
 both sign over ``m.rest``'s account, so they run on each market unchanged. Each
-market is skipped independently if its credentials (or REYA_WS_EXEC_URL) are
-absent (see ``ws_exec_market``).
+missing ws-exec URL/account prerequisite fails by default (see
+``ws_exec_market``).
 """
 
 from __future__ import annotations

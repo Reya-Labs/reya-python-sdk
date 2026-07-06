@@ -14,8 +14,8 @@ Error envelopes surface as :class:`WsExecOperationError` with the structured
 pinned only where the code alone doesn't discriminate the rule
 (INPUT_VALIDATION_ERROR), mirroring the REST suite.
 
-Each market is skipped independently if its credentials (or REYA_WS_EXEC_URL)
-are absent (see ``ws_exec_market``).
+Missing ws-exec URL/account prerequisites fail by default (see
+``ws_exec_market``).
 """
 
 from __future__ import annotations
