@@ -64,9 +64,13 @@ class DataOperations:
                 current_price = (await self._t.client.get_asset_oracle_price(asset)).oracle_price
                 logger.info(f"💰 Current asset oracle price for {asset}: ${float(current_price):.2f}")
                 return current_price
-            except ApiException as e:
+            except (ApiException, RuntimeError) as e:
                 error_text = str(e)
-                if "Price not found" not in error_text and "market data not found" not in error_text:
+                if (
+                    "Price not found" not in error_text
+                    and "market data not found" not in error_text
+                    and "Asset oracle price not found" not in error_text
+                ):
                     raise
                 last_exc = e
                 logger.warning(

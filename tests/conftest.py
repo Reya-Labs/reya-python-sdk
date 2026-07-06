@@ -1244,7 +1244,7 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
         price_str = await maker_tester_session.data.asset_oracle_price(oracle_asset)
         oracle_price = float(price_str)
         logger.info(f"📊 Fetched {spot_asset} oracle price: ${oracle_price:.2f}")
-    except (OSError, RuntimeError, ValueError) as e:
+    except (ApiException, OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Failed to fetch oracle price for {oracle_asset}: {e}")
         # Fallback prices per asset
         fallback_prices = {"ETH": 3000.0, "BTC": 80000.0}
