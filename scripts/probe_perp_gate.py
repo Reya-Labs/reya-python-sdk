@@ -29,15 +29,15 @@ async def main() -> None:
 
         for d in perp_defs:
             symbol = d.symbol
-            # Get oracle price; place far-below sell so it can't match.
+            # Get mark price; place far-above sell so it can't match.
             try:
-                price_resp = await client.markets.get_price(symbol)
-                oracle = float(price_resp.oracle_price)
-            except ApiException as e:
-                print(f"  {symbol}: NO ORACLE PRICE ({e.body if hasattr(e, 'body') else e})")
+                mark_price = float(await client.get_market_mark_price(symbol))
+            except (ApiException, RuntimeError) as e:
+                detail = e.body if isinstance(e, ApiException) and hasattr(e, "body") else e
+                print(f"  {symbol}: NO MARK PRICE ({detail})")
                 continue
 
-            far_sell_px = str(round(oracle * 2.0, 2))
+            far_sell_px = str(round(mark_price * 2.0, 2))
             params = LimitOrderParameters(
                 symbol=symbol,
                 is_buy=False,

@@ -23,7 +23,6 @@ import os
 import queue
 import sys
 import time
-import warnings
 from dataclasses import dataclass
 from enum import Enum
 
@@ -35,7 +34,8 @@ from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.ping_message_payload import PingMessagePayload
-from sdk.async_api.prices_update_payload import PricesUpdatePayload
+from sdk.async_api.spot_market_summary_update_payload import SpotMarketSummaryUpdatePayload
+from sdk.async_api.spot_markets_summary_update_payload import SpotMarketsSummaryUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.open_api.api.market_data_api import MarketDataApi
 from sdk.open_api.api.reference_data_api import ReferenceDataApi
@@ -106,16 +106,16 @@ SMOKE_CHECKS: tuple[SmokeCheck, ...] = (
         reason="Preferred perp summary read WS channels replace the removed unprefixed summary aliases.",
     ),
     SmokeCheck(
-        id="rest.deprecatedPrices",
+        id="rest.spotMarketsSummary",
         kind=SmokeCheckKind.REST,
-        target="/v2/prices + /v2/prices/{symbol}",
-        reason="Legacy prices REST endpoints remain callable during deprecation and should emit SDK deprecation warnings.",
+        target="/v2/spotMarkets/summary + /v2/spotMarket/{symbol}/summary",
+        reason="Spot market summary REST paths replace spot consumers of the deprecated prices endpoint.",
     ),
     SmokeCheck(
-        id="ws.deprecatedPrices",
+        id="ws.spotMarketsSummary",
         kind=SmokeCheckKind.WEBSOCKET,
-        target="/v2/prices",
-        reason="Legacy prices read WS channel remains callable during deprecation while consumers migrate.",
+        target="/v2/spotMarkets/summary + /v2/spotMarket/{symbol}/summary",
+        reason="Spot market summary read WS channels replace spot consumers of the deprecated prices channel.",
     ),
 )
 
@@ -171,10 +171,23 @@ def _describe_perp_summaries(summaries: list[Any], symbol: str, max_age_ms: int)
     return f"{len(summaries)} perp summary row(s), including {symbol}"
 
 
+def _describe_spot_summaries(summaries: list[Any], symbol: str, max_age_ms: int) -> str:
+    _assert(bool(summaries), "spot markets summary response was empty")
+    symbols = {summary.symbol for summary in summaries}
+    _assert(symbol in symbols, f"{symbol} missing from spot markets summary")
+    for summary in summaries:
+        if summary.oracle_price is not None:
+            _assert_positive_decimal(summary.oracle_price, f"{summary.symbol}.oraclePrice")
+        _assert_recent_ms(summary.updated_at, f"{summary.symbol}.updatedAt", max_age_ms=max_age_ms)
+    return f"{len(summaries)} spot summary row(s), including {symbol}"
+
+
 def run_static_sdk_checks() -> CheckResult:
     _assert(hasattr(rest_open_api, "AssetOraclePrice"), "REST SDK must expose AssetOraclePrice")
     _assert(not hasattr(rest_open_api, "CollateralOraclePrice"), "REST SDK must not expose CollateralOraclePrice")
     _assert(hasattr(MarketDataApi, "get_asset_oracle_prices"), "REST SDK missing get_asset_oracle_prices")
+    _assert(hasattr(MarketDataApi, "get_spot_markets_summary"), "REST SDK missing get_spot_markets_summary")
+    _assert(hasattr(MarketDataApi, "get_spot_market_summary"), "REST SDK missing get_spot_market_summary")
     _assert(not hasattr(MarketDataApi, "get_collateral_oracle_prices"), "old collateral oracle method still present")
     _assert(not hasattr(MarketDataApi, "get_markets_summary"), "old /v2/markets/summary method still present")
     _assert(not hasattr(MarketDataApi, "get_market_summary"), "old /v2/market/{symbol}/summary method still present")
@@ -187,11 +200,20 @@ def run_static_sdk_checks() -> CheckResult:
         ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/assetOraclePrices"] is AssetOraclePricesUpdatePayload,
         "read WS asset oracle channel is not routed to AssetOraclePricesUpdatePayload",
     )
+    _assert(
+        ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/spotMarkets/summary"] is SpotMarketsSummaryUpdatePayload,
+        "read WS spot markets summary channel is not routed to SpotMarketsSummaryUpdatePayload",
+    )
+    _assert("/v2/prices" not in ReyaSocket.CHANNEL_PAYLOAD_MAP, "deprecated prices WS channel still routed")
+    _assert(
+        ReyaSocket()._get_payload_type("/v2/prices/ETHRUSDPERP") is None,  # pylint: disable=protected-access
+        "deprecated single-price WS channel still routed",
+    )
     _assert("/v2/markets/summary" not in ReyaSocket.CHANNEL_PAYLOAD_MAP, "old summary WS channel still routed")
-    return _ok("sdk.removedAmmSurfaces", "removed aliases absent; asset oracle SDK surface present")
+    return _ok("sdk.removedAmmSurfaces", "removed aliases absent; asset oracle and summary SDK surfaces present")
 
 
-async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[list[CheckResult], str]:
+async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[list[CheckResult], str, str]:
     perp_definitions = await client.reference.get_perp_market_definitions()
     spot_definitions = await client.reference.get_spot_market_definitions()
     _assert(bool(perp_definitions), "perp market definitions response was empty")
@@ -200,6 +222,7 @@ async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[l
     perp_symbol = (
         "ETHRUSDPERP" if any(m.symbol == "ETHRUSDPERP" for m in perp_definitions) else perp_definitions[0].symbol
     )
+    spot_symbol = "WETHRUSD" if any(m.symbol == "WETHRUSD" for m in spot_definitions) else spot_definitions[0].symbol
     results = [
         _ok(
             "rest.referenceDefinitions",
@@ -217,24 +240,17 @@ async def run_rest_checks(client: ReyaTradingClient, max_age_ms: int) -> tuple[l
         _assert_positive_decimal(summary.mark_price, f"{perp_symbol}.markPrice")
     results.append(_ok("rest.perpMarketsSummary", _describe_perp_summaries(summaries, perp_symbol, max_age_ms)))
 
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always", DeprecationWarning)
-        legacy_prices = await client.markets.get_prices()
-        legacy_price = await client.markets.get_price(perp_symbol)
-    _assert(bool(legacy_prices), "deprecated /prices response was empty")
-    _assert(legacy_price.symbol == perp_symbol, f"deprecated /prices/{{symbol}} returned {legacy_price.symbol}")
-    deprecation_messages = [str(warning.message) for warning in captured if warning.category is DeprecationWarning]
+    spot_summaries = await client.markets.get_spot_markets_summary()
+    spot_summary = await client.markets.get_spot_market_summary(spot_symbol)
     _assert(
-        any("/prices" in message for message in deprecation_messages), "missing SDK deprecation warning for /prices"
+        spot_summary.symbol == spot_symbol,
+        f"single spot summary returned {spot_summary.symbol}, expected {spot_symbol}",
     )
-    results.append(
-        _ok(
-            "rest.deprecatedPrices",
-            f"{len(legacy_prices)} legacy price row(s); {perp_symbol} single-price still callable with warning",
-        )
-    )
+    if spot_summary.oracle_price is not None:
+        _assert_positive_decimal(spot_summary.oracle_price, f"{spot_symbol}.oraclePrice")
+    results.append(_ok("rest.spotMarketsSummary", _describe_spot_summaries(spot_summaries, spot_symbol, max_age_ms)))
 
-    return results, perp_symbol
+    return results, perp_symbol, spot_symbol
 
 
 def _extract_contents_data(contents: dict[str, Any] | None) -> Any:
@@ -283,28 +299,45 @@ def _validate_ws_data(channel: str, data: Any, max_age_ms: int) -> str:
             _assert_positive_decimal(market_payload.data.mark_price, f"{market_payload.data.symbol}.markPrice")
         return f"{market_payload.data.symbol} summary parsed"
 
-    if channel == "/v2/prices":
+    if channel == "/v2/spotMarkets/summary":
         if isinstance(data, list) and data and isinstance(data[0], dict):
-            prices_payload = PricesUpdatePayload.model_validate(
+            spot_markets_payload = SpotMarketsSummaryUpdatePayload.model_validate(
                 {"type": "channel_data", "timestamp": time.time() * 1000, "channel": channel, "data": data}
             )
-        elif isinstance(data, PricesUpdatePayload):
-            prices_payload = data
+        elif isinstance(data, SpotMarketsSummaryUpdatePayload):
+            spot_markets_payload = data
         else:
-            raise AssertionError(f"unexpected legacy prices WS payload shape: {type(data).__name__}")
-        _assert(bool(prices_payload.data), "legacy prices WS data was empty")
-        return f"{len(prices_payload.data)} legacy price row(s)"
+            raise AssertionError(f"unexpected spot markets summary WS payload shape: {type(data).__name__}")
+        symbol = spot_markets_payload.data[0].symbol
+        return _describe_spot_summaries(spot_markets_payload.data, symbol, max_age_ms=max_age_ms)
+
+    if channel.startswith("/v2/spotMarket/") and channel.endswith("/summary"):
+        if isinstance(data, dict):
+            spot_market_payload = SpotMarketSummaryUpdatePayload.model_validate(
+                {"type": "channel_data", "timestamp": time.time() * 1000, "channel": channel, "data": data}
+            )
+        elif isinstance(data, SpotMarketSummaryUpdatePayload):
+            spot_market_payload = data
+        else:
+            raise AssertionError(f"unexpected spot market summary WS payload shape: {type(data).__name__}")
+        _assert(spot_market_payload.data.symbol in channel, f"{channel} returned {spot_market_payload.data.symbol}")
+        if spot_market_payload.data.oracle_price is not None:
+            _assert_positive_decimal(
+                spot_market_payload.data.oracle_price, f"{spot_market_payload.data.symbol}.oraclePrice"
+            )
+        return f"{spot_market_payload.data.symbol} spot summary parsed"
 
     raise AssertionError(f"no validator for channel {channel}")
 
 
-def run_websocket_checks(symbol: str, timeout_s: float, max_age_ms: int) -> list[CheckResult]:
+def run_websocket_checks(perp_symbol: str, spot_symbol: str, timeout_s: float, max_age_ms: int) -> list[CheckResult]:
     ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
     expected_channels = {
         "/v2/assetOraclePrices": "ws.assetOraclePrices",
         "/v2/perpMarkets/summary": "ws.perpMarketsSummary",
-        f"/v2/perpMarket/{symbol}/summary": "ws.perpMarketsSummary",
-        "/v2/prices": "ws.deprecatedPrices",
+        f"/v2/perpMarket/{perp_symbol}/summary": "ws.perpMarketsSummary",
+        "/v2/spotMarkets/summary": "ws.spotMarketsSummary",
+        f"/v2/spotMarket/{spot_symbol}/summary": "ws.spotMarketsSummary",
     }
     details_by_check: dict[str, list[str]] = {check_id: [] for check_id in expected_channels.values()}
     seen_channels: set[str] = set()
@@ -314,8 +347,9 @@ def run_websocket_checks(symbol: str, timeout_s: float, max_age_ms: int) -> list
     def on_open(ws: ReyaSocket) -> None:
         ws.prices.asset_oracle_prices.subscribe()
         ws.market.all_markets_summary.subscribe()
-        ws.market.summary(symbol).subscribe()
-        ws.prices.all_prices.subscribe()
+        ws.market.summary(perp_symbol).subscribe()
+        ws.market.all_spot_markets_summary.subscribe()
+        ws.market.spot_summary(spot_symbol).subscribe()
 
     def on_error(_ws: ReyaSocket, error: Exception) -> None:
         errors.put(str(error))
@@ -376,7 +410,7 @@ def run_websocket_checks(symbol: str, timeout_s: float, max_age_ms: int) -> list
     return [
         _ok("ws.assetOraclePrices", "; ".join(details_by_check["ws.assetOraclePrices"])),
         _ok("ws.perpMarketsSummary", "; ".join(details_by_check["ws.perpMarketsSummary"])),
-        _ok("ws.deprecatedPrices", "; ".join(details_by_check["ws.deprecatedPrices"])),
+        _ok("ws.spotMarketsSummary", "; ".join(details_by_check["ws.spotMarketsSummary"])),
     ]
 
 
@@ -384,9 +418,13 @@ async def run_smoke(timeout_s: float, max_age_ms: int) -> list[CheckResult]:
     load_dotenv()
     results = [run_static_sdk_checks()]
     async with ReyaTradingClient() as client:
-        rest_results, symbol = await run_rest_checks(client, max_age_ms=max_age_ms)
+        rest_results, perp_symbol, spot_symbol = await run_rest_checks(client, max_age_ms=max_age_ms)
         results.extend(rest_results)
-    results.extend(run_websocket_checks(symbol=symbol, timeout_s=timeout_s, max_age_ms=max_age_ms))
+    results.extend(
+        run_websocket_checks(
+            perp_symbol=perp_symbol, spot_symbol=spot_symbol, timeout_s=timeout_s, max_age_ms=max_age_ms
+        )
+    )
     return results
 
 

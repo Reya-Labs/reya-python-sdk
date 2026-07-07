@@ -44,9 +44,10 @@ async def main():
             oracle_price = float(sample_price.oracle_price)
             print(f"Oracle price in USD: ${oracle_price:.2f}")
 
-        # Legacy /v2/prices remains available for existing consumers but is deprecated.
-        legacy_prices = await client.markets.get_prices()
-        print(f"\n--- Deprecated legacy prices feed returned {len(legacy_prices)} entries ---")
+        print("\n--- Getting perp market mark/mid prices ---")
+        market_summary = await client.markets.get_perp_market_summary("ETHRUSDPERP")
+        print(f"ETHRUSDPERP mark price: {market_summary.mark_price}")
+        print(f"ETHRUSDPERP throttled mid price: {market_summary.throttled_mid_price}")
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ from sdk.open_api.api_client import ApiClient
 from sdk.open_api.configuration import Configuration
 from sdk.open_api.models.account import Account
 from sdk.open_api.models.account_balance import AccountBalance
+from sdk.open_api.models.asset_oracle_price import AssetOraclePrice
 from sdk.open_api.models.cancel_all_after_request import CancelAllAfterRequest
 from sdk.open_api.models.cancel_all_after_response import CancelAllAfterResponse
 from sdk.open_api.models.cancel_order_request import CancelOrderRequest
@@ -249,6 +250,31 @@ class ReyaTradingClient:
         or one with delegated trading permission.
         """
         return self._config.owner_wallet_address
+
+    async def get_asset_oracle_price(self, asset: str) -> AssetOraclePrice:
+        """Fetch a single asset Stork oracle price from /assetOraclePrices."""
+        target = asset.upper()
+        prices = await self.markets.get_asset_oracle_prices()
+        for price in prices:
+            if price.asset.upper() == target:
+                return price
+
+        available_assets = ", ".join(sorted(price.asset for price in prices))
+        raise RuntimeError(f"Asset oracle price not found for {asset}. Available assets: {available_assets}")
+
+    async def get_market_mark_price(self, symbol: str) -> str:
+        """Fetch a perp market's mark price from /perpMarket/{symbol}/summary."""
+        summary = await self.markets.get_perp_market_summary(symbol)
+        if summary.mark_price is None:
+            raise RuntimeError(f"Market summary for {symbol} did not include markPrice")
+        return summary.mark_price
+
+    async def get_market_mid_price(self, symbol: str) -> str:
+        """Fetch a perp market's throttled mid price from /perpMarket/{symbol}/summary."""
+        summary = await self.markets.get_perp_market_summary(symbol)
+        if summary.throttled_mid_price is None:
+            raise RuntimeError(f"Market summary for {symbol} did not include throttledMidPrice")
+        return summary.throttled_mid_price
 
     def build_create_limit_order_payload(self, params: LimitOrderParameters) -> tuple[dict, int]:
         """Build the camelCase wire payload for a createOrder LIMIT request and

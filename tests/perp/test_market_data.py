@@ -5,8 +5,6 @@ Field changes vs the AMM era:
 - ``MarketSummary``: ``longOiQty`` / ``shortOiQty`` collapsed to a single ``oiQty``;
   ``fundingRateVelocity`` removed; ``throttledOraclePrice`` → ``markPrice``;
   ``throttledPoolPrice`` → ``throttledMidPrice``.
-- ``Price.poolPrice`` is now optional — present only while the AMM-era pool-price
-  publisher is still running on a market; absent on perpOB-only markets.
 """
 
 import re
@@ -52,41 +50,38 @@ async def test_market_definitions(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_market_price(reya_tester: ReyaTester):
+async def test_market_mark_and_mid_price(reya_tester: ReyaTester):
     symbol = "ETHRUSDPERP"
-    price = await reya_tester.client.markets.get_price(symbol)
-    assert price is not None
-    assert price.symbol == symbol
-    assert 0 < float(price.oracle_price) < 10**18
+    mark_price = await reya_tester.client.get_market_mark_price(symbol)
+    assert 0 < float(mark_price) < 10**18
 
-    # ``pool_price`` is optional under v2.3.0 — only set while the AMM
-    # pool-price publisher still ticks. Validate when present.
-    if price.pool_price is not None:
-        assert 0 < float(price.pool_price) < 10**18
+    mid_price = await reya_tester.client.get_market_mid_price(symbol)
+    assert 0 < float(mid_price) < 10**18
 
-    current_time = int(time.time())
-    assert price.updated_at / 1000 > current_time - 60
+    market_summary = await reya_tester.client.markets.get_perp_market_summary(symbol)
+    current_time = int(time.time() * 1000)
+    assert market_summary.prices_updated_at is not None
+    assert market_summary.prices_updated_at > current_time - 60_000
 
 
 @pytest.mark.asyncio
-async def test_all_prices(reya_tester: ReyaTester):
-    prices = await reya_tester.client.markets.get_prices()
-    assert prices is not None
-    assert len(prices) > 0, "Should have at least one price"
+async def test_all_market_summaries(reya_tester: ReyaTester):
+    summaries = await reya_tester.client.markets.get_perp_markets_summary()
+    assert summaries is not None
+    assert len(summaries) > 0, "Should have at least one market summary"
 
-    for sample_price in prices:
-        assert sample_price.symbol is not None and len(sample_price.symbol) > 0, "Symbol should not be empty"
-        assert 0 <= float(sample_price.oracle_price) < 10**18, "Oracle price should be a valid positive number"
-        if sample_price.pool_price is not None:
-            assert (
-                0 <= float(sample_price.pool_price) < 10**18
-            ), "Pool price should be a valid positive number when present"
+    for summary in summaries:
+        assert summary.symbol is not None and len(summary.symbol) > 0, "Symbol should not be empty"
+        if summary.mark_price is not None:
+            assert 0 <= float(summary.mark_price) < 10**18, "Mark price should be a valid positive number"
+        if summary.throttled_mid_price is not None:
+            assert 0 <= float(summary.throttled_mid_price) < 10**18, "Mid price should be a valid positive number"
         current_time = int(time.time() * 1000)
-        assert sample_price.updated_at > current_time - (60 * 60 * 1000), "Updated timestamp should be within last hour"
-        assert sample_price.updated_at <= current_time + (60 * 1000), "Updated timestamp should not be in future"
+        assert summary.updated_at > current_time - (60 * 60 * 1000), "Updated timestamp should be within last hour"
+        assert summary.updated_at <= current_time + (60 * 1000), "Updated timestamp should not be in future"
 
-    symbols = {price.symbol for price in prices}
-    assert "ETHRUSDPERP" in symbols, "Should include ETHRUSDPERP in all prices"
+    symbols = {summary.symbol for summary in summaries}
+    assert "ETHRUSDPERP" in symbols, "Should include ETHRUSDPERP in all market summaries"
 
 
 @pytest.mark.asyncio
