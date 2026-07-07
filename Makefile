@@ -13,6 +13,16 @@ install:	## Install dependencies from poetry.lock
 install-types:	## Find and install additional types for mypy
 	poetry run mypy --install-types --non-interactive ./
 
+E2E_TEST_PATHS ?= tests/engine tests/spot tests/perp tests/api_contract tests/ws_exec
+PYTEST_ARGS ?=
+TRACK_B_ENV_REQUIRED ?= true
+
+e2e:	## Run the live integration suite against the local Track B stack
+	TRACK_B_ENV_REQUIRED=$(TRACK_B_ENV_REQUIRED) bash scripts/track_b_env.sh poetry run pytest $(E2E_TEST_PATHS) -ra --tb=short $(PYTEST_ARGS)
+
+e2e-configured:	## Run the live integration suite against already-configured external/devnet env
+	TRACK_B_ENV_REQUIRED=false bash scripts/track_b_env.sh poetry run pytest $(E2E_TEST_PATHS) -ra --tb=short $(PYTEST_ARGS)
+
 poetry-download:	## Download and install poetry
 	curl -sSL https://install.python-poetry.org | python -
 
