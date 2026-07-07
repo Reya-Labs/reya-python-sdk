@@ -3,19 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ADDRESS_ENV="${TRACK_B_ADDRESS_ENV:-${SDK_ROOT}/../offchain/e2e/out/compose/basic-addresses.env}"
+ADDRESS_ENV="${LOCALNET_ADDRESS_ENV:-${SDK_ROOT}/../offchain/e2e/out/compose/basic-addresses.env}"
 
 if [[ $# -eq 0 ]]; then
-  echo "usage: scripts/track_b_env.sh <command> [args...]" >&2
+  echo "usage: scripts/localnet_env.sh <command> [args...]" >&2
   exit 64
 fi
 
-if [[ ! -f "${ADDRESS_ENV}" ]]; then
-  if [[ "${TRACK_B_ENV_REQUIRED:-false}" == "true" ]]; then
-    echo "Track B address env not found at ${ADDRESS_ENV}" >&2
-    exit 1
-  fi
+if [[ "${LOCALNET_ENV_REQUIRED:-false}" != "true" ]]; then
   exec "$@"
+fi
+
+if [[ ! -f "${ADDRESS_ENV}" ]]; then
+  echo "Localnet address env not found at ${ADDRESS_ENV}" >&2
+  exit 1
 fi
 
 set -a
@@ -81,7 +82,7 @@ for key in \
 done
 
 if (( ${#missing[@]} > 0 )); then
-  echo "Track B local SDK env is incomplete: ${missing[*]}" >&2
+  echo "Localnet SDK env is incomplete: ${missing[*]}" >&2
   echo "Address env: ${ADDRESS_ENV}" >&2
   exit 1
 fi

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Track B local frontend fixture helper.
+"""Reya Localnet frontend fixture helper.
 
 This script prepares a deterministic ETH perp book through the same signed
 REST/ws-exec order-entry paths exercised by the SDK E2E suite. It is intentionally
-small and local-harness-only: missing accounts, keys, API, or ws-exec endpoints
+small and Localnet-only: missing accounts, keys, API, or ws-exec endpoints
 are hard failures, not skipped coverage.
 """
 
@@ -59,14 +59,14 @@ def _require_loopback_url(name: str, *, allowed_schemes: set[str]) -> str:
     value = _env(name)
     parsed = urlparse(value)
     if parsed.scheme not in allowed_schemes or parsed.hostname not in {"127.0.0.1", "localhost"}:
-        _die(f"{name} must point at the local Track B stack, got: {value}")
+        _die(f"{name} must point at the local Reya Localnet stack, got: {value}")
     return value
 
 
-def _require_local_track_b_env() -> None:
+def _require_localnet_env() -> None:
     chain_id = _env("CHAIN_ID")
     if chain_id != "31337":
-        _die(f"CHAIN_ID must be 31337 for Track B local fixture helper, got: {chain_id}")
+        _die(f"CHAIN_ID must be 31337 for Localnet fixture helper, got: {chain_id}")
 
     _require_loopback_url("REYA_API_URL", allowed_schemes={"http", "https"})
     _require_loopback_url("REYA_WS_EXEC_URL", allowed_schemes={"ws", "wss"})
@@ -307,7 +307,7 @@ async def _main() -> int:
         help="Order-entry transport for setup and cleanup; auto uses ws-exec when REYA_WS_EXEC_URL is set.",
     )
     args = parser.parse_args()
-    _require_local_track_b_env()
+    _require_localnet_env()
 
     if args.action == "cleanup":
         result = await _cleanup(args.symbol, transport=args.transport)

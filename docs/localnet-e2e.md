@@ -1,7 +1,7 @@
-# Track B Local SDK E2E
+# Reya Localnet SDK E2E
 
 This worktree can run the devnet-style SDK integration suite against the
-sibling all-local Track B stack.
+sibling Reya Localnet stack.
 
 ## Entry Point
 
@@ -9,17 +9,17 @@ sibling all-local Track B stack.
 make e2e PYTEST_ARGS=-rxXs
 ```
 
-`make e2e` invokes `scripts/track_b_env.sh` before pytest and fails closed when
+`make e2e` invokes `scripts/localnet_env.sh` before pytest and fails closed when
 the sibling backend address file is missing or incomplete. When the address file
 exists at `../offchain/e2e/out/compose/basic-addresses.env`, the wrapper
 force-exports local API, read WebSocket, ws-exec, chain id, OrdersGateway, and
 deterministic perp/spot account env vars so stale devnet shell exports cannot
-leak into Track B evidence.
+leak into Localnet evidence.
 
 To point at a non-default address file:
 
 ```bash
-TRACK_B_ADDRESS_ENV=/path/to/basic-addresses.env make e2e PYTEST_ARGS=-rxXs
+LOCALNET_ADDRESS_ENV=/path/to/basic-addresses.env make e2e PYTEST_ARGS=-rxXs
 ```
 
 For a deliberately preconfigured external/devnet environment, use:
@@ -28,9 +28,12 @@ For a deliberately preconfigured external/devnet environment, use:
 make e2e-configured PYTEST_ARGS=-rxXs
 ```
 
+`e2e-configured` sets `LOCALNET_ENV_REQUIRED=false`, which bypasses Localnet
+env injection even if the sibling address file exists.
+
 ## Required Visibility
 
-Always keep skip and xfail reasons visible for Track B evidence:
+Always keep skip and xfail reasons visible for Localnet evidence:
 
 ```bash
 make e2e PYTEST_ARGS=-rxXs
@@ -39,7 +42,7 @@ make e2e PYTEST_ARGS=-rxXs
 Focused reruns should use the same wrapper, for example:
 
 ```bash
-bash scripts/track_b_env.sh poetry run pytest -q -rxXs tests/perp/test_limit_orders.py
+bash scripts/localnet_env.sh poetry run pytest -q -rxXs tests/perp/test_limit_orders.py
 ```
 
 Spot and ws-exec tests are in scope. Missing `SPOT_*`, `PERP_*`,
