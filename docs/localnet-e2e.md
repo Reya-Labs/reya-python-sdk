@@ -1,48 +1,43 @@
 # Reya Localnet SDK E2E
 
-This worktree can run the devnet-style SDK integration suite against the
-sibling Reya Localnet stack.
+Reya Localnet orchestration is owned by `reya-off-chain-monorepo`. This SDK
+worktree owns the public live integration tests and their no-silent-skip
+behavior; it no longer hardcodes sibling compose output or Localnet fixture
+paths.
 
 ## Entry Point
+
+From `reya-off-chain-monorepo`, run:
+
+```bash
+make localnet-sdk LOCALNET_PYTEST_ARGS=-rxXs
+```
+
+That target loads `e2e/out/compose/basic-addresses.env`, maps deterministic
+Localnet accounts/endpoints into the SDK env, and invokes this repo's `make e2e`.
+
+From this repo, `make e2e` expects the live environment to already be configured:
 
 ```bash
 make e2e PYTEST_ARGS=-rxXs
 ```
 
-`make e2e` invokes `scripts/localnet_env.sh` before pytest and fails closed when
-the sibling backend address file is missing or incomplete. When the address file
-exists at `../offchain/e2e/out/compose/basic-addresses.env`, the wrapper
-force-exports local API, read WebSocket, ws-exec, chain id, OrdersGateway, and
-deterministic perp/spot account env vars so stale devnet shell exports cannot
-leak into Localnet evidence.
-
-To point at a non-default address file:
-
-```bash
-LOCALNET_ADDRESS_ENV=/path/to/basic-addresses.env make e2e PYTEST_ARGS=-rxXs
-```
-
-For a deliberately preconfigured external/devnet environment, use:
-
-```bash
-make e2e-configured PYTEST_ARGS=-rxXs
-```
-
-`e2e-configured` sets `LOCALNET_ENV_REQUIRED=false`, which bypasses Localnet
-env injection even if the sibling address file exists.
+`make e2e-configured` remains a compatibility alias for `make e2e`.
 
 ## Required Visibility
 
 Always keep skip and xfail reasons visible for Localnet evidence:
 
 ```bash
-make e2e PYTEST_ARGS=-rxXs
+make -C ../offchain localnet-sdk LOCALNET_PYTEST_ARGS=-rxXs
 ```
 
-Focused reruns should use the same wrapper, for example:
+Focused reruns can override paths through the offchain target, for example:
 
 ```bash
-bash scripts/localnet_env.sh poetry run pytest -q -rxXs tests/perp/test_limit_orders.py
+make -C ../offchain localnet-sdk \
+  LOCALNET_SDK_TEST_PATHS="tests/perp/test_limit_orders.py" \
+  LOCALNET_PYTEST_ARGS="-q -rxXs"
 ```
 
 Spot and ws-exec tests are in scope. Missing `SPOT_*`, `PERP_*`,
@@ -60,20 +55,20 @@ Evidence bundle:
 SDK SHA tested: `2c5ca578ec68e5584868abb450362680f7cafc64`
 (`origin/feat/perpOB`, after PR #63).
 
-Focused gate:
+Focused gate, through offchain:
 
 ```bash
-make e2e \
-  E2E_TEST_PATHS="tests/perp/test_limit_orders.py tests/perp/test_market_data.py tests/api_contract/test_api_validation.py tests/spot tests/ws_exec tests/engine/test_order_history.py" \
-  PYTEST_ARGS="-q -rxXs"
+make localnet-sdk \
+  LOCALNET_SDK_TEST_PATHS="tests/perp/test_limit_orders.py tests/perp/test_market_data.py tests/api_contract/test_api_validation.py tests/spot tests/ws_exec tests/engine/test_order_history.py" \
+  LOCALNET_PYTEST_ARGS="-q -rxXs"
 # 108 passed, 2 skipped in 48.24s
 ```
 
 Full gate:
 
 ```bash
-make e2e PYTEST_ARGS=-rxXs
-# 331 passed, 13 skipped, 1 xfailed in 551.96s (0:09:11)
+make localnet-sdk LOCALNET_PYTEST_ARGS=-rxXs
+# Latest structure-pass rerun: 331 passed, 13 skipped, 1 xfailed in 540.95s (0:09:00)
 ```
 
 Skip/xfail classification:
