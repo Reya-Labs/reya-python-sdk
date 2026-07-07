@@ -58,15 +58,6 @@ ASSET_TO_SYMBOL = {
     "REYA": "REYARUSD",
 }
 
-# Mapping from asset to oracle symbol (perp symbol) for fetching oracle prices
-ASSET_TO_PRICE_ASSET = {
-    "ETH": "ETH",
-    "WETH": "ETH",
-    "BTC": "BTC",
-    "WBTC": "BTC",
-    "REYA": "REYA",
-}
-
 # Fallback prices for assets without a live oracle feed
 ASSET_FALLBACK_PRICES: dict[str, Decimal] = {
     "REYA": Decimal("0.10"),
@@ -74,6 +65,14 @@ ASSET_FALLBACK_PRICES: dict[str, Decimal] = {
 
 ORDER_SETTLEMENT_RETRIES = 3
 ORDER_SETTLEMENT_DELAY = 1.0
+
+
+def asset_oracle_asset(asset: str) -> str:
+    """Normalize wrapped spot aliases to the asset oracle feed name."""
+    normalized_asset = asset.upper()
+    if normalized_asset in {"WETH", "WBTC"}:
+        return normalized_asset[1:]
+    return normalized_asset
 
 
 async def get_account_balance(client: ReyaTradingClient, account_id: int, asset: str) -> Decimal:
@@ -101,11 +100,7 @@ async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
     Raises:
         SystemExit: If oracle price cannot be fetched
     """
-    price_asset = ASSET_TO_PRICE_ASSET.get(asset.upper())
-
-    if not price_asset:
-        logger.error(f"❌ No oracle asset mapping for {asset}. Supported: {list(ASSET_TO_PRICE_ASSET.keys())}")
-        sys.exit(1)
+    price_asset = asset_oracle_asset(asset)
 
     try:
         price_data = await client.get_asset_oracle_price(price_asset)
