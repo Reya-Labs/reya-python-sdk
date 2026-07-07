@@ -20,6 +20,7 @@ class PerpExecution(BaseModel):
   type: ExecutionType = Field(description='''Type of execution''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
+  fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')
   taker_realized_pnl: Optional[str] = Field(default=None, alias='''takerRealizedPnl''')
   maker_realized_pnl: Optional[str] = Field(default=None, alias='''makerRealizedPnl''')
   taker_price_variation_pnl: Optional[str] = Field(default=None, alias='''takerPriceVariationPnl''')
@@ -46,13 +47,13 @@ class PerpExecution(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'taker_account_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'qty', 'side', 'price', 'taker_fee', 'maker_fee', 'taker_opening_fee', 'maker_opening_fee', 'type', 'timestamp', 'sequence_number', 'taker_realized_pnl', 'maker_realized_pnl', 'taker_price_variation_pnl', 'maker_price_variation_pnl', 'taker_funding_pnl', 'maker_funding_pnl', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'taker_account_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'qty', 'side', 'price', 'taker_fee', 'maker_fee', 'taker_opening_fee', 'maker_opening_fee', 'type', 'timestamp', 'sequence_number', 'fill_id', 'taker_realized_pnl', 'maker_realized_pnl', 'taker_price_variation_pnl', 'maker_price_variation_pnl', 'taker_funding_pnl', 'maker_funding_pnl', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'takerAccountId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'qty', 'side', 'price', 'takerFee', 'makerFee', 'takerOpeningFee', 'makerOpeningFee', 'type', 'timestamp', 'sequenceNumber', 'takerRealizedPnl', 'makerRealizedPnl', 'takerPriceVariationPnl', 'makerPriceVariationPnl', 'takerFundingPnl', 'makerFundingPnl', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'takerAccountId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'qty', 'side', 'price', 'takerFee', 'makerFee', 'takerOpeningFee', 'makerOpeningFee', 'type', 'timestamp', 'sequenceNumber', 'fillId', 'takerRealizedPnl', 'makerRealizedPnl', 'takerPriceVariationPnl', 'makerPriceVariationPnl', 'takerFundingPnl', 'makerFundingPnl', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):

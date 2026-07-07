@@ -29,7 +29,7 @@ async def test_wallet_execution_busts_endpoint_shape(reya_tester: ReyaTester) ->
     for bust in bust_list.data:
         assert isinstance(bust, ExecutionBust)
         assert bust.symbol, "bust.symbol must be populated"
-        assert bust.account_id is not None
+        assert bust.taker_account_id is not None
         assert bust.exchange_id is not None
 
 

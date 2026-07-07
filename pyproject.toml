@@ -1,6 +1,6 @@
 [project]
 name = "reya-python-sdk"
-version = "3.0.5.0"
+version = "3.0.13.0"
 description = "SDK for interacting with Reya Labs APIs"
 authors = [
     {name = "Reya Labs"}
@@ -184,4 +184,6 @@ markers = [
     "post_only: Post-only (maker-only) order tests",
     "gtt: Good-Till-Time (auto-expiring resting order) tests",
     "offline: No-network tests (parity golden vectors + client guards) — safe without devnet/.env",
+    "strict_spot_prerequisites: Internal marker for tests that must fail on missing spot prerequisites",
+    "strict_ws_exec_prerequisites: Internal marker for tests that must fail on missing ws-exec prerequisites",
 ]

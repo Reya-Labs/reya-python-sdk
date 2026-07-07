@@ -1,6 +1,6 @@
 """Probe which perp markets on devnet have order-entry enabled.
 
-Walks every perp market in /v2/marketDefinitions and tries to post a tiny
+Walks every perp market in /v2/perpMarketDefinitions and tries to post a tiny
 far-from-market GTC sell as PERP_ACCOUNT_ID_1. Cancels each one immediately
 on success. Used to find which symbols are past the matching-engine
 PERP_OB_MARKET_IDS launch gate without doing any real trading.
@@ -29,15 +29,15 @@ async def main() -> None:
 
         for d in perp_defs:
             symbol = d.symbol
-            # Get oracle price; place far-below sell so it can't match.
+            # Get mark price; place far-above sell so it can't match.
             try:
-                price_resp = await client.markets.get_price(symbol)
-                oracle = float(price_resp.oracle_price)
-            except ApiException as e:
-                print(f"  {symbol}: NO ORACLE PRICE ({e.body if hasattr(e, 'body') else e})")
+                mark_price = float(await client.get_market_mark_price(symbol))
+            except (ApiException, RuntimeError) as e:
+                detail = e.body if isinstance(e, ApiException) and hasattr(e, "body") else e
+                print(f"  {symbol}: NO MARK PRICE ({detail})")
                 continue
 
-            far_sell_px = str(round(oracle * 2.0, 2))
+            far_sell_px = str(round(mark_price * 2.0, 2))
             params = LimitOrderParameters(
                 symbol=symbol,
                 is_buy=False,

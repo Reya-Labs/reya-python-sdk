@@ -6,5 +6,5 @@ from sdk.async_api.price import Price
 class PriceUpdatePayload(BaseModel): 
   type: ChannelDataMessageType = Field(description='''Message type for channel data updates''')
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
-  channel: str = Field(description='''Channel pattern for specific price updates''')
-  data: Price = Field()
+  channel: str = Field(description='''Deprecated legacy price channel pattern. Use `/v2/assetOraclePrices`.''')
+  data: Price = Field(description='''Deprecated AMM-era mixed market/collateral price shape. Use AssetOraclePrice for asset Stork oracle prices; use market summary/depth endpoints for market prices.''')

@@ -108,7 +108,7 @@ async def test_crossing_modify_executes(
     busted = [
         bust
         for bust in buyer_busts_after + seller_busts_after
-        if str(bust.order_id) in involved_order_ids or str(bust.maker_order_id) in involved_order_ids
+        if str(bust.taker_order_id) in involved_order_ids or str(bust.maker_order_id) in involved_order_ids
     ]
     assert not busted, f"Execution busts reference the crossing-modify orders: {busted}"
     logger.info(f"[{market_type}] ✅ executionBusts empty for both wallets after the crossing modify")

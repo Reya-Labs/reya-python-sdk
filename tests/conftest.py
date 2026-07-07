@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from typing import Optional  # noqa: E402
+from typing import Any, Optional  # noqa: E402
 
 import asyncio  # noqa: E402
 import os  # noqa: E402
@@ -43,6 +43,12 @@ from tests.helpers.market_config import (  # noqa: E402
 )
 from tests.helpers.reya_tester import logger  # noqa: E402
 from tests.helpers.settlement import make_settlement_probe  # noqa: E402
+from tests.helpers.spot_prerequisites import (  # noqa: E402
+    missing_env_vars,
+    spot_account_env_vars,
+    spot_prerequisite_missing,
+)
+from tests.helpers.ws_exec_prerequisites import ws_exec_account_env_vars  # noqa: E402
 
 # Time delay between tests
 TEST_DELAY_SECONDS = 0.1
@@ -52,6 +58,33 @@ MIN_RUSD_BALANCE = 15.0
 
 # Default asset if not specified via CLI
 DEFAULT_SPOT_ASSET = "ETH"
+
+_STRICT_SPOT_PREREQUISITE_MARKER = "strict_spot_prerequisites"
+_STRICT_WS_EXEC_PREREQUISITE_MARKER = "strict_ws_exec_prerequisites"
+_STRICT_SPOT_ENV = spot_account_env_vars(1) + spot_account_env_vars(2)
+_STRICT_WS_EXEC_ENV = (
+    ("REYA_WS_EXEC_URL",)
+    + ws_exec_account_env_vars("SPOT", 1)
+    + ws_exec_account_env_vars("SPOT", 2)
+    + ws_exec_account_env_vars("PERP", 1)
+)
+
+
+class _ReyaEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    """Keep pytest-asyncio compatible with modules that clear the current loop."""
+
+    def get_event_loop(self):
+        try:
+            return super().get_event_loop()
+        except RuntimeError:
+            loop = self.new_event_loop()
+            self.set_event_loop(loop)
+            return loop
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    return _ReyaEventLoopPolicy()
 
 
 def pytest_addoption(parser):
@@ -80,6 +113,12 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.spot)
         elif market == "perp":
             item.add_marker(pytest.mark.perp)
+
+        item_path = str(item.path)
+        if "/tests/spot/" in item_path or item.get_closest_marker("spot") is not None:
+            item.add_marker(_STRICT_SPOT_PREREQUISITE_MARKER)
+        if "/tests/ws_exec/" in item_path or item_path.endswith("_ws_exec.py"):
+            item.add_marker(_STRICT_WS_EXEC_PREREQUISITE_MARKER)
 
 
 @pytest.fixture(scope="session")
@@ -159,17 +198,103 @@ def _busts_guard_api_url() -> str:
     return os.environ.get("REYA_API_URL", default_api_url)
 
 
-async def _fetch_execution_bust_counts(wallets: list[str]) -> Optional[dict[str, int]]:
-    """Fetch the executionBusts count per wallet via a throwaway read-only
-    API client. Returns None when the API is unreachable (offline/unit runs)."""
+def _unique_missing_env_vars(env_vars: tuple[str, ...]) -> list[str]:
+    """Return missing env var names once, preserving prerequisite order."""
+    missing: list[str] = []
+    seen: set[str] = set()
+    for name in env_vars:
+        if name not in seen and not os.environ.get(name):
+            missing.append(name)
+            seen.add(name)
+    return missing
+
+
+def _strict_prerequisite_missing_env(items) -> list[str]:
+    """Env gaps that should fail selected spot/ws-exec tests before any guard API call.
+
+    Market-definition and balance prerequisites are checked by the owning
+    fixtures after REST clients are intentionally configured. This helper only
+    covers environment prerequisites that can be decided without touching the
+    network, so the session-wide execution-bust guard cannot race those
+    controlled failures with unrelated read-only API calls.
+    """
+    env_vars: tuple[str, ...] = ()
+    if any(item.get_closest_marker(_STRICT_SPOT_PREREQUISITE_MARKER) for item in items):
+        env_vars += _STRICT_SPOT_ENV
+    if any(item.get_closest_marker(_STRICT_WS_EXEC_PREREQUISITE_MARKER) for item in items):
+        env_vars += _STRICT_WS_EXEC_ENV
+    return _unique_missing_env_vars(env_vars)
+
+
+_EXPECTED_EXECUTION_BUST_REASON_SNIPPETS = (
+    "reduce-only order size above position size",
+    "reduceonlyconditionfailed",
+)
+
+
+def _execution_bust_identity(bust: Any) -> tuple[Any, Any, Any]:
+    taker_order_id = getattr(bust, "taker_order_id", getattr(bust, "order_id", None))
+    return (getattr(bust, "fill_id", None), taker_order_id, getattr(bust, "sequence_number", None))
+
+
+def _execution_bust_reason_text(bust: Any) -> str:
+    reason = getattr(bust, "reason", None)
+    if reason is None:
+        return ""
+    if isinstance(reason, str):
+        return reason
+
+    actual_reason = getattr(reason, "actual_instance", None)
+    if actual_reason is not None:
+        reason = actual_reason
+
+    reason_name = getattr(reason, "reason_name", None)
+    if reason_name is not None:
+        return str(reason_name)
+
+    to_dict = getattr(reason, "to_dict", None)
+    if callable(to_dict):
+        reason_dict = to_dict()
+        if isinstance(reason_dict, dict):
+            return str(reason_dict.get("reasonName") or reason_dict.get("reason_name") or reason_dict)
+
+    return str(reason)
+
+
+def _is_expected_execution_bust(bust: Any) -> bool:
+    reason = _execution_bust_reason_text(bust).lower()
+    return any(snippet in reason for snippet in _EXPECTED_EXECUTION_BUST_REASON_SNIPPETS)
+
+
+def _unexpected_execution_bust_changes(
+    start_busts: dict[str, list[Any]], end_busts: dict[str, list[Any]]
+) -> dict[str, tuple[int, int]]:
+    changed: dict[str, tuple[int, int]] = {}
+    for address, wallet_start_busts in start_busts.items():
+        wallet_end_busts = end_busts.get(address, [])
+        if len(wallet_end_busts) < len(wallet_start_busts):
+            changed[address] = (len(wallet_start_busts), len(wallet_end_busts))
+            continue
+
+        start_ids = {_execution_bust_identity(bust) for bust in wallet_start_busts}
+        new_busts = [bust for bust in wallet_end_busts if _execution_bust_identity(bust) not in start_ids]
+        unexpected_busts = [bust for bust in new_busts if not _is_expected_execution_bust(bust)]
+        if unexpected_busts:
+            changed[address] = (len(wallet_start_busts), len(wallet_end_busts))
+    return changed
+
+
+async def _fetch_execution_busts(wallets: list[str]) -> Optional[dict[str, list[Any]]]:
+    """Fetch executionBusts per wallet via a throwaway read-only API client.
+    Returns None when the API is unreachable (offline/unit runs)."""
     api_client = ApiClient(Configuration(host=_busts_guard_api_url()))
     try:
         wallet_api = WalletDataApi(api_client)
-        counts: dict[str, int] = {}
+        busts: dict[str, list[Any]] = {}
         for address in wallets:
             bust_list = await wallet_api.get_wallet_execution_busts(address=address)
-            counts[address] = len(bust_list.data or [])
-        return counts
+            busts[address] = list(bust_list.data or [])
+        return busts
     except (ApiException, OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Execution-busts guard: API unreachable, guard disabled: {e}")
         return None
@@ -197,29 +322,35 @@ async def execution_busts_guard(request):
         yield
         return
 
+    missing_strict_env = _strict_prerequisite_missing_env(request.session.items)
+    if missing_strict_env:
+        logger.info(
+            "Execution-busts guard inactive until strict test prerequisites are configured; missing env vars: "
+            f"{', '.join(missing_strict_env)}"
+        )
+        yield
+        return
+
     wallets = _busts_guard_wallets()
     if not wallets:
         yield
         return
 
-    start_counts = await _fetch_execution_bust_counts(wallets)
-    if start_counts is None:
+    start_busts = await _fetch_execution_busts(wallets)
+    if start_busts is None:
         yield
         return
 
+    start_counts = {address: len(busts) for address, busts in start_busts.items()}
     logger.info(f"🛡️ Execution-busts guard armed: baseline {start_counts}")
     yield
 
-    end_counts = await _fetch_execution_bust_counts(wallets)
-    if end_counts is None:
+    end_busts = await _fetch_execution_busts(wallets)
+    if end_busts is None:
         logger.warning("Execution-busts guard: API unreachable at session end; skipping final check")
         return
 
-    changed = {
-        address: (start_counts[address], end_counts.get(address))
-        for address in start_counts
-        if end_counts.get(address) != start_counts[address]
-    }
+    changed = _unexpected_execution_bust_changes(start_busts, end_busts)
     assert not changed, (
         "Execution busts changed during the test session (settlement regression): "
         f"{{wallet: (start, end)}} = {changed}"
@@ -313,12 +444,21 @@ async def maker_tester_session():
     """
     load_dotenv()
 
+    required_env = spot_account_env_vars(1)
+    missing = missing_env_vars(required_env)
+    if missing:
+        spot_prerequisite_missing(
+            "Missing Spot Account 1 configuration for spot tests",
+            missing_env=missing,
+        )
+
     # Maker uses Spot Account 1
     tester = ReyaTester(spot_account_number=1)
 
     if not tester.owner_wallet_address or not tester.account_id:
-        pytest.skip(
-            "Missing Spot Account 1 configuration (SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1) for spot tests"
+        spot_prerequisite_missing(
+            "Missing Spot Account 1 configuration for spot tests",
+            missing_env=missing_env_vars(required_env),
         )
 
     logger.info(f"🔧 SESSION: Maker account initialized: {tester.account_id}")
@@ -353,12 +493,21 @@ async def taker_tester_session():
     """
     load_dotenv()
 
+    required_env = spot_account_env_vars(2)
+    missing = missing_env_vars(required_env)
+    if missing:
+        spot_prerequisite_missing(
+            "Missing Spot Account 2 configuration for spot tests",
+            missing_env=missing,
+        )
+
     # Taker uses Spot Account 2
     tester = ReyaTester(spot_account_number=2)
 
     if not tester.owner_wallet_address or not tester.account_id:
-        pytest.skip(
-            "Missing Spot Account 2 configuration (SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2) for spot tests"
+        spot_prerequisite_missing(
+            "Missing Spot Account 2 configuration for spot tests",
+            missing_env=missing_env_vars(required_env),
         )
 
     logger.info(f"🔧 SESSION: Taker account initialized: {tester.account_id}")
@@ -581,9 +730,9 @@ async def _restore_to_baseline(  # pylint: disable=redefined-outer-name
 # ============================================================================
 # Any test (in any directory) can take `market_config` + `maker`/`taker` and
 # run once per market type. ALL resolution is lazy (request.getfixturevalue)
-# so an env configured for only one market never spins up the other market's
-# sessions — the missing-credential pytest.skip then applies only to that
-# market's param instances instead of tanking the suite.
+# so an env configured for only one market never spins up the other market's sessions.
+# Spot missing-prerequisite paths fail by default via spot_prerequisite_missing;
+# non-spot missing-prerequisite paths keep their existing skip behavior.
 
 _DEFAULT_MARKET_TYPES = ("spot", "perp")
 
@@ -611,7 +760,7 @@ async def perp_market_config(
             break
 
     if market_def is None:
-        pytest.skip(f"Perp market {symbol} not present in /v2/marketDefinitions")
+        pytest.skip(f"Perp market {symbol} not present in /v2/perpMarketDefinitions")
     assert market_def is not None  # narrows the Optional after the skip above
 
     # Fail loud rather than swallow the error with a fake price — a wrong oracle
@@ -718,7 +867,7 @@ def pytest_sessionfinish(session, exitstatus):  # pylint: disable=unused-argumen
             "\n[perp-skip canary] every [perp] param instance "
             f"({stats['total']}) skipped at setup while PERP credentials are present — "
             "perp coverage silently vanished (lazy fixture regression or perp market "
-            "missing from /v2/marketDefinitions). Set PERP_SKIP_CANARY=off to override."
+            "missing from /v2/perpMarketDefinitions). Set PERP_SKIP_CANARY=off to override."
         )
         session.exitstatus = 1
 
@@ -1073,7 +1222,10 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
     # Validate the selected asset is available
     if spot_asset not in spot_market_configs:
         available = sorted(spot_market_configs.keys())
-        pytest.skip(f"Asset '{spot_asset}' not available. Available assets: {', '.join(available)}")
+        spot_prerequisite_missing(
+            f"Asset '{spot_asset}' not available in /v2/spotMarketDefinitions. "
+            f"Available assets: {', '.join(available) or '<none>'}"
+        )
 
     selected_market: SpotMarketConfig = spot_market_configs[spot_asset]
 
@@ -1084,15 +1236,16 @@ async def spot_config(maker_tester_session, spot_market_configs, spot_asset):  #
     logger.info(f"   Min Balance: {selected_market.min_balance}")
     logger.info("=" * 60)
 
-    # Fetch oracle price using PERP symbol (e.g., ETHRUSDPERP, BTCRUSDPERP)
-    oracle_symbol = selected_market.oracle_symbol
+    # Fetch asset oracle price without going through the deprecated /prices endpoint
+    # or a perp mark-price substitute.
+    oracle_asset = {"WETH": "ETH", "WBTC": "BTC"}.get(selected_market.base_asset, selected_market.base_asset)
 
     try:
-        price_str = await maker_tester_session.data.current_price(oracle_symbol)
+        price_str = await maker_tester_session.data.asset_oracle_price(oracle_asset)
         oracle_price = float(price_str)
         logger.info(f"📊 Fetched {spot_asset} oracle price: ${oracle_price:.2f}")
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.warning(f"Failed to fetch oracle price for {oracle_symbol}: {e}")
+    except (ApiException, OSError, RuntimeError, ValueError) as e:
+        logger.warning(f"Failed to fetch oracle price for {oracle_asset}: {e}")
         # Fallback prices per asset
         fallback_prices = {"ETH": 3000.0, "BTC": 80000.0}
         oracle_price = fallback_prices.get(spot_asset, 1000.0)
@@ -1251,7 +1404,7 @@ async def spot_balance_guard(
         for msg in insufficient:
             logger.error(f"   - {msg}")
         logger.error(f"   Required minimums: {min_asset_balance} {base_asset}, {MIN_RUSD_BALANCE} RUSD per account")
-        pytest.skip(f"Insufficient balances for SPOT tests: {', '.join(insufficient)}")
+        spot_prerequisite_missing(f"Insufficient balances for SPOT tests: {', '.join(insufficient)}")
 
     logger.info("✅ Balance check passed - proceeding with SPOT tests")
     logger.info("=" * 60)
@@ -1382,7 +1535,12 @@ async def spot_balance_guard(
             if asset_needed > 0:
                 # Account needs more asset - buy from external asks
                 if not has_external_asks:
-                    logger.warning(f"⚠️ {account_name} needs {asset_needed} {base_asset} but no external asks available")
+                    logger.warning(
+                        "⚠️ %s needs %s %s but no external asks available",
+                        account_name,
+                        asset_needed,
+                        base_asset,
+                    )
                     return
 
                 qty = str(asset_needed.quantize(min_qty))

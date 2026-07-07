@@ -4,8 +4,8 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_type import OrderType
 from sdk.async_exec_api.time_in_force import TimeInForce
 class ModifyOrderRequest(BaseModel): 
-  order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. Exactly one of `orderId` or `clientOrderId` must be provided.''', default=None, alias='''orderId''')
-  client_order_id: Optional[str] = Field(description='''Client-provided order ID of the order to modify (the same `clientOrderId` supplied in CreateOrderRequest), as a decimal string (`uint64`). Exactly one of `orderId` or `clientOrderId` must be provided. The value `"0"` is the "no tag" sentinel and is NOT a valid sole target — an order created without a client order id can only be modified by `orderId`. Supplying both `orderId` and `clientOrderId`, or neither, is rejected with `INPUT_VALIDATION_ERROR`. The modification cannot assign a new `clientOrderId`; the resting order's value is preserved.''', default=None, alias='''clientOrderId''')
+  order_id: Optional[str] = Field(description='''Internal matching engine order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, restates the resting order's immutable client id.''', default=None, alias='''orderId''')
+  client_order_id: Optional[str] = Field(description='''Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero; JSON Schema validates presence only and the server enforces the non-zero rule. If `orderId` is present, this field restates the resting order's immutable client id for signing; omit it when the resting order has no client id. Do not send a placeholder value. The modification cannot assign a new `clientOrderId`.''', default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   exchange_id: int = Field(alias='''exchangeId''')
@@ -17,7 +17,7 @@ class ModifyOrderRequest(BaseModel):
   limit_px: str = Field(alias='''limitPx''')
   qty: str = Field()
   post_only: bool = Field(description='''The post-modify post-only (maker-only) flag. Always required — send the complete intended value even when it is unchanged from the resting order. If true and the post-modify order would cross, the modification is rejected with `POST_ONLY_WOULD_CROSS_ERROR` and the resting order is unchanged.''', alias='''postOnly''')
-  expires_after: int = Field(alias='''expiresAfter''')
+  expires_after: Optional[int] = Field(default=None, alias='''expiresAfter''')
   signature: str = Field(description='''Fresh EIP-712 signature over the full post-modify order state — the same `Order` envelope as `createOrder`, with the modified values substituted into `OrderDetails`. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
   nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required for every modification; replayed nonces are rejected with `INVALID_NONCE_ERROR`.''')
   signer_wallet: str = Field(alias='''signerWallet''')

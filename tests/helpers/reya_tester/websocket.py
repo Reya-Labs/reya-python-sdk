@@ -23,6 +23,7 @@ from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBu
 from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
 from sdk.async_api.position import Position as AsyncPosition
 from sdk.async_api.position_update_payload import PositionUpdatePayload
@@ -55,7 +56,7 @@ class WebSocketState:
         # Unified state tracking using EventStore
         # Executions: list-based (search by predicate)
         self.perp_executions: EventStore[AsyncPerpExecution] = EventStore()
-        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.order_id))
+        self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
 
         # Keyed stores: direct lookup by key
@@ -64,7 +65,7 @@ class WebSocketState:
         self.balances: EventStore[AsyncAccountBalance] = EventStore(key_fn=lambda x: x.asset)
 
         # Bust stores (unified spot + perp)
-        self.execution_busts: EventStore[AsyncExecutionBust] = EventStore(key_fn=lambda x: str(x.order_id))
+        self.execution_busts: EventStore[AsyncExecutionBust] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.market_execution_busts: dict[str, EventStore[AsyncExecutionBust]] = {}
 
         # Market-level stores (by symbol)
@@ -218,7 +219,10 @@ class WebSocketState:
         logger.info(f"Received message: {type(message).__name__}")
 
         # Handle subscribed messages with initial snapshots
-        if isinstance(message, SubscribedMessagePayload):
+        if isinstance(message, OrderChangesSubscribedPayload):
+            self._handle_order_changes_subscribed(message)
+
+        elif isinstance(message, SubscribedMessagePayload):
             self._handle_subscribed(message)
 
         # Handle perp executions
@@ -267,7 +271,7 @@ class WebSocketState:
             data = message.contents.get("data", [])
 
             if symbol not in self.market_spot_executions:
-                self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.taker_order_id))
 
             for e in data:
                 execution = AsyncSpotExecution.model_validate(e)
@@ -282,6 +286,17 @@ class WebSocketState:
                 balance = AsyncAccountBalance.model_validate(b)
                 self.balances.add(balance)
             logger.info(f"Stored balances snapshot: {len(data)} balance(s)")
+
+    def _handle_order_changes_subscribed(self, message: OrderChangesSubscribedPayload) -> None:
+        """Handle orderChanges subscription confirmation with typed snapshot cursor."""
+        logger.info(
+            "✅ Subscribed to %s at sequence %s",
+            message.channel,
+            message.contents.snapshot_sequence_number,
+        )
+        for order in message.contents.data:
+            self.orders.add(order)
+        logger.info(f"Stored orderChanges snapshot: {len(message.contents.data)} order(s)")
 
     def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
         """Handle perp execution updates."""
@@ -304,9 +319,9 @@ class WebSocketState:
             if is_market_channel:
                 symbol = message.channel.split("/")[3]
                 if symbol not in self.market_spot_executions:
-                    self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                    self.market_spot_executions[symbol] = EventStore(key_fn=lambda x: str(x.taker_order_id))
                 self.market_spot_executions[symbol].add(exec_data)
-                logger.debug(f"Added market spot execution for {symbol}: {exec_data.order_id}")
+                logger.debug(f"Added market spot execution for {symbol}: {exec_data.taker_order_id}")
             else:
                 self.spot_executions.add(exec_data)
 
@@ -319,16 +334,16 @@ class WebSocketState:
         for bust_data in message.data:
             logger.info(
                 f"💥 Execution bust received: symbol={bust_data.symbol}, "
-                f"order_id={bust_data.order_id}, maker_order_id={bust_data.maker_order_id}, "
+                f"taker_order_id={bust_data.taker_order_id}, maker_order_id={bust_data.maker_order_id}, "
                 f"side={bust_data.side.value if hasattr(bust_data.side, 'value') else bust_data.side}, "
                 f"qty={bust_data.qty}, reason={bust_data.reason}"
             )
             if is_market_channel:
                 symbol = message.channel.split("/")[3]
                 if symbol not in self.market_execution_busts:
-                    self.market_execution_busts[symbol] = EventStore(key_fn=lambda x: str(x.order_id))
+                    self.market_execution_busts[symbol] = EventStore(key_fn=lambda x: str(x.taker_order_id))
                 self.market_execution_busts[symbol].add(bust_data)
-                logger.debug(f"Added market execution bust for {symbol}: {bust_data.order_id}")
+                logger.debug(f"Added market execution bust for {symbol}: {bust_data.taker_order_id}")
             else:
                 self.execution_busts.add(bust_data)
 

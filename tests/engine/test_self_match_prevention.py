@@ -19,6 +19,7 @@ import asyncio
 
 import pytest
 
+from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -66,7 +67,12 @@ async def test_self_match_gtc_taker_sell_cancelled(
         qty=market_config.min_qty,
         time_in_force=TimeInForce.GTC,
     )
-    taker_order_id = await maker.orders.create_limit(taker_params)
+    response = await maker.client.create_limit_order(taker_params)
+    assert (
+        response.cancel_reason == CancelReason.SELF_TRADE_PREVENTION
+    ), f"[{market_type}] self-match should report SELF_TRADE_PREVENTION, got {response.cancel_reason}"
+    assert response.cancel_reason_message
+    taker_order_id = response.order_id
     assert taker_order_id is not None
 
     # Allow ME to process.
@@ -118,7 +124,12 @@ async def test_self_match_ioc_taker_buy_cancelled(
         qty=market_config.min_qty,
         time_in_force=TimeInForce.IOC,
     )
-    taker_order_id = await maker.orders.create_limit(taker_params)
+    response = await maker.client.create_limit_order(taker_params)
+    assert (
+        response.cancel_reason == CancelReason.SELF_TRADE_PREVENTION
+    ), f"[{market_type}] self-match should report SELF_TRADE_PREVENTION, got {response.cancel_reason}"
+    assert response.cancel_reason_message
+    taker_order_id = response.order_id
     assert taker_order_id is not None
 
     await asyncio.sleep(0.3)

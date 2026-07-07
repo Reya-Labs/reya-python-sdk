@@ -9,8 +9,6 @@ fields (logPriceMultiplier, priceSpread, depthFactor) that are critical
 for execution price calculations.
 """
 
-from typing import Optional
-
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
@@ -22,10 +20,10 @@ logger = logging.getLogger("reya.integration_tests")
 
 @dataclass
 class PriceData:
-    """Parsed price data from the v2 prices endpoint."""
+    """Parsed mark/mid price data from the v2 market summary endpoint."""
 
-    oracle_price: float
-    pool_price: Optional[float]
+    mark_price: float
+    mid_price: float | None
 
 
 @dataclass
@@ -116,7 +114,7 @@ async def fetch_price(
     symbol: str,
     timeout: float = 10.0,
 ) -> PriceData:
-    """Fetch price data via raw HTTP from the v2 prices endpoint.
+    """Fetch mark/mid price data via raw HTTP from the v2 market summary endpoint.
 
     This avoids needing a full SDK client / reya_tester session.
 
@@ -126,27 +124,29 @@ async def fetch_price(
         timeout: Request timeout in seconds.
 
     Returns:
-        PriceData with oracle_price and pool_price.
+        PriceData with mark_price and mid_price.
     """
     # Ensure base URL ends without trailing slash
     base = v2_api_url.rstrip("/")
-    url = f"{base}/prices/{symbol}"
+    url = f"{base}/perpMarket/{symbol}/summary"
 
-    logger.info(f"Fetching price: {url}")
+    logger.info(f"Fetching market summary: {url}")
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as response:
             if response.status != 200:
                 text = await response.text()
-                raise RuntimeError(f"Price request failed ({response.status}): {text}")
+                raise RuntimeError(f"Market summary request failed ({response.status}): {text}")
 
             data = await response.json()
 
-    # API returns camelCase keys
-    oracle_price = float(data.get("oraclePrice") or data.get("oracle_price"))
-    raw_pool = data.get("poolPrice") or data.get("pool_price")
-    pool_price = float(raw_pool) if raw_pool is not None else None
+    raw_mark = data.get("markPrice") or data.get("mark_price")
+    if raw_mark is None:
+        raise RuntimeError(f"Market summary response missing markPrice for {symbol}")
+    mark_price = float(raw_mark)
+    raw_mid = data.get("throttledMidPrice") or data.get("throttled_mid_price")
+    mid_price = float(raw_mid) if raw_mid is not None else None
 
-    logger.info(f"Price for {symbol}: oracle={oracle_price}, pool={pool_price}")
+    logger.info(f"Market summary for {symbol}: mark={mark_price}, mid={mid_price}")
 
-    return PriceData(oracle_price=oracle_price, pool_price=pool_price)
+    return PriceData(mark_price=mark_price, mid_price=mid_price)

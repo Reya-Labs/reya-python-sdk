@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
@@ -25,11 +26,10 @@ from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecuti
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.price_update_payload import PriceUpdatePayload
-from sdk.async_api.prices_update_payload import PricesUpdatePayload
 from sdk.async_api.spot_market_summary_update_payload import SpotMarketSummaryUpdatePayload
 from sdk.async_api.spot_markets_summary_update_payload import SpotMarketsSummaryUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
@@ -53,11 +53,12 @@ WebSocketMessage = Union[
     PingMessagePayload,
     PongMessagePayload,
     SubscribedMessagePayload,
+    OrderChangesSubscribedPayload,
     UnsubscribedMessagePayload,
     ErrorMessagePayload,
     # Market channels
-    MarketsSummaryUpdatePayload,  # /v2/markets/summary
-    MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+    MarketsSummaryUpdatePayload,  # /v2/perpMarkets/summary
+    MarketSummaryUpdatePayload,  # /v2/perpMarket/{symbol}/summary
     SpotMarketsSummaryUpdatePayload,  # /v2/spotMarkets/summary
     SpotMarketSummaryUpdatePayload,  # /v2/spotMarket/{symbol}/summary
     MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
@@ -72,8 +73,7 @@ WebSocketMessage = Union[
     WalletExecutionBustUpdatePayload,  # /v2/wallet/{address}/executionBusts
     AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
     # Price channels
-    PricesUpdatePayload,  # /v2/prices
-    PriceUpdatePayload,  # /v2/prices/{symbol}
+    AssetOraclePricesUpdatePayload,  # /v2/assetOraclePrices
 ]
 
 
@@ -92,10 +92,10 @@ class ReyaSocket(WebSocketApp):
         "ping": PingMessagePayload,
         "pong": PongMessagePayload,
         # All markets summary (exact match)
-        "/v2/markets/summary": MarketsSummaryUpdatePayload,
+        "/v2/perpMarkets/summary": MarketsSummaryUpdatePayload,
         "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
-        # All prices (exact match)
-        "/v2/prices": PricesUpdatePayload,
+        # Asset oracle prices (exact match)
+        "/v2/assetOraclePrices": AssetOraclePricesUpdatePayload,
     }
 
     def __init__(
@@ -193,10 +193,10 @@ class ReyaSocket(WebSocketApp):
             return self.CHANNEL_PAYLOAD_MAP[channel]
 
         # Pattern matching for parameterized channels
-        if "/v2/market/" in channel:
-            if channel.endswith("/summary"):
-                return MarketSummaryUpdatePayload
-            elif channel.endswith("/perpExecutions"):
+        if "/v2/perpMarket/" in channel and channel.endswith("/summary"):
+            return MarketSummaryUpdatePayload
+        elif "/v2/market/" in channel:
+            if channel.endswith("/perpExecutions"):
                 return MarketPerpExecutionUpdatePayload
             elif channel.endswith("/spotExecutions"):
                 return MarketSpotExecutionUpdatePayload
@@ -219,8 +219,6 @@ class ReyaSocket(WebSocketApp):
                 return WalletExecutionBustUpdatePayload
             elif channel.endswith("/accountBalances"):
                 return AccountBalanceUpdatePayload
-        elif "/v2/prices/" in channel and channel != "/v2/prices":
-            return PriceUpdatePayload
 
         return None
 
@@ -249,6 +247,10 @@ class ReyaSocket(WebSocketApp):
                 return cast(WebSocketMessage, PongMessagePayload.model_validate(message))
 
             elif message_type == "subscribed":
+                channel = message.get("channel", "")
+                if isinstance(channel, str) and channel.endswith("/orderChanges"):
+                    return cast(WebSocketMessage, OrderChangesSubscribedPayload.model_validate(message))
+
                 # Handle case where server returns contents as empty list instead of dict
                 # Convert list to None to match the expected model type
                 if "contents" in message and isinstance(message["contents"], list):

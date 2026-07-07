@@ -71,9 +71,8 @@ async def test_modify_px_qty_happy(
 async def test_modify_by_client_order_id(
     market_config: SpotTestConfig | PerpTestConfig, market_type: str, maker: ReyaTester
 ) -> None:
-    """Target the modify by client_order_id (order_id=None) — the resting
-    clientOrderId must also be restated into the signed envelope via
-    `resting_client_order_id` (the public Order model doesn't expose it).
+    """Target the modify by client_order_id (order_id=None) — the same
+    clientOrderId is restated into the signed envelope.
 
     The clientOrderId → order → marketId resolution is the exact path that
     broke twice for perp cancels (perpOB-6 Bug 11, PRO-143), so this is pinned
@@ -88,7 +87,6 @@ async def test_modify_by_client_order_id(
         full_state_modify_params(
             order,
             client_order_id=client_order_id,
-            resting_client_order_id=client_order_id,
             limit_px=new_px,
             qty=new_qty,
         )
@@ -143,7 +141,7 @@ async def test_modify_flags_only(
     # expiry) is deferred until GTT is on devnet1. The off-chain server enforces
     # the same rule as defense-in-depth (covered by the off-chain handler tests).
     future_expiry = int(time.time()) + 3600
-    with pytest.raises(ValueError, match="GTC orders must not expire"):
+    with pytest.raises(ValueError, match="GTC orders must omit expires_after"):
         await maker.client.modify_order(full_state_modify_params(order, expires_after=future_expiry))
     logger.info(f"[{market_type}] ✅ non-zero expiresAfter on a GTC rejected client-side before send")
 

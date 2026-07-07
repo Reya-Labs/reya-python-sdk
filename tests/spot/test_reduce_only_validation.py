@@ -38,7 +38,7 @@ async def test_spot_order_reduce_only_rejected(spot_config: SpotTestConfig, spot
     regression cannot produce a fill.
     """
     logger.info("=" * 80)
-    logger.info("SPOT ORDER REDUCE-ONLY REJECTED TEST")
+    logger.info("SPOT ORDER REDUCE-ONLY REJECTION TEST")
     logger.info("=" * 80)
 
     await spot_tester.orders.close_all(fail_if_none=False)
@@ -99,4 +99,4 @@ async def test_spot_order_reduce_only_rejected(spot_config: SpotTestConfig, spot
         logger.info(f"✅ reduceOnly on spot rejected by the server: {error_msg[:120]}")
 
     await spot_tester.check.no_open_orders()
-    logger.info("✅ SPOT ORDER REDUCE-ONLY REJECTED TEST COMPLETED")
+    logger.info("✅ SPOT ORDER REDUCE-ONLY REJECTION TEST COMPLETED")

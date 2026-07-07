@@ -6,17 +6,18 @@ from sdk.async_api.execution_type import ExecutionType
 class SpotExecution(BaseModel): 
   exchange_id: Optional[int] = Field(default=None, alias='''exchangeId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
-  account_id: int = Field(alias='''accountId''')
+  taker_account_id: int = Field(alias='''takerAccountId''')
   maker_account_id: int = Field(alias='''makerAccountId''')
-  order_id: Optional[str] = Field(description='''Order ID for the taker''', default=None, alias='''orderId''')
+  taker_order_id: Optional[str] = Field(description='''Order ID for the taker''', default=None, alias='''takerOrderId''')
   maker_order_id: Optional[str] = Field(description='''Order ID for the maker''', default=None, alias='''makerOrderId''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   qty: str = Field()
   price: str = Field()
-  fee: str = Field()
+  taker_fee: str = Field(alias='''takerFee''')
   type: ExecutionType = Field(description='''Type of execution''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
+  fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -37,13 +38,13 @@ class SpotExecution(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'maker_account_id', 'order_id', 'maker_order_id', 'side', 'qty', 'price', 'fee', 'type', 'timestamp', 'sequence_number', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'taker_account_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'side', 'qty', 'price', 'taker_fee', 'type', 'timestamp', 'sequence_number', 'fill_id', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'makerAccountId', 'orderId', 'makerOrderId', 'side', 'qty', 'price', 'fee', 'type', 'timestamp', 'sequenceNumber', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'takerAccountId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'side', 'qty', 'price', 'takerFee', 'type', 'timestamp', 'sequenceNumber', 'fillId', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
