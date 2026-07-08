@@ -204,10 +204,10 @@ def run_static_sdk_checks() -> CheckResult:
         ReyaSocket.CHANNEL_PAYLOAD_MAP["/v2/spotMarkets/summary"] is SpotMarketsSummaryUpdatePayload,
         "read WS spot markets summary channel is not routed to SpotMarketsSummaryUpdatePayload",
     )
-    _assert("/v2/prices" not in ReyaSocket.CHANNEL_PAYLOAD_MAP, "deprecated prices WS channel still routed")
+    _assert("/v2/prices" not in ReyaSocket.CHANNEL_PAYLOAD_MAP, "removed prices WS channel still routed")
     _assert(
         ReyaSocket()._get_payload_type("/v2/prices/ETHRUSDPERP") is None,  # pylint: disable=protected-access
-        "deprecated single-price WS channel still routed",
+        "removed single-price WS channel still routed",
     )
     _assert("/v2/markets/summary" not in ReyaSocket.CHANNEL_PAYLOAD_MAP, "old summary WS channel still routed")
     return _ok("sdk.removedAmmSurfaces", "removed aliases absent; asset oracle and summary SDK surfaces present")
