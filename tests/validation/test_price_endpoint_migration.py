@@ -1,4 +1,4 @@
-"""Offline guards for the /v2/prices deprecation migration."""
+"""Offline guards for the removed /v2/prices surfaces."""
 
 # pylint: disable=redefined-outer-name
 
@@ -99,7 +99,7 @@ async def test_market_price_helpers_use_market_summary_endpoint(trading_client: 
     ]
 
 
-def test_websocket_resource_no_longer_exposes_deprecated_prices_channels() -> None:
+def test_websocket_resource_no_longer_exposes_removed_prices_channels() -> None:
     assert "/v2/prices" not in ReyaSocket.CHANNEL_PAYLOAD_MAP
 
     socket = ReyaSocket()

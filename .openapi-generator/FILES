@@ -84,7 +84,6 @@ sdk/open_api/models/pagination_meta.py
 sdk/open_api/models/perp_execution.py
 sdk/open_api/models/perp_execution_list.py
 sdk/open_api/models/position.py
-sdk/open_api/models/price.py
 sdk/open_api/models/request_error.py
 sdk/open_api/models/request_error_code.py
 sdk/open_api/models/server_error.py
