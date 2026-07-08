@@ -29,14 +29,13 @@ make e2e PYTEST_ARGS=-rxXs
 Always keep skip and xfail reasons visible for Localnet evidence:
 
 ```bash
-make -C ../offchain localnet-sdk LOCALNET_PYTEST_ARGS=-rxXs
+make -C ../reya-off-chain-monorepo localnet-sdk LOCALNET_PYTEST_ARGS=-rxXs
 ```
 
 Focused reruns can override paths through the offchain target, for example:
 
 ```bash
-make -C ../offchain localnet-sdk \
-  LOCALNET_SDK_TEST_PATHS="tests/perp/test_limit_orders.py" \
+make -C ../reya-off-chain-monorepo localnet-sdk-focused \
   LOCALNET_PYTEST_ARGS="-q -rxXs"
 ```
 
@@ -49,7 +48,7 @@ than silently skipping local coverage.
 Evidence bundle:
 
 ```bash
-../offchain/e2e/out/pr-readiness-2026-07-07T0525Z/evidence.md
+../reya-off-chain-monorepo/e2e/out/pr-readiness-2026-07-07T0525Z/evidence.md
 ```
 
 SDK SHA tested: `2c5ca578ec68e5584868abb450362680f7cafc64`
@@ -58,8 +57,7 @@ SDK SHA tested: `2c5ca578ec68e5584868abb450362680f7cafc64`
 Focused gate, through offchain:
 
 ```bash
-make localnet-sdk \
-  LOCALNET_SDK_TEST_PATHS="tests/perp/test_limit_orders.py tests/perp/test_market_data.py tests/api_contract/test_api_validation.py tests/spot tests/ws_exec tests/engine/test_order_history.py" \
+make localnet-sdk-focused \
   LOCALNET_PYTEST_ARGS="-q -rxXs"
 # 108 passed, 2 skipped in 48.24s
 ```
