@@ -25,10 +25,10 @@ from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigg
 # trigger-execution semantics these tests assert on (price-crossed → fired,
 # position-closed → cancelled, etc.) do not match current devnet behavior.
 #
-# todo: p1: remove this module-level skip once the ME trigger queue lands and
-# trigger orders execute via their native trigger path.
+# todo: p1: remove this module-level skip once PRO-226 lands the ME trigger
+# queue and trigger orders execute via their native trigger path.
 pytestmark = pytest.mark.skip(
-    reason="ME trigger queue not yet implemented; trigger facade orders do not fire yet. Re-enable once the dedicated trigger-execution path ships."
+    reason="PRO-226: ME trigger queue not yet implemented; trigger facade orders do not fire yet. Re-enable once the dedicated trigger-execution path ships."
 )
 
 

@@ -176,11 +176,13 @@ async def test_spot_order_wrong_signer(spot_config: SpotTestConfig, spot_tester:
     except ApiException as e:
         error_msg = str(e)
         # Expect either:
-        # - CREATE_ORDER_OTHER_ERROR with 'Invalid signature' (signature validation fails), or
+        # - UNAUTHORIZED_SIGNATURE_ERROR / CREATE_ORDER_OTHER_ERROR with 'Invalid signature'
+        #   (signature validation fails), or
         # - CANCEL_ORDER_OTHER_ERROR with 'Unauthorized: signer does not have permission' (permission check fails)
-        has_valid_error = ("CREATE_ORDER_OTHER_ERROR" in error_msg and "Invalid signature" in error_msg) or (
-            "Unauthorized: signer does not have permission" in error_msg
-        )
+        has_valid_error = (
+            ("UNAUTHORIZED_SIGNATURE_ERROR" in error_msg or "CREATE_ORDER_OTHER_ERROR" in error_msg)
+            and "Invalid signature" in error_msg
+        ) or ("Unauthorized: signer does not have permission" in error_msg)
         assert has_valid_error, f"Expected signature or permission error, got: {e}"
         logger.info(f"✅ Order rejected as expected: {type(e).__name__}")
         logger.info(f"   Error: {str(e)[:150]}")
