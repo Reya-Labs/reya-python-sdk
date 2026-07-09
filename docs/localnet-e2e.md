@@ -22,8 +22,6 @@ From this repo, `make e2e` expects the live environment to already be configured
 make e2e PYTEST_ARGS=-rxXs
 ```
 
-`make e2e-configured` remains a compatibility alias for `make e2e`.
-
 ## Required Visibility
 
 Always keep skip and xfail reasons visible for Localnet evidence:
@@ -45,11 +43,10 @@ than silently skipping local coverage.
 
 ## Latest Evidence
 
-Evidence bundle:
-
-```bash
-../reya-off-chain-monorepo/e2e/out/pr-readiness-2026-07-07T0525Z/evidence.md
-```
+Durable Localnet evidence lives in the offchain PR #2768 review packet and the
+offchain `e2e/README.md` evidence policy. Run-specific logs and artifacts should
+come from scheduled-CI artifacts, PR comments, or the work-order history rather
+than dated local `e2e/out/...` paths.
 
 SDK SHA tested: `2c5ca578ec68e5584868abb450362680f7cafc64`
 (`origin/feat/perpOB`, after PR #63).

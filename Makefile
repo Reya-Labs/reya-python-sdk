@@ -19,9 +19,6 @@ PYTEST_ARGS ?=
 e2e:	## Run the live integration suite against the configured environment
 	poetry run pytest $(E2E_TEST_PATHS) -ra --tb=short $(PYTEST_ARGS)
 
-e2e-configured:	## Run the live integration suite against already-configured external/devnet env
-	$(MAKE) e2e E2E_TEST_PATHS="$(E2E_TEST_PATHS)" PYTEST_ARGS="$(PYTEST_ARGS)"
-
 poetry-download:	## Download and install poetry
 	curl -sSL https://install.python-poetry.org | python -
 
