@@ -32,6 +32,7 @@ from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters
 from sdk.reya_ws_exec import WsExecOperationError
 from tests.helpers.builders.order_builder import full_state_modify_params
+from tests.helpers.price_helpers import self_match_resting_prices
 from tests.helpers.ws_exec_market import WsExecMarket
 
 pytestmark = [pytest.mark.e2e, pytest.mark.modify]
@@ -331,11 +332,9 @@ async def test_ws_exec_self_match_modify_cancelled(ws_exec_market: WsExecMarket)
     yields CANCELLED) and no settlement occurs, so the shared account balances
     are untouched. The resting ask survives.
 
-    Spot-pinned: the cross is engineered with both legs far BELOW an ETH-priced
-    spot book (ask "2" above bid "1") so the bid->ask cross only ever reaches the
-    account's OWN ask; on perp that same construction (a sell far below mark)
-    would execute against the real book instead of resting. The engine self-match
-    semantics are proven [spot, perp] via REST in
+    Spot-pinned: choose same-account bid/ask prices from the live spread so the
+    resting ask does not fill externally, then modify the bid into that ask. The
+    engine self-match semantics are proven [spot, perp] via REST in
     test_modify_execution.py::test_crossing_modify_self_match_cancelled."""
     m = ws_exec_market
     if m.market_type != "spot":
@@ -344,11 +343,19 @@ async def test_ws_exec_self_match_modify_cancelled(ws_exec_market: WsExecMarket)
             "single far-from-touch rest price); engine SMP proven [spot, perp] via REST "
             "(test_modify_execution.py::test_crossing_modify_self_match_cancelled)"
         )
-    ask_px = "2"
-    bid_px = "1"
 
-    # Resting ask ABOVE the bid (both far below the ETH-priced book's market, so
-    # the bid->ask cross only ever reaches the account's OWN ask, never external).
+    depth = await m.rest.markets.get_market_depth(symbol=m.symbol)
+    best_bid = depth.bids[0].px if depth.bids else None
+    best_ask = depth.asks[0].px if depth.asks else None
+    prices = self_match_resting_prices(best_bid=best_bid, best_ask=best_ask, tick_size=m.tick_size)
+    if prices is None:
+        pytest.skip("external spot spread has no tick room for a controlled ws-exec self-match")
+
+    ask_px = prices.ask_px
+    bid_px = prices.bid_px
+
+    # Resting ask ABOVE the bid and inside the external spread, so the bid->ask
+    # cross only ever reaches the account's OWN ask, never external liquidity.
     ask = await m.ws.create_limit_order(
         LimitOrderParameters(
             symbol=m.symbol, is_buy=False, limit_px=ask_px, qty=m.min_qty, time_in_force=TimeInForce.GTC

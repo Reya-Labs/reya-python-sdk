@@ -51,8 +51,8 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
     logger.info(f"Current RUSD balance: {rusd_balance}")
 
     # Calculate qty that would require slightly more RUSD than available
-    # At spot_config.oracle_price, we need (rusd_balance / price) + small_extra ETH
-    order_price = Decimal(str(spot_config.price(1.0)))
+    # At the current tick-valid market price, request slightly more than the account can afford.
+    order_price = spot_config.limit_price(1.0)
     max_qty_at_price = rusd_balance / order_price
     # Request 10% more than we can afford
     exceeding_qty = str((max_qty_at_price * Decimal("1.1")).quantize(Decimal("0.01")))
@@ -113,8 +113,7 @@ async def test_spot_ioc_insufficient_balance_sell(spot_config: SpotTestConfig, s
     # Request 10% more than we have, quantized to qty_step_size
     qty_step = Decimal(spot_config.qty_step_size) if hasattr(spot_config, "qty_step_size") else Decimal("0.01")
     exceeding_qty = str((asset_balance * Decimal("1.1")).quantize(qty_step))
-    # Round price to tick size
-    order_price = str(spot_config.price(1.0))
+    order_price = spot_config.limit_price_str(1.0)
 
     order_params = OrderBuilder().symbol(spot_config.symbol).sell().price(order_price).qty(exceeding_qty).ioc().build()
 

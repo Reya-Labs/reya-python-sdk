@@ -53,6 +53,7 @@ class WsExecMarket:
     ws: ReyaWsExecClient
     symbol: str
     min_qty: str
+    tick_size: str
     rest_buy_px: str  # a passive, far-from-touch buy price that rests (never crosses)
 
 
@@ -90,11 +91,13 @@ async def build_ws_exec_market(market_type: str) -> AsyncIterator[WsExecMarket]:
             if symbol not in spot_defs:
                 ws_exec_prerequisite_missing(f"{symbol} not found in /v2/spotMarketDefinitions")
             min_qty = str(spot_defs[symbol].min_order_qty)
+            tick_size = str(spot_defs[symbol].tick_size)
         else:
             perp_defs = {d.symbol: d for d in await rest.reference.get_perp_market_definitions()}
             if symbol not in perp_defs:
                 ws_exec_prerequisite_missing(f"{symbol} not found in /v2/perpMarketDefinitions")
             min_qty = str(perp_defs[symbol].min_order_qty)
+            tick_size = str(perp_defs[symbol].tick_size)
         ws = ReyaWsExecClient(rest_client=rest, ws_url=os.environ["REYA_WS_EXEC_URL"])
         await ws.connect()
         yield WsExecMarket(
@@ -103,6 +106,7 @@ async def build_ws_exec_market(market_type: str) -> AsyncIterator[WsExecMarket]:
             ws=ws,
             symbol=symbol,
             min_qty=min_qty,
+            tick_size=tick_size,
             rest_buy_px=rest_buy_px,
         )
     finally:
