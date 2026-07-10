@@ -52,7 +52,7 @@ async def test_spot_ioc_insufficient_balance_buy(spot_config: SpotTestConfig, sp
 
     # Calculate qty that would require slightly more RUSD than available
     # At spot_config.oracle_price, we need (rusd_balance / price) + small_extra ETH
-    order_price = Decimal(str(spot_config.oracle_price))
+    order_price = Decimal(str(spot_config.price(1.0)))
     max_qty_at_price = rusd_balance / order_price
     # Request 10% more than we can afford
     exceeding_qty = str((max_qty_at_price * Decimal("1.1")).quantize(Decimal("0.01")))
