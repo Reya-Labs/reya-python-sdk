@@ -13,8 +13,6 @@ maker→taker every run), so the module wires the per-market settlement cleanup
 (spot balance guard / perp baseline restore) via the autouse fixture.
 """
 
-from decimal import Decimal
-
 import pytest
 
 from sdk.open_api.models.order_status import OrderStatus
@@ -72,10 +70,8 @@ async def test_post_only_one_tick_from_touch_rests(
     is per-market reference data, so this is pinned on both books."""
     await skip_if_external_config_liquidity(market_config, maker, RESTING_REASON)
 
-    # Snap the ask to the tick grid so probe = ask - tick is also grid-valid.
-    tick = Decimal(market_config.tick_size)
-    oracle = Decimal(str(market_config.oracle_price))
-    ask = (oracle * Decimal("1.01")) // tick * tick
+    tick = market_config.price_tick
+    ask = market_config.floor_price("1.01")
     ask_px = str(ask)
     probe_px = str(ask - tick)
 

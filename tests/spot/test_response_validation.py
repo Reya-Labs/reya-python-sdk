@@ -371,8 +371,10 @@ async def test_spot_execution_maker_vs_taker_fields(
     # Case 4: Both exist - maker buys at better price than external bids
     if best_external_ask is not None and best_external_bid is None:
         # Only external asks exist - maker places SELL, taker BUYS
-        # Place our ask BELOW the best external ask so we get matched first
-        maker_price = round(float(best_external_ask) * 0.999, 2)
+        # Place our ask one tick BELOW the best external ask so we get matched first.
+        maker_price = spot_config.maker_ask_below_external_ask()
+        if maker_price is None:
+            pytest.skip("External ask is too close to the tick floor to place a better maker ask")
         logger.info(f"Only external asks exist - placing maker SELL at ${maker_price} (below ${best_external_ask})")
 
         maker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).gtc().build()
@@ -380,11 +382,13 @@ async def test_spot_execution_maker_vs_taker_fields(
     else:
         # No external liquidity, only bids, or both - maker places BUY, taker SELLS
         if best_external_bid is not None:
-            # Place our bid ABOVE the best external bid so we get matched first
-            maker_price = round(float(best_external_bid) * 1.001, 2)
+            # Place our bid one tick ABOVE the best external bid without crossing the ask.
+            maker_price = spot_config.maker_bid_above_external_bid()
+            if maker_price is None:
+                pytest.skip("External spread has no tick room for a better maker bid")
             logger.info(f"External bids exist - placing maker BUY at ${maker_price} (above ${best_external_bid})")
         else:
-            maker_price = spot_config.price(0.99)
+            maker_price = spot_config.limit_price("0.99")
             logger.info(f"No external liquidity - placing maker BUY at ${maker_price}")
 
         maker_params = OrderBuilder.from_config(spot_config).buy().price(str(maker_price)).gtc().build()

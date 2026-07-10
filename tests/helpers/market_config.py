@@ -44,6 +44,14 @@ from tests.helpers.liquidity_detector import (
     OrderBookState,
     log_order_book_state,
 )
+from tests.helpers.price_helpers import (
+    floor_price,
+    format_price,
+    limit_price,
+    one_tick_below,
+    one_tick_inside_spread,
+    price_tick,
+)
 
 if TYPE_CHECKING:
     from sdk.reya_rest_api.client import ReyaTradingClient
@@ -174,6 +182,19 @@ class MarketTestConfig:
         """
         return round(self.oracle_price * multiplier, 2)
 
+    @property
+    def price_tick(self) -> Decimal:
+        return price_tick(self.tick_size)
+
+    def limit_price(self, multiplier: Decimal | float | str = 1) -> Decimal:
+        return limit_price(self.oracle_price, self.tick_size, multiplier)
+
+    def limit_price_str(self, multiplier: Decimal | float | str = 1) -> str:
+        return format_price(self.limit_price(multiplier))
+
+    def floor_price(self, multiplier: Decimal | float | str = 1) -> Decimal:
+        return floor_price(self.oracle_price, self.tick_size, multiplier)
+
     def buy_price(self, multiplier: float = 0.99) -> float:
         """Get a buy price (default 99% of oracle - within deviation limit)."""
         return self.price(multiplier)
@@ -239,6 +260,24 @@ class MarketTestConfig:
         if self._order_book is None or not self._order_book.asks.has_liquidity:
             return None
         return self._order_book.asks.best_price
+
+    def maker_bid_above_external_bid(self) -> Decimal | None:
+        return one_tick_inside_spread(
+            best_bid=self.best_bid_price,
+            best_ask=self.best_ask_price,
+            tick_size=self.tick_size,
+        )
+
+    def maker_ask_below_external_ask(self) -> Decimal | None:
+        if self.best_ask_price is None:
+            return None
+
+        candidate = one_tick_below(self.best_ask_price, self.tick_size)
+        if candidate is None:
+            return None
+        if self.best_bid_price is not None and candidate <= self.best_bid_price:
+            return None
+        return candidate
 
     @property
     def circuit_breaker_floor(self) -> Decimal:

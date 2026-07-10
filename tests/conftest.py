@@ -41,6 +41,7 @@ from tests.helpers.market_config import (  # noqa: E402
     SpotTestConfig,
     fetch_spot_market_configs,
 )
+from tests.helpers.price_helpers import limit_price, quantize_price  # noqa: E402
 from tests.helpers.reya_tester import logger  # noqa: E402
 from tests.helpers.settlement import make_settlement_probe  # noqa: E402
 from tests.helpers.spot_prerequisites import (  # noqa: E402
@@ -1450,7 +1451,7 @@ async def spot_balance_guard(
     logger.info(f"📈 Maker changes: {base_asset} {maker_asset_change:+}, RUSD {maker_rusd_change:+}")
     logger.info(f"📈 Taker changes: {base_asset} {taker_asset_change:+}, RUSD {taker_rusd_change:+}")
 
-    oracle_price = Decimal(str(spot_config.oracle_price))
+    oracle_price = limit_price(spot_config.oracle_price, spot_config.tick_size)
     min_price = oracle_price * Decimal("0.95")
     max_price = oracle_price * Decimal("1.05")
 
@@ -1497,7 +1498,7 @@ async def spot_balance_guard(
             effective_price = oracle_price
 
         restoration_price = max(min_price, min(max_price, effective_price))
-        restoration_price = restoration_price.quantize(Decimal("0.01"))
+        restoration_price = quantize_price(restoration_price, spot_config.tick_size)
         logger.info(f"💱 Restoration price: ${restoration_price}")
 
         if abs(maker_asset_needed) >= min_qty:
