@@ -19,17 +19,22 @@ from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameter
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 
-# Trigger orders (TP/SL) are accepted as account-visible facade records while
-# the ME's dedicated trigger queue is still pending. They do not fire on
-# triggerPrice or contribute executable book liquidity yet, so the on-chain
-# trigger-execution semantics these tests assert on (price-crossed → fired,
-# position-closed → cancelled, etc.) do not match current devnet behavior.
+# The SL/TP backbone arms, tracks, modifies, and cancels trigger orders but does
+# NOT fire them — evaluation, the fired child, OCO, and auto-cancel-on-close all
+# arrive with the firing release. Tests split into two groups:
 #
-# todo: p1: remove this module-level skip once PRO-226 lands the ME trigger
-# queue and trigger orders execute via their native trigger path.
-pytestmark = pytest.mark.skip(
-    reason="PRO-226: ME trigger queue not yet implemented; trigger facade orders do not fire yet. Re-enable once the dedicated trigger-execution path ships."
+#   _FIRE_SKIP        — assert on-chain firing semantics (price-crossed → fired,
+#                       position-closed/flipped → auto-cancelled). Skipped until
+#                       firing ships.
+#   _BACKBONE_SKIP    — pure create→OPEN→cancel round-trips + cancel-not-found;
+#                       these DO work against the backbone. Skipped only until
+#                       PR-1 (the storing ME) is deployed to devnet1.
+_FIRE_SKIP = "requires trigger firing; backbone arms but does not fire"
+_IN_CROSS_SKIP = (
+    "requires trigger firing; backbone arms but does not fire. "
+    "backbone semantics: already-crossed triggers simply arm — no immediate execution"
 )
+_BACKBONE_SKIP = "un-skip when the backbone matching engine is deployed to devnet1"
 
 
 def assert_tp_sl_order_submission(
@@ -60,6 +65,7 @@ def assert_tp_sl_order_submission(
     logger.info("✅ Order submission confirmed correctly")
 
 
+@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     """TP order, close right after creation"""
@@ -88,7 +94,6 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on long
-        qty="0.01",
         trigger_px=str(float(market_price) * 2),  # lower than IOC limit price
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -129,6 +134,7 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     logger.info("TP order cancel test completed successfully")
 
 
+@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     """SL order, close right after creation"""
@@ -156,7 +162,6 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on long
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.9),  # higher than IOC limit price
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -219,6 +224,7 @@ async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: str | None, s
 
 
 # Note: the CO bot may not be active on testnet
+@pytest.mark.skip(reason=_IN_CROSS_SKIP)
 @pytest.mark.asyncio
 async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
     """TP order executes immediately when trigger condition is already met (in-cross).
@@ -299,6 +305,7 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
     raise AssertionError(f"TP order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
+@pytest.mark.skip(reason=_IN_CROSS_SKIP)
 @pytest.mark.asyncio
 async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
     """SL order executes immediately when trigger condition is already met (in-cross).
@@ -373,6 +380,7 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
     raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     """SL/TP orders are immediately cancelled when no position exists.
@@ -430,6 +438,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     await reya_tester.check_no_order_execution_since(last_sequence_before)
 
 
+@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """Cancelling a non-existent order returns proper error.
@@ -460,6 +469,7 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     logger.info("✅ Cancel non-existent order returns proper error")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     """SL/TP orders are cancelled when position is manually closed.
@@ -550,6 +560,7 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     logger.info("✅ SL and TP orders cancelled when position was closed")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     """SL/TP orders are cancelled when position is flipped (long to short).
@@ -647,6 +658,7 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     logger.info("✅ SL and TP orders cancelled when position was flipped")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     """SL executes (in-cross) and cancels the TP order.
@@ -738,6 +750,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
     """TP executes (in-cross) and cancels the SL order.

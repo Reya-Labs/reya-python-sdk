@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Trigger-order repricing: `ModifyOrderParameters` gains an `order_type` field
+  (default `LIMIT`), and `build_modify_order_payload` signs and wires that order
+  type instead of a hardcoded `LIMIT`. A `STOP_LOSS`/`TAKE_PROFIT` modify now
+  reprices an armed trigger and requires `trigger_px` (rejected before signing
+  otherwise). Not a breaking change: the default keeps LIMIT modifies
+  byte-identical, and the trigger create/cancel signing contract is unchanged
+  (omit `qty`, sign 0; the `limit_px` sentinel stays). The live trigger
+  create/modify/cancel e2e tests are staged (skipped) until the SL/TP backbone
+  matching engine is deployed to devnet1.
 - `sdk.reya_ws_exec.ReyaWsExecClient`: high-level client for the new ws-exec
   WebSocket order-entry service. Mirrors `ReyaTradingClient`'s order surface
   (`create_limit_order`, `create_trigger_order`, `cancel_order`, `mass_cancel`)

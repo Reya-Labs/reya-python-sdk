@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 import time
+from decimal import Decimal
 
 import pytest
 
@@ -28,6 +29,7 @@ from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
@@ -448,6 +450,71 @@ def test_modify_payload_order_id_targeting_with_restated_client_order_id(client:
     body = ModifyOrderRequest(**payload).to_dict()
     assert body["orderId"] == "63552420354981888"
     assert body["clientOrderId"] == "777"
+
+
+@pytest.mark.modify
+def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
+    """A STOP_LOSS trigger reprice emits ``orderType: STOP_LOSS`` + ``triggerPx``
+    on the wire and SIGNS the non-LIMIT order type — guarding the passthrough
+    that replaced the two hardcoded LIMITs in ``build_modify_order_payload``.
+    The default (no ``order_type``) stays an unchanged LIMIT modify."""
+    # A trigger modify OMITS qty on the wire and signs quantity 0 (protect the
+    # whole position), exactly like a trigger create.
+    sl_payload, nonce = client.build_modify_order_payload(
+        _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
+    )
+    assert sl_payload["orderType"] == "STOP_LOSS"
+    assert sl_payload["triggerPx"] == "1500"
+    assert "qty" not in sl_payload
+
+    # The signature covers orderType=STOP_LOSS AND signed quantity 0: recompute
+    # the digest with the builder's own signer over STOP_LOSS / qty=0 (pinned
+    # nonce/deadline) and match it.
+    market_id = client.get_market_id_from_symbol(PERP_SYMBOL)
+    expected_sig = client.signature_generator.sign_order(
+        account_id=12345,  # the client fixture's pinned account_id
+        market_id=market_id,
+        exchange_id=client.config.dex_id,
+        order_type=int(OrderTypeInt.STOP_LOSS),
+        is_buy=True,
+        qty=Decimal(0),
+        limit_price=Decimal("2950"),
+        trigger_price=Decimal("1500"),
+        time_in_force=int(TimeInForceInt.GTT),
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=1745003600,
+        nonce=nonce,
+        deadline=1745000300,
+        post_only=True,
+    )
+    assert sl_payload["signature"] == expected_sig
+
+    # LIMIT default unchanged: same pinned params, only order_type differs — so a
+    # different signature proves order_type flows into signing (not hardcoded),
+    # and the wire keeps the LIMIT shape (no triggerPx). qty stays present.
+    limit_payload, _ = client.build_modify_order_payload(_modify_params())
+    assert limit_payload["orderType"] == "LIMIT"
+    assert "triggerPx" not in limit_payload
+    assert limit_payload["qty"] == "0.75"
+    assert limit_payload["signature"] != expected_sig
+
+
+@pytest.mark.modify
+def test_modify_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
+    """A TP/SL modify must omit qty (the signed quantity restates 0); a supplied
+    qty is a targeted client-side ValueError, mirroring the trigger-create guard."""
+    with pytest.raises(ValueError, match="qty on TP/SL trigger orders is not supported"):
+        client.build_modify_order_payload(
+            _modify_params(order_type=OrderType.TAKE_PROFIT, trigger_px="1500", qty="0.75")
+        )
+
+
+@pytest.mark.modify
+def test_modify_limit_qty_required_client_side(client: ReyaTradingClient) -> None:
+    """A LIMIT modify still requires qty — omitting it is a clear ValueError."""
+    with pytest.raises(ValueError, match="qty is required when modifying a LIMIT order"):
+        client.build_modify_order_payload(_modify_params(qty=None))
 
 
 @pytest.mark.cod

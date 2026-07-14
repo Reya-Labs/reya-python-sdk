@@ -38,22 +38,29 @@ class ModifyOrderParameters:
 
     The EIP-712 signature covers the full post-modify state: the modifiable
     fields at their new values plus the immutables restated from the resting
-    order — `is_buy` (quantity sign), `time_in_force` (the resting order's TIF),
-    `reduce_only`, and the resting order's client id (via `client_order_id`)
-    signed into `OrderDetails.clientOrderId`. LIMIT modifies omit `trigger_px`;
-    native SL/TP trigger repricing depends on matching-engine trigger-order support.
+    order — `is_buy` (quantity sign), `order_type` (the resting order's type),
+    `time_in_force` (the resting order's TIF), `reduce_only`, and the resting
+    order's client id (via `client_order_id`) signed into
+    `OrderDetails.clientOrderId`. `order_type` defaults to LIMIT; a STOP_LOSS /
+    TAKE_PROFIT modify reprices a trigger order and requires `trigger_px`. LIMIT
+    modifies omit `trigger_px`.
+
+    `qty` is REQUIRED for a LIMIT modify and FORBIDDEN for a STOP_LOSS /
+    TAKE_PROFIT modify: a trigger modify signs quantity 0 (protect the whole
+    position) and omits `qty` from the wire, exactly like a trigger create.
     """
 
     symbol: str
     is_buy: bool
     limit_px: str
-    qty: str
     post_only: bool
     expires_after: Optional[int]
     time_in_force: TimeInForce
+    qty: Optional[str] = None
     order_id: Optional[int] = None
     client_order_id: Optional[int] = None
     trigger_px: Optional[str] = None
+    order_type: OrderType = OrderType.LIMIT
     reduce_only: bool = False
     deadline: Optional[int] = None
     nonce: Optional[int] = None

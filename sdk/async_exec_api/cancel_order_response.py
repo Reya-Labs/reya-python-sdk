@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_status import OrderStatus
 class CancelOrderResponse(BaseModel): 
-  status: OrderStatus = Field(description='''Order status''')
+  status: OrderStatus = Field(description='''Order status. An armed but not-yet-fired `STOP_LOSS` / `TAKE_PROFIT` trigger surfaces as `OPEN`.''')
   order_id: str = Field(description='''Cancelled order ID''', alias='''orderId''')
   client_order_id: Optional[str] = Field(description='''Client-provided order ID echoed back from the request, as a decimal string (`uint64`).''', default=None, alias='''clientOrderId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)

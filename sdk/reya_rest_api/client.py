@@ -711,9 +711,11 @@ class ReyaTradingClient:
         the signature, and is omitted when the resting order has none. The
         modifiable fields (`limit_px`, `qty`, `post_only`, `expires_after`, and
         `trigger_px` for trigger orders) all carry the complete post-modify
-        state; the immutables (`is_buy`, `time_in_force`, `reduce_only`,
-        `client_order_id`) must restate the resting order's values. LIMIT
-        modifies omit `trigger_px`.
+        state; the immutables (`is_buy`, `order_type`, `time_in_force`,
+        `reduce_only`, `client_order_id`) must restate the resting order's
+        values. `order_type` defaults to LIMIT; a STOP_LOSS/TAKE_PROFIT modify
+        reprices a trigger and requires `trigger_px`. LIMIT modifies omit
+        `trigger_px`.
         Both groups go into the fresh EIP-712 signature over the full
         post-modify state.
         """
@@ -759,15 +761,35 @@ class ReyaTradingClient:
         # OrderDetails.clientOrderId. With order_id targeting, omit it for a
         # no-tag resting order.
         signed_client_order_id = params.client_order_id or 0
+
+        is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
+
+        # qty is type-conditional (mirrors build_create_trigger_order_payload):
+        #  - TP/SL: qty must be omitted; the signed quantity is 0 (protect the
+        #    whole position) and qty is dropped from the wire payload below.
+        #  - LIMIT: qty is required and signed as the total post-modify quantity.
+        if is_trigger:
+            if params.qty is not None:
+                raise ValueError("qty on TP/SL trigger orders is not supported; omit qty")
+            signed_qty = Decimal(0)
+        else:
+            if params.qty is None:
+                raise ValueError("qty is required when modifying a LIMIT order")
+            signed_qty = Decimal(params.qty)
+
+        # trigger_px is required to reprice a STOP_LOSS/TAKE_PROFIT (full-restate:
+        # the trigger price is a modifiable field the ME re-validates as positive).
+        if is_trigger and params.trigger_px is None:
+            raise ValueError("trigger_px is required when modifying a STOP_LOSS/TAKE_PROFIT trigger order")
         trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
 
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-            order_type=int(OrderTypeInt.LIMIT),
+            order_type=int(_ORDER_TYPE_TO_INT[params.order_type]),
             is_buy=params.is_buy,
-            qty=Decimal(params.qty),
+            qty=signed_qty,
             limit_price=Decimal(params.limit_px),
             trigger_price=trigger_price,
             time_in_force=int(TimeInForceInt[params.time_in_force.value]),
@@ -785,10 +807,11 @@ class ReyaTradingClient:
             "accountId": self.config.account_id,
             # Restated immutables (full-restate): the request carries every signed
             # OrderDetails field. The ME verifies each equals the resting order
-            # (else MODIFY_IMMUTABLE_MISMATCH). orderType is LIMIT (LIMIT-only).
+            # (else MODIFY_IMMUTABLE_MISMATCH). orderType defaults to LIMIT; a
+            # trigger reprice restates STOP_LOSS/TAKE_PROFIT.
             "exchangeId": self.config.dex_id,
             "isBuy": params.is_buy,
-            "orderType": "LIMIT",
+            "orderType": params.order_type.value,
             "timeInForce": params.time_in_force.value,
             "triggerPx": params.trigger_px,
             "reduceOnly": params.reduce_only,

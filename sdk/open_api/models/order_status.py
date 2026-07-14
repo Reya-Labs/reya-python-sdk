@@ -20,7 +20,7 @@ from typing_extensions import Self
 
 class OrderStatus(str, Enum):
     """
-    Order status
+    Order status. An armed but not-yet-fired `STOP_LOSS` / `TAKE_PROFIT` trigger surfaces as `OPEN`.
     """
 
     """
