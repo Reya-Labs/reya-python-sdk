@@ -446,14 +446,19 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     Verifies:
     1. API returns BadRequestException for unknown order ID
     2. Error message indicates the order was not found
-    3. Error code is CANCEL_ORDER_OTHER_ERROR
+    3. Error code is ORDER_NOT_FOUND_ERROR
     """
+    # A syntactically valid but nonexistent numeric order id. "unknown_id"
+    # would crash client-side in build_cancel_order_payload (`int(order_id)`)
+    # before the request ever reaches the server, so the not-found path could
+    # never be exercised.
+    nonexistent_order_id = "999999999999999"
     await reya_tester.check.no_open_orders()
     try:
         await reya_tester.client.cancel_order(
             symbol="ETHRUSDPERP",
             account_id=reya_tester.account_id,
-            order_id="unknown_id",
+            order_id=nonexistent_order_id,
         )
         raise RuntimeError("Should have failed")
     except BadRequestException as e:
@@ -461,9 +466,9 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
         requestError: RequestError = e.data
         assert requestError.message is not None
         assert requestError.message.startswith(
-            "Missing order with id unknown_id"
-        ), f"Expected message to start with 'Missing order with id unknown_id', got: {requestError.message}"
-        assert requestError.error == RequestErrorCode.CANCEL_ORDER_OTHER_ERROR
+            f"Order not found: {nonexistent_order_id}"
+        ), f"Expected message to start with 'Order not found: {nonexistent_order_id}', got: {requestError.message}"
+        assert requestError.error == RequestErrorCode.ORDER_NOT_FOUND_ERROR
 
     await reya_tester.check.no_open_orders()
     logger.info("✅ Cancel non-existent order returns proper error")
