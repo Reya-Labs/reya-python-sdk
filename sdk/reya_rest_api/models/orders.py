@@ -25,7 +25,7 @@ class LimitOrderParameters:
     deadline: Optional[int] = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ModifyOrderParameters:
     """Parameters for modifying a resting order in place (spot or perp).
 

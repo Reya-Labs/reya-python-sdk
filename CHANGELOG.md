@@ -25,6 +25,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values and caps the future-distance at 24h before signing.
 
 ### Changed
+- `ModifyOrderParameters` is now **keyword-only** (`@dataclass(kw_only=True)`).
+  Making `qty` optional (default `None`, for `STOP_LOSS`/`TAKE_PROFIT` modifies
+  that sign quantity 0) forced it after the no-default fields, shifting its
+  positional slot. Marking the dataclass keyword-only removes positional
+  construction entirely so an external caller who built it positionally gets an
+  immediate `TypeError` instead of silently binding arguments to the wrong
+  fields. All modifiable/immutable fields must now be passed by name (every
+  in-repo caller already does). Migration: construct with keyword arguments,
+  e.g. `ModifyOrderParameters(symbol=..., is_buy=..., limit_px=..., ...)`.
 - **BREAKING (server-driven, SDK-passthrough): `start_time` / `end_time` on
   market-data executions, busts, and candle endpoints are now interpreted by
   the server as Unix-milliseconds since epoch (not sequence numbers).** The
