@@ -764,24 +764,31 @@ class ReyaTradingClient:
 
         is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
 
-        # qty is type-conditional (mirrors build_create_trigger_order_payload):
-        #  - TP/SL: qty must be omitted; the signed quantity is 0 (protect the
-        #    whole position) and qty is dropped from the wire payload below.
-        #  - LIMIT: qty is required and signed as the total post-modify quantity.
+        # qty and trigger_px are type-conditional and symmetric (mirrors the
+        # create builders — build_create_trigger_order_payload has no qty and
+        # build_create_limit_order_payload has no trigger_px on its params):
+        #  - TP/SL: qty must be omitted (signed quantity 0 to protect the whole
+        #    position; dropped from the wire below) and trigger_px is REQUIRED to
+        #    reprice the trigger (the ME re-validates it as positive).
+        #  - LIMIT: qty is REQUIRED (signed as the total post-modify quantity) and
+        #    trigger_px must be omitted — a LIMIT carries no trigger, so a stray
+        #    trigger_px would sign a non-zero OrderDetails.triggerPrice (and emit
+        #    triggerPx), diverging from the LIMIT create path that always signs
+        #    triggerPrice 0 and omits triggerPx.
         if is_trigger:
             if params.qty is not None:
                 raise ValueError("qty on TP/SL trigger orders is not supported; omit qty")
+            if params.trigger_px is None:
+                raise ValueError("trigger_px is required when modifying a STOP_LOSS/TAKE_PROFIT trigger order")
             signed_qty = Decimal(0)
+            trigger_price = Decimal(params.trigger_px)
         else:
             if params.qty is None:
                 raise ValueError("qty is required when modifying a LIMIT order")
+            if params.trigger_px is not None:
+                raise ValueError("trigger_px on LIMIT orders is not supported; omit trigger_px")
             signed_qty = Decimal(params.qty)
-
-        # trigger_px is required to reprice a STOP_LOSS/TAKE_PROFIT (full-restate:
-        # the trigger price is a modifiable field the ME re-validates as positive).
-        if is_trigger and params.trigger_px is None:
-            raise ValueError("trigger_px is required when modifying a STOP_LOSS/TAKE_PROFIT trigger order")
-        trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
+            trigger_price = Decimal(0)
 
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,

@@ -22,11 +22,12 @@ from decimal import Decimal
 
 import pytest
 
+from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
 pytestmark = pytest.mark.offline
 
@@ -109,7 +110,39 @@ EXPECTED_SIGNATURES = {
         "2b2fab25d5873619623813c5ba34d1b03f33f57478ebb58f5b122e4792ec6a82"
         "1b"
     ),
+    # Trigger (STOP_LOSS, orderType=1): the SAME Order envelope as a LIMIT but
+    # with orderType=1, quantity 0, a real triggerPrice (2800) + limitPrice
+    # (2750), GTC, expiresAfter 0. Every other golden pins orderType 0, so this
+    # is the ONLY cross-language check that the trigger orderType→uint8 mapping
+    # (and the trigger struct hash) matches an independent ethers impl — a wrong
+    # mapping would ship green off a same-signer round-trip and fail only
+    # on-chain. Asserted via sign_order (encoding) AND the create/modify trigger
+    # builders (the real client paths).
+    "order_trigger_stop_loss": (
+        "0xc7cc4c2129a7da7acde636a2b4a8fabc70a3eae8e9f8fbb57987b4e43eaebe90"
+        "24ee408d7493d57474ca8a734c0c34c18d09414446894c19b553ec7571a77aa9"
+        "1c"
+    ),
+    # TAKE_PROFIT (orderType=2): identical to the STOP_LOSS vector except
+    # orderType 1→2, so any drift isolates the SL-vs-TP orderType encoding.
+    "order_trigger_take_profit": (
+        "0x2d0ddf4d5f5bb9cd7296ad4534a42ae1084470c5115d33b11e0696bf7d3e7e85"
+        "24088f5884d6a7c1e36330ad59beea1bdc6bcb7320dec2dc0a74f7be4c1a8fce"
+        "1c"
+    ),
 }
+
+# === Trigger golden-vector field values (shared by the sign_order + builder
+# parity tests below). Mirrors orderStopLossValue / orderTakeProfitValue in
+# tests/parity/sign_ts.mjs. ===
+TRIGGER_ACCOUNT_ID = 12345
+TRIGGER_MARKET_ID = 1
+TRIGGER_EXCHANGE_ID = 2
+TRIGGER_LIMIT_PX = Decimal("2750")
+TRIGGER_TRIGGER_PX = Decimal("2800")
+TRIGGER_CLIENT_ORDER_ID = 42
+TRIGGER_NONCE = 1700000000000006
+TRIGGER_DEADLINE = 1745000360
 
 # === cancelAllAfter ARM vector inputs (tamper table flips one at a time) ===
 CANCEL_ALL_AFTER_ARM_PARAMS: dict[str, int] = {
@@ -416,6 +449,70 @@ def test_order_modify_state_signature_parity(signer: SignatureGenerator) -> None
     ), f"Post-modify Order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_modify_state']}"
 
 
+def _sign_trigger(signer: SignatureGenerator, order_type: int) -> str:
+    """Sign the pinned trigger OrderDetails (quantity 0, GTC, no expiry) with the
+    given ``order_type``. Only ``order_type`` varies, so the caller can pin
+    STOP_LOSS / TAKE_PROFIT / (falsifiability) LIMIT over one struct."""
+    return signer.sign_order(
+        account_id=TRIGGER_ACCOUNT_ID,
+        market_id=TRIGGER_MARKET_ID,
+        exchange_id=TRIGGER_EXCHANGE_ID,
+        order_type=order_type,
+        is_buy=True,  # not a signed field; quantity is 0 so direction is moot
+        qty=Decimal(0),
+        limit_price=TRIGGER_LIMIT_PX,
+        trigger_price=TRIGGER_TRIGGER_PX,
+        time_in_force=int(TimeInForceInt.GTC),
+        client_order_id=TRIGGER_CLIENT_ORDER_ID,
+        reduce_only=False,
+        expires_after=0,
+        nonce=TRIGGER_NONCE,
+        deadline=TRIGGER_DEADLINE,
+    )
+
+
+@pytest.mark.trigger
+def test_order_trigger_stop_loss_signature_parity(signer: SignatureGenerator) -> None:
+    """INDEPENDENT cross-language check that ``orderType=STOP_LOSS`` (uint8 1)
+    encodes byte-for-byte like ethers v6.
+
+    Every other golden pins ``orderType=0`` (LIMIT), and a same-signer round-trip
+    can't catch a wrong trigger orderType→uint8 mapping (it would sign AND verify
+    the same wrong byte, shipping green and failing only on-chain). This vector,
+    produced by an independent ethers signer in ``sign_ts.mjs``, is the check
+    that closes that gap.
+    """
+    sig = _sign_trigger(signer, int(OrderTypeInt.STOP_LOSS))
+    assert sig == EXPECTED_SIGNATURES["order_trigger_stop_loss"], (
+        f"STOP_LOSS trigger signature drift:\n  py:  {sig}\n" f"  ts:  {EXPECTED_SIGNATURES['order_trigger_stop_loss']}"
+    )
+    # Falsifiability: the SAME struct signed as LIMIT (the LIMIT-only goldens'
+    # orderType) must NOT match — proving the golden is sensitive to orderType,
+    # so it would actually catch a STOP_LOSS→LIMIT (or →0) mismap.
+    assert (
+        _sign_trigger(signer, int(OrderTypeInt.LIMIT)) != EXPECTED_SIGNATURES["order_trigger_stop_loss"]
+    ), "STOP_LOSS golden is insensitive to orderType (matches a LIMIT-signed struct)"
+
+
+@pytest.mark.trigger
+def test_order_trigger_take_profit_signature_parity(signer: SignatureGenerator) -> None:
+    """INDEPENDENT cross-language check that ``orderType=TAKE_PROFIT`` (uint8 2)
+    encodes byte-for-byte like ethers v6.
+
+    Identical to the STOP_LOSS vector except ``orderType`` 1→2, so any drift
+    isolates the SL-vs-TP orderType encoding. The two goldens must also differ
+    (a mapping that collapsed 1 and 2 to the same byte would be caught here).
+    """
+    sig = _sign_trigger(signer, int(OrderTypeInt.TAKE_PROFIT))
+    assert sig == EXPECTED_SIGNATURES["order_trigger_take_profit"], (
+        f"TAKE_PROFIT trigger signature drift:\n  py:  {sig}\n"
+        f"  ts:  {EXPECTED_SIGNATURES['order_trigger_take_profit']}"
+    )
+    assert (
+        EXPECTED_SIGNATURES["order_trigger_take_profit"] != EXPECTED_SIGNATURES["order_trigger_stop_loss"]
+    ), "STOP_LOSS and TAKE_PROFIT goldens are identical — orderType 1 and 2 collapse to the same byte"
+
+
 @pytest.fixture
 def offline_client() -> ReyaTradingClient:
     """A ReyaTradingClient that can build payloads offline.
@@ -527,3 +624,96 @@ def test_modify_order_builder_signature_parity(offline_client: ReyaTradingClient
         f"Modify-builder signature drift:\n  py:  {payload['signature']}\n"
         f"  ts:  {EXPECTED_SIGNATURES['order_modify_state']}"
     )
+
+
+@pytest.mark.trigger
+@pytest.mark.modify
+def test_trigger_modify_builder_signature_parity(offline_client: ReyaTradingClient) -> None:
+    """Builder-level trigger parity: ``build_modify_order_payload`` for a
+    STOP_LOSS reprice must emit the SAME pinned hex as the independent ethers
+    vector — proving the real modify client path (orderType→uint8, qty→0
+    coercion, trigger_px, GTC TIF, clientOrderId restatement) encodes the
+    trigger orderType identically to ethers, not just self-consistently.
+
+    Same OrderDetails as ``order_trigger_stop_loss`` (nonce/deadline pinned via
+    the modify builder's override hooks): STOP_LOSS, qty omitted (signed 0),
+    limitPx 2750, triggerPx 2800, GTC, no expiry, clientOrderId 42.
+    """
+    payload, nonce = offline_client.build_modify_order_payload(
+        ModifyOrderParameters(
+            symbol="ETHRUSDPERP",
+            is_buy=True,
+            limit_px=str(TRIGGER_LIMIT_PX),
+            qty=None,  # trigger modify omits qty; signs quantity 0
+            post_only=False,
+            expires_after=None,  # GTC → expiresAfter 0
+            time_in_force=TimeInForce.GTC,
+            client_order_id=TRIGGER_CLIENT_ORDER_ID,  # target + restated signed id
+            trigger_px=str(TRIGGER_TRIGGER_PX),
+            reduce_only=False,
+            deadline=TRIGGER_DEADLINE,
+            nonce=TRIGGER_NONCE,
+            order_type=OrderType.STOP_LOSS,
+        )
+    )
+    assert nonce == TRIGGER_NONCE
+    assert "qty" not in payload  # trigger modify drops qty from the wire
+    assert payload["triggerPx"] == str(TRIGGER_TRIGGER_PX)
+    assert payload["signature"] == EXPECTED_SIGNATURES["order_trigger_stop_loss"], (
+        f"Trigger-modify-builder signature drift:\n  py:  {payload['signature']}\n"
+        f"  ts:  {EXPECTED_SIGNATURES['order_trigger_stop_loss']}"
+    )
+
+
+@pytest.mark.trigger
+def test_trigger_create_builder_signs_order_type(offline_client: ReyaTradingClient) -> None:
+    """Builder-level trigger-create: ``build_create_trigger_order_payload`` for a
+    STOP_LOSS must sign ``orderType=1`` (not a silent LIMIT/0 mismap) — the wire
+    string stays "STOP_LOSS" either way, so only the signature can catch a
+    mismap.
+
+    The create builder auto-generates the nonce (no override hook), so this is
+    self-consistency against ``sign_order`` over the SAME captured nonce (the
+    cross-language TS golden for this struct is pinned via
+    ``test_order_trigger_stop_loss_signature_parity``). Mirrors the GTT-create
+    builder test."""
+    payload, nonce = offline_client.build_create_trigger_order_payload(
+        TriggerOrderParameters(
+            symbol="ETHRUSDPERP",
+            is_buy=True,
+            trigger_px=str(TRIGGER_TRIGGER_PX),
+            trigger_type=OrderType.STOP_LOSS,
+            limit_px=str(TRIGGER_LIMIT_PX),
+            client_order_id=TRIGGER_CLIENT_ORDER_ID,
+            deadline=TRIGGER_DEADLINE,
+        )
+    )
+    assert payload["orderType"] == OrderType.STOP_LOSS.value
+    assert "qty" not in payload  # trigger create omits qty
+
+    def _resign(order_type_int: int) -> str:
+        return offline_client.signature_generator.sign_order(
+            account_id=TRIGGER_ACCOUNT_ID,
+            market_id=TRIGGER_MARKET_ID,
+            exchange_id=TRIGGER_EXCHANGE_ID,
+            order_type=order_type_int,
+            is_buy=True,
+            qty=Decimal(0),
+            limit_price=TRIGGER_LIMIT_PX,
+            trigger_price=TRIGGER_TRIGGER_PX,
+            time_in_force=int(TimeInForceInt.GTC),
+            client_order_id=TRIGGER_CLIENT_ORDER_ID,
+            reduce_only=False,
+            expires_after=0,
+            nonce=nonce,
+            deadline=TRIGGER_DEADLINE,
+        )
+
+    assert payload["signature"] == _resign(int(OrderTypeInt.STOP_LOSS)), (
+        "trigger-create builder did not sign orderType==STOP_LOSS(1):\n"
+        f"  payload:      {payload['signature']}\n  STOP_LOSS(1): {_resign(int(OrderTypeInt.STOP_LOSS))}"
+    )
+    # Falsifiability: a silent LIMIT(0) or TAKE_PROFIT(2) mismap would sign
+    # different bytes — confirm the assertion above actually discriminates.
+    assert payload["signature"] != _resign(int(OrderTypeInt.LIMIT))
+    assert payload["signature"] != _resign(int(OrderTypeInt.TAKE_PROFIT))

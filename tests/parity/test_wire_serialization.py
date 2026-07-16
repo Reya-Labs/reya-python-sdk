@@ -500,6 +500,54 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
     assert limit_payload["signature"] != expected_sig
 
 
+@pytest.mark.trigger
+@pytest.mark.modify
+def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
+    """Exhaustive key-set for a STOP_LOSS modify body: it is the LIMIT-modify key
+    set MINUS ``qty`` PLUS ``triggerPx`` — qty ABSENT, triggerPx present, every
+    immutable present. The per-field ``test_modify_payload_carries_order_type``
+    checks values but not the full key set, so a stray surviving ``qty`` (the
+    signed quantity restates 0) or a dropped immutable would slip past it; this
+    exact ``set(...) ==`` catches both.
+
+    Uses the GTT fixture default so ``expiresAfter`` (non-zero) is present;
+    ``clientOrderId`` is absent because the fixture targets by ``orderId``.
+    """
+    payload, _nonce = client.build_modify_order_payload(
+        _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
+    )
+
+    assert set(payload.keys()) == {
+        "orderId",
+        "symbol",
+        "accountId",
+        "exchangeId",
+        "isBuy",
+        "orderType",
+        "timeInForce",
+        "triggerPx",
+        "reduceOnly",
+        "limitPx",
+        "postOnly",
+        "expiresAfter",
+        "signature",
+        "nonce",
+        "signerWallet",
+        "deadline",
+    }
+    assert "qty" not in payload  # trigger modify signs quantity 0, never carries qty
+    assert payload["triggerPx"] == "1500"
+    assert "clientOrderId" not in payload  # fixture targets by orderId, no client id
+    # Every signed immutable is present on the wire (full-restate).
+    assert payload["orderType"] == "STOP_LOSS"
+    assert payload["timeInForce"] == "GTT"
+    assert payload["isBuy"] is True
+    assert payload["reduceOnly"] is False
+    assert payload["postOnly"] is True
+    assert payload["limitPx"] == "2950"
+    assert payload["expiresAfter"] == 1745003600
+
+
 @pytest.mark.modify
 def test_modify_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
     """A TP/SL modify must omit qty (the signed quantity restates 0); a supplied
@@ -515,6 +563,19 @@ def test_modify_limit_qty_required_client_side(client: ReyaTradingClient) -> Non
     """A LIMIT modify still requires qty — omitting it is a clear ValueError."""
     with pytest.raises(ValueError, match="qty is required when modifying a LIMIT order"):
         client.build_modify_order_payload(_modify_params(qty=None))
+
+
+@pytest.mark.modify
+def test_modify_limit_trigger_px_rejected_client_side(client: ReyaTradingClient) -> None:
+    """Symmetric to the trigger-qty guard: a LIMIT modify must OMIT trigger_px.
+
+    A LIMIT carries no trigger, and the LIMIT create path always signs
+    triggerPrice 0 / omits triggerPx (LimitOrderParameters has no trigger_px
+    field at all). Without this guard a stray trigger_px on a LIMIT modify would
+    be silently signed into OrderDetails.triggerPrice and emitted as triggerPx,
+    diverging from create — a targeted client-side ValueError instead."""
+    with pytest.raises(ValueError, match="trigger_px on LIMIT orders is not supported"):
+        client.build_modify_order_payload(_modify_params(trigger_px="1500"))
 
 
 @pytest.mark.modify
