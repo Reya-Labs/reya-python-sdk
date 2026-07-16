@@ -25,7 +25,7 @@ class LimitOrderParameters:
     deadline: Optional[int] = None
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True)
 class ModifyOrderParameters:
     """Parameters for modifying a resting order in place (spot or perp).
 
@@ -53,17 +53,17 @@ class ModifyOrderParameters:
     symbol: str
     is_buy: bool
     limit_px: str
+    qty: Optional[str]
     post_only: bool
     expires_after: Optional[int]
     time_in_force: TimeInForce
-    qty: Optional[str] = None
     order_id: Optional[int] = None
     client_order_id: Optional[int] = None
     trigger_px: Optional[str] = None
-    order_type: OrderType = OrderType.LIMIT
     reduce_only: bool = False
     deadline: Optional[int] = None
     nonce: Optional[int] = None
+    order_type: OrderType = OrderType.LIMIT
 
 
 @dataclass(frozen=True)

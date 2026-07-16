@@ -459,6 +459,7 @@ async def test_trigger_order_reprice(perp_maker_tester: ReyaTester, perp_market_
             symbol=perp_market_config.symbol,
             is_buy=False,
             limit_px=resting.limit_px,
+            qty=None,
             post_only=False,
             expires_after=0,
             time_in_force=TimeInForce.GTC,

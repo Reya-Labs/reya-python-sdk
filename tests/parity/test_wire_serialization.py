@@ -517,6 +517,71 @@ def test_modify_limit_qty_required_client_side(client: ReyaTradingClient) -> Non
         client.build_modify_order_payload(_modify_params(qty=None))
 
 
+@pytest.mark.modify
+def test_modify_params_positional_3_0_14_signature_still_binds(client: ReyaTradingClient) -> None:
+    """Regression (public-constructor compat): ``ModifyOrderParameters`` is NOT
+    keyword-only, so the 3.0.14 POSITIONAL call shape keeps binding
+    argument-for-argument. The positional field order is::
+
+        symbol, is_buy, limit_px, qty, post_only, expires_after, time_in_force,
+        order_id, client_order_id, trigger_px, reduce_only, deadline, nonce
+
+    ``qty`` stays a required arg in its original 4th slot (now ``Optional[str]``),
+    and the new ``order_type`` is appended last (default LIMIT), so neither the
+    positional binding nor the wire output shifts. A positional construction that
+    raised ``TypeError`` under the interim ``kw_only`` dataclass now succeeds.
+    """
+    # LIMIT modify, 3.0.14 positional signature with a real qty in slot 4.
+    limit_params = ModifyOrderParameters(
+        PERP_SYMBOL,  # symbol
+        True,  # is_buy
+        "2950",  # limit_px
+        "0.75",  # qty (required, original 4th slot)
+        True,  # post_only
+        1745003600,  # expires_after
+        TimeInForce.GTT,  # time_in_force
+        63552420354981888,  # order_id
+        None,  # client_order_id
+        None,  # trigger_px
+        False,  # reduce_only
+        1745000300,  # deadline
+        1700000000000005,  # nonce
+    )
+    # order_type is appended last with a default, so the positional call leaves it LIMIT.
+    assert limit_params.order_type == OrderType.LIMIT
+    limit_payload, _ = client.build_modify_order_payload(limit_params)
+    assert limit_payload["orderType"] == "LIMIT"
+    assert limit_payload["qty"] == "0.75"
+    assert limit_payload["limitPx"] == "2950"
+    assert limit_payload["postOnly"] is True
+    assert limit_payload["expiresAfter"] == 1745003600
+    assert limit_payload["orderId"] == "63552420354981888"
+    assert "triggerPx" not in limit_payload
+
+    # STOP_LOSS trigger modify: qty=None passed POSITIONALLY in its original slot;
+    # order_type is the only keyword arg (the field did not exist in 3.0.14).
+    trigger_params = ModifyOrderParameters(
+        PERP_SYMBOL,  # symbol
+        False,  # is_buy
+        "2950",  # limit_px
+        None,  # qty=None positionally → omit-qty trigger modify
+        False,  # post_only
+        0,  # expires_after (GTC omits expiry)
+        TimeInForce.GTC,  # time_in_force
+        63552420354981888,  # order_id
+        None,  # client_order_id
+        "1500",  # trigger_px
+        False,  # reduce_only
+        1745000300,  # deadline
+        1700000000000005,  # nonce
+        order_type=OrderType.STOP_LOSS,
+    )
+    trigger_payload, _ = client.build_modify_order_payload(trigger_params)
+    assert trigger_payload["orderType"] == "STOP_LOSS"
+    assert trigger_payload["triggerPx"] == "1500"
+    assert "qty" not in trigger_payload  # signed quantity restates 0 (whole position)
+
+
 @pytest.mark.cod
 def test_cancel_all_after_payload_wire_shape(client: ReyaTradingClient) -> None:
     """The cancelAllAfter body is exactly {accountId, timeoutMs, signature,

@@ -10,11 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (default `LIMIT`), and `build_modify_order_payload` signs and wires that order
   type instead of a hardcoded `LIMIT`. A `STOP_LOSS`/`TAKE_PROFIT` modify now
   reprices an armed trigger and requires `trigger_px` (rejected before signing
-  otherwise). Not a breaking change: the default keeps LIMIT modifies
-  byte-identical, and the trigger create/cancel signing contract is unchanged
-  (omit `qty`, sign 0; the `limit_px` sentinel stays). The live trigger
-  create/modify/cancel e2e tests are staged (skipped) until the SL/TP backbone
-  matching engine is deployed to devnet1.
+  otherwise). Its `qty` is now typed `Optional[str]`: a trigger modify passes
+  `qty=None` (the signed quantity restates 0 — protect the whole position — and
+  `qty` is dropped from the wire), while a LIMIT modify still requires a real
+  `qty`. Not a breaking change: `qty` keeps its original positional slot with no
+  default and the new `order_type` is appended last, so every positional
+  `ModifyOrderParameters(...)` call that was valid in 3.0.14 still binds
+  unchanged; the default keeps LIMIT modifies byte-identical, and the trigger
+  create/cancel signing contract is unchanged (omit `qty`, sign 0; the
+  `limit_px` sentinel stays). The live trigger create/modify/cancel e2e tests
+  are staged (skipped) until the SL/TP backbone matching engine is deployed to
+  devnet1.
 - `sdk.reya_ws_exec.ReyaWsExecClient`: high-level client for the new ws-exec
   WebSocket order-entry service. Mirrors `ReyaTradingClient`'s order surface
   (`create_limit_order`, `create_trigger_order`, `cancel_order`, `mass_cancel`)
@@ -25,15 +31,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values and caps the future-distance at 24h before signing.
 
 ### Changed
-- `ModifyOrderParameters` is now **keyword-only** (`@dataclass(kw_only=True)`).
-  Making `qty` optional (default `None`, for `STOP_LOSS`/`TAKE_PROFIT` modifies
-  that sign quantity 0) forced it after the no-default fields, shifting its
-  positional slot. Marking the dataclass keyword-only removes positional
-  construction entirely so an external caller who built it positionally gets an
-  immediate `TypeError` instead of silently binding arguments to the wrong
-  fields. All modifiable/immutable fields must now be passed by name (every
-  in-repo caller already does). Migration: construct with keyword arguments,
-  e.g. `ModifyOrderParameters(symbol=..., is_buy=..., limit_px=..., ...)`.
 - **BREAKING (server-driven, SDK-passthrough): `start_time` / `end_time` on
   market-data executions, busts, and candle endpoints are now interpreted by
   the server as Unix-milliseconds since epoch (not sequence numbers).** The
