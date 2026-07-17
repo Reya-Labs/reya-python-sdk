@@ -677,7 +677,7 @@ def test_trigger_modify_builder_signature_parity(offline_client: ReyaTradingClie
             symbol="ETHRUSDPERP",
             is_buy=True,
             limit_px=str(TRIGGER_LIMIT_PX),
-            qty=None,  # trigger modify omits qty; signs quantity 0
+            qty=None,  # trigger modify omits qty; sign_order derives the ±sentinel
             post_only=False,
             expires_after=None,  # GTC → expiresAfter 0
             time_in_force=TimeInForce.GTC,

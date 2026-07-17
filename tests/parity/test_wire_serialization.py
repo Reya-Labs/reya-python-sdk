@@ -458,8 +458,9 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
     on the wire and SIGNS the non-LIMIT order type — guarding the passthrough
     that replaced the two hardcoded LIMITs in ``build_modify_order_payload``.
     The default (no ``order_type``) stays an unchanged LIMIT modify."""
-    # A trigger modify OMITS qty on the wire and signs quantity 0 (protect the
-    # whole position), exactly like a trigger create.
+    # A trigger modify OMITS qty on the wire; the signed quantity is the
+    # ±int256.max full-position sentinel (derived in sign_order from is_buy),
+    # exactly like a trigger create.
     sl_payload, nonce = client.build_modify_order_payload(
         _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
     )
@@ -467,9 +468,10 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
     assert sl_payload["triggerPx"] == "1500"
     assert "qty" not in sl_payload
 
-    # The signature covers orderType=STOP_LOSS AND signed quantity 0: recompute
-    # the digest with the builder's own signer over STOP_LOSS / qty=0 (pinned
-    # nonce/deadline) and match it.
+    # The signature covers orderType=STOP_LOSS AND the signed sentinel
+    # quantity: recompute the digest with the builder's own signer over
+    # STOP_LOSS / qty=0-wire (sign_order derives the ±sentinel internally;
+    # pinned nonce/deadline) and match it.
     market_id = client.get_market_id_from_symbol(PERP_SYMBOL)
     expected_sig = client.signature_generator.sign_order(
         account_id=12345,  # the client fixture's pinned account_id
@@ -535,7 +537,7 @@ def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
         "signerWallet",
         "deadline",
     }
-    assert "qty" not in payload  # trigger modify signs quantity 0, never carries qty
+    assert "qty" not in payload  # trigger modify never carries qty (signed qty = ±sentinel)
     assert payload["triggerPx"] == "1500"
     assert "clientOrderId" not in payload  # fixture targets by orderId, no client id
     # Every signed immutable is present on the wire (full-restate).
