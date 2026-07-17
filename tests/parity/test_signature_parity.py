@@ -111,23 +111,33 @@ EXPECTED_SIGNATURES = {
         "1b"
     ),
     # Trigger (STOP_LOSS, orderType=1): the SAME Order envelope as a LIMIT but
-    # with orderType=1, quantity 0, a real triggerPrice (2800) + limitPrice
-    # (2750), GTC, expiresAfter 0. Every other golden pins orderType 0, so this
-    # is the ONLY cross-language check that the trigger orderType→uint8 mapping
-    # (and the trigger struct hash) matches an independent ethers impl — a wrong
-    # mapping would ship green off a same-signer round-trip and fail only
-    # on-chain. Asserted via sign_order (encoding) AND the create/modify trigger
-    # builders (the real client paths).
+    # with orderType=1, quantity = +FULL_POSITION_STOP_SENTINEL (the ±int256.max
+    # full-position sentinel, RAW — not E18-scaled; buy side, reya-network #738),
+    # a real triggerPrice (2800) + limitPrice (2750), GTC, expiresAfter 0. Every
+    # other golden pins orderType 0, so this is the ONLY cross-language check
+    # that the trigger orderType→uint8 mapping (and the trigger struct hash)
+    # matches an independent ethers impl — a wrong mapping would ship green off
+    # a same-signer round-trip and fail only on-chain. Asserted via sign_order
+    # (encoding) AND the create/modify trigger builders (the real client paths).
     "order_trigger_stop_loss": (
-        "0xc7cc4c2129a7da7acde636a2b4a8fabc70a3eae8e9f8fbb57987b4e43eaebe90"
-        "24ee408d7493d57474ca8a734c0c34c18d09414446894c19b553ec7571a77aa9"
+        "0x61def0f71af8cfc72a45cb46794b414d9e6cc6875f4698bb34a80e1f3c86448a"
+        "0f30222a39062cd5452a832f030d488ce18a954db6b5283de8393554d580cb0e"
         "1c"
     ),
     # TAKE_PROFIT (orderType=2): identical to the STOP_LOSS vector except
     # orderType 1→2, so any drift isolates the SL-vs-TP orderType encoding.
     "order_trigger_take_profit": (
-        "0x2d0ddf4d5f5bb9cd7296ad4534a42ae1084470c5115d33b11e0696bf7d3e7e85"
-        "24088f5884d6a7c1e36330ad59beea1bdc6bcb7320dec2dc0a74f7be4c1a8fce"
+        "0x41ee81ec81cf0600490bdca38848bb88ea1e7cf20a6721095e9afc93cefe290e"
+        "62728a51c70a8442e7205636f4aca33843d7e753d08b329475ac07b9f4702876"
+        "1b"
+    ),
+    # Sell-side STOP_LOSS: identical to the STOP_LOSS vector except the quantity
+    # sign (+sentinel → −sentinel), so any drift isolates the is_buy →
+    # sentinel-sign path — a sign flip would close the WRONG side's position at
+    # fire time, which is exactly the failure the ±sentinel encoding guards.
+    "order_trigger_stop_loss_sell": (
+        "0x7706ca235acf56e630e752d46953aa6f38f369e175089438617b5944ddb37211"
+        "08cee55feda4bff5d6e930fa3c1d0372a99899b76911e36d79b1c9d6a5de5c61"
         "1c"
     ),
 }
@@ -449,16 +459,17 @@ def test_order_modify_state_signature_parity(signer: SignatureGenerator) -> None
     ), f"Post-modify Order signature drift:\n  py:  {sig}\n  ts:  {EXPECTED_SIGNATURES['order_modify_state']}"
 
 
-def _sign_trigger(signer: SignatureGenerator, order_type: int) -> str:
-    """Sign the pinned trigger OrderDetails (quantity 0, GTC, no expiry) with the
-    given ``order_type``. Only ``order_type`` varies, so the caller can pin
-    STOP_LOSS / TAKE_PROFIT / (falsifiability) LIMIT over one struct."""
+def _sign_trigger(signer: SignatureGenerator, order_type: int, is_buy: bool = True) -> str:
+    """Sign the pinned trigger OrderDetails (±sentinel quantity, GTC, no expiry)
+    with the given ``order_type``. ``is_buy`` sets the sentinel's sign (the
+    close side); ``order_type`` isolates SL / TP / (falsifiability) LIMIT over
+    one struct."""
     return signer.sign_order(
         account_id=TRIGGER_ACCOUNT_ID,
         market_id=TRIGGER_MARKET_ID,
         exchange_id=TRIGGER_EXCHANGE_ID,
         order_type=order_type,
-        is_buy=True,  # not a signed field; quantity is 0 so direction is moot
+        is_buy=is_buy,  # sets the sentinel's sign for triggers
         qty=Decimal(0),
         limit_price=TRIGGER_LIMIT_PX,
         trigger_price=TRIGGER_TRIGGER_PX,
@@ -511,6 +522,28 @@ def test_order_trigger_take_profit_signature_parity(signer: SignatureGenerator) 
     assert (
         EXPECTED_SIGNATURES["order_trigger_take_profit"] != EXPECTED_SIGNATURES["order_trigger_stop_loss"]
     ), "STOP_LOSS and TAKE_PROFIT goldens are identical — orderType 1 and 2 collapse to the same byte"
+
+
+@pytest.mark.trigger
+def test_order_trigger_sell_sentinel_sign_parity(signer: SignatureGenerator) -> None:
+    """INDEPENDENT cross-language check of the is_buy → sentinel-sign path.
+
+    Identical to the STOP_LOSS vector except ``is_buy=False``, so the signed
+    quantity is −sentinel instead of +sentinel. A sign flip here would close
+    the WRONG side's position at fire time — the exact failure the ±sentinel
+    encoding (reya-network #738) exists to fail closed on — and a same-signer
+    round-trip cannot catch it (it would sign AND verify the same wrong sign).
+    """
+    sig = _sign_trigger(signer, int(OrderTypeInt.STOP_LOSS), is_buy=False)
+    assert sig == EXPECTED_SIGNATURES["order_trigger_stop_loss_sell"], (
+        f"Sell-trigger sentinel-sign drift:\n  py:  {sig}\n"
+        f"  ts:  {EXPECTED_SIGNATURES['order_trigger_stop_loss_sell']}"
+    )
+    # Falsifiability: the buy-side golden must NOT match — proving the vector
+    # actually discriminates on the sentinel's sign.
+    assert (
+        EXPECTED_SIGNATURES["order_trigger_stop_loss_sell"] != EXPECTED_SIGNATURES["order_trigger_stop_loss"]
+    ), "sell-trigger golden is insensitive to the sentinel sign"
 
 
 @pytest.fixture

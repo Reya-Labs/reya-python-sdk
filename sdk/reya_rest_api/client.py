@@ -767,8 +767,9 @@ class ReyaTradingClient:
         # qty and trigger_px are type-conditional and symmetric (mirrors the
         # create builders — build_create_trigger_order_payload has no qty and
         # build_create_limit_order_payload has no trigger_px on its params):
-        #  - TP/SL: qty must be omitted (signed quantity 0 to protect the whole
-        #    position; dropped from the wire below) and trigger_px is REQUIRED to
+        #  - TP/SL: qty must be omitted (the signer derives the ±int256.max
+        #    full-position sentinel from is_buy; dropped from the wire below)
+        #    and trigger_px is REQUIRED to
         #    reprice the trigger (the ME re-validates it as positive).
         #  - LIMIT: qty is REQUIRED (signed as the total post-modify quantity) and
         #    trigger_px must be omitted — a LIMIT carries no trigger, so a stray

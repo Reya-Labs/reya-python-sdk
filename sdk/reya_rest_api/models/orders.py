@@ -46,8 +46,9 @@ class ModifyOrderParameters:
     modifies omit `trigger_px`.
 
     `qty` is REQUIRED for a LIMIT modify and FORBIDDEN for a STOP_LOSS /
-    TAKE_PROFIT modify: a trigger modify signs quantity 0 (protect the whole
-    position) and omits `qty` from the wire, exactly like a trigger create.
+    TAKE_PROFIT modify: a trigger modify signs the ±int256.max full-position
+    sentinel (sign from `is_buy`; protect the whole position) and omits `qty`
+    from the wire, exactly like a trigger create.
     """
 
     symbol: str
@@ -71,9 +72,11 @@ class TriggerOrderParameters:
     """Parameters for a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
 
     Trigger orders omit `qty` on the REST/WS JSON contract and sign
-    `OrderDetails.quantity = 0`; executable size is derived when the trigger
-    fires. The deprecated `qty` field is retained only so older callers receive
-    a targeted client-side error instead of a server 400.
+    `OrderDetails.quantity = ±int256.max` (the full-position sentinel; sign
+    carries the close side per reya-network #738); executable size is derived
+    from the live position when the trigger fires. The deprecated `qty` field
+    is retained only so older callers receive a targeted client-side error
+    instead of a server 400.
 
     `limit_px` is the worst-acceptable execution price after the trigger fires;
     if omitted the client signs a sentinel — a very high value for buys, a very

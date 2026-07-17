@@ -247,14 +247,18 @@ const orderModifyStateValue = {
 // === Trigger orders (STOP_LOSS / TAKE_PROFIT) — the SAME Order envelope ===
 // Trigger orders reuse the on-chain-verified Order envelope; the only thing that
 // distinguishes them from a LIMIT is orderType (1 = STOP_LOSS, 2 = TAKE_PROFIT).
-// They sign quantity 0 (executable size is derived when the trigger fires), a
-// real triggerPrice, a real limitPrice, and rest GTC (timeInForce 0) with no
-// expiry (expiresAfter 0). Every LIMIT golden above pins orderType 0, so a wrong
+// They sign quantity ±FULL_POSITION_STOP_SENTINEL — type(int256).max, RAW (not
+// E18-scaled) — with the sign carrying the close side (+sentinel = buy back a
+// short, −sentinel = sell out a long; reya-network #738 enforces the iff, and
+// the old quantity-0 encoding now reverts ZeroQuantity). They carry a real
+// triggerPrice, a real limitPrice, and rest GTC (timeInForce 0) with no expiry
+// (expiresAfter 0). Every LIMIT golden above pins orderType 0, so a wrong
 // orderType→uint8 mapping (or a struct-hash divergence) for triggers would slip
 // past all of them AND past a same-signer round-trip; only an independent
 // cross-language golden over orderType 1/2 catches it, failing here instead of
-// on-chain. is_buy is not itself a signed field and quantity is 0, so these
-// vectors are direction-agnostic.
+// on-chain.
+const FULL_POSITION_STOP_SENTINEL = 2n ** 255n - 1n; // type(int256).max
+
 const orderStopLossValue = {
   verifyingChainId: BigInt(CHAIN_ID),
   deadline: BigInt(1745000360),
@@ -263,7 +267,7 @@ const orderStopLossValue = {
     marketId: 1n,
     exchangeId: 2n,
     orderType: 1, // STOP_LOSS
-    quantity: 0n, // triggers sign quantity 0
+    quantity: FULL_POSITION_STOP_SENTINEL, // +sentinel: buy side (is_buy=true)
     limitPrice: BigInt("2750000000000000000000"), // 2750 E18 (worst-acceptable px)
     triggerPrice: BigInt("2800000000000000000000"), // 2800 E18 (fires here)
     timeInForce: 0, // GTC — rests until the trigger fires
@@ -283,6 +287,18 @@ const orderTakeProfitValue = {
   order: {
     ...orderStopLossValue.order,
     orderType: 2, // TAKE_PROFIT
+  },
+};
+
+// Sell-side STOP_LOSS: ONLY the quantity sign flips (+sentinel → −sentinel), so
+// any drift here unambiguously isolates the is_buy → sentinel-sign path — the
+// exact failure mode the ±sentinel encoding exists to catch (a sign flip would
+// close the WRONG side's position at fire time).
+const orderStopLossSellValue = {
+  ...orderStopLossValue,
+  order: {
+    ...orderStopLossValue.order,
+    quantity: -FULL_POSITION_STOP_SENTINEL, // −sentinel: sell side (is_buy=false)
   },
 };
 
@@ -344,6 +360,11 @@ const orderTakeProfitSig = await wallet.signTypedData(
   orderTypes,
   orderTakeProfitValue,
 );
+const orderStopLossSellSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderStopLossSellValue,
+);
 
 console.log(
   JSON.stringify(
@@ -364,6 +385,7 @@ console.log(
         order_modify_state: orderModifyStateSig,
         order_trigger_stop_loss: orderStopLossSig,
         order_trigger_take_profit: orderTakeProfitSig,
+        order_trigger_stop_loss_sell: orderStopLossSellSig,
       },
     },
     null,
