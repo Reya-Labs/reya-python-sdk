@@ -63,6 +63,9 @@ from .models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerO
 # window).
 DEFAULT_DEADLINE_S = 60  # signature-validity window (entry only), all order types.
 PERPETUAL_LIFETIME = 0  # signed no-expiry encoding (GTC rests; IOC moot).
+# The ME's MAX_PRICE (2^49 in E9 fixed point ≈ 562,949.95) — the binding price
+# ceiling across the stack; the buy-trigger limit_px sentinel is derived from it.
+_ME_MAX_PRICE = Decimal(1 << 49) / Decimal(10**9)
 
 # cancelAllAfter (dead-man's-switch) countdown bounds. `timeoutMs` must be 0
 # (disarm) or within [min, max]; each call replaces the running countdown.
@@ -432,17 +435,23 @@ class ReyaTradingClient:
 
         # If the caller didn't pin a worst-acceptable execution price, sign a
         # sentinel that always lets the order through after the trigger fires:
-        # a huge price for buys (worst-case high), and the market's smallest
-        # tick for sells (worst-case low). The sell sentinel must be non-zero
-        # AND conform to the market's price spacing — an arbitrary tiny value
-        # like 0.000000001 is rejected by the matching engine as off-grid
-        # ("does not conform to price spacing"), so we use exactly one tick.
-        # The sentinel model itself (vs requiring an explicit limit_px, slippage
-        # bounds, etc.) is being revisited.
+        # the LARGEST valid price for buys (worst-case high), and the market's
+        # smallest tick for sells (worst-case low). Both sentinels must conform
+        # to the market's price spacing AND the stack's price bounds:
+        # - sells: one tick (an off-grid tiny value is ME-rejected as
+        #   "does not conform to price spacing");
+        # - buys: the largest tick-aligned price under the ME's MAX_PRICE
+        #   (2^49 E9 ≈ 562,949.95) — the binding bound across the stack (the
+        #   off-chain checkPxValidity cap, u64/1e9 ≈ 1.8e10, is higher). The
+        #   old 1e20 sentinel is rejected off-chain now that triggers run
+        #   price validation.
+        # The sentinel model itself (vs requiring an explicit limit_px,
+        # slippage bounds, etc.) is being revisited.
         if params.limit_px is not None:
             limit_price = Decimal(params.limit_px)
         elif params.is_buy:
-            limit_price = Decimal("100000000000000000000")
+            tick = Decimal(self._tick_size_for(params.symbol))
+            limit_price = (_ME_MAX_PRICE // tick) * tick
         else:
             limit_price = Decimal(self._tick_size_for(params.symbol))
 

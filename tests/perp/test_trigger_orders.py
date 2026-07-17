@@ -307,7 +307,6 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=True,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 1.1),
                 trigger_type=OrderType.TAKE_PROFIT,
             )
@@ -388,7 +387,6 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=True,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 0.9),
                 trigger_type=OrderType.STOP_LOSS,
             )
@@ -438,7 +436,6 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on short position
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.9),  # in the money
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -456,7 +453,6 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on short position
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.9),  # in the money
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -553,7 +549,6 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.95),
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -564,7 +559,6 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 1.05),
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -644,7 +638,6 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.95),
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -655,7 +648,6 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 1.05),
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -745,7 +737,6 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 1.01),
                 trigger_type=OrderType.STOP_LOSS,
             )
@@ -756,7 +747,6 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 1.10),
                 trigger_type=OrderType.TAKE_PROFIT,
             )
@@ -837,7 +827,6 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 0.90),
                 trigger_type=OrderType.STOP_LOSS,
             )
@@ -848,7 +837,6 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 0.99),
                 trigger_type=OrderType.TAKE_PROFIT,
             )

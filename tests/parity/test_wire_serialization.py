@@ -82,8 +82,13 @@ def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
     assert "expiresAfter" not in payload
 
 
-def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
-    """is_buy=True + no limit_px → huge sentinel must also be plain (no 'E')."""
+def test_buy_trigger_sentinel_is_tick_aligned_me_max(client: ReyaTradingClient) -> None:
+    """is_buy=True + no limit_px → the sentinel is the LARGEST tick-aligned
+    price under the ME's MAX_PRICE (2^49 E9): tick 0.001 → 562949.953. The old
+    1e20 sentinel is rejected by the off-chain price validation now that
+    triggers run checkPxValidity, so every buy trigger omitting limit_px would
+    deterministically fail PRICE_QTY_BOUNDS_ERROR. Must also be plain decimal
+    (no 'E')."""
     payload, _ = client.build_create_trigger_order_payload(
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
@@ -92,7 +97,8 @@ def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClien
             trigger_type=OrderType.TAKE_PROFIT,
         )
     )
-    assert payload["limitPx"] == "100000000000000000000"
+    # floor(2^49/1e9 / 0.001) * 0.001 == 562949.953 (tick-aligned, under bound)
+    assert payload["limitPx"] == "562949.953"
     assert "E" not in payload["limitPx"].upper()
 
 

@@ -11,14 +11,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   type instead of a hardcoded `LIMIT`. A `STOP_LOSS`/`TAKE_PROFIT` modify now
   reprices an armed trigger and requires `trigger_px` (rejected before signing
   otherwise). Its `qty` is now typed `Optional[str]`: a trigger modify passes
-  `qty=None` (the signed quantity restates 0 — protect the whole position — and
-  `qty` is dropped from the wire), while a LIMIT modify still requires a real
+  `qty=None` (the signed quantity restates the ±int256.max full-position
+  sentinel — protect the whole position — and `qty` is dropped from the wire), while a LIMIT modify still requires a real
   `qty`. Not a breaking change: `qty` keeps its original positional slot with no
   default and the new `order_type` is appended last, so every positional
   `ModifyOrderParameters(...)` call that was valid in 3.0.14 still binds
   unchanged; the default keeps LIMIT modifies byte-identical, and the trigger
-  create/cancel signing contract is unchanged (omit `qty`, sign 0; the
-  `limit_px` sentinel stays). The live trigger create/modify/cancel e2e tests
+  create/cancel wire contract is unchanged (omit `qty`; the signed quantity is
+  the ±int256.max full-position sentinel, sign from `is_buy`). The buy-side
+  `limit_px` sentinel is now the largest tick-aligned price under the ME's
+  MAX_PRICE (the old 1e20 sentinel fails off-chain price validation). The live trigger create/modify/cancel e2e tests
   are staged (skipped) until the SL/TP backbone matching engine is deployed to
   devnet1.
 - `sdk.reya_ws_exec.ReyaWsExecClient`: high-level client for the new ws-exec
