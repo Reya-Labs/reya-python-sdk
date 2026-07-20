@@ -22,7 +22,7 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.market_config import PerpTestConfig
-from tests.helpers.order_lifecycle import assert_px_qty
+from tests.helpers.order_lifecycle import assert_px_qty, wait_for_taker_perp_execution
 
 _REQUIRED_ORDER_HISTORY_E2E_ENV = (
     "PERP_ACCOUNT_ID_1",
@@ -181,6 +181,11 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
 
     assert maker_history_order.fill_count == 1, "maker should map to one fill"
     assert taker_history_order.fill_count == 1, "single-level taker should map to one fill"
+
+    execution = await wait_for_taker_perp_execution(taker, taker_order_id, timeout_s=15.0)
+    assert execution.fill_id == taker_history_order.first_fill_id
+    assert execution.fill_id == maker_history_order.first_fill_id
+    assert execution.maker_fee is None, "fee-model-v3 executions must not project the legacy makerFee field"
 
     await _assert_time_window_refetch_contains_order(maker, maker_history_order)
     await _assert_time_window_refetch_contains_order(taker, taker_history_order)

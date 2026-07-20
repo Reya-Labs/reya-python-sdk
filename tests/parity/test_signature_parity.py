@@ -664,13 +664,15 @@ def test_modify_order_builder_signature_parity(offline_client: ReyaTradingClient
 def test_trigger_modify_builder_signature_parity(offline_client: ReyaTradingClient) -> None:
     """Builder-level trigger parity: ``build_modify_order_payload`` for a
     STOP_LOSS reprice must emit the SAME pinned hex as the independent ethers
-    vector — proving the real modify client path (orderType→uint8, qty→0
-    coercion, trigger_px, GTC TIF, clientOrderId restatement) encodes the
-    trigger orderType identically to ethers, not just self-consistently.
+    vector — proving the real modify client path (orderType→uint8, omitted qty
+    to full-position sentinel, trigger_px, GTC TIF, clientOrderId restatement)
+    encodes the trigger orderType identically to ethers, not just
+    self-consistently.
 
     Same OrderDetails as ``order_trigger_stop_loss`` (nonce/deadline pinned via
-    the modify builder's override hooks): STOP_LOSS, qty omitted (signed 0),
-    limitPx 2750, triggerPx 2800, GTC, no expiry, clientOrderId 42.
+    the modify builder's override hooks): STOP_LOSS, qty omitted (signer derives
+    the full-position sentinel), limitPx 2750, triggerPx 2800, GTC, no expiry,
+    clientOrderId 42.
     """
     payload, nonce = offline_client.build_modify_order_payload(
         ModifyOrderParameters(

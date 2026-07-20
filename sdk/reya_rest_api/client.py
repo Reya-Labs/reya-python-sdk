@@ -502,8 +502,9 @@ class ReyaTradingClient:
         Create a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
 
         When the trigger price is hit, the matching engine places a limit
-        order at `limit_px` for the signed `qty`. Spot triggers are not
-        supported by the API.
+        order at `limit_px` for the account's full live position. The signer
+        derives the direction-aware full-position sentinel; callers omit
+        `qty`. Spot triggers are not supported by the API.
         """
         payload, _nonce = self.build_create_trigger_order_payload(params)
         return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
@@ -752,12 +753,23 @@ class ReyaTradingClient:
         market_id = self.get_market_id_from_symbol(params.symbol)
         nonce = params.nonce if params.nonce is not None else self._get_next_nonce()
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+        is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
 
         # TIF <-> expiresAfter coupling, checked against the RESTING order's
         # immutable TIF (a modify cannot change TIF — the caller passes the
         # resting order's TIF). GTC omits expiry; GTT must expire after deadline.
         expires_after = params.expires_after or 0
-        if params.time_in_force == TimeInForce.GTT:
+        if is_trigger:
+            # Trigger creates are always GTC, non-post-only, and non-expiring.
+            # A modify restates those immutable fields; accepting a limit-order
+            # fixture shape here only produces a signature the ME must reject.
+            if params.time_in_force != TimeInForce.GTC:
+                raise ValueError("TP/SL trigger orders require GTC time_in_force")
+            if params.post_only:
+                raise ValueError("post_only on TP/SL trigger orders is not supported")
+            if expires_after != 0:
+                raise ValueError("TP/SL trigger orders must omit expires_after")
+        elif params.time_in_force == TimeInForce.GTT:
             if expires_after == 0:
                 raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
             if expires_after <= deadline:
@@ -770,8 +782,6 @@ class ReyaTradingClient:
         # OrderDetails.clientOrderId. With order_id targeting, omit it for a
         # no-tag resting order.
         signed_client_order_id = params.client_order_id or 0
-
-        is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
 
         # qty and trigger_px are type-conditional and symmetric (mirrors the
         # create builders — build_create_trigger_order_payload has no qty and
@@ -790,6 +800,8 @@ class ReyaTradingClient:
                 raise ValueError("qty on TP/SL trigger orders is not supported; omit qty")
             if params.trigger_px is None:
                 raise ValueError("trigger_px is required when modifying a STOP_LOSS/TAKE_PROFIT trigger order")
+            # sign_order recognizes the trigger order type and replaces this
+            # caller-facing zero with the direction-aware +/-int256.max sentinel.
             signed_qty = Decimal(0)
             trigger_price = Decimal(params.trigger_px)
         else:

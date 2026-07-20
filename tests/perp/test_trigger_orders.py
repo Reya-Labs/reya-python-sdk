@@ -28,15 +28,20 @@ from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigg
 #   _FIRE_SKIP        — assert on-chain firing semantics (price-crossed → fired,
 #                       position-closed/flipped → auto-cancelled). Skipped until
 #                       firing ships.
-#   _BACKBONE_SKIP    — pure create→OPEN→cancel round-trips + cancel-not-found;
-#                       these DO work against the backbone. Skipped only until
-#                       PR-1 (the storing ME) is deployed to devnet1.
+# Pure create→OPEN→cancel round-trips and cancel-not-found work against the
+# backbone and run on exact-source Localnet today; non-Localnet environments
+# skip until that backbone is deployed there.
 _FIRE_SKIP = "requires trigger firing; backbone arms but does not fire"
 _IN_CROSS_SKIP = (
     "requires trigger firing; backbone arms but does not fire. "
     "backbone semantics: already-crossed triggers simply arm — no immediate execution"
 )
-_BACKBONE_SKIP = "un-skip when the backbone matching engine is deployed to devnet1"
+_LOCALNET_CHAIN_ID = 31337
+
+
+def _require_exact_source_localnet(reya_tester: ReyaTester) -> None:
+    if reya_tester.chain_id != _LOCALNET_CHAIN_ID:
+        pytest.skip("requires exact-source Localnet SL/TP backbone")
 
 
 async def _confirm_open_fill_sequence(
@@ -89,10 +94,10 @@ def assert_tp_sl_order_submission(
     logger.info("✅ Order submission confirmed correctly")
 
 
-@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     """TP order, close right after creation"""
+    _require_exact_source_localnet(reya_tester)
     symbol = "ETHRUSDPERP"
 
     # SETUP - capture sequence number BEFORE any actions so the execution waiter
@@ -163,10 +168,10 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     logger.info("TP order cancel test completed successfully")
 
 
-@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     """SL order, close right after creation"""
+    _require_exact_source_localnet(reya_tester)
     symbol = "ETHRUSDPERP"
 
     # SETUP - capture sequence number BEFORE any actions so the execution waiter
@@ -467,7 +472,6 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     await reya_tester.check_no_order_execution_since(last_sequence_before)
 
 
-@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """Cancelling a non-existent order returns proper error.
@@ -477,6 +481,7 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     2. Error message indicates the order was not found
     3. Error code is ORDER_NOT_FOUND_ERROR
     """
+    _require_exact_source_localnet(reya_tester)
     # A syntactically valid but nonexistent numeric order id. "unknown_id"
     # would crash client-side in build_cancel_order_payload (`int(order_id)`)
     # before the request ever reaches the server, so the not-found path could

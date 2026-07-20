@@ -68,7 +68,12 @@ pytestmark = [pytest.mark.e2e, pytest.mark.modify, pytest.mark.validation]
 
 PERP_SYMBOL = "ETHRUSDPERP"
 BOGUS_ORDER_ID = 999_999_999_999_999_999
-BACKBONE_DEPLOY_SKIP = "un-skip when the backbone matching engine is deployed to devnet1"
+LOCALNET_CHAIN_ID = 31337
+
+
+def _require_exact_source_localnet(reya_tester: ReyaTester) -> None:
+    if reya_tester.chain_id != LOCALNET_CHAIN_ID:
+        pytest.skip("requires exact-source Localnet SL/TP backbone")
 
 
 _TIF_TO_INT = {
@@ -421,7 +426,6 @@ async def test_tampered_signature(market_config: SpotTestConfig | PerpTestConfig
         await maker.orders.close_all(fail_if_none=False)
 
 
-@pytest.mark.skip(reason=BACKBONE_DEPLOY_SKIP)
 @pytest.mark.perp
 @pytest.mark.trigger
 @pytest.mark.asyncio
@@ -431,11 +435,12 @@ async def test_trigger_order_reprice(perp_maker_tester: ReyaTester, perp_market_
     `order_type` passthrough (restating `orderType=TAKE_PROFIT`, so the ME's
     immutable-match passes) and assert the resting order's triggerPx updates.
 
-    Skipped until the backbone matching engine is deployed to devnet1 (it stores
-    and reprices armed triggers; today's devnet rejects the zero-qty create).
+    Runs on exact-source Localnet while environments without the backbone remain
+    skipped.
 
     Perp-pinned by nature: TP/SL trigger orders are a perp-only surface, so there
     is no spot analogue to parametrize."""
+    _require_exact_source_localnet(perp_maker_tester)
     oracle_price = float(await perp_maker_tester.data.current_price(perp_market_config.symbol))
     trigger_px = str(round(oracle_price * 10, 2))
     repriced_trigger_px = str(round(oracle_price * 12, 2))
@@ -452,8 +457,8 @@ async def test_trigger_order_reprice(perp_maker_tester: ReyaTester, perp_market_
         assert resting.limit_px is not None
 
         # Reprice via the order_type passthrough: orderType restates TAKE_PROFIT
-        # (so the immutable-match passes), qty is omitted (the signed quantity
-        # restates the stored 0), and the new triggerPx is the modifiable field.
+        # (so the immutable-match passes), qty is omitted (the signer derives the
+        # full-position sentinel), and the new triggerPx is the modifiable field.
         # The ME re-validates triggerPx > 0.
         modify_params = ModifyOrderParameters(
             symbol=perp_market_config.symbol,

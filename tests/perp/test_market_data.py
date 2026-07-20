@@ -208,7 +208,7 @@ async def test_market_perp_executions(reya_tester: ReyaTester):
     Renames from the AMM era: ``accountId`` → ``takerAccountId``, ``fee`` → ``takerFee``.
     New optional fields: ``makerAccountId``, ``takerOrderId``, ``makerOrderId``,
     ``makerFee``, ``makerOpeningFee``, ``makerRealizedPnl``, ``makerPriceVariationPnl``,
-    ``makerFundingPnl``. Execution type ``DUST`` was added.
+    ``makerFundingPnl``. Execution type ``MARKET_CLOSE`` was added.
     """
     symbol = "ETHRUSDPERP"
     executions = await reya_tester.client.markets.get_market_perp_executions(symbol)
@@ -230,12 +230,13 @@ async def test_market_perp_executions(reya_tester: ReyaTester):
     current_time = int(time.time() * 1000)
     assert execution.timestamp > current_time - (30 * 24 * 60 * 60 * 1000), "Timestamp should be recent"
     assert execution.timestamp <= current_time + (60 * 1000), "Timestamp should not be in future"
-    # ``DUST`` was added in v2.3.0; legacy ``ORDER_MATCH`` and ``LIQUIDATION`` still apply, plus ``ADL``.
+    # ``MARKET_CLOSE`` replaces the legacy ``DUST`` name; the other execution
+    # types remain ``ORDER_MATCH``, ``LIQUIDATION``, and ``ADL``.
     assert execution.type in [
         "ORDER_MATCH",
         "LIQUIDATION",
         "ADL",
-        "DUST",
+        "MARKET_CLOSE",
     ], f"Unexpected execution type: {execution.type}"
 
 
