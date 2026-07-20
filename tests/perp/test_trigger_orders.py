@@ -18,6 +18,7 @@ from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from tests.helpers import ReyaTester
+from tests.helpers.liquidity_detector import skip_if_external_liquidity
 from tests.helpers.price_helpers import format_price, quantize_price
 from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 
@@ -66,6 +67,57 @@ async def _confirm_open_fill_sequence(
     raise AssertionError(f"Position-opening fill not reflected past sequence {baseline_seq} within {timeout}s")
 
 
+async def _open_localnet_long(
+    maker: ReyaTester,
+    taker: ReyaTester,
+    symbol: str,
+    qty: str = "0.01",
+) -> tuple[Decimal, Decimal, int]:
+    """Open a deterministic long for the trigger owner on an empty Localnet book.
+
+    Perp OB has no pool counterparty, so a standalone IOC is not a position
+    fixture. Rest an explicit maker ask first, cross it from the trigger owner,
+    and return the observed position sequence used to prove that create/cancel
+    did not fire the trigger.
+    """
+    baseline_seq = await taker.get_last_perp_execution_sequence_number()
+    market_price = Decimal(str(await taker.data.current_price(symbol)))
+    tick_size = Decimal(str((await taker.data.market_definition(symbol)).tick_size))
+    await skip_if_external_liquidity(
+        maker.data,
+        symbol,
+        float(market_price),
+        reason_prefix="_open_localnet_long",
+    )
+
+    maker_px = format_price(quantize_price(market_price * Decimal("0.99"), tick_size))
+    taker_px = format_price(quantize_price(market_price * Decimal("1.05"), tick_size))
+    maker_order_id = await maker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=symbol,
+            is_buy=False,
+            limit_px=maker_px,
+            qty=qty,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert maker_order_id is not None
+    await maker.wait.for_order_creation(maker_order_id)
+
+    await taker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=symbol,
+            is_buy=True,
+            limit_px=taker_px,
+            qty=qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+    sequence_after_position = await _confirm_open_fill_sequence(taker, symbol, baseline_seq)
+    return market_price, tick_size, sequence_after_position
+
+
 def assert_tp_sl_order_submission(
     order_details: Order,
     expected_order_details: Order,
@@ -95,30 +147,19 @@ def assert_tp_sl_order_submission(
 
 
 @pytest.mark.asyncio
-async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
+async def test_success_tp_order_create_cancel(
+    perp_maker_tester: ReyaTester,
+    perp_taker_tester: ReyaTester,
+):
     """TP order, close right after creation"""
+    reya_tester = perp_taker_tester
     _require_exact_source_localnet(reya_tester)
     symbol = "ETHRUSDPERP"
-
-    # SETUP - capture sequence number BEFORE any actions so the execution waiter
-    # can filter out stale executions from earlier runs in the same session.
-    baseline_seq = await reya_tester.get_last_perp_execution_sequence_number()
-
-    market_price = await reya_tester.data.current_price(symbol)
-    tick_size = (await reya_tester.data.market_definition(symbol)).tick_size
-    limit_order_params = LimitOrderParameters(
-        symbol=symbol,
-        limit_px=format_price(quantize_price(Decimal(market_price) * Decimal("1.1"), tick_size)),
-        is_buy=True,
-        time_in_force=TimeInForce.IOC,
-        qty="0.01",
-        reduce_only=False,
+    market_price, tick_size, sequence_after_position = await _open_localnet_long(
+        perp_maker_tester,
+        reya_tester,
+        symbol,
     )
-    await reya_tester.orders.create_limit(limit_order_params)
-
-    # Wait for execution, filtering to only trades after the captured baseline.
-    expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_order, baseline_seq=baseline_seq)
     await reya_tester.check.no_open_orders()
 
     # SUBMIT TP
@@ -137,9 +178,6 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     active_tp_order = await reya_tester.wait.for_order_creation(order_id=tp_order.order_id)
     expected_tp_order = trigger_order_params_to_order(tp_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(tp_order.order_id, expected_tp_order)
-    # Baseline for the no-execution check: the open fill's trade sequence, sourced from
-    # the positions stream (see _confirm_open_fill_sequence) so it is never captured stale.
-    sequence_after_position = await _confirm_open_fill_sequence(reya_tester, symbol, baseline_seq)
     await reya_tester.check.position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -169,29 +207,19 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
+async def test_success_sl_order_create_cancel(
+    perp_maker_tester: ReyaTester,
+    perp_taker_tester: ReyaTester,
+):
     """SL order, close right after creation"""
+    reya_tester = perp_taker_tester
     _require_exact_source_localnet(reya_tester)
     symbol = "ETHRUSDPERP"
-
-    # SETUP - capture sequence number BEFORE any actions so the execution waiter
-    # can filter out stale executions from earlier runs in the same session.
-    baseline_seq = await reya_tester.get_last_perp_execution_sequence_number()
-
-    market_price = await reya_tester.data.current_price(symbol)
-    tick_size = (await reya_tester.data.market_definition(symbol)).tick_size
-
-    # Create initial limit order to establish position
-    limit_order_params = LimitOrderParameters(
-        symbol=symbol,
-        limit_px=format_price(quantize_price(Decimal(market_price) * Decimal("1.1"), tick_size)),
-        time_in_force=TimeInForce.IOC,
-        is_buy=True,  # Create long position first
-        qty="0.01",
-        reduce_only=False,
+    market_price, tick_size, sequence_after_position = await _open_localnet_long(
+        perp_maker_tester,
+        reya_tester,
+        symbol,
     )
-    await reya_tester.orders.create_limit(limit_order_params)
-
     await reya_tester.check.no_open_orders()
 
     # SUBMIT SL
@@ -208,10 +236,6 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     active_sl_order = await reya_tester.wait.for_order_creation(order_id=order_response.order_id, timeout=10)
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(order_response.order_id, expected_sl_order)
-    # Confirm the position-opening fill landed and capture its trade sequence as the
-    # no-execution baseline, sourced from the positions stream (see
-    # _confirm_open_fill_sequence) rather than the lag-prone /perpExecutions endpoint.
-    sequence_after_position = await _confirm_open_fill_sequence(reya_tester, symbol, baseline_seq)
     await reya_tester.check.position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
