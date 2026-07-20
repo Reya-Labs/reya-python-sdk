@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from decimal import Decimal
 
 import pytest
 
@@ -21,6 +22,7 @@ from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
+from tests.helpers.localnet_fee_v3 import RUSD_SCALE, WAD, configured_localnet_fee_v3, wait_for_indexed_fee_v3_row
 from tests.helpers.market_config import PerpTestConfig
 from tests.helpers.order_lifecycle import assert_px_qty, wait_for_taker_perp_execution
 
@@ -126,66 +128,99 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
 
     cross_px = str(market_config.price(0.99))
     qty = market_config.min_qty
+    assert taker.owner_wallet_address is not None
 
-    maker_order_id = await maker.orders.create_limit(
-        LimitOrderParameters(
+    with configured_localnet_fee_v3(
+        taker_owner=taker.owner_wallet_address,
+        pool_account_id=maker.account_id,
+    ) as fee_v3_scenario:
+        maker_order_id = await maker.orders.create_limit(
+            LimitOrderParameters(
+                symbol=market_config.symbol,
+                is_buy=True,
+                limit_px=cross_px,
+                qty=qty,
+                time_in_force=TimeInForce.GTC,
+            )
+        )
+        assert maker_order_id is not None
+        await maker.wait.for_order_creation(maker_order_id)
+
+        taker_response = await taker.client.create_limit_order(
+            LimitOrderParameters(
+                symbol=market_config.symbol,
+                is_buy=False,
+                limit_px=cross_px,
+                qty=qty,
+                time_in_force=TimeInForce.GTC,
+            )
+        )
+        taker_order_id = taker_response.order_id
+        assert taker_order_id is not None
+
+        maker_history_order = await _wait_for_history_order(
+            maker,
+            maker_order_id,
+            lambda order: order.status == OrderStatus.FILLED and order.first_fill_id is not None,
+        )
+        taker_history_order = await _wait_for_history_order(
+            taker,
+            taker_order_id,
+            lambda order: order.status == OrderStatus.FILLED and order.first_fill_id is not None,
+        )
+
+        _assert_filled_order_projection(
+            maker_history_order,
+            account_id=maker.account_id,
             symbol=market_config.symbol,
-            is_buy=True,
+            side=Side.B,
             limit_px=cross_px,
             qty=qty,
-            time_in_force=TimeInForce.GTC,
         )
-    )
-    assert maker_order_id is not None
-    await maker.wait.for_order_creation(maker_order_id)
-
-    taker_response = await taker.client.create_limit_order(
-        LimitOrderParameters(
+        _assert_filled_order_projection(
+            taker_history_order,
+            account_id=taker.account_id,
             symbol=market_config.symbol,
-            is_buy=False,
+            side=Side.A,
             limit_px=cross_px,
             qty=qty,
-            time_in_force=TimeInForce.GTC,
         )
-    )
-    taker_order_id = taker_response.order_id
-    assert taker_order_id is not None
 
-    maker_history_order = await _wait_for_history_order(
-        maker,
-        maker_order_id,
-        lambda order: order.status == OrderStatus.FILLED and order.first_fill_id is not None,
-    )
-    taker_history_order = await _wait_for_history_order(
-        taker,
-        taker_order_id,
-        lambda order: order.status == OrderStatus.FILLED and order.first_fill_id is not None,
-    )
+        assert maker_history_order.fill_count == 1, "maker should map to one fill"
+        assert taker_history_order.fill_count == 1, "single-level taker should map to one fill"
 
-    _assert_filled_order_projection(
-        maker_history_order,
-        account_id=maker.account_id,
-        symbol=market_config.symbol,
-        side=Side.B,
-        limit_px=cross_px,
-        qty=qty,
-    )
-    _assert_filled_order_projection(
-        taker_history_order,
-        account_id=taker.account_id,
-        symbol=market_config.symbol,
-        side=Side.A,
-        limit_px=cross_px,
-        qty=qty,
-    )
+        execution = await wait_for_taker_perp_execution(taker, taker_order_id, timeout_s=15.0)
+        assert execution.fill_id == taker_history_order.first_fill_id
+        assert execution.fill_id == maker_history_order.first_fill_id
+        assert execution.maker_fee is None, "fee-model-v3 executions must not project the legacy makerFee field"
 
-    assert maker_history_order.fill_count == 1, "maker should map to one fill"
-    assert taker_history_order.fill_count == 1, "single-level taker should map to one fill"
+        if fee_v3_scenario is not None:
+            assert execution.fill_id is not None
+            indexed = wait_for_indexed_fee_v3_row(execution.fill_id)
+            assert indexed.account_id == taker.account_id
+            assert indexed.counterparty_account_id == maker.account_id
+            assert indexed.fee > 0
+            assert indexed.referrer_fee_credit == 0
 
-    execution = await wait_for_taker_perp_execution(taker, taker_order_id, timeout_s=15.0)
-    assert execution.fill_id == taker_history_order.first_fill_id
-    assert execution.fill_id == maker_history_order.first_fill_id
-    assert execution.maker_fee is None, "fee-model-v3 executions must not project the legacy makerFee field"
+            expected_taker_rebate = indexed.fee * fee_v3_scenario.taker_rebate_rate // WAD
+            remaining_after_taker = indexed.fee - expected_taker_rebate
+            expected_pool_credit = remaining_after_taker * fee_v3_scenario.pool_rebate_rate // WAD
+            expected_protocol_credit = remaining_after_taker - expected_pool_credit
+
+            assert indexed.taker_rebate_credit == expected_taker_rebate
+            assert indexed.pool_fee_credit == expected_pool_credit
+            assert indexed.protocol_fee_credit == expected_protocol_credit
+            assert indexed.fee == (
+                indexed.protocol_fee_credit
+                + indexed.referrer_fee_credit
+                + indexed.taker_rebate_credit
+                + indexed.pool_fee_credit
+            )
+            assert Decimal(execution.taker_fee) == Decimal(indexed.fee) / Decimal(RUSD_SCALE)
+            assert indexed.exchange_fee_credit is None
+            assert indexed.maker_fee_credit is None
+            assert indexed.maker_fee_debit is None
+            assert indexed.transaction_hash.startswith("0x")
 
     await _assert_time_window_refetch_contains_order(maker, maker_history_order)
     await _assert_time_window_refetch_contains_order(taker, taker_history_order)
