@@ -17,8 +17,8 @@ Happy paths (11) — all driven via :class:`ReyaWsExecClient`:
     6. Perp createOrder (LIMIT GTC conditional, rests) + cancel
     7. Perp createOrder (TP) + cancel
     8. Perp createOrder (SL) + cancel
-    9/10. Perp IOC open long + reduce-only close (paired in one test so the
-          position is always unwound even if an assertion fails).
+    9/10. Perp IOC increase + reduce-only close (paired and settlement-gated so
+          the close is not submitted against stale pre-open chain state).
 
 Error paths (6) -- driven on a separate raw WebSocket so the harness can send
 intentionally-malformed payloads without racing the high-level client's
@@ -41,19 +41,22 @@ Requires the configured chain's ws-exec relayer EOA funded with native gas
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+from sdk.async_exec_api.create_order_response import CreateOrderResponse
 from sdk.async_exec_api.order_status import OrderStatus
-from sdk.open_api.models import TimeInForce
+from sdk.open_api.models import Side, TimeInForce
+from sdk.open_api.models.order_status import OrderStatus as RestOrderStatus
 from sdk.open_api.models.order_type import OrderType
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
@@ -77,6 +80,7 @@ _REQUIRED_WS_EXEC_ENV = ("REYA_WS_EXEC_URL",)
 _SPOT_ACCOUNT_1_ENV = ws_exec_account_env_vars("SPOT", 1)
 _SPOT_ACCOUNT_2_ENV = ws_exec_account_env_vars("SPOT", 2)
 _PERP_ACCOUNT_1_ENV = ws_exec_account_env_vars("PERP", 1)
+_PERP_ACCOUNT_2_ENV = ws_exec_account_env_vars("PERP", 2)
 
 pytestmark = [pytest.mark.asyncio(loop_scope="function")]
 
@@ -90,22 +94,22 @@ PERP_SYMBOL = "ETHRUSDPERP"
 # distance-from-mark cap, so the order sits safely below any real seller.
 SPOT_LIMIT_PX = "1"
 
-# Perp IOC has different semantics: it matches against the pool, and the
+# Perp IOC has different semantics: it crosses resting order-book liquidity,
+# then settles on-chain. The
 # on-chain `Prices.sol::checkPriceLimit` reverts with `UnacceptableOrderPrice`
 # if the executed price exceeds the limit (for a buy) or falls below it (for a
-# sell). A $1 buy would never fill -- it would revert on-chain. A $40k buy
-# limit fills at the current mark (~$2-3k), opening a min-size long position
-# (qty = market.min_qty = 0.01 ETH).
-PERP_LIMIT_PX = "40000"
+# sell). A $1 buy would never fill. A $40k buy accepts any realistic resting
+# ask inside the matching engine's market-price guard, opening a min-size long
+# position (qty = market.min_qty = 0.01 ETH).
+PERP_BUY_LIMIT_PX = "40000"
 
 # Perp LIMIT GTC conditional order -- limit price far below the current mark
 # so the conditional rests in OrdersGateway indefinitely (we cancel it next).
 PERP_GTC_LIMIT_PX = "100"
 
-# Perp IOC reduce-only sell limit -- $1 means "accept any price >= $1", and
-# the pool fills at the current mark. Used by the reduce-only close that
-# unwinds the long opened by the IOC buy.
-PERP_REDUCE_ONLY_LIMIT_PX = "1"
+# Perp IOC sell limit -- $1 means "accept any price >= $1". It crosses a
+# resting bid for either an opening sell or a reduce-only close.
+PERP_SELL_LIMIT_PX = "1"
 
 # Trigger prices for TP / SL conditional orders. Set well outside any plausible
 # fill range so they never fire during the test window.
@@ -113,6 +117,7 @@ PERP_TP_TRIGGER_PX = "1000000"
 PERP_SL_TRIGGER_PX = "1"
 
 RECV_TIMEOUT_S = 15.0
+SETTLEMENT_TIMEOUT_S = 30.0
 
 
 # ---- Happy-path flows (via the high-level client) ---------------------------
@@ -285,29 +290,40 @@ async def flow_perp_create_trigger_and_cancel(
     print(f"  [perp] cancelOrder OK status={cancel.status} orderId={cancel.order_id}")
 
 
-async def flow_perp_ioc_open(client: ReyaWsExecClient, qty: Decimal) -> None:
-    """Perp IOC. Settles on-chain via OrdersGateway::execute and fills at the
-    current pool price, opening a min-size long position."""
+async def flow_perp_ioc_open(
+    client: ReyaWsExecClient,
+    qty: Decimal,
+    *,
+    is_buy: bool,
+) -> CreateOrderResponse:
+    """Submit the opening perp IOC and return the matching-engine response."""
     resp = await client.create_limit_order(
         LimitOrderParameters(
             symbol=PERP_SYMBOL,
-            is_buy=True,
-            limit_px=PERP_LIMIT_PX,
+            is_buy=is_buy,
+            limit_px=PERP_BUY_LIMIT_PX if is_buy else PERP_SELL_LIMIT_PX,
             qty=str(qty),
             time_in_force=TimeInForce.IOC,
             reduce_only=False,
         )
     )
     print(f"  [perp] createOrder (IOC) OK status={resp.status} " f"execQty={resp.exec_qty} orderId={resp.order_id}")
+    _assert_single_fill_response(resp, qty=qty, label="perp IOC open")
+    return resp
 
 
-async def flow_perp_ioc_close(client: ReyaWsExecClient, qty: Decimal) -> None:
-    """Reduce-only IOC sell -- closes the long opened by flow_perp_ioc_open."""
+async def flow_perp_ioc_close(
+    client: ReyaWsExecClient,
+    qty: Decimal,
+    *,
+    is_buy: bool,
+) -> CreateOrderResponse:
+    """Submit the reduce-only IOC that reverses the opening leg."""
     resp = await client.create_limit_order(
         LimitOrderParameters(
             symbol=PERP_SYMBOL,
-            is_buy=False,
-            limit_px=PERP_REDUCE_ONLY_LIMIT_PX,
+            is_buy=is_buy,
+            limit_px=PERP_BUY_LIMIT_PX if is_buy else PERP_SELL_LIMIT_PX,
             qty=str(qty),
             time_in_force=TimeInForce.IOC,
             reduce_only=True,
@@ -317,6 +333,8 @@ async def flow_perp_ioc_close(client: ReyaWsExecClient, qty: Decimal) -> None:
         f"  [perp] createOrder (IOC reduceOnly close) OK status={resp.status} "
         f"execQty={resp.exec_qty} orderId={resp.order_id}"
     )
+    _assert_single_fill_response(resp, qty=qty, label="perp IOC reduce-only close")
+    return resp
 
 
 # ---- Error flows (driven on a separate raw WebSocket) -----------------------
@@ -567,6 +585,135 @@ def _assert_cancelled_count(expected: int, actual: int | None, label: str) -> No
         )
 
 
+def _assert_single_fill_response(response: CreateOrderResponse, qty: Decimal, label: str) -> None:
+    """Validate the matching-engine half of a one-fill IOC lifecycle."""
+    if response.status != OrderStatus.FILLED:
+        raise AssertionError(f"{label} must be FILLED, got {response.status}: {response}")
+    if response.exec_qty is None or Decimal(response.exec_qty) != qty:
+        raise AssertionError(f"{label} must execute {qty}, got execQty={response.exec_qty}: {response}")
+    if response.first_fill_id is None or response.fill_count != 1:
+        raise AssertionError(
+            f"{label} must identify exactly one fill, got "
+            f"firstFillId={response.first_fill_id}, fillCount={response.fill_count}: {response}"
+        )
+
+
+async def _perp_signed_qty(client: ReyaTradingClient) -> Decimal:
+    """Read the account's indexed signed position for the test market."""
+    for position in await client.get_positions():
+        if position.symbol != PERP_SYMBOL or position.account_id != client.config.account_id:
+            continue
+        qty = Decimal(position.qty)
+        return qty if position.side == Side.B else -qty
+    return Decimal(0)
+
+
+async def _wait_for_perp_fill_settlement(
+    client: ReyaTradingClient,
+    response: CreateOrderResponse,
+    *,
+    expected_position_qty: Decimal,
+    expected_side: Side,
+) -> None:
+    """Wait for chain-backed execution and position indexing for one ME fill.
+
+    A ws-exec ``FILLED`` response proves matching only. Successful settlement
+    is established by the same ``firstFillId`` appearing on the indexed perp
+    execution, with no matching execution bust, and by the expected position
+    becoming visible. Waiting here also prevents a dependent close from being
+    gas-estimated against the pre-open chain state (PRO-672).
+    """
+    fill_id = response.first_fill_id
+    if fill_id is None:
+        raise AssertionError(f"FILLED response is missing firstFillId: {response}")
+
+    deadline = asyncio.get_running_loop().time() + SETTLEMENT_TIMEOUT_S
+    last_position_qty: Decimal | None = None
+    while asyncio.get_running_loop().time() < deadline:
+        busts = await client.get_execution_busts()
+        bust = next((candidate for candidate in busts.data if candidate.fill_id == fill_id), None)
+        if bust is not None:
+            raise AssertionError(f"fill {fill_id} produced an execution bust: {bust.reason!r}")
+
+        executions = await client.get_perp_executions()
+        execution = next((candidate for candidate in executions.data if candidate.fill_id == fill_id), None)
+        last_position_qty = await _perp_signed_qty(client)
+        if execution is not None and last_position_qty == expected_position_qty:
+            assert (
+                execution.side == expected_side
+            ), f"fill {fill_id} side mismatch: expected {expected_side}, got {execution.side}"
+            print(f"  [perp] fill {fill_id} settled and indexed; " f"position={last_position_qty} {PERP_SYMBOL}")
+            return
+
+        await asyncio.sleep(0.25)
+
+    raise AssertionError(
+        f"fill {fill_id} was not authoritatively settled within {SETTLEMENT_TIMEOUT_S}s; "
+        f"last indexed position={last_position_qty}, expected={expected_position_qty}"
+    )
+
+
+async def _wait_for_perp_position(client: ReyaTradingClient, expected_qty: Decimal) -> None:
+    """Wait until the chain-backed position surface reaches ``expected_qty``."""
+    deadline = asyncio.get_running_loop().time() + SETTLEMENT_TIMEOUT_S
+    last_qty: Decimal | None = None
+    while asyncio.get_running_loop().time() < deadline:
+        last_qty = await _perp_signed_qty(client)
+        if last_qty == expected_qty:
+            return
+        await asyncio.sleep(0.25)
+    raise AssertionError(
+        f"perp position did not reach {expected_qty} within {SETTLEMENT_TIMEOUT_S}s; last indexed position={last_qty}"
+    )
+
+
+async def _rest_perp_counterparty(
+    client: ReyaTradingClient,
+    *,
+    is_buy: bool,
+    qty: Decimal,
+) -> str:
+    """Rest deterministic post-only liquidity for the ws-exec IOC canary."""
+    mark_price = Decimal(await client.get_market_mark_price(PERP_SYMBOL))
+    multiplier = Decimal("0.96") if is_buy else Decimal("1.04")
+    limit_px = (mark_price * multiplier).quantize(Decimal("0.01"))
+    response = await client.create_limit_order(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=is_buy,
+            limit_px=str(limit_px),
+            qty=str(qty),
+            time_in_force=TimeInForce.GTC,
+            post_only=True,
+        )
+    )
+    if response.status != RestOrderStatus.OPEN or response.order_id is None:
+        raise AssertionError(f"controlled perp maker order did not rest: {response}")
+
+    deadline = asyncio.get_running_loop().time() + RECV_TIMEOUT_S
+    while asyncio.get_running_loop().time() < deadline:
+        if any(order.order_id == response.order_id for order in await client.get_open_orders()):
+            print(
+                f"  [perp maker] rested {'BUY' if is_buy else 'SELL'} {qty} "
+                f"@ {limit_px}; orderId={response.order_id}"
+            )
+            return response.order_id
+        await asyncio.sleep(0.1)
+
+    raise AssertionError(f"controlled perp maker order {response.order_id} did not become OPEN")
+
+
+async def _cancel_perp_order_if_open(client: ReyaTradingClient, order_id: str) -> None:
+    """Cancel only this test's controlled maker order when it remains open."""
+    if not any(order.order_id == order_id for order in await client.get_open_orders()):
+        return
+    await client.cancel_order(
+        order_id=order_id,
+        symbol=PERP_SYMBOL,
+        account_id=client.config.account_id,
+    )
+
+
 async def _connect_ws_exec_client(
     rest_client: ReyaTradingClient,
     ws_url: str,
@@ -584,7 +731,20 @@ async def _build_rest_client(
     account_number: int = 1,
 ) -> ReyaTradingClient:
     """Build + start a REST client. ``start()`` loads market definitions."""
-    config = TradingConfig.from_env() if perp else TradingConfig.from_env_spot(account_number=account_number)
+    if account_number not in (1, 2):
+        raise ValueError(f"account_number must be 1 or 2, got {account_number}")
+
+    if perp:
+        config = TradingConfig.from_env()
+        if account_number == 2:
+            config = replace(
+                config,
+                owner_wallet_address=os.environ["PERP_WALLET_ADDRESS_2"],
+                private_key=os.environ["PERP_PRIVATE_KEY_2"],
+                account_id=int(os.environ["PERP_ACCOUNT_ID_2"]),
+            )
+    else:
+        config = TradingConfig.from_env_spot(account_number=account_number)
     if not config.private_key or config.account_id is None:
         kind = "PERP" if perp else f"SPOT_*_{account_number}"
         raise RuntimeError(f"{kind} private key + account id must be set in .env")
@@ -624,7 +784,7 @@ async def harness():
 
     ws_url = os.environ["REYA_WS_EXEC_URL"]
     spot_rest = await _build_rest_client(perp=False, account_number=1)
-    perp_rest = await _build_rest_client(perp=True)
+    perp_rest = await _build_rest_client(perp=True, account_number=1)
     spot_account_2_missing_env = missing_env_vars(_SPOT_ACCOUNT_2_ENV)
     spot_rest_2: ReyaTradingClient | None = None
     if not spot_account_2_missing_env:
@@ -665,6 +825,23 @@ async def perp_ws(harness):  # pylint: disable=redefined-outer-name
     """A connected ws-exec client authenticated as the perp account."""
     async with await _connect_ws_exec_client(harness.perp_rest, harness.ws_url) as client:
         yield client
+
+
+@pytest_asyncio.fixture(loop_scope="function", scope="function")
+async def perp_counterparty_rest():
+    """A second perp account used only to make the IOC canary deterministic."""
+    missing_required = missing_env_vars(_PERP_ACCOUNT_2_ENV)
+    if missing_required:
+        ws_exec_prerequisite_missing(
+            "perp IOC settlement coverage needs Perp Account 2 configuration",
+            missing_env=missing_required,
+        )
+
+    client = await _build_rest_client(perp=True, account_number=2)
+    try:
+        yield client
+    finally:
+        await client.close()
 
 
 # ---- Happy-path tests ------------------------------------------------------
@@ -749,15 +926,72 @@ async def test_perp_trigger_stop_loss_and_cancel(perp_ws, harness):  # pylint: d
     await flow_perp_create_trigger_and_cancel(perp_ws, OrderType.STOP_LOSS, PERP_SL_TRIGGER_PX, harness.perp_qty, "SL")
 
 
-async def test_perp_ioc_open_and_close(perp_ws, harness):  # pylint: disable=redefined-outer-name
-    """Flows 9-10 (paired): perp IOC opens a min-size long, reduce-only IOC
-    closes it. The close always runs in ``finally`` so a failed assertion never
-    leaks a position."""
-    await flow_perp_ioc_open(perp_ws, qty=harness.perp_qty)
+async def test_perp_ioc_open_and_close(
+    perp_ws,
+    harness,
+    perp_counterparty_rest,
+):  # pylint: disable=redefined-outer-name
+    """Flows 9-10 (paired): increase exposure, then reduce to the baseline.
+
+    Each matching-engine fill must settle and reach the indexed execution +
+    position surfaces before the dependent leg is submitted.
+    """
+    baseline_qty = await _perp_signed_qty(harness.perp_rest)
+    maker_baseline_qty = await _perp_signed_qty(perp_counterparty_rest)
+    open_is_buy = baseline_qty >= 0
+    open_delta = harness.perp_qty if open_is_buy else -harness.perp_qty
+    opened_qty = baseline_qty + open_delta
+
+    maker_order_ids: list[str] = []
     try:
-        pass  # placeholder for future inter-9-and-10 checks; keep paired
+        maker_order_ids.append(
+            await _rest_perp_counterparty(
+                perp_counterparty_rest,
+                is_buy=not open_is_buy,
+                qty=harness.perp_qty,
+            )
+        )
+        open_response = await flow_perp_ioc_open(
+            perp_ws,
+            qty=harness.perp_qty,
+            is_buy=open_is_buy,
+        )
+        try:
+            await _wait_for_perp_fill_settlement(
+                harness.perp_rest,
+                open_response,
+                expected_position_qty=opened_qty,
+                expected_side=Side.B if open_is_buy else Side.A,
+            )
+        finally:
+            # Once the opening position is visible, seed the opposite maker
+            # leg before submitting the close. This also cleans up an opened
+            # position if a later opening assertion fails.
+            if await _perp_signed_qty(harness.perp_rest) == opened_qty:
+                maker_order_ids.append(
+                    await _rest_perp_counterparty(
+                        perp_counterparty_rest,
+                        is_buy=open_is_buy,
+                        qty=harness.perp_qty,
+                    )
+                )
+                close_response = await flow_perp_ioc_close(
+                    perp_ws,
+                    qty=harness.perp_qty,
+                    is_buy=not open_is_buy,
+                )
+                await _wait_for_perp_fill_settlement(
+                    harness.perp_rest,
+                    close_response,
+                    expected_position_qty=baseline_qty,
+                    expected_side=Side.A if open_is_buy else Side.B,
+                )
+
+        await _wait_for_perp_position(perp_counterparty_rest, maker_baseline_qty)
+        assert await _perp_signed_qty(harness.perp_rest) == baseline_qty
     finally:
-        await flow_perp_ioc_close(perp_ws, qty=harness.perp_qty)
+        for maker_order_id in maker_order_ids:
+            await _cancel_perp_order_if_open(perp_counterparty_rest, maker_order_id)
 
 
 # ---- Error-path tests ------------------------------------------------------
