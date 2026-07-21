@@ -350,6 +350,20 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
     return ModifyOrderParameters(**fields)
 
 
+def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
+    """A valid trigger reprice restating the trigger-create immutables."""
+    fields: dict[str, Any] = {
+        "order_type": OrderType.STOP_LOSS,
+        "trigger_px": "1500",
+        "qty": None,
+        "post_only": False,
+        "expires_after": None,
+        "time_in_force": TimeInForce.GTC,
+    }
+    fields.update(overrides)
+    return _modify_params(**fields)
+
+
 @pytest.mark.modify
 def test_modify_payload_wire_shape(client: ReyaTradingClient) -> None:
     """The modify body carries the post-modify fields, target identifier, and
@@ -467,16 +481,14 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
     # A trigger modify OMITS qty on the wire; the signed quantity is the
     # ±int256.max full-position sentinel (derived in sign_order from is_buy),
     # exactly like a trigger create.
-    sl_payload, nonce = client.build_modify_order_payload(
-        _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
-    )
+    sl_payload, nonce = client.build_modify_order_payload(_trigger_modify_params())
     assert sl_payload["orderType"] == "STOP_LOSS"
     assert sl_payload["triggerPx"] == "1500"
     assert "qty" not in sl_payload
 
     # The signature covers orderType=STOP_LOSS AND the signed sentinel
     # quantity: recompute the digest with the builder's own signer over
-    # STOP_LOSS / qty=0-wire (sign_order derives the ±sentinel internally;
+    # STOP_LOSS / caller-facing qty=0 (sign_order derives the ±sentinel internally;
     # pinned nonce/deadline) and match it.
     market_id = client.get_market_id_from_symbol(PERP_SYMBOL)
     expected_sig = client.signature_generator.sign_order(
@@ -488,13 +500,13 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
         qty=Decimal(0),
         limit_price=Decimal("2950"),
         trigger_price=Decimal("1500"),
-        time_in_force=int(TimeInForceInt.GTT),
+        time_in_force=int(TimeInForceInt.GTC),
         client_order_id=0,
         reduce_only=False,
-        expires_after=1745003600,
+        expires_after=0,
         nonce=nonce,
         deadline=1745000300,
-        post_only=True,
+        post_only=False,
     )
     assert sl_payload["signature"] == expected_sig
 
@@ -512,18 +524,16 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
 @pytest.mark.modify
 def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
     """Exhaustive key-set for a STOP_LOSS modify body: it is the LIMIT-modify key
-    set MINUS ``qty`` PLUS ``triggerPx`` — qty ABSENT, triggerPx present, every
-    immutable present. The per-field ``test_modify_payload_carries_order_type``
+    set MINUS ``qty`` and ``expiresAfter`` PLUS ``triggerPx`` — qty and expiry
+    ABSENT, triggerPx present, every immutable present. The per-field
+    ``test_modify_payload_carries_order_type``
     checks values but not the full key set, so a stray surviving ``qty`` (the
-    signed quantity restates 0) or a dropped immutable would slip past it; this
-    exact ``set(...) ==`` catches both.
+    signed quantity is the full-position sentinel) or a dropped immutable would
+    slip past it; this exact ``set(...) ==`` catches both.
 
-    Uses the GTT fixture default so ``expiresAfter`` (non-zero) is present;
     ``clientOrderId`` is absent because the fixture targets by ``orderId``.
     """
-    payload, _nonce = client.build_modify_order_payload(
-        _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
-    )
+    payload, _nonce = client.build_modify_order_payload(_trigger_modify_params())
 
     assert set(payload.keys()) == {
         "orderId",
@@ -537,7 +547,6 @@ def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
         "reduceOnly",
         "limitPx",
         "postOnly",
-        "expiresAfter",
         "signature",
         "nonce",
         "signerWallet",
@@ -548,22 +557,20 @@ def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
     assert "clientOrderId" not in payload  # fixture targets by orderId, no client id
     # Every signed immutable is present on the wire (full-restate).
     assert payload["orderType"] == "STOP_LOSS"
-    assert payload["timeInForce"] == "GTT"
+    assert payload["timeInForce"] == "GTC"
     assert payload["isBuy"] is True
     assert payload["reduceOnly"] is False
-    assert payload["postOnly"] is True
+    assert payload["postOnly"] is False
     assert payload["limitPx"] == "2950"
-    assert payload["expiresAfter"] == 1745003600
+    assert "expiresAfter" not in payload
 
 
 @pytest.mark.modify
 def test_modify_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
-    """A TP/SL modify must omit qty (the signed quantity restates 0); a supplied
-    qty is a targeted client-side ValueError, mirroring the trigger-create guard."""
+    """A TP/SL modify must omit qty (the signer derives the full-position
+    sentinel); a supplied qty is a targeted client-side ValueError."""
     with pytest.raises(ValueError, match="qty on TP/SL trigger orders is not supported"):
-        client.build_modify_order_payload(
-            _modify_params(order_type=OrderType.TAKE_PROFIT, trigger_px="1500", qty="0.75")
-        )
+        client.build_modify_order_payload(_trigger_modify_params(order_type=OrderType.TAKE_PROFIT, qty="0.75"))
 
 
 @pytest.mark.modify
@@ -648,7 +655,7 @@ def test_modify_params_positional_3_0_14_signature_still_binds(client: ReyaTradi
     trigger_payload, _ = client.build_modify_order_payload(trigger_params)
     assert trigger_payload["orderType"] == "STOP_LOSS"
     assert trigger_payload["triggerPx"] == "1500"
-    assert "qty" not in trigger_payload  # signed quantity restates 0 (whole position)
+    assert "qty" not in trigger_payload  # signer derives the full-position sentinel
 
 
 @pytest.mark.cod

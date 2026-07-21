@@ -17,7 +17,7 @@ class PerpExecution(BaseModel):
   maker_fee: Optional[str] = Field(default=None, alias='''makerFee''')
   taker_opening_fee: Optional[str] = Field(default=None, alias='''takerOpeningFee''')
   maker_opening_fee: Optional[str] = Field(default=None, alias='''makerOpeningFee''')
-  type: ExecutionType = Field(description='''Type of execution''')
+  type: ExecutionType = Field(description='''Type of execution. MARKET_CLOSE is the terminal execution used to close residual positions when a market is force-closed.''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
   fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')

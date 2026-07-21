@@ -4,4 +4,4 @@ class ExecutionType(Enum):
   ORDER_MATCH = "ORDER_MATCH"
   LIQUIDATION = "LIQUIDATION"
   ADL = "ADL"
-  DUST = "DUST"
+  MARKET_CLOSE = "MARKET_CLOSE"

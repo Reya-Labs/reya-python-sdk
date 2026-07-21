@@ -14,7 +14,7 @@ class SpotExecution(BaseModel):
   qty: str = Field()
   price: str = Field()
   taker_fee: str = Field(alias='''takerFee''')
-  type: ExecutionType = Field(description='''Type of execution''')
+  type: ExecutionType = Field(description='''Type of execution. MARKET_CLOSE is the terminal execution used to close residual positions when a market is force-closed.''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
   fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')

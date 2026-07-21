@@ -128,6 +128,20 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
     return ModifyOrderParameters(**fields)
 
 
+def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
+    """A valid trigger reprice restating the trigger-create immutables."""
+    fields: dict[str, Any] = {
+        "order_type": OrderType.STOP_LOSS,
+        "trigger_px": "1500",
+        "qty": None,
+        "post_only": False,
+        "expires_after": None,
+        "time_in_force": TimeInForce.GTC,
+    }
+    fields.update(overrides)
+    return _modify_params(**fields)
+
+
 @pytest.mark.modify
 def test_modify_with_both_identifiers_builds_and_restates_client_id(client: ReyaTradingClient) -> None:
     payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
@@ -162,18 +176,38 @@ def test_modify_parameters_rejects_resting_client_order_id_alias() -> None:
 def test_modify_trigger_order_type_requires_trigger_px(client: ReyaTradingClient, order_type: OrderType) -> None:
     """A STOP_LOSS/TAKE_PROFIT reprice must carry trigger_px (full-restate: the
     ME re-validates the trigger price as positive), rejected before signing. qty
-    is omitted (the signed quantity restates 0)."""
+    is omitted (the signer derives the full-position sentinel)."""
     with pytest.raises(ValueError, match="trigger_px is required"):
-        client.build_modify_order_payload(_modify_params(order_type=order_type, trigger_px=None, qty=None))
+        client.build_modify_order_payload(_trigger_modify_params(order_type=order_type, trigger_px=None))
 
 
 @pytest.mark.modify
 @pytest.mark.parametrize("order_type", [OrderType.STOP_LOSS, OrderType.TAKE_PROFIT])
 def test_modify_trigger_order_rejects_qty(client: ReyaTradingClient, order_type: OrderType) -> None:
-    """A TP/SL modify must omit qty (the signed quantity restates 0 = whole
-    position); a supplied qty is a targeted client-side ValueError."""
+    """A TP/SL modify must omit qty (the signer derives the full-position
+    sentinel); a supplied qty is a targeted client-side ValueError."""
     with pytest.raises(ValueError, match="qty on TP/SL trigger orders is not supported"):
-        client.build_modify_order_payload(_modify_params(order_type=order_type, trigger_px="1500", qty="0.75"))
+        client.build_modify_order_payload(_trigger_modify_params(order_type=order_type, qty="0.75"))
+
+
+@pytest.mark.modify
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"time_in_force": TimeInForce.GTT, "expires_after": PINNED_DEADLINE + 600}, "require GTC"),
+        ({"post_only": True}, "post_only on TP/SL"),
+        ({"expires_after": PINNED_DEADLINE + 600}, "must omit expires_after"),
+    ],
+)
+def test_modify_trigger_rejects_non_create_immutable_shape(
+    client: ReyaTradingClient,
+    overrides: dict[str, Any],
+    message: str,
+) -> None:
+    """Trigger modifies must restate the GTC, non-post-only, non-expiring
+    shape used by trigger creates; limit-order fixtures are invalid here."""
+    with pytest.raises(ValueError, match=message):
+        client.build_modify_order_payload(_trigger_modify_params(**overrides))
 
 
 @pytest.mark.modify

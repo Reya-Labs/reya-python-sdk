@@ -12,6 +12,7 @@ from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
 from sdk.async_api.execution_bust import ExecutionBust as WsInfoExecutionBust
+from sdk.async_api.execution_type import ExecutionType as WsInfoExecutionType
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_channel import MarketsSummaryChannel
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
@@ -32,6 +33,8 @@ from sdk.open_api import CancelReason as RestCancelReason
 from sdk.open_api import CreateOrderRequest as RestCreateOrderRequest
 from sdk.open_api import CreateOrderResponse as RestCreateOrderResponse
 from sdk.open_api import ExecutionBust as RestExecutionBust
+from sdk.open_api import ExecutionType as RestExecutionType
+from sdk.open_api import FeeTierParameters as RestFeeTierParameters
 from sdk.open_api import ModifyOrderRequest as RestModifyOrderRequest
 from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import Order as RestOrder
@@ -69,11 +72,42 @@ CANCEL_REASONS = {
     "FEED_RESET",
 }
 
+EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
+
 
 def test_order_status_enums_do_not_expose_rejected() -> None:
     assert {status.value for status in RestOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
     assert {status.value for status in WsInfoOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
     assert {status.value for status in WsExecOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
+
+
+def test_execution_type_enums_share_specs_values() -> None:
+    """REST and wallet-info WS must expose the same public execution types."""
+    assert {execution_type.value for execution_type in RestExecutionType} == EXECUTION_TYPES
+    assert {execution_type.value for execution_type in WsInfoExecutionType} == EXECUTION_TYPES
+
+
+def test_rest_fee_tier_parameters_exposes_only_30_day_volume() -> None:
+    tier = RestFeeTierParameters.from_dict(
+        {
+            "tierId": 2,
+            "takerFee": "0.0003",
+            "makerFee": "0",
+            "volume30d": "10000000",
+            "tierType": "REGULAR",
+        }
+    )
+
+    assert tier is not None
+    assert tier.volume30d == "10000000"
+    assert not hasattr(tier, "volume14d")
+    assert tier.to_dict() == {
+        "tierId": 2,
+        "takerFee": "0.0003",
+        "makerFee": "0",
+        "volume30d": "10000000",
+        "tierType": "REGULAR",
+    }
 
 
 def test_rest_request_error_code_exports_pro_405_codes() -> None:
