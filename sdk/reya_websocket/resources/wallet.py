@@ -23,6 +23,7 @@ class WalletResource:
         self._spot_executions = WalletSpotExecutionsResource(socket)
         self._execution_busts = WalletExecutionBustsResource(socket)
         self._balances = WalletBalancesResource(socket)
+        self._accounts = WalletAccountsResource(socket)
         self._order_changes = WalletOrderChangesResource(socket)
 
     def positions(self, address: str) -> "WalletPositionsSubscription":
@@ -68,6 +69,17 @@ class WalletResource:
             A subscription object for the wallet balances.
         """
         return self._balances.for_wallet(address)
+
+    def accounts(self, address: str) -> "WalletAccountsSubscription":
+        """Get account-discovery updates for a wallet address.
+
+        Args:
+            address: The owner wallet address.
+
+        Returns:
+            A subscription object for account creation and removal updates.
+        """
+        return self._accounts.for_wallet(address)
 
     def execution_busts(self, address: str) -> "WalletExecutionBustsSubscription":
         """Get execution busts (failed fills) for a specific wallet address.
@@ -391,4 +403,32 @@ class WalletBalancesSubscription:
 
     def unsubscribe(self) -> None:
         """Unsubscribe from wallet balances."""
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class WalletAccountsResource(SubscribableParameterizedResource):
+    """Resource for wallet account-discovery updates."""
+
+    def __init__(self, socket: "ReyaSocket"):
+        super().__init__(socket, "/v2/wallet/{address}/accounts")
+
+    def for_wallet(self, address: str) -> "WalletAccountsSubscription":
+        """Create an account-discovery subscription for a wallet."""
+        return WalletAccountsSubscription(self.socket, address)
+
+
+class WalletAccountsSubscription:
+    """Manages account-discovery updates for a wallet."""
+
+    def __init__(self, socket: "ReyaSocket", address: str):
+        self.socket = socket
+        self.address = address
+        self.path = f"/v2/wallet/{address}/accounts"
+
+    def subscribe(self, batched: bool = False) -> None:
+        """Subscribe to account creation and removal updates."""
+        self.socket.send_subscribe(channel=self.path, batched=batched)
+
+    def unsubscribe(self) -> None:
+        """Unsubscribe from account-discovery updates."""
         self.socket.send_unsubscribe(channel=self.path)
