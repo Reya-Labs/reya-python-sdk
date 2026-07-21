@@ -63,6 +63,9 @@ from .models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerO
 # window).
 DEFAULT_DEADLINE_S = 60  # signature-validity window (entry only), all order types.
 PERPETUAL_LIFETIME = 0  # signed no-expiry encoding (GTC rests; IOC moot).
+# The ME's MAX_PRICE (2^49 in E9 fixed point ≈ 562,949.95) — the binding price
+# ceiling across the stack; the buy-trigger limit_px sentinel is derived from it.
+_ME_MAX_PRICE = Decimal(1 << 49) / Decimal(10**9)
 
 # cancelAllAfter (dead-man's-switch) countdown bounds. `timeoutMs` must be 0
 # (disarm) or within [min, max]; each call replaces the running countdown.
@@ -432,17 +435,23 @@ class ReyaTradingClient:
 
         # If the caller didn't pin a worst-acceptable execution price, sign a
         # sentinel that always lets the order through after the trigger fires:
-        # a huge price for buys (worst-case high), and the market's smallest
-        # tick for sells (worst-case low). The sell sentinel must be non-zero
-        # AND conform to the market's price spacing — an arbitrary tiny value
-        # like 0.000000001 is rejected by the matching engine as off-grid
-        # ("does not conform to price spacing"), so we use exactly one tick.
-        # The sentinel model itself (vs requiring an explicit limit_px, slippage
-        # bounds, etc.) is being revisited.
+        # the LARGEST valid price for buys (worst-case high), and the market's
+        # smallest tick for sells (worst-case low). Both sentinels must conform
+        # to the market's price spacing AND the stack's price bounds:
+        # - sells: one tick (an off-grid tiny value is ME-rejected as
+        #   "does not conform to price spacing");
+        # - buys: the largest tick-aligned price under the ME's MAX_PRICE
+        #   (2^49 E9 ≈ 562,949.95) — the binding bound across the stack (the
+        #   off-chain checkPxValidity cap, u64/1e9 ≈ 1.8e10, is higher). The
+        #   old 1e20 sentinel is rejected off-chain now that triggers run
+        #   price validation.
+        # The sentinel model itself (vs requiring an explicit limit_px,
+        # slippage bounds, etc.) is being revisited.
         if params.limit_px is not None:
             limit_price = Decimal(params.limit_px)
         elif params.is_buy:
-            limit_price = Decimal("100000000000000000000")
+            tick = Decimal(self._tick_size_for(params.symbol))
+            limit_price = (_ME_MAX_PRICE // tick) * tick
         else:
             limit_price = Decimal(self._tick_size_for(params.symbol))
 
@@ -711,9 +720,11 @@ class ReyaTradingClient:
         the signature, and is omitted when the resting order has none. The
         modifiable fields (`limit_px`, `qty`, `post_only`, `expires_after`, and
         `trigger_px` for trigger orders) all carry the complete post-modify
-        state; the immutables (`is_buy`, `time_in_force`, `reduce_only`,
-        `client_order_id`) must restate the resting order's values. LIMIT
-        modifies omit `trigger_px`.
+        state; the immutables (`is_buy`, `order_type`, `time_in_force`,
+        `reduce_only`, `client_order_id`) must restate the resting order's
+        values. `order_type` defaults to LIMIT; a STOP_LOSS/TAKE_PROFIT modify
+        reprices a trigger and requires `trigger_px`. LIMIT modifies omit
+        `trigger_px`.
         Both groups go into the fresh EIP-712 signature over the full
         post-modify state.
         """
@@ -759,15 +770,43 @@ class ReyaTradingClient:
         # OrderDetails.clientOrderId. With order_id targeting, omit it for a
         # no-tag resting order.
         signed_client_order_id = params.client_order_id or 0
-        trigger_price = Decimal(params.trigger_px) if params.trigger_px is not None else Decimal(0)
+
+        is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
+
+        # qty and trigger_px are type-conditional and symmetric (mirrors the
+        # create builders — build_create_trigger_order_payload has no qty and
+        # build_create_limit_order_payload has no trigger_px on its params):
+        #  - TP/SL: qty must be omitted (the signer derives the ±int256.max
+        #    full-position sentinel from is_buy; dropped from the wire below)
+        #    and trigger_px is REQUIRED to
+        #    reprice the trigger (the ME re-validates it as positive).
+        #  - LIMIT: qty is REQUIRED (signed as the total post-modify quantity) and
+        #    trigger_px must be omitted — a LIMIT carries no trigger, so a stray
+        #    trigger_px would sign a non-zero OrderDetails.triggerPrice (and emit
+        #    triggerPx), diverging from the LIMIT create path that always signs
+        #    triggerPrice 0 and omits triggerPx.
+        if is_trigger:
+            if params.qty is not None:
+                raise ValueError("qty on TP/SL trigger orders is not supported; omit qty")
+            if params.trigger_px is None:
+                raise ValueError("trigger_px is required when modifying a STOP_LOSS/TAKE_PROFIT trigger order")
+            signed_qty = Decimal(0)
+            trigger_price = Decimal(params.trigger_px)
+        else:
+            if params.qty is None:
+                raise ValueError("qty is required when modifying a LIMIT order")
+            if params.trigger_px is not None:
+                raise ValueError("trigger_px on LIMIT orders is not supported; omit trigger_px")
+            signed_qty = Decimal(params.qty)
+            trigger_price = Decimal(0)
 
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-            order_type=int(OrderTypeInt.LIMIT),
+            order_type=int(_ORDER_TYPE_TO_INT[params.order_type]),
             is_buy=params.is_buy,
-            qty=Decimal(params.qty),
+            qty=signed_qty,
             limit_price=Decimal(params.limit_px),
             trigger_price=trigger_price,
             time_in_force=int(TimeInForceInt[params.time_in_force.value]),
@@ -785,10 +824,11 @@ class ReyaTradingClient:
             "accountId": self.config.account_id,
             # Restated immutables (full-restate): the request carries every signed
             # OrderDetails field. The ME verifies each equals the resting order
-            # (else MODIFY_IMMUTABLE_MISMATCH). orderType is LIMIT (LIMIT-only).
+            # (else MODIFY_IMMUTABLE_MISMATCH). orderType defaults to LIMIT; a
+            # trigger reprice restates STOP_LOSS/TAKE_PROFIT.
             "exchangeId": self.config.dex_id,
             "isBuy": params.is_buy,
-            "orderType": "LIMIT",
+            "orderType": params.order_type.value,
             "timeInForce": params.time_in_force.value,
             "triggerPx": params.trigger_px,
             "reduceOnly": params.reduce_only,

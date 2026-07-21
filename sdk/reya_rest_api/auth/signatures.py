@@ -24,6 +24,13 @@ class OrderTypeInt(IntEnum):
     TAKE_PROFIT = 2
 
 
+# Full-position stop sentinel — type(int256).max (2^255 - 1), mirroring
+# FULL_POSITION_STOP_SENTINEL in the OrdersGateway (reya-network #738). A
+# STOP_LOSS / TAKE_PROFIT signs quantity ±sentinel (sign carries the close
+# side); raw int256, NOT E18-scaled.
+FULL_POSITION_STOP_SENTINEL = (1 << 255) - 1
+
+
 class TimeInForceInt(IntEnum):
     """On-chain `OrderDetails.timeInForce` values."""
 
@@ -113,10 +120,22 @@ class SignatureGenerator:
         Reconstructs the signed `OrderDetails.quantity` (int256) from
         `is_buy` + unsigned `qty` as `is_buy ? +qty : -qty`. A negative `qty`
         would silently flip the trade direction, so reject it up front.
+
+        STOP_LOSS / TAKE_PROFIT sign the ±int256.max full-position sentinel
+        instead — the sign carries the close side (−max sells out a long, +max
+        buys back a short; reya-network #738 enforces SL/TP <=> ±sentinel, and
+        the old quantity-0 encoding now reverts). The sentinel is a RAW int256
+        value, never E18-scaled; the `qty` argument is ignored for triggers
+        (callers pass 0 per the omit-qty wire contract).
         """
         if qty < 0:
             raise ValueError(f"sign_order requires unsigned qty (got {qty}); use is_buy to set direction")
-        signed_qty = qty if is_buy else -qty
+
+        is_trigger = order_type in (int(OrderTypeInt.STOP_LOSS), int(OrderTypeInt.TAKE_PROFIT))
+        if is_trigger:
+            scaled_quantity = FULL_POSITION_STOP_SENTINEL if is_buy else -FULL_POSITION_STOP_SENTINEL
+        else:
+            scaled_quantity = self._scale_e18(qty if is_buy else -qty)
 
         types = {
             "Order": [
@@ -135,7 +154,7 @@ class SignatureGenerator:
                 "marketId": market_id,
                 "exchangeId": exchange_id,
                 "orderType": order_type,
-                "quantity": self._scale_e18(signed_qty),
+                "quantity": scaled_quantity,
                 "limitPrice": self._scale_e18(limit_price),
                 "triggerPrice": self._scale_e18(trigger_price),
                 "timeInForce": time_in_force,

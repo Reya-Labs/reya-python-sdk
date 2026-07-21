@@ -25,10 +25,11 @@ e2e.
   signerWallet → HTTP 400),
 - cross-account ownership: account B cannot modify account A's resting order
   (authorization error).
-- TP/SL trigger orders are not modifiable once the backend accepts native
-  trigger creates. Trigger-order create/list/cancel/modify is tracked by
-  PRO-475, so current devnet trigger-create rejection is an expected xfail.
-  Trigger orders are a perp-only surface, so this case stays perp-pinned.
+- TP/SL trigger orders ARE modifiable under the SL/TP backbone: a create →
+  reprice (modify triggerPx via the `order_type` passthrough) → assert-updated
+  round-trip. Skipped until the backbone matching engine is deployed to
+  devnet1. Trigger orders are a perp-only surface, so this case stays
+  perp-pinned.
 
 The modifyOrder validation surface (signature recovery, nonce single-use,
 immutable-match, input validation, ownership) is transport- and
@@ -67,10 +68,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.modify, pytest.mark.validation]
 
 PERP_SYMBOL = "ETHRUSDPERP"
 BOGUS_ORDER_ID = 999_999_999_999_999_999
-PRO_475_URL = "https://linear.app/reya-labs/issue/PRO-475/me-make-tpsl-trigger-orders-listable-cancellable-modifiable"
-PRO_475_XFAIL_REASON = (
-    "PRO-475: native TP/SL trigger-order storage/list/cancel/modify is not implemented yet; " f"{PRO_475_URL}"
-)
+BACKBONE_DEPLOY_SKIP = "un-skip when the backbone matching engine is deployed to devnet1"
 
 
 _TIF_TO_INT = {
@@ -423,66 +421,62 @@ async def test_tampered_signature(market_config: SpotTestConfig | PerpTestConfig
         await maker.orders.close_all(fail_if_none=False)
 
 
+@pytest.mark.skip(reason=BACKBONE_DEPLOY_SKIP)
 @pytest.mark.perp
 @pytest.mark.trigger
 @pytest.mark.asyncio
-async def test_trigger_order_not_modifiable(perp_maker_tester: ReyaTester, perp_market_config: PerpTestConfig):
-    """TP/SL trigger orders cannot be modified. Under full-restate the typed SDK
-    restates `orderType=LIMIT`, which mismatches the resting trigger order's
-    type, so the matching engine rejects it via the immutable-match
-    (`MODIFY_IMMUTABLE_MISMATCH`, surfaced as `INPUT_VALIDATION_ERROR`).
+async def test_trigger_order_reprice(perp_maker_tester: ReyaTester, perp_market_config: PerpTestConfig):
+    """TP/SL trigger orders ARE repriceable under the SL/TP backbone. Create an
+    armed TAKE_PROFIT, then modify its triggerPx through the typed SDK's
+    `order_type` passthrough (restating `orderType=TAKE_PROFIT`, so the ME's
+    immutable-match passes) and assert the resting order's triggerPx updates.
 
-    Spot-pinned to perp by nature: TP/SL trigger orders are a perp-only surface,
-    so there is no spot analogue to parametrize. The orderType immutable-match
-    itself is market-independent (proven on both markets transitively by the
-    full-restate raw-modify cases above)."""
+    Skipped until the backbone matching engine is deployed to devnet1 (it stores
+    and reprices armed triggers; today's devnet rejects the zero-qty create).
+
+    Perp-pinned by nature: TP/SL trigger orders are a perp-only surface, so there
+    is no spot analogue to parametrize."""
     oracle_price = float(await perp_maker_tester.data.current_price(perp_market_config.symbol))
-    far_trigger_px = str(round(oracle_price * 10, 2))
+    trigger_px = str(round(oracle_price * 10, 2))
+    repriced_trigger_px = str(round(oracle_price * 12, 2))
 
     trigger_params = (
-        TriggerOrderBuilder()
-        .symbol(perp_market_config.symbol)
-        .sell()
-        .trigger_price(far_trigger_px)
-        .take_profit()
-        .build()
+        TriggerOrderBuilder().symbol(perp_market_config.symbol).sell().trigger_price(trigger_px).take_profit().build()
     )
-    try:
-        response = await perp_maker_tester.orders.create_trigger(trigger_params)
-    except ApiException as e:
-        error_msg = str(e)
-        if any(
-            marker in error_msg
-            for marker in (
-                "qty must be greater than 0, got 0",
-                "INPUT_VALIDATION_ERROR",
-                "INTERNAL_SERVER_ERROR",
-            )
-        ):
-            pytest.xfail(PRO_475_XFAIL_REASON)
-        raise
+    response = await perp_maker_tester.orders.create_trigger(trigger_params)
     assert response.order_id is not None
     trigger_order_id = response.order_id
 
     try:
+        resting = await perp_maker_tester.wait.for_order_creation(order_id=trigger_order_id, timeout=10)
+        assert resting.limit_px is not None
+
+        # Reprice via the order_type passthrough: orderType restates TAKE_PROFIT
+        # (so the immutable-match passes), qty is omitted (the signed quantity
+        # restates the stored 0), and the new triggerPx is the modifiable field.
+        # The ME re-validates triggerPx > 0.
         modify_params = ModifyOrderParameters(
             symbol=perp_market_config.symbol,
             is_buy=False,
-            limit_px=str(round(oracle_price * 9, 2)),
-            qty=perp_market_config.min_qty,
+            limit_px=resting.limit_px,
+            qty=None,
             post_only=False,
             expires_after=0,
             time_in_force=TimeInForce.GTC,
             order_id=int(trigger_order_id),
-            trigger_px=far_trigger_px,
+            order_type=OrderType.TAKE_PROFIT,
+            trigger_px=repriced_trigger_px,
         )
-        with pytest.raises(ApiException) as exc_info:
-            await perp_maker_tester.client.modify_order(modify_params)
-        error_msg = str(exc_info.value)
-        assert (
-            "INPUT_VALIDATION_ERROR" in error_msg
-        ), f"Expected INPUT_VALIDATION_ERROR (immutable mismatch on orderType), got: {error_msg[:200]}"
-        logger.info("✅ Trigger order modify rejected with INPUT_VALIDATION_ERROR (orderType immutable mismatch)")
+        await perp_maker_tester.client.modify_order(modify_params)
+        logger.info("✅ Trigger order reprice accepted")
+
+        updated = await perp_maker_tester.data.open_order(trigger_order_id)
+        assert updated is not None, "Repriced trigger must still be resting (OPEN)"
+        assert updated.trigger_px is not None
+        assert float(updated.trigger_px) == pytest.approx(
+            float(repriced_trigger_px), rel=1e-6
+        ), f"triggerPx should update to {repriced_trigger_px}, got {updated.trigger_px}"
+        logger.info("✅ Trigger order triggerPx updated after reprice")
     finally:
         try:
             await perp_maker_tester.client.cancel_order(
@@ -504,7 +498,8 @@ async def test_immutable_mismatch_fields_raw(
     INPUT_VALIDATION_ERROR). Driven raw with a VALID signature over the flipped
     value so input/immutable validation — not signature recovery — rejects.
     Extends the isBuy-only `test_immutable_mismatch_raw` across the rest of the
-    immutable set (orderType is covered by `test_trigger_order_not_modifiable`)."""
+    immutable set (the orderType immutable-match holds transitively — these
+    full-restate raw cases exercise the same check)."""
     order = await rest_gtc(maker, market_config, price_multiplier=0.95)  # resting BUY GTC, cl_ord_id 0
     order_id = int(order.order_id)
     original_px, original_qty = order.limit_px, order.qty

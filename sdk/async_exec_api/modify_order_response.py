@@ -4,7 +4,7 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.order_status import OrderStatus
 from sdk.async_exec_api.cancel_reason import CancelReason
 class ModifyOrderResponse(BaseModel): 
-  status: OrderStatus = Field(description='''Order status''')
+  status: OrderStatus = Field(description='''Order status. An armed but not-yet-fired `STOP_LOSS` / `TAKE_PROFIT` trigger surfaces as `OPEN`.''')
   exec_qty: Optional[str] = Field(default=None, alias='''execQty''')
   cum_qty: Optional[str] = Field(default=None, alias='''cumQty''')
   order_id: str = Field(description='''Order ID — unchanged by the modification (the same ID the order had before).''', alias='''orderId''')

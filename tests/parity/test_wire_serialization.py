@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 import time
+from decimal import Decimal
 
 import pytest
 
@@ -28,6 +29,7 @@ from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
@@ -80,8 +82,13 @@ def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
     assert "expiresAfter" not in payload
 
 
-def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
-    """is_buy=True + no limit_px → huge sentinel must also be plain (no 'E')."""
+def test_buy_trigger_sentinel_is_tick_aligned_me_max(client: ReyaTradingClient) -> None:
+    """is_buy=True + no limit_px → the sentinel is the LARGEST tick-aligned
+    price under the ME's MAX_PRICE (2^49 E9): tick 0.001 → 562949.953. The old
+    1e20 sentinel is rejected by the off-chain price validation now that
+    triggers run checkPxValidity, so every buy trigger omitting limit_px would
+    deterministically fail PRICE_QTY_BOUNDS_ERROR. Must also be plain decimal
+    (no 'E')."""
     payload, _ = client.build_create_trigger_order_payload(
         TriggerOrderParameters(
             symbol=PERP_SYMBOL,
@@ -90,7 +97,8 @@ def test_buy_trigger_sentinel_limit_px_is_plain_decimal(client: ReyaTradingClien
             trigger_type=OrderType.TAKE_PROFIT,
         )
     )
-    assert payload["limitPx"] == "100000000000000000000"
+    # floor(2^49/1e9 / 0.001) * 0.001 == 562949.953 (tick-aligned, under bound)
+    assert payload["limitPx"] == "562949.953"
     assert "E" not in payload["limitPx"].upper()
 
 
@@ -448,6 +456,199 @@ def test_modify_payload_order_id_targeting_with_restated_client_order_id(client:
     body = ModifyOrderRequest(**payload).to_dict()
     assert body["orderId"] == "63552420354981888"
     assert body["clientOrderId"] == "777"
+
+
+@pytest.mark.modify
+def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
+    """A STOP_LOSS trigger reprice emits ``orderType: STOP_LOSS`` + ``triggerPx``
+    on the wire and SIGNS the non-LIMIT order type — guarding the passthrough
+    that replaced the two hardcoded LIMITs in ``build_modify_order_payload``.
+    The default (no ``order_type``) stays an unchanged LIMIT modify."""
+    # A trigger modify OMITS qty on the wire; the signed quantity is the
+    # ±int256.max full-position sentinel (derived in sign_order from is_buy),
+    # exactly like a trigger create.
+    sl_payload, nonce = client.build_modify_order_payload(
+        _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
+    )
+    assert sl_payload["orderType"] == "STOP_LOSS"
+    assert sl_payload["triggerPx"] == "1500"
+    assert "qty" not in sl_payload
+
+    # The signature covers orderType=STOP_LOSS AND the signed sentinel
+    # quantity: recompute the digest with the builder's own signer over
+    # STOP_LOSS / qty=0-wire (sign_order derives the ±sentinel internally;
+    # pinned nonce/deadline) and match it.
+    market_id = client.get_market_id_from_symbol(PERP_SYMBOL)
+    expected_sig = client.signature_generator.sign_order(
+        account_id=12345,  # the client fixture's pinned account_id
+        market_id=market_id,
+        exchange_id=client.config.dex_id,
+        order_type=int(OrderTypeInt.STOP_LOSS),
+        is_buy=True,
+        qty=Decimal(0),
+        limit_price=Decimal("2950"),
+        trigger_price=Decimal("1500"),
+        time_in_force=int(TimeInForceInt.GTT),
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=1745003600,
+        nonce=nonce,
+        deadline=1745000300,
+        post_only=True,
+    )
+    assert sl_payload["signature"] == expected_sig
+
+    # LIMIT default unchanged: same pinned params, only order_type differs — so a
+    # different signature proves order_type flows into signing (not hardcoded),
+    # and the wire keeps the LIMIT shape (no triggerPx). qty stays present.
+    limit_payload, _ = client.build_modify_order_payload(_modify_params())
+    assert limit_payload["orderType"] == "LIMIT"
+    assert "triggerPx" not in limit_payload
+    assert limit_payload["qty"] == "0.75"
+    assert limit_payload["signature"] != expected_sig
+
+
+@pytest.mark.trigger
+@pytest.mark.modify
+def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
+    """Exhaustive key-set for a STOP_LOSS modify body: it is the LIMIT-modify key
+    set MINUS ``qty`` PLUS ``triggerPx`` — qty ABSENT, triggerPx present, every
+    immutable present. The per-field ``test_modify_payload_carries_order_type``
+    checks values but not the full key set, so a stray surviving ``qty`` (the
+    signed quantity restates 0) or a dropped immutable would slip past it; this
+    exact ``set(...) ==`` catches both.
+
+    Uses the GTT fixture default so ``expiresAfter`` (non-zero) is present;
+    ``clientOrderId`` is absent because the fixture targets by ``orderId``.
+    """
+    payload, _nonce = client.build_modify_order_payload(
+        _modify_params(order_type=OrderType.STOP_LOSS, trigger_px="1500", qty=None)
+    )
+
+    assert set(payload.keys()) == {
+        "orderId",
+        "symbol",
+        "accountId",
+        "exchangeId",
+        "isBuy",
+        "orderType",
+        "timeInForce",
+        "triggerPx",
+        "reduceOnly",
+        "limitPx",
+        "postOnly",
+        "expiresAfter",
+        "signature",
+        "nonce",
+        "signerWallet",
+        "deadline",
+    }
+    assert "qty" not in payload  # trigger modify never carries qty (signed qty = ±sentinel)
+    assert payload["triggerPx"] == "1500"
+    assert "clientOrderId" not in payload  # fixture targets by orderId, no client id
+    # Every signed immutable is present on the wire (full-restate).
+    assert payload["orderType"] == "STOP_LOSS"
+    assert payload["timeInForce"] == "GTT"
+    assert payload["isBuy"] is True
+    assert payload["reduceOnly"] is False
+    assert payload["postOnly"] is True
+    assert payload["limitPx"] == "2950"
+    assert payload["expiresAfter"] == 1745003600
+
+
+@pytest.mark.modify
+def test_modify_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
+    """A TP/SL modify must omit qty (the signed quantity restates 0); a supplied
+    qty is a targeted client-side ValueError, mirroring the trigger-create guard."""
+    with pytest.raises(ValueError, match="qty on TP/SL trigger orders is not supported"):
+        client.build_modify_order_payload(
+            _modify_params(order_type=OrderType.TAKE_PROFIT, trigger_px="1500", qty="0.75")
+        )
+
+
+@pytest.mark.modify
+def test_modify_limit_qty_required_client_side(client: ReyaTradingClient) -> None:
+    """A LIMIT modify still requires qty — omitting it is a clear ValueError."""
+    with pytest.raises(ValueError, match="qty is required when modifying a LIMIT order"):
+        client.build_modify_order_payload(_modify_params(qty=None))
+
+
+@pytest.mark.modify
+def test_modify_limit_trigger_px_rejected_client_side(client: ReyaTradingClient) -> None:
+    """Symmetric to the trigger-qty guard: a LIMIT modify must OMIT trigger_px.
+
+    A LIMIT carries no trigger, and the LIMIT create path always signs
+    triggerPrice 0 / omits triggerPx (LimitOrderParameters has no trigger_px
+    field at all). Without this guard a stray trigger_px on a LIMIT modify would
+    be silently signed into OrderDetails.triggerPrice and emitted as triggerPx,
+    diverging from create — a targeted client-side ValueError instead."""
+    with pytest.raises(ValueError, match="trigger_px on LIMIT orders is not supported"):
+        client.build_modify_order_payload(_modify_params(trigger_px="1500"))
+
+
+@pytest.mark.modify
+def test_modify_params_positional_3_0_14_signature_still_binds(client: ReyaTradingClient) -> None:
+    """Regression (public-constructor compat): ``ModifyOrderParameters`` is NOT
+    keyword-only, so the 3.0.14 POSITIONAL call shape keeps binding
+    argument-for-argument. The positional field order is::
+
+        symbol, is_buy, limit_px, qty, post_only, expires_after, time_in_force,
+        order_id, client_order_id, trigger_px, reduce_only, deadline, nonce
+
+    ``qty`` stays a required arg in its original 4th slot (now ``Optional[str]``),
+    and the new ``order_type`` is appended last (default LIMIT), so neither the
+    positional binding nor the wire output shifts. A positional construction that
+    raised ``TypeError`` under the interim ``kw_only`` dataclass now succeeds.
+    """
+    # LIMIT modify, 3.0.14 positional signature with a real qty in slot 4.
+    limit_params = ModifyOrderParameters(
+        PERP_SYMBOL,  # symbol
+        True,  # is_buy
+        "2950",  # limit_px
+        "0.75",  # qty (required, original 4th slot)
+        True,  # post_only
+        1745003600,  # expires_after
+        TimeInForce.GTT,  # time_in_force
+        63552420354981888,  # order_id
+        None,  # client_order_id
+        None,  # trigger_px
+        False,  # reduce_only
+        1745000300,  # deadline
+        1700000000000005,  # nonce
+    )
+    # order_type is appended last with a default, so the positional call leaves it LIMIT.
+    assert limit_params.order_type == OrderType.LIMIT
+    limit_payload, _ = client.build_modify_order_payload(limit_params)
+    assert limit_payload["orderType"] == "LIMIT"
+    assert limit_payload["qty"] == "0.75"
+    assert limit_payload["limitPx"] == "2950"
+    assert limit_payload["postOnly"] is True
+    assert limit_payload["expiresAfter"] == 1745003600
+    assert limit_payload["orderId"] == "63552420354981888"
+    assert "triggerPx" not in limit_payload
+
+    # STOP_LOSS trigger modify: qty=None passed POSITIONALLY in its original slot;
+    # order_type is the only keyword arg (the field did not exist in 3.0.14).
+    trigger_params = ModifyOrderParameters(
+        PERP_SYMBOL,  # symbol
+        False,  # is_buy
+        "2950",  # limit_px
+        None,  # qty=None positionally → omit-qty trigger modify
+        False,  # post_only
+        0,  # expires_after (GTC omits expiry)
+        TimeInForce.GTC,  # time_in_force
+        63552420354981888,  # order_id
+        None,  # client_order_id
+        "1500",  # trigger_px
+        False,  # reduce_only
+        1745000300,  # deadline
+        1700000000000005,  # nonce
+        order_type=OrderType.STOP_LOSS,
+    )
+    trigger_payload, _ = client.build_modify_order_payload(trigger_params)
+    assert trigger_payload["orderType"] == "STOP_LOSS"
+    assert trigger_payload["triggerPx"] == "1500"
+    assert "qty" not in trigger_payload  # signed quantity restates 0 (whole position)
 
 
 @pytest.mark.cod

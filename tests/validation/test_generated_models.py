@@ -149,6 +149,15 @@ def _base_modify_request_payload() -> dict[str, Any]:
     }
 
 
+def _base_trigger_modify_request_payload() -> dict[str, Any]:
+    """A STOP_LOSS trigger reprice: triggerPx restated, qty omitted (the signed
+    quantity restates 0 = protect the whole position)."""
+    payload = _base_modify_request_payload()
+    payload.update({"orderType": "STOP_LOSS", "triggerPx": "2400"})
+    del payload["qty"]
+    return payload
+
+
 def _base_order_response_payload() -> dict[str, Any]:
     return {
         "exchangeId": 2,
@@ -246,6 +255,25 @@ def test_ws_exec_modify_order_request_accepts_omitted_expires_after() -> None:
 
     assert request.expires_after is None
     assert "expiresAfter" not in request.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+def test_rest_modify_order_request_accepts_trigger_without_qty() -> None:
+    request = RestModifyOrderRequest.from_dict(_base_trigger_modify_request_payload())
+
+    assert request is not None
+    assert request.qty is None
+    serialized = request.to_dict()
+    assert "qty" not in serialized
+    assert serialized["triggerPx"] == "2400"
+
+
+def test_ws_exec_modify_order_request_accepts_trigger_without_qty() -> None:
+    request = WsExecModifyOrderRequest.model_validate(_base_trigger_modify_request_payload())
+
+    assert request.qty is None
+    serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert "qty" not in serialized
+    assert serialized["triggerPx"] == "2400"
 
 
 def test_rest_order_response_omits_non_gtt_expires_after() -> None:

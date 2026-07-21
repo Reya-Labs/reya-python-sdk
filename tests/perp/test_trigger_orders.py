@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 
 import pytest
 
@@ -17,19 +18,47 @@ from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from tests.helpers import ReyaTester
+from tests.helpers.price_helpers import format_price, quantize_price
 from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 
-# Trigger orders (TP/SL) are accepted as account-visible facade records while
-# the ME's dedicated trigger queue is still pending. They do not fire on
-# triggerPrice or contribute executable book liquidity yet, so the on-chain
-# trigger-execution semantics these tests assert on (price-crossed → fired,
-# position-closed → cancelled, etc.) do not match current devnet behavior.
+# The SL/TP backbone arms, tracks, modifies, and cancels trigger orders but does
+# NOT fire them — evaluation, the fired child, OCO, and auto-cancel-on-close all
+# arrive with the firing release. Tests split into two groups:
 #
-# todo: p1: remove this module-level skip once PRO-226 lands the ME trigger
-# queue and trigger orders execute via their native trigger path.
-pytestmark = pytest.mark.skip(
-    reason="PRO-226: ME trigger queue not yet implemented; trigger facade orders do not fire yet. Re-enable once the dedicated trigger-execution path ships."
+#   _FIRE_SKIP        — assert on-chain firing semantics (price-crossed → fired,
+#                       position-closed/flipped → auto-cancelled). Skipped until
+#                       firing ships.
+#   _BACKBONE_SKIP    — pure create→OPEN→cancel round-trips + cancel-not-found;
+#                       these DO work against the backbone. Skipped only until
+#                       PR-1 (the storing ME) is deployed to devnet1.
+_FIRE_SKIP = "requires trigger firing; backbone arms but does not fire"
+_IN_CROSS_SKIP = (
+    "requires trigger firing; backbone arms but does not fire. "
+    "backbone semantics: already-crossed triggers simply arm — no immediate execution"
 )
+_BACKBONE_SKIP = "un-skip when the backbone matching engine is deployed to devnet1"
+
+
+async def _confirm_open_fill_sequence(
+    reya_tester: ReyaTester, symbol: str, baseline_seq: int, timeout: float = 10.0
+) -> int:
+    """Confirm the position-opening fill landed and return its trade sequence number.
+
+    Sourced from the positions stream, which reflects a fill deterministically, rather
+    than the ``/perpExecutions`` REST endpoint whose order-history indexer intermittently
+    lags or drops the newest execution under the suite's rapid create/fill/close cadence.
+    Waits for a position whose ``last_trade_sequence_number`` is past ``baseline_seq`` (the
+    max execution sequence captured before the order), so a stale position from an earlier
+    run is never mistaken for this fill. The returned sequence is the baseline fed to
+    ``check_no_order_execution_since``.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        position = await reya_tester.data.position(symbol)
+        if position is not None and position.last_trade_sequence_number > baseline_seq:
+            return position.last_trade_sequence_number
+        await asyncio.sleep(0.1)
+    raise AssertionError(f"Position-opening fill not reflected past sequence {baseline_seq} within {timeout}s")
 
 
 def assert_tp_sl_order_submission(
@@ -60,18 +89,21 @@ def assert_tp_sl_order_submission(
     logger.info("✅ Order submission confirmed correctly")
 
 
+@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     """TP order, close right after creation"""
     symbol = "ETHRUSDPERP"
 
-    # SETUP - capture sequence number BEFORE any actions
-    _ = await reya_tester.get_last_perp_execution_sequence_number()
+    # SETUP - capture sequence number BEFORE any actions so the execution waiter
+    # can filter out stale executions from earlier runs in the same session.
+    baseline_seq = await reya_tester.get_last_perp_execution_sequence_number()
 
     market_price = await reya_tester.data.current_price(symbol)
+    tick_size = (await reya_tester.data.market_definition(symbol)).tick_size
     limit_order_params = LimitOrderParameters(
         symbol=symbol,
-        limit_px=str(float(market_price) * 1.1),
+        limit_px=format_price(quantize_price(Decimal(market_price) * Decimal("1.1"), tick_size)),
         is_buy=True,
         time_in_force=TimeInForce.IOC,
         qty="0.01",
@@ -79,17 +111,18 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     )
     await reya_tester.orders.create_limit(limit_order_params)
 
-    # Wait for execution
+    # Wait for execution, filtering to only trades after the captured baseline.
     expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-    await reya_tester.wait.for_order_execution(expected_order)
+    await reya_tester.wait.for_order_execution(expected_order, baseline_seq=baseline_seq)
     await reya_tester.check.no_open_orders()
 
     # SUBMIT TP
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on long
-        qty="0.01",
-        trigger_px=str(float(market_price) * 2),  # lower than IOC limit price
+        trigger_px=format_price(
+            quantize_price(Decimal(market_price) * Decimal("2"), tick_size)
+        ),  # above IOC limit price
         trigger_type=OrderType.TAKE_PROFIT,
     )
     tp_order: CreateOrderResponse = await reya_tester.orders.create_trigger(tp_params)
@@ -99,8 +132,9 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     active_tp_order = await reya_tester.wait.for_order_creation(order_id=tp_order.order_id)
     expected_tp_order = trigger_order_params_to_order(tp_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(tp_order.order_id, expected_tp_order)
-    # Get sequence after position was created (from initial limit order)
-    sequence_after_position = await reya_tester.get_last_perp_execution_sequence_number()
+    # Baseline for the no-execution check: the open fill's trade sequence, sourced from
+    # the positions stream (see _confirm_open_fill_sequence) so it is never captured stale.
+    sequence_after_position = await _confirm_open_fill_sequence(reya_tester, symbol, baseline_seq)
     await reya_tester.check.position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -129,20 +163,23 @@ async def test_success_tp_order_create_cancel(reya_tester: ReyaTester):
     logger.info("TP order cancel test completed successfully")
 
 
+@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     """SL order, close right after creation"""
     symbol = "ETHRUSDPERP"
 
-    # SETUP - capture sequence number BEFORE any actions
-    _ = await reya_tester.get_last_perp_execution_sequence_number()
+    # SETUP - capture sequence number BEFORE any actions so the execution waiter
+    # can filter out stale executions from earlier runs in the same session.
+    baseline_seq = await reya_tester.get_last_perp_execution_sequence_number()
 
     market_price = await reya_tester.data.current_price(symbol)
+    tick_size = (await reya_tester.data.market_definition(symbol)).tick_size
 
     # Create initial limit order to establish position
     limit_order_params = LimitOrderParameters(
         symbol=symbol,
-        limit_px=str(float(market_price) * 1.1),
+        limit_px=format_price(quantize_price(Decimal(market_price) * Decimal("1.1"), tick_size)),
         time_in_force=TimeInForce.IOC,
         is_buy=True,  # Create long position first
         qty="0.01",
@@ -156,8 +193,7 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on long
-        qty="0.01",
-        trigger_px=str(float(market_price) * 0.9),  # higher than IOC limit price
+        trigger_px=format_price(quantize_price(Decimal(market_price) * Decimal("0.9"), tick_size)),  # below entry
         trigger_type=OrderType.STOP_LOSS,
     )
     order_response = await reya_tester.orders.create_trigger(sl_params)
@@ -167,8 +203,10 @@ async def test_success_sl_order_create_cancel(reya_tester: ReyaTester):
     active_sl_order = await reya_tester.wait.for_order_creation(order_id=order_response.order_id, timeout=10)
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(order_response.order_id, expected_sl_order)
-    # Get sequence after position was created (from initial limit order)
-    sequence_after_position = await reya_tester.get_last_perp_execution_sequence_number()
+    # Confirm the position-opening fill landed and capture its trade sequence as the
+    # no-execution baseline, sourced from the positions stream (see
+    # _confirm_open_fill_sequence) rather than the lag-prone /perpExecutions endpoint.
+    sequence_after_position = await _confirm_open_fill_sequence(reya_tester, symbol, baseline_seq)
     await reya_tester.check.position(
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
@@ -219,6 +257,7 @@ async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: str | None, s
 
 
 # Note: the CO bot may not be active on testnet
+@pytest.mark.skip(reason=_IN_CROSS_SKIP)
 @pytest.mark.asyncio
 async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
     """TP order executes immediately when trigger condition is already met (in-cross).
@@ -268,7 +307,6 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=True,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 1.1),
                 trigger_type=OrderType.TAKE_PROFIT,
             )
@@ -299,6 +337,7 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
     raise AssertionError(f"TP order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
+@pytest.mark.skip(reason=_IN_CROSS_SKIP)
 @pytest.mark.asyncio
 async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
     """SL order executes immediately when trigger condition is already met (in-cross).
@@ -348,7 +387,6 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=True,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 0.9),
                 trigger_type=OrderType.STOP_LOSS,
             )
@@ -373,6 +411,7 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
     raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     """SL/TP orders are immediately cancelled when no position exists.
@@ -397,7 +436,6 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on short position
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.9),  # in the money
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -415,7 +453,6 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,  # on short position
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.9),  # in the money
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -430,6 +467,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     await reya_tester.check_no_order_execution_since(last_sequence_before)
 
 
+@pytest.mark.skip(reason=_BACKBONE_SKIP)
 @pytest.mark.asyncio
 async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """Cancelling a non-existent order returns proper error.
@@ -437,14 +475,19 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     Verifies:
     1. API returns BadRequestException for unknown order ID
     2. Error message indicates the order was not found
-    3. Error code is CANCEL_ORDER_OTHER_ERROR
+    3. Error code is ORDER_NOT_FOUND_ERROR
     """
+    # A syntactically valid but nonexistent numeric order id. "unknown_id"
+    # would crash client-side in build_cancel_order_payload (`int(order_id)`)
+    # before the request ever reaches the server, so the not-found path could
+    # never be exercised.
+    nonexistent_order_id = "999999999999999"
     await reya_tester.check.no_open_orders()
     try:
         await reya_tester.client.cancel_order(
             symbol="ETHRUSDPERP",
             account_id=reya_tester.account_id,
-            order_id="unknown_id",
+            order_id=nonexistent_order_id,
         )
         raise RuntimeError("Should have failed")
     except BadRequestException as e:
@@ -452,14 +495,15 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
         requestError: RequestError = e.data
         assert requestError.message is not None
         assert requestError.message.startswith(
-            "Missing order with id unknown_id"
-        ), f"Expected message to start with 'Missing order with id unknown_id', got: {requestError.message}"
-        assert requestError.error == RequestErrorCode.CANCEL_ORDER_OTHER_ERROR
+            f"Order not found: {nonexistent_order_id}"
+        ), f"Expected message to start with 'Order not found: {nonexistent_order_id}', got: {requestError.message}"
+        assert requestError.error == RequestErrorCode.ORDER_NOT_FOUND_ERROR
 
     await reya_tester.check.no_open_orders()
     logger.info("✅ Cancel non-existent order returns proper error")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     """SL/TP orders are cancelled when position is manually closed.
@@ -505,7 +549,6 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.95),
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -516,7 +559,6 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 1.05),
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -550,6 +592,7 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     logger.info("✅ SL and TP orders cancelled when position was closed")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     """SL/TP orders are cancelled when position is flipped (long to short).
@@ -595,7 +638,6 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     sl_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 0.95),
         trigger_type=OrderType.STOP_LOSS,
     )
@@ -606,7 +648,6 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     tp_params = TriggerOrderParameters(
         symbol=symbol,
         is_buy=False,
-        qty="0.01",
         trigger_px=str(float(market_price) * 1.05),
         trigger_type=OrderType.TAKE_PROFIT,
     )
@@ -647,6 +688,7 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     logger.info("✅ SL and TP orders cancelled when position was flipped")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     """SL executes (in-cross) and cancels the TP order.
@@ -695,7 +737,6 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 1.01),
                 trigger_type=OrderType.STOP_LOSS,
             )
@@ -706,7 +747,6 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 1.10),
                 trigger_type=OrderType.TAKE_PROFIT,
             )
@@ -738,6 +778,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
     raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
 
 
+@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
 async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
     """TP executes (in-cross) and cancels the SL order.
@@ -786,7 +827,6 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
             sl_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 0.90),
                 trigger_type=OrderType.STOP_LOSS,
             )
@@ -797,7 +837,6 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
             tp_params = TriggerOrderParameters(
                 symbol=symbol,
                 is_buy=False,
-                qty="0.01",
                 trigger_px=str(float(market_price) * 0.99),
                 trigger_type=OrderType.TAKE_PROFIT,
             )

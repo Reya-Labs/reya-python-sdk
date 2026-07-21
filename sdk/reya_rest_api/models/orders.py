@@ -38,16 +38,23 @@ class ModifyOrderParameters:
 
     The EIP-712 signature covers the full post-modify state: the modifiable
     fields at their new values plus the immutables restated from the resting
-    order — `is_buy` (quantity sign), `time_in_force` (the resting order's TIF),
-    `reduce_only`, and the resting order's client id (via `client_order_id`)
-    signed into `OrderDetails.clientOrderId`. LIMIT modifies omit `trigger_px`;
-    native SL/TP trigger repricing depends on matching-engine trigger-order support.
+    order — `is_buy` (quantity sign), `order_type` (the resting order's type),
+    `time_in_force` (the resting order's TIF), `reduce_only`, and the resting
+    order's client id (via `client_order_id`) signed into
+    `OrderDetails.clientOrderId`. `order_type` defaults to LIMIT; a STOP_LOSS /
+    TAKE_PROFIT modify reprices a trigger order and requires `trigger_px`. LIMIT
+    modifies omit `trigger_px`.
+
+    `qty` is REQUIRED for a LIMIT modify and FORBIDDEN for a STOP_LOSS /
+    TAKE_PROFIT modify: a trigger modify signs the ±int256.max full-position
+    sentinel (sign from `is_buy`; protect the whole position) and omits `qty`
+    from the wire, exactly like a trigger create.
     """
 
     symbol: str
     is_buy: bool
     limit_px: str
-    qty: str
+    qty: Optional[str]
     post_only: bool
     expires_after: Optional[int]
     time_in_force: TimeInForce
@@ -57,6 +64,7 @@ class ModifyOrderParameters:
     reduce_only: bool = False
     deadline: Optional[int] = None
     nonce: Optional[int] = None
+    order_type: OrderType = OrderType.LIMIT
 
 
 @dataclass(frozen=True)
@@ -64,9 +72,11 @@ class TriggerOrderParameters:
     """Parameters for a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
 
     Trigger orders omit `qty` on the REST/WS JSON contract and sign
-    `OrderDetails.quantity = 0`; executable size is derived when the trigger
-    fires. The deprecated `qty` field is retained only so older callers receive
-    a targeted client-side error instead of a server 400.
+    `OrderDetails.quantity = ±int256.max` (the full-position sentinel; sign
+    carries the close side per reya-network #738); executable size is derived
+    from the live position when the trigger fires. The deprecated `qty` field
+    is retained only so older callers receive a targeted client-side error
+    instead of a server 400.
 
     `limit_px` is the worst-acceptable execution price after the trigger fires;
     if omitted the client signs a sentinel — a very high value for buys, a very
