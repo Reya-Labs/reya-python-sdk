@@ -1,8 +1,9 @@
 """Offline regression tests for the Perp OB onboarding surfaces."""
 
+from typing import Any, cast
+
 import importlib.util
 from pathlib import Path
-from typing import Any, cast
 
 from sdk.async_api.account_update_payload import AccountUpdatePayload
 from sdk.open_api.api.specs_api import SpecsApi
@@ -62,9 +63,7 @@ def test_generated_rest_client_exposes_exec_asyncapi_spec() -> None:
 def test_generated_rest_client_exposes_devnet_server() -> None:
     hosts = Configuration().get_host_settings()
 
-    assert any(
-        host["url"] == "https://api-devnet.reya-cronos.network/v2" for host in hosts
-    )
+    assert any(host["url"] == "https://api-devnet.reya-cronos.network/v2" for host in hosts)
 
 
 def test_wallet_accounts_subscription_uses_canonical_channel() -> None:
