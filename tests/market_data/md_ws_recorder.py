@@ -20,8 +20,9 @@ recorded state is guarded by a lock and copied out for the asyncio test thread.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
+import json
 import logging
 import threading
 
@@ -71,6 +72,14 @@ class MarketDataRecorder:
         self.depth_snapshot: Optional[Depth] = None
         self.depth_frames: list[Depth] = []
 
+        # Raw wire frames (pre-Pydantic) captured off the same reader thread via the
+        # websocket-client ``on_data`` hook, which fires with the decoded text of every
+        # TEXT frame immediately before ``on_message`` parses it. Kept as the exact
+        # decoded JSON dicts so a test can assert on the literal wire strings (e.g. a
+        # decimal ``"0.617"`` never silently reformatted to ``"0.6170"`` or a float),
+        # independently of the typed Pydantic view.
+        self.raw_frames: list[dict[str, Any]] = []
+
         # Control-plane observations.
         self.closes: list[tuple[Optional[int], Optional[str]]] = []
         self.errors: list[str] = []
@@ -81,6 +90,7 @@ class MarketDataRecorder:
             on_open=self._on_open,
             on_message=self._on_message,
             on_close=self._on_close,
+            on_data=self._on_data,
         )
 
     # -- lifecycle ---------------------------------------------------------
@@ -117,6 +127,24 @@ class MarketDataRecorder:
                 self.depth_frames.append(message.data)
             elif isinstance(message, ErrorMessagePayload):
                 self.errors.append(str(message.message))
+
+    def _on_data(self, _ws, data: Any, _data_type: Any = None, _cont: Any = None) -> None:
+        # ``on_data`` sees TEXT and BINARY frames; only TEXT carries our JSON. Decode
+        # bytes defensively and skip anything that is not a JSON object.
+        if isinstance(data, (bytes, bytearray)):
+            try:
+                data = data.decode("utf-8")
+            except UnicodeDecodeError:
+                return
+        if not isinstance(data, str):
+            return
+        try:
+            frame = json.loads(data)
+        except (ValueError, TypeError):
+            return
+        if isinstance(frame, dict):
+            with self._lock:
+                self.raw_frames.append(frame)
 
     def _on_close(self, _ws, code: Optional[int], reason: Optional[str]) -> None:
         with self._lock:
@@ -155,3 +183,34 @@ class MarketDataRecorder:
     def depth_snapshot_copy(self) -> Optional[Depth]:
         with self._lock:
             return self.depth_snapshot
+
+    # -- raw wire accessors (pre-Pydantic) ---------------------------------
+
+    def raw_order_entries(self) -> list[dict[str, Any]]:
+        """Every raw order dict delivered on ``orderChanges`` channel_data frames,
+        flattened in arrival order (the literal wire objects, not Pydantic models)."""
+        with self._lock:
+            frames = list(self.raw_frames)
+        entries: list[dict[str, Any]] = []
+        for frame in frames:
+            if frame.get("type") == "channel_data" and str(frame.get("channel", "")).endswith("/orderChanges"):
+                data = frame.get("data")
+                if isinstance(data, list):
+                    entries.extend(item for item in data if isinstance(item, dict))
+        return entries
+
+    def raw_depth_update_levels(self, side: str) -> list[tuple[dict[str, Any], int]]:
+        """Raw ``{px, qty}`` level dicts for ``side`` ("bids"/"asks") across every
+        ``depth`` channel_data frame, each paired with its frame index so a test can
+        pick the latest wire statement for a price."""
+        with self._lock:
+            frames = list(enumerate(self.raw_frames))
+        levels: list[tuple[dict[str, Any], int]] = []
+        for index, frame in frames:
+            if frame.get("type") == "channel_data" and str(frame.get("channel", "")).endswith("/depth"):
+                data = frame.get("data")
+                if isinstance(data, dict):
+                    for level in data.get(side, []) or []:
+                        if isinstance(level, dict):
+                            levels.append((level, index))
+        return levels

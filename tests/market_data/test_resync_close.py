@@ -277,3 +277,157 @@ async def test_resync_close(spot_config: SpotTestConfig, spot_tester: ReyaTester
     finally:
         fresh.close()
         await spot_tester.orders.close_all(fail_if_none=False)
+
+
+@pytest.mark.localnet
+@pytest.mark.spot
+@pytest.mark.market_data
+@pytest.mark.websocket
+@pytest.mark.asyncio
+async def test_resync_excludes_phantom_order(spot_config: SpotTestConfig, spot_tester: ReyaTester):
+    """M2 (T3 sibling) — a resync must NOT resurrect an order cancelled during the
+    reconnect window.
+
+    The dangerous failure mode of a feed reset is a *phantom* order: order A is
+    resting when the feed drops, A is cancelled while the client is disconnected
+    (before it resubscribes), and the fresh snapshot then re-delivers the stale A
+    as though it were still open. Sequence:
+
+    1. rest order A; subscribe → snapshot contains A,
+    2. restart the ME and wait for its write path to recover,
+    3. while the stateful WS is disconnected / not yet resubscribed, cancel A
+       (the ME is up, so the cancel lands),
+    4. reconnect + resubscribe → the fresh snapshot must EXCLUDE A and no
+       subsequent diff may re-open it, and
+    5. REST ``openOrders`` must agree.
+
+    Gated like T3 (needs ``LOCALNET_KUBECONFIG`` + kubectl) so it only ever bounces
+    a localnet stack this run owns.
+    """
+    kubeconfig = _kubeconfig()
+    if not kubeconfig or shutil.which("kubectl") is None:
+        pytest.skip(
+            "M2 needs LOCALNET_KUBECONFIG + kubectl to restart the matching engine; "
+            "opt-in so it never bounces a shared/remote stack."
+        )
+
+    logger.info("=" * 80)
+    logger.info("M2 RESYNC PHANTOM-ORDER EXCLUSION: %s", spot_config.symbol)
+    logger.info("=" * 80)
+
+    symbol = spot_config.symbol
+    address = spot_tester.owner_wallet_address
+    assert address is not None
+    ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
+
+    await spot_tester.orders.close_all(fail_if_none=False)
+
+    # (1) rest order A at a distinct safe-no-match price and subscribe.
+    phantom_px = int(spot_config.get_safe_no_match_buy_price()) + 5
+    phantom_params = OrderBuilder.from_config(spot_config).buy().price(str(phantom_px)).gtc().build()
+    phantom_id = await spot_tester.orders.create_limit(phantom_params)
+    assert phantom_id, "phantom order A must be created"
+
+    recorder = MarketDataRecorder(ws_url, address=address, symbol=symbol, subscribe_order_changes=True)
+    recorder.connect()
+    try:
+        assert await wait_until(
+            lambda: recorder.order_changes_snapshot is not None
+            and any(o.order_id == phantom_id for o in recorder.order_changes_snapshot_orders()),
+            timeout=15.0,
+        ), "subscribe snapshot did not contain order A before the restart"
+        logger.info("snapshot contains phantom order A=%s", phantom_id)
+
+        # (2) bounce the ME.
+        await asyncio.to_thread(_restart_matching_engine, kubeconfig)
+
+        # The stateful feed should signal the reset (1012 close or inline FEED_RESET).
+        got_signal = await wait_until(
+            lambda: recorder.has_close_code(1012) or _feed_reset_seen(recorder), timeout=180.0, interval=0.5
+        )
+        logger.info("post-restart resync signal observed=%s closes=%s", got_signal, recorder.close_events())
+    finally:
+        # Ensure the stateful subscription is fully torn down BEFORE we cancel A, so
+        # the cancel truly happens in the disconnected window.
+        recorder.close()
+
+    # (3) wait for the ME write path, then cancel A while nothing is subscribed.
+    assert await _wait_for_me_stable(spot_tester, spot_config), (
+        "matching engine did not resume serving writes after restart within budget "
+        "(localnet Finding-B snapshot-GET race — ping e2e-localnet to bounce it)"
+    )
+
+    reseeded = any(o.order_id == phantom_id for o in await spot_tester.client.get_open_orders())
+    logger.info("order A %s the ME restart (reseeded=%s)", "survived" if reseeded else "did not survive", reseeded)
+
+    async def _cancel_phantom() -> bool:
+        try:
+            await spot_tester.client.cancel_order(order_id=phantom_id, symbol=symbol, account_id=spot_tester.account_id)
+            return True
+        except ApiException as exc:
+            # If A was not reseeded it is already gone — the exclusion contract still
+            # holds; a "not found" cancel is an acceptable no-op here.
+            if not reseeded:
+                logger.info("cancel of A skipped (already absent post-restart): %s", type(exc).__name__)
+                return True
+            return False
+
+    assert await wait_until(_cancel_phantom, timeout=60.0, interval=2.0), "could not cancel order A during the window"
+
+    # REST must no longer show A (cancel landed / A never came back).
+    async def _rest_excludes_a() -> bool:
+        return all(o.order_id != phantom_id for o in await spot_tester.client.get_open_orders())
+
+    assert await wait_until(_rest_excludes_a, timeout=30.0), "REST openOrders still shows the cancelled order A"
+
+    # (4) reconnect + resubscribe: the fresh snapshot must EXCLUDE A.
+    fresh = MarketDataRecorder(ws_url, address=address, symbol=symbol, subscribe_order_changes=True)
+    fresh.connect()
+    try:
+        assert await wait_until(
+            lambda: fresh.order_changes_snapshot is not None, timeout=30.0
+        ), "did not receive fresh orderChanges snapshot after reconnect"
+
+        snap_ids = {o.order_id for o in fresh.order_changes_snapshot_orders()}
+        assert phantom_id not in snap_ids, f"PHANTOM: fresh snapshot re-delivered the cancelled order A ({phantom_id})"
+        logger.info("fresh snapshot correctly EXCLUDES cancelled order A; snapshot ids=%s", sorted(snap_ids))
+
+        # (5) prove the feed is live and A never gets re-opened by a later diff:
+        # place a fresh order C, confirm C arrives, and assert A never appears OPEN.
+        probe_px = int(spot_config.get_safe_no_match_buy_price()) + 9
+        probe_params = OrderBuilder.from_config(spot_config).buy().price(str(probe_px)).gtc().build()
+        probe_holder: dict[str, str] = {}
+
+        async def _place_probe() -> bool:
+            try:
+                oid = await spot_tester.orders.create_limit(probe_params)
+            except (ApiException, OSError, RuntimeError):
+                return False
+            if oid:
+                probe_holder["id"] = oid
+                return True
+            return False
+
+        assert await wait_until(_place_probe, timeout=60.0, interval=2.0), "could not place live-feed probe order C"
+        probe_id = probe_holder["id"]
+
+        assert await wait_until(
+            lambda: any(o.order_id == probe_id for o in fresh.order_change_events()), timeout=20.0
+        ), "fresh feed never delivered probe order C — cannot prove A absence is non-vacuous"
+
+        # A must NEVER surface as OPEN on the fresh feed (snapshot or any diff).
+        a_reopened = [
+            o
+            for o in fresh.order_change_events()
+            if o.order_id == phantom_id and (o.status.value if hasattr(o.status, "value") else str(o.status)) == "OPEN"
+        ]
+        assert not a_reopened, f"PHANTOM: a post-resync diff re-opened the cancelled order A: {phantom_id}"
+
+        # And REST still agrees A is gone.
+        assert all(
+            o.order_id != phantom_id for o in await spot_tester.client.get_open_orders()
+        ), "REST openOrders re-listed the cancelled order A"
+        logger.info("M2 PASS: cancelled order A excluded from fresh snapshot + all diffs; REST agrees")
+    finally:
+        fresh.close()
+        await spot_tester.orders.close_all(fail_if_none=False)
