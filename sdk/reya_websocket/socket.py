@@ -131,24 +131,29 @@ class ReyaSocket(WebSocketApp):
 
         # Initialize thread attribute
         self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
 
-        # Store user callback for wrapping
+        # Store user callbacks for wrapping
         self._user_on_message = on_message
+        self._open_callback = on_open or self._default_on_open
 
         # Default handlers if none provided
-        if on_open is None:
-            on_open = self._default_on_open
         if on_error is None:
             on_error = self._default_on_error
         if on_close is None:
             on_close = self._default_on_close
 
-        # Track subscriptions
+        # Track subscription intent so it can be restored after reconnecting.
         self.active_subscriptions: set[str] = set()
+        self._subscription_payloads: dict[str, str] = {}
+        self._subscription_lock = threading.RLock()
+        self._sent_subscriptions_this_connection: set[str] = set()
+        self._has_connected_once = False
+        self._opened_this_run = False
 
         super().__init__(
             url=url,
-            on_open=on_open,
+            on_open=self._handle_open,
             on_message=self._wrap_message_handler(),
             on_error=on_error,
             on_close=on_close,
@@ -299,10 +304,14 @@ class ReyaSocket(WebSocketApp):
             channel: The channel to subscribe to.
             **kwargs: Additional subscription parameters.
         """
-        self.active_subscriptions.add(channel)
         message = {"type": "subscribe", "channel": channel, **kwargs}
+        payload = json.dumps(message)
         logger.info(f"Subscribing to {channel}")
-        self.send(json.dumps(message))
+        with self._subscription_lock:
+            self.active_subscriptions.add(channel)
+            self._subscription_payloads[channel] = payload
+            self._sent_subscriptions_this_connection.add(channel)
+            self.send(payload)
 
     def send_unsubscribe(self, channel: str, **kwargs) -> None:
         """Send an unsubscription message.
@@ -311,12 +320,42 @@ class ReyaSocket(WebSocketApp):
             channel: The channel to unsubscribe from.
             **kwargs: Additional unsubscription parameters.
         """
-        if channel in self.active_subscriptions:
-            self.active_subscriptions.remove(channel)
-
         message = {"type": "unsubscribe", "channel": channel, **kwargs}
         logger.info(f"Unsubscribing from {channel}")
-        self.send(json.dumps(message))
+        with self._subscription_lock:
+            self.active_subscriptions.discard(channel)
+            self._subscription_payloads.pop(channel, None)
+            self.send(json.dumps(message))
+
+    def _handle_open(self, ws: WebSocket) -> None:
+        """Run the open callback and restore subscriptions after reconnecting."""
+        is_reconnect = self._has_connected_once
+        self._has_connected_once = True
+        self._opened_this_run = True
+
+        try:
+            # Preserve WebSocketApp's lifecycle semantics: user callbacks run
+            # for both the initial connection and every subsequent reconnect.
+            self._open_callback(ws)
+        finally:
+            if is_reconnect:
+                self._restore_subscriptions()
+
+    def _restore_subscriptions(self) -> None:
+        """Replay subscriptions not already sent by the reconnect callback."""
+        with self._subscription_lock:
+            payloads = [
+                (channel, payload)
+                for channel, payload in self._subscription_payloads.items()
+                if channel not in self._sent_subscriptions_this_connection
+            ]
+
+            if payloads:
+                logger.info(f"Restoring {len(payloads)} WebSocket subscription(s)")
+
+            for channel, payload in payloads:
+                self.send(payload)
+                self._sent_subscriptions_this_connection.add(channel)
 
     def connect(self, sslopt=None, blocking=False) -> None:
         """Connect to the WebSocket server.
@@ -338,27 +377,67 @@ class ReyaSocket(WebSocketApp):
             else:
                 sslopt = {"cert_reqs": ssl.CERT_NONE}
 
+        if self._thread is not None and self._thread.is_alive():
+            raise RuntimeError("WebSocket connection is already running")
+
+        self._stop_event.clear()
         logger.info(f"Connecting to {self.url}")
 
         if blocking:
             # Run the WebSocket directly (blocking)
-            self.run_forever(
-                sslopt=sslopt,
-                ping_interval=self.config.ping_interval,
-                ping_timeout=self.config.ping_timeout,
-            )
+            self._run_forever_with_reconnect(sslopt)
         else:
             # Run the WebSocket in a thread (non-blocking)
             self._thread = threading.Thread(
-                target=self.run_forever,
-                kwargs={
-                    "sslopt": sslopt,
-                    "ping_interval": self.config.ping_interval,
-                    "ping_timeout": self.config.ping_timeout,
-                },
+                target=self._run_forever_with_reconnect,
+                args=(sslopt,),
             )
             self._thread.daemon = True
             self._thread.start()
+
+    def _run_forever_with_reconnect(self, sslopt) -> None:
+        """Run the socket, reconnecting with bounded exponential backoff."""
+        failed_attempts = 0
+
+        while not self._stop_event.is_set():
+            self._opened_this_run = False
+            with self._subscription_lock:
+                self._sent_subscriptions_this_connection.clear()
+
+            try:
+                self.run_forever(
+                    sslopt=sslopt,
+                    ping_interval=self.config.ping_interval,
+                    ping_timeout=self.config.ping_timeout,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception("WebSocket connection loop failed")
+
+            if self._stop_event.is_set():
+                return
+
+            if self._opened_this_run:
+                failed_attempts = 0
+
+            if failed_attempts >= self.config.reconnect_attempts:
+                logger.error(
+                    f"WebSocket reconnect attempts exhausted after {self.config.reconnect_attempts} attempt(s)"
+                )
+                return
+
+            failed_attempts += 1
+            delay = self.config.reconnect_delay * (2 ** (failed_attempts - 1))
+            logger.info(
+                f"Reconnecting WebSocket in {delay} second(s) "
+                f"(attempt {failed_attempts}/{self.config.reconnect_attempts})"
+            )
+            if self._stop_event.wait(delay):
+                return
+
+    def close(self, **kwargs) -> None:
+        """Stop reconnecting and close the active WebSocket connection."""
+        self._stop_event.set()
+        super().close(**kwargs)
 
     def _default_on_open(self, _ws):
         """Default handler for connection open events."""
