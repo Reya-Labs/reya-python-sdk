@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from decimal import Decimal
 from importlib import import_module
-from typing import Any
 
 import pytest
 
