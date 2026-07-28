@@ -183,11 +183,13 @@ async def test_order_changes_forced_batching(spot_config: SpotTestConfig, spot_t
     submissions) to make the ingest drain group several order events into one
     ``channel_data`` frame. Regardless of how the server batches, the stream stays
     lossless and ordered: every OPEN arrives and ``sequenceNumber`` is strictly
-    increasing across the flattened arrival order. Multi-entry frames are LIKELY
-    but not guaranteed (batching is server-timing), so their occurrence is LOGGED,
-    not required. A same-wallet sequence-contiguity sub-assertion is attempted on
-    the quiet burst window and documented-and-skipped if background traffic (global
-    sequencing / other same-wallet activity) leaves gaps."""
+    increasing across the flattened arrival order. Because this variant *engineers*
+    the batching conditions (10 concurrent creates + an atomic mass_cancel that
+    emits N CANCELLED events in one drain), at least one multi-entry frame is
+    REQUIRED here — a regression that silently disabled batching (one event per
+    frame) must fail this test. A same-wallet sequence-contiguity sub-assertion is
+    attempted on the quiet burst window and documented-and-skipped if background
+    traffic (global sequencing / other same-wallet activity) leaves gaps."""
     logger.info("=" * 80)
     logger.info("S4 FORCED BATCHING (concurrent burst of %d): %s", FORCED_BURST_N, spot_config.symbol)
     logger.info("=" * 80)
@@ -257,7 +259,11 @@ async def test_order_changes_forced_batching(spot_config: SpotTestConfig, spot_t
         assert opened == created, f"missing OPEN for {created - opened}"
         assert cancelled == created, f"missing CANCELLED for {created - cancelled}"
 
-        # Batching is LIKELY (report, don't require) — expected on the mass_cancel burst.
+        # Batching is REQUIRED here: this variant engineers the conditions (10
+        # concurrent creates + an atomic mass_cancel emitting N CANCELLED in one
+        # drain), so at least one channel_data frame MUST carry >1 entry. Report
+        # the observed shape, then assert it — a silent regression to one event
+        # per frame (batching disabled) has to fail this test.
         frame_sizes = recorder.order_change_frame_sizes()
         cancel_burst_sizes = frame_sizes[frames_before_cancel:]
         multi_entry = [n for n in frame_sizes if n > 1]
@@ -268,7 +274,14 @@ async def test_order_changes_forced_batching(spot_config: SpotTestConfig, spot_t
             cancel_burst_sizes,
             len(multi_entry),
             max(frame_sizes) if frame_sizes else 0,
-            "OBSERVED" if multi_entry else "not observed this run (tolerated)",
+            "OBSERVED" if multi_entry else "NOT observed",
+        )
+        assert frame_sizes, "no orderChanges frames recorded, cannot assert batching"
+        assert max(frame_sizes) > 1, (
+            f"forced batching produced no multi-event frame (max entries/frame={max(frame_sizes)}): "
+            f"{FORCED_BURST_N} concurrent creates + an atomic mass_cancel should coalesce into at least "
+            f"one channel_data frame carrying >1 entry, but every frame held exactly one event "
+            f"(sizes={frame_sizes}) — batching may have silently regressed to one event per frame"
         )
 
         # Same-wallet contiguity on the ATOMIC mass_cancel burst: the ME assigns the
