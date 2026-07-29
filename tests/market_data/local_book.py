@@ -26,7 +26,7 @@ class LocalBook:
         self.asks: Levels = {}
 
     @classmethod
-    def from_snapshot(cls, depth: AsyncDepth) -> "LocalBook":
+    def from_snapshot(cls, depth: AsyncDepth) -> LocalBook:
         book = cls()
         book._replace_side(book.bids, depth.bids)
         book._replace_side(book.asks, depth.asks)

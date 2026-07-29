@@ -216,7 +216,7 @@ async def test_resync_close(spot_config: SpotTestConfig, spot_tester: ReyaTester
         )
 
         if recorder.has_close_code(1012):
-            code, reason = next((c, r) for c, r in closes if c == 1012)
+            reason = next(r for c, r in closes if c == 1012)
             reason_l = (reason or "").lower()
             assert (
                 reason is None or "resync" in reason_l or "reset" in reason_l

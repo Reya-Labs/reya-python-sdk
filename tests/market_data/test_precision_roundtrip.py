@@ -30,7 +30,7 @@ tick/step constraint.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import logging
 import os
@@ -60,23 +60,23 @@ AGG_QTY_SUM = "0.3"  # NOT "0.30000000000000004": aggregation must be exact.
 
 
 async def _fetch_json(url: str) -> Any:
-    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:  # nosec B501 — localnet self-signed TLS
         response = await client.get(url)
         response.raise_for_status()
         return response.json()
 
 
-def _raw_order_entry(recorder: MarketDataRecorder, order_id: str) -> Optional[dict[str, Any]]:
+def _raw_order_entry(recorder: MarketDataRecorder, order_id: str) -> dict[str, Any] | None:
     for entry in recorder.raw_order_entries():
         if entry.get("orderId") == order_id:
             return entry
     return None
 
 
-def _latest_raw_bid_level(recorder: MarketDataRecorder, px: str) -> Optional[dict[str, Any]]:
+def _latest_raw_bid_level(recorder: MarketDataRecorder, px: str) -> dict[str, Any] | None:
     """Latest raw wire bid-level dict for ``px`` (highest frame index wins, since
     depth updates are absolute per-level statements)."""
-    best: Optional[dict[str, Any]] = None
+    best: dict[str, Any] | None = None
     best_index = -1
     for level, index in recorder.raw_depth_update_levels("bids"):
         if level.get("px") == px and index > best_index:
@@ -84,7 +84,7 @@ def _latest_raw_bid_level(recorder: MarketDataRecorder, px: str) -> Optional[dic
     return best
 
 
-def _typed_order_event(recorder: MarketDataRecorder, order_id: str) -> Optional[AsyncOrder]:
+def _typed_order_event(recorder: MarketDataRecorder, order_id: str) -> AsyncOrder | None:
     matches = [o for o in recorder.order_change_events() if o.order_id == order_id]
     return matches[-1] if matches else None
 

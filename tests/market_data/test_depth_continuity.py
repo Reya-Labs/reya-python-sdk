@@ -46,7 +46,7 @@ def _build_local_book(recorder: MarketDataRecorder) -> LocalBook | None:
 async def _fetch_depth_raw(base_url: str, symbol: str, limit: int | None = None) -> dict:
     url = f"{base_url.rstrip('/')}/market/{symbol}/depth"
     params = {"limit": str(limit)} if limit is not None else None
-    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:  # nosec B501 — localnet self-signed TLS
         response = await client.get(url, params=params)
         response.raise_for_status()
         payload: dict = response.json()

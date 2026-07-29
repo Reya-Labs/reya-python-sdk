@@ -20,7 +20,7 @@ recorded state is guarded by a lock and copied out for the asyncio test thread.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import json
 import logging
@@ -51,8 +51,8 @@ class MarketDataRecorder:
         self,
         url: str,
         *,
-        address: Optional[str] = None,
-        symbol: Optional[str] = None,
+        address: str | None = None,
+        symbol: str | None = None,
         subscribe_order_changes: bool = False,
         subscribe_depth: bool = False,
     ) -> None:
@@ -65,11 +65,11 @@ class MarketDataRecorder:
         self._lock = threading.Lock()
 
         # orderChanges: the subscribe snapshot, then each live update frame's data[].
-        self.order_changes_snapshot: Optional[OrderChangesSnapshot] = None
+        self.order_changes_snapshot: OrderChangesSnapshot | None = None
         self.order_change_frames: list[list[AsyncOrder]] = []
 
         # depth: the subscribe snapshot, then each live update frame (a Depth diff).
-        self.depth_snapshot: Optional[Depth] = None
+        self.depth_snapshot: Depth | None = None
         self.depth_frames: list[Depth] = []
 
         # Raw wire frames (pre-Pydantic) captured off the same reader thread via the
@@ -81,7 +81,7 @@ class MarketDataRecorder:
         self.raw_frames: list[dict[str, Any]] = []
 
         # Control-plane observations.
-        self.closes: list[tuple[Optional[int], Optional[str]]] = []
+        self.closes: list[tuple[int | None, str | None]] = []
         self.errors: list[str] = []
         self.open_count = 0
 
@@ -146,7 +146,7 @@ class MarketDataRecorder:
             with self._lock:
                 self.raw_frames.append(frame)
 
-    def _on_close(self, _ws, code: Optional[int], reason: Optional[str]) -> None:
+    def _on_close(self, _ws, code: int | None, reason: str | None) -> None:
         with self._lock:
             self.closes.append((code, reason))
         logger.info("recorder observed close: code=%s reason=%r", code, reason)
@@ -166,7 +166,7 @@ class MarketDataRecorder:
         with self._lock:
             return list(self.depth_frames)
 
-    def close_events(self) -> list[tuple[Optional[int], Optional[str]]]:
+    def close_events(self) -> list[tuple[int | None, str | None]]:
         with self._lock:
             return list(self.closes)
 
@@ -180,7 +180,7 @@ class MarketDataRecorder:
                 return []
             return list(self.order_changes_snapshot.data)
 
-    def depth_snapshot_copy(self) -> Optional[Depth]:
+    def depth_snapshot_copy(self) -> Depth | None:
         with self._lock:
             return self.depth_snapshot
 

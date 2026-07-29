@@ -7,15 +7,16 @@ than asserting on a fixed sleep (which flakes under full-suite load).
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Union
+from typing import Callable
 
 import asyncio
 import inspect
 import time
+from collections.abc import Awaitable
 
 
 async def wait_until(
-    predicate: Callable[[], Union[bool, Awaitable[bool]]],
+    predicate: Callable[[], bool | Awaitable[bool]],
     *,
     timeout: float = 10.0,
     interval: float = 0.1,

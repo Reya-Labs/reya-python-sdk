@@ -18,8 +18,6 @@ deliberately blocks its own reader thread to create backpressure.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import asyncio
 import logging
 import os
@@ -46,7 +44,7 @@ class _StalledDepthConsumer:
         self._symbol = symbol
         self._stall_seconds = stall_seconds
         self._stalled_once = False
-        self.closes: list[tuple[Optional[int], Optional[str]]] = []
+        self.closes: list[tuple[int | None, str | None]] = []
         self._lock = threading.Lock()
         self._socket = ReyaSocket(url=url, on_open=self._on_open, on_message=self._on_message, on_close=self._on_close)
 
@@ -69,12 +67,12 @@ class _StalledDepthConsumer:
             self._stalled_once = True
             time.sleep(self._stall_seconds)
 
-    def _on_close(self, _ws, code: Optional[int], reason: Optional[str]) -> None:
+    def _on_close(self, _ws, code: int | None, reason: str | None) -> None:
         with self._lock:
             self.closes.append((code, reason))
         logger.info("stalled consumer close: code=%s reason=%r", code, reason)
 
-    def close_events(self) -> list[tuple[Optional[int], Optional[str]]]:
+    def close_events(self) -> list[tuple[int | None, str | None]]:
         with self._lock:
             return list(self.closes)
 

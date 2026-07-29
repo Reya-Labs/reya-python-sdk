@@ -113,7 +113,7 @@ async def test_snapshot_matches_open_orders(spot_config: SpotTestConfig, spot_te
         )
 
         # And the fields are the exact ones we placed (not just internally consistent).
-        placed_pairs = {(px, qty) for px, qty in _ORDERS}
+        placed_pairs = set(_ORDERS)
         snap_pairs = {(o.limit_px, o.qty) for o in snapshot_orders}
         assert snap_pairs == placed_pairs, f"snapshot px/qty {snap_pairs} != placed {placed_pairs}"
         logger.info("S1 PASS: snapshot of %d orders == REST openOrders exactly (ids + fields)", len(snapshot_orders))
