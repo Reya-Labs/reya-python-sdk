@@ -5,7 +5,7 @@ Configuration settings for the Reya Trading API.x
 from typing import Optional
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -53,7 +53,10 @@ class TradingConfig:
     account_id: Optional[int] = None
     orders_gateway_address: Optional[str] = None
     dex_id_override: Optional[int] = None
-    settlement_headroom_s: int = DEFAULT_SETTLEMENT_HEADROOM_S
+    # A default_factory, not a constant default: a config built directly (the
+    # test helpers do) must still reflect the deployment, or the client
+    # enforces one headroom while the caller sizes lifetimes against another.
+    settlement_headroom_s: int = field(default_factory=settlement_headroom_from_env)
 
     @property
     def is_mainnet(self) -> bool:

@@ -16,6 +16,7 @@ import pytest
 
 from sdk.async_api.cancel_reason import CancelReason as AsyncCancelReason
 from sdk.async_api.order_status import OrderStatus as AsyncOrderStatus
+from sdk.async_exec_api.order_status import OrderStatus as ExecOrderStatus
 from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers.reya_tester.order_state import (
@@ -52,7 +53,9 @@ def test_the_order_status_enums_agree_on_values() -> None:
     one. Everything routes through `order_status_value`; this asserts the two
     value spaces cannot drift apart underneath it.
     """
-    assert {m.name: m.value for m in OrderStatus} == {m.name: m.value for m in AsyncOrderStatus}
+    rest = {m.name: m.value for m in OrderStatus}
+    assert {m.name: m.value for m in AsyncOrderStatus} == rest
+    assert {m.name: m.value for m in ExecOrderStatus} == rest
 
 
 def _equal_as_objects(left: object, right: object) -> bool:
@@ -70,6 +73,8 @@ def test_the_enums_are_not_interchangeable_by_identity() -> None:
     """
     assert OrderStatus.__module__ != AsyncOrderStatus.__module__
     assert not _equal_as_objects(OrderStatus.OPEN, AsyncOrderStatus.OPEN)
+    assert not _equal_as_objects(OrderStatus.OPEN, ExecOrderStatus.OPEN)
+    assert order_status_value(ExecOrderStatus.OPEN) == order_status_value(OrderStatus.OPEN)
 
 
 def test_order_status_value_accepts_either_enum_and_a_string() -> None:
@@ -110,8 +115,13 @@ def test_cancel_reason_absent_on_a_non_cancel() -> None:
 
 
 def test_every_cancel_reason_survives_normalisation() -> None:
-    """No reason the API can emit is dropped on the way into the error."""
-    for member in CancelReason:
+    """No reason the API can emit is dropped on the way into the error.
+
+    Both enums, because the waiter reads a websocket order (async) while the
+    tests name the REST members.
+    """
+    assert {m.name: m.value for m in AsyncCancelReason} == {m.name: m.value for m in CancelReason}
+    for member in (*CancelReason, *AsyncCancelReason):
         reason, _ = cancel_reason_of(_OrderPayload(cancel_reason=member))
         assert reason == member.value
 

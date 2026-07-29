@@ -3,7 +3,7 @@
 Three generated `OrderStatus` enums exist — `sdk.open_api.models.order_status`
 (a `str` enum, what the tests and REST models use), `sdk.async_api.order_status`
 (a plain `Enum`, what the websocket order payload deserialises into), and
-`sdk.async_exec_api.order_status`. They carry the same members but are distinct
+`sdk.async_exec_api.order_status` (what the ws-exec transport deserialises into). They carry the same members but are distinct
 types, so `open_api.OrderStatus.OPEN == async_api.OrderStatus.OPEN` is False.
 Any comparison that crosses them evaluates false instead of failing, which
 mislabels an outcome rather than reporting one. `order_status_value` collapses
@@ -16,10 +16,13 @@ from enum import Enum
 
 from sdk.async_api.cancel_reason import CancelReason as AsyncCancelReason
 from sdk.async_api.order_status import OrderStatus as AsyncOrderStatus
+from sdk.async_exec_api.order_status import OrderStatus as ExecOrderStatus
 from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.order_status import OrderStatus
 
-OrderStatusLike = Union[OrderStatus, AsyncOrderStatus, str]
+# The ws-exec transport deserialises into its own generated enum, so it is a
+# real input here, not a theoretical third case.
+OrderStatusLike = Union[OrderStatus, AsyncOrderStatus, ExecOrderStatus, str]
 CancelReasonLike = Union[CancelReason, AsyncCancelReason, str]
 
 

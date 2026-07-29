@@ -42,7 +42,7 @@ from tests.helpers.market_config import (  # noqa: E402
     SpotTestConfig,
     fetch_spot_market_configs,
 )
-from tests.helpers.offline_clock import PinnedClock  # noqa: E402
+from tests.helpers.offline_clock import PinnedClock, assert_pinned_clock_is_in_the_past  # noqa: E402
 from tests.helpers.price_helpers import limit_price, quantize_price  # noqa: E402
 from tests.helpers.reya_tester import logger  # noqa: E402
 from tests.helpers.settlement import make_settlement_probe  # noqa: E402
@@ -143,6 +143,7 @@ def pin_offline_clock(request, monkeypatch):
     """
     if request.node.get_closest_marker("offline") is None:
         return
+    assert_pinned_clock_is_in_the_past()
     monkeypatch.setattr(reya_client_module, "time", PinnedClock())
 
 
