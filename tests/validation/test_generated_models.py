@@ -70,6 +70,10 @@ CANCEL_REASONS = {
     "MASS_CANCEL",
     "CANCEL_ALL_AFTER",
     "FEED_RESET",
+    # A resting order cancelled by a pre-trade risk check at match time. Stream-only:
+    # an order refused at admission was never created and returns a RequestErrorCode
+    # instead. See tests/validation/test_risk_reject_taxonomy.py.
+    "RISK_CANCELLED",
 }
 
 EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
