@@ -428,6 +428,22 @@ class ReyaTradingClient:
         and the API rejects it on spot. `expires_after` (order lifetime) is
         signed and enforced on-chain at fill time; it is independent from
         `deadline` (signature validity, enforced by the API at entry).
+
+        `reduce_only` is sized against your SETTLED position, so a FILLED ack is
+        not yet something you can reduce. Close a just-opened position and the
+        engine may refuse it with `reduce-only order has nothing to reduce`
+        (or, part-way through settling, `...would increase or flip position
+        direction`) until that opening fill settles on chain — milliseconds
+        locally, a chain round-trip in production. This is deliberate: crediting
+        an unsettled increase would let a "close" become an open if the increase
+        busts, which is the thing reduce-only exists to prevent.
+
+        So either wait for the position to be observable — poll `positions` (or
+        the position-update stream) until it reflects the opening fill — before
+        sending the reduce-only close, or send a plain opposite-side order with
+        `reduce_only=False`, which is admitted throughout. Do NOT blind-retry:
+        the refusal is a correct verdict about a real state, not a transient
+        error, and it clears when the position settles, not when you retry.
         """
         payload, _nonce = self.build_create_limit_order_payload(params)
         return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
