@@ -11,6 +11,23 @@ from dotenv import load_dotenv
 
 MAINNET_CHAIN_ID = 1729
 
+# The matching engine admits an order lifetime only if it outlasts the window the
+# settlement path may still consume after admission: a non-zero `expiresAfter`
+# must be STRICTLY greater than `now + settlement_headroom`, else the order is
+# refused before it can rest. 60s is the production value and the floor enforced
+# for mainnet/testnet; a local deployment may pin a smaller one, so
+# REYA_SETTLEMENT_HEADROOM_S mirrors whatever the target deployment runs. The
+# default is the production value: a client that guesses low signs orders the
+# deployment refuses, which is the failure this constant exists to prevent.
+DEFAULT_SETTLEMENT_HEADROOM_S = 60
+
+
+def settlement_headroom_from_env() -> int:
+    """Settlement headroom of the target deployment, in seconds."""
+    raw = os.environ.get("REYA_SETTLEMENT_HEADROOM_S")
+    return int(raw) if raw else DEFAULT_SETTLEMENT_HEADROOM_S
+
+
 # OrdersGateway proxy = the EIP-712 verifyingContract, per deployment. devnet1
 # (the perpOB testnet) and the cronos testnet share chain id 89346162 but use
 # different proxies, so REYA_ORDERS_GATEWAY selects between them (set per
@@ -36,6 +53,7 @@ class TradingConfig:
     account_id: Optional[int] = None
     orders_gateway_address: Optional[str] = None
     dex_id_override: Optional[int] = None
+    settlement_headroom_s: int = DEFAULT_SETTLEMENT_HEADROOM_S
 
     @property
     def is_mainnet(self) -> bool:
@@ -101,6 +119,7 @@ class TradingConfig:
             account_id=(int(os.environ["PERP_ACCOUNT_ID_1"]) if "PERP_ACCOUNT_ID_1" in os.environ else None),
             orders_gateway_address=os.environ.get("REYA_ORDERS_GATEWAY"),
             dex_id_override=int(dex_id_env) if dex_id_env else None,
+            settlement_headroom_s=settlement_headroom_from_env(),
         )
 
     @classmethod
@@ -150,6 +169,7 @@ class TradingConfig:
             account_id=account_id,
             orders_gateway_address=os.environ.get("REYA_ORDERS_GATEWAY"),
             dex_id_override=int(dex_id_env) if dex_id_env else None,
+            settlement_headroom_s=settlement_headroom_from_env(),
         )
 
 

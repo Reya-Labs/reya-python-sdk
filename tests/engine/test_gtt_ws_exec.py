@@ -32,6 +32,7 @@ from sdk.async_exec_api.order_status import OrderStatus
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.config import settlement_headroom_from_env
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.helpers.ws_exec_market import WsExecMarket
 
@@ -45,7 +46,14 @@ GTT_LIFETIME_S = 300
 # wall-clock (the ME reaper scans every ~500ms), so these are REAL waits; the
 # margins absorb ME<->test clock skew and devnet Redis->indexer->openOrders lag.
 GTT_REAP_DEADLINE_OFFSET_S = 20
-GTT_REAP_EXPIRY_OFFSET_S = 55
+# The engine refuses a lifetime that does not outlast the settlement headroom
+# the settlement path may consume after admission, so a reap expiry has to clear
+# it. Deriving the offset from the deployment's headroom keeps this test
+# ADMISSIBLE everywhere: a hardcoded 55s is refused outright on a deployment
+# running the production 60s headroom, which turns a reap assertion into an
+# admission failure that never reaches the behaviour under test.
+GTT_REAP_OBSERVATION_WINDOW_S = 35  # room to observe OPEN, then assert "still resting", before expiry
+GTT_REAP_EXPIRY_OFFSET_S = settlement_headroom_from_env() + GTT_REAP_OBSERVATION_WINDOW_S
 GTT_REAP_PRE_EXPIRY_MARGIN_S = 15
 GTT_REAP_DETECT_BOUND_S = 40
 

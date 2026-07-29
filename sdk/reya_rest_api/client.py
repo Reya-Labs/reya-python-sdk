@@ -81,6 +81,36 @@ CANCEL_ALL_AFTER_MAX_TIMEOUT_MS = 60_000
 _SPOT_MARKET_ID_OFFSET = 10_000_000_000
 
 
+def _reject_zero_deadline(deadline: int) -> None:
+    """A signed envelope deadline must be explicit.
+
+    Zero is refused at intake: the settlement calldata builder would otherwise
+    infer the deadline from `expiresAfter`, and the reconstructed digest would
+    recover the wrong signer whenever the two differ.
+    """
+    if deadline == 0:
+        raise ValueError("deadline must be an explicit non-zero signature-validity window")
+
+
+def _require_settlement_headroom(expires_after: int, headroom_s: int, now_s: int) -> None:
+    """Refuse a lifetime that does not outlast the settlement headroom.
+
+    This is independent of the `expiresAfter > deadline` coupling: a caller that
+    pins a short deadline satisfies that check while still signing a lifetime
+    the engine refuses. Failing here names the rule instead of burning a nonce
+    on an order that cannot be admitted.
+    """
+    if expires_after == PERPETUAL_LIFETIME:
+        return
+    earliest_admissible = now_s + headroom_s
+    if expires_after <= earliest_admissible:
+        raise ValueError(
+            f"expires_after={expires_after} does not outlast the {headroom_s}s settlement "
+            f"headroom (needs > {earliest_admissible}). Set REYA_SETTLEMENT_HEADROOM_S to the "
+            "target deployment's value if it runs a different one."
+        )
+
+
 def _reject_zero_client_order_id(client_order_id: Optional[int]) -> None:
     if client_order_id == 0:
         raise ValueError("client_order_id must be omitted rather than set to 0")
@@ -316,6 +346,7 @@ class ReyaTradingClient:
         # TIF <-> expiresAfter coupling (mirrors the off-chain validator + the ME):
         # GTC never expires; GTT always expires strictly after the deadline.
         # IOC never rests, so its lifetime is moot. Fail fast before signing.
+        _reject_zero_deadline(deadline)
         if params.time_in_force == TimeInForce.GTT:
             if expires_after == 0:
                 raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
@@ -323,6 +354,7 @@ class ReyaTradingClient:
                 raise ValueError("GTT expires_after must be greater than deadline")
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
             raise ValueError("GTC orders must omit expires_after")
+        _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, int(time.time()))
 
         # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
         # be ABSENT on spot ("not supported for spot markets") and perp GTC
@@ -423,6 +455,7 @@ class ReyaTradingClient:
         # is the independent entry-time signature-validity window. An explicit
         # `params.deadline` still wins.
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+        _reject_zero_deadline(deadline)
         expires_after = PERPETUAL_LIFETIME
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
@@ -776,6 +809,8 @@ class ReyaTradingClient:
                 raise ValueError("GTT expires_after must be greater than deadline")
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
             raise ValueError("GTC orders must omit expires_after")
+        _reject_zero_deadline(deadline)
+        _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, int(time.time()))
 
         # Single-field PRO-438 contract: client_order_id is both the lookup key
         # when order_id is absent and the restated immutable signed into

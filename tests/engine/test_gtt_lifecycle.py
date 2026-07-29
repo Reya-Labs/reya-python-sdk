@@ -27,6 +27,7 @@ import pytest
 from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api.config import settlement_headroom_from_env
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import full_state_modify_params
@@ -47,7 +48,14 @@ GTT_LIFETIME_S = 300
 # margins absorb ME<->test clock skew (cf. the COD tests' WSL2-skew note) and
 # devnet Redis->indexer->WS propagation. Tune if devnet timing changes.
 GTT_REAP_DEADLINE_OFFSET_S = 20  # EIP-712 signature validity for the create (must be < expiry)
-GTT_REAP_EXPIRY_OFFSET_S = 55  # near-future expiry with room to observe OPEN first
+# The engine refuses a lifetime that does not outlast the settlement headroom
+# the settlement path may consume after admission, so a reap expiry has to clear
+# it. Deriving the offset from the deployment's headroom keeps this test
+# ADMISSIBLE everywhere: a hardcoded 55s is refused outright on a deployment
+# running the production 60s headroom, which turns a reap assertion into an
+# admission failure that never reaches the behaviour under test.
+GTT_REAP_OBSERVATION_WINDOW_S = 35  # room to observe OPEN, then assert "still resting", before expiry
+GTT_REAP_EXPIRY_OFFSET_S = settlement_headroom_from_env() + GTT_REAP_OBSERVATION_WINDOW_S
 GTT_REAP_PRE_EXPIRY_MARGIN_S = 15  # assert "still resting" this far before expiry (skew margin)
 GTT_REAP_DETECT_BOUND_S = 40  # max acceptable lag from expiry to observing CANCELLED
 # Wait budget once we start polling for the reap (from ~pre-expiry to detection).
