@@ -660,9 +660,10 @@ async def cancel_and_replace_order(
     reason: str = "",
     max_retries: int = 3,
 ) -> bool:
-    """Cancel a specific order and replace it with a new one at a valid price.
+    """Replace a specific order with a new one at a valid price.
 
-    If order placement fails due to insufficient balance, retries with minimum quantity.
+    The replacement is placed before the existing order is cancelled so a
+    placement failure cannot remove liquidity from the book.
     """
     side = "bid" if order.is_buy else "ask"
 
@@ -678,84 +679,48 @@ async def cancel_and_replace_order(
         best_ask=best_ask,
     )
 
-    # Calculate available balance after cancelling this order
-    if order.is_buy:
-        freed_quote = order.price * order.qty
-        total_available_quote = available_quote + freed_quote
-        max_affordable_qty = total_available_quote / new_price if new_price > 0 else Decimal("0")
-        max_qty = min(MAX_ORDER_QTY, max_affordable_qty)
-    else:
-        freed_base = order.qty
-        total_available_base = available_base + freed_base
-        max_qty = min(MAX_ORDER_QTY, total_available_base)
-
-    if max_qty < market_params.min_order_qty:
-        logger.warning(f"[{cycle:04d}] Skipping {side} replacement - insufficient balance")
-        try:
-            await client.cancel_order(order_id=order.order_id, symbol=symbol, account_id=account_id)
-            logger.info(f"[{cycle:04d}] Cancelled {side} @ ${order.price} (no replacement - low balance)")
-        except RECOVERABLE_EXC as e:
-            error_str = str(e)
-            if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
-                state.remove_order(order.order_id)
-                logger.info(f"[{cycle:04d}] Removed stale {side} @ ${order.price} from local state")
-            else:
-                logger.warning(f"[{cycle:04d}] Failed to cancel {side} @ ${order.price}: {e}")
+    available_balance = available_quote if order.is_buy else available_base
+    placed, _qty_used = await place_single_order(
+        client=client,
+        symbol=symbol,
+        price=str(new_price),
+        is_buy=order.is_buy,
+        market_params=market_params,
+        available_balance=available_balance,
+        max_retries=max_retries,
+    )
+    reason_str = f" ({reason})" if reason else ""
+    if not placed:
+        logger.warning(
+            f"[{cycle:04d}] Keeping existing {side} @ ${order.price}{reason_str} "
+            f"because replacement @ ${new_price} was not accepted"
+        )
         return False
 
-    new_qty = generate_random_qty(market_params.min_order_qty, max_qty, market_params.qty_step_size)
-
-    # Cancel the existing order first
     try:
         await client.cancel_order(
             order_id=order.order_id,
             symbol=symbol,
             account_id=account_id,
         )
-        reason_str = f" ({reason})" if reason else ""
         logger.info(
-            f"[{cycle:04d}] Cancelling {side} @ ${order.price}{reason_str} "
-            f"→ Adding new {side} @ ${new_price} qty={new_qty}"
+            f"[{cycle:04d}] Added replacement {side} @ ${new_price}{reason_str} "
+            f"→ Cancelled old {side} @ ${order.price}"
         )
     except RECOVERABLE_EXC as e:
         error_str = str(e)
         if "Order not found" in error_str or "CANCEL_ORDER_OTHER_ERROR" in error_str:
             state.remove_order(order.order_id)
-            logger.info(f"[{cycle:04d}] Removed stale {side} @ ${order.price} from local state")
-        else:
-            logger.warning(f"[{cycle:04d}] Failed to cancel {side} @ ${order.price}: {e}")
-        return False
-
-    await asyncio.sleep(0.1)
-
-    # Try to place the new order, retrying with min qty if balance issues
-    qty_to_use = new_qty
-    for attempt in range(max_retries):
-        try:
-            expires_after = int(time.time()) + GTT_LIFETIME_S
-            await client.create_limit_order(
-                LimitOrderParameters(
-                    symbol=symbol,
-                    is_buy=order.is_buy,
-                    limit_px=str(new_price),
-                    qty=qty_to_use,
-                    time_in_force=TimeInForce.GTT,
-                    expires_after=expires_after,
-                )
+            logger.info(
+                f"[{cycle:04d}] Replacement {side} @ ${new_price} is live; "
+                f"removed stale old {side} @ ${order.price} from local state"
             )
-            return True
-        except RECOVERABLE_EXC as e:
-            error_str = str(e).lower()
-            # Check if it's a balance-related error - retry with min qty
-            if "insufficient" in error_str or "balance" in error_str or "margin" in error_str:
-                if attempt < max_retries - 1:
-                    qty_to_use = str(market_params.min_order_qty)
-                    logger.debug(f"[{cycle:04d}] Retrying {side} @ ${new_price} with min qty={qty_to_use}")
-                    continue
-            logger.warning(f"[{cycle:04d}] Failed to place new {side} @ ${new_price}: {e}")
-            return False
-
-    return False
+        else:
+            logger.warning(
+                f"[{cycle:04d}] Replacement {side} @ ${new_price} is live, "
+                f"but failed to cancel old {side} @ ${order.price}: {e}"
+            )
+    return True
 
 
 async def adjust_orders(
