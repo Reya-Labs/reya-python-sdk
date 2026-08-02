@@ -184,6 +184,7 @@ markers = [
     "post_only: Post-only (maker-only) order tests",
     "gtt: Good-Till-Time (auto-expiring resting order) tests",
     "offline: No-network tests (parity golden vectors + client guards) — safe without devnet/.env",
+    "localnet: Market-data pipeline tests that need the local k3d stack (batching, depth continuity, 1012/1013 resync/backpressure). Some require LOCALNET_KUBECONFIG to restart the ME.",
     "strict_spot_prerequisites: Internal marker for tests that must fail on missing spot prerequisites",
     "strict_ws_exec_prerequisites: Internal marker for tests that must fail on missing ws-exec prerequisites",
 ]
