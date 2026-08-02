@@ -2,5 +2,5 @@ from enum import Enum
 
 class OrderType(Enum): 
   LIMIT = "LIMIT"
-  TP = "TP"
-  SL = "SL"
+  STOP_LOSS = "STOP_LOSS"
+  TAKE_PROFIT = "TAKE_PROFIT"

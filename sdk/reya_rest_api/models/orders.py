@@ -1,50 +1,95 @@
-from typing import Any, Optional
+from typing import Optional
 
 from dataclasses import dataclass
 
-from sdk.open_api.models import time_in_force
 from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.time_in_force import TimeInForce
 
 
 @dataclass(frozen=True)
 class LimitOrderParameters:
-    """Limit order parameters."""
+    """Parameters for a LIMIT order on either spot or perp markets."""
 
     symbol: str
     is_buy: bool
     limit_px: str
     qty: str
-    time_in_force: time_in_force.TimeInForce
+    time_in_force: TimeInForce
     reduce_only: Optional[bool] = None
+    # Maker-only intent: the order must rest, never cross as a taker. Valid on
+    # GTC; rejected on IOC (immediate-or-cancel is taker-only). Maps to on-chain
+    # `OrderDetails.postOnly`. None == not requested (treated as False).
+    post_only: Optional[bool] = None
     expires_after: Optional[int] = None
     client_order_id: Optional[int] = None
+    deadline: Optional[int] = None
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "symbol": self.symbol,
-            "is_buy": self.is_buy,
-            "limit_px": self.limit_px,
-            "qty": self.qty,
-            "reduce_only": self.reduce_only,
-            "expires_after": self.expires_after,
-            "time_in_force": self.time_in_force,
-            "client_order_id": self.client_order_id,
-        }
+
+@dataclass(frozen=True)
+class ModifyOrderParameters:
+    """Parameters for modifying a resting order in place (spot or perp).
+
+    Target by `order_id` or `client_order_id`. When targeting by `order_id`,
+    pass `client_order_id` too if the resting order has a non-zero client id;
+    omit it when the resting order has none. The modifiable fields — `limit_px`, `qty`, `post_only`,
+    `expires_after`, and `trigger_px` for trigger orders — carry the COMPLETE
+    post-modify state (no omitted-means-inherited shorthand). `qty` is the TOTAL
+    order quantity, not the remaining, and must exceed the filled amount.
+
+    The EIP-712 signature covers the full post-modify state: the modifiable
+    fields at their new values plus the immutables restated from the resting
+    order — `is_buy` (quantity sign), `order_type` (the resting order's type),
+    `time_in_force` (the resting order's TIF), `reduce_only`, and the resting
+    order's client id (via `client_order_id`) signed into
+    `OrderDetails.clientOrderId`. `order_type` defaults to LIMIT; a STOP_LOSS /
+    TAKE_PROFIT modify reprices a trigger order and requires `trigger_px`. LIMIT
+    modifies omit `trigger_px`.
+
+    `qty` is REQUIRED for a LIMIT modify and FORBIDDEN for a STOP_LOSS /
+    TAKE_PROFIT modify: a trigger modify signs the ±int256.max full-position
+    sentinel (sign from `is_buy`; protect the whole position) and omits `qty`
+    from the wire, exactly like a trigger create.
+    """
+
+    symbol: str
+    is_buy: bool
+    limit_px: str
+    qty: Optional[str]
+    post_only: bool
+    expires_after: Optional[int]
+    time_in_force: TimeInForce
+    order_id: Optional[int] = None
+    client_order_id: Optional[int] = None
+    trigger_px: Optional[str] = None
+    reduce_only: bool = False
+    deadline: Optional[int] = None
+    nonce: Optional[int] = None
+    order_type: OrderType = OrderType.LIMIT
 
 
 @dataclass(frozen=True)
 class TriggerOrderParameters:
-    """Trigger order parameters."""
+    """Parameters for a STOP_LOSS or TAKE_PROFIT trigger order on a perp market.
+
+    Trigger orders omit `qty` on the REST/WS JSON contract and sign
+    `OrderDetails.quantity = ±int256.max` (the full-position sentinel; sign
+    carries the close side per reya-network #738); executable size is derived
+    from the live position when the trigger fires. The deprecated `qty` field
+    is retained only so older callers receive a targeted client-side error
+    instead of a server 400.
+
+    `limit_px` is the worst-acceptable execution price after the trigger fires;
+    if omitted the client signs a sentinel — a very high value for buys, a very
+    low non-zero value for sells — so the order executes at any price available
+    after the trigger.
+    """
 
     symbol: str
     is_buy: bool
     trigger_px: str
     trigger_type: OrderType
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "symbol": self.symbol,
-            "is_buy": self.is_buy,
-            "trigger_px": self.trigger_px,
-            "trigger_type": self.trigger_type,
-        }
+    limit_px: Optional[str] = None
+    qty: Optional[str] = None
+    reduce_only: Optional[bool] = None
+    client_order_id: Optional[int] = None
+    deadline: Optional[int] = None

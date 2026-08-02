@@ -21,7 +21,7 @@ class WalletResource:
         self._positions = WalletPositionsResource(socket)
         self._perp_executions = WalletPerpExecutionsResource(socket)
         self._spot_executions = WalletSpotExecutionsResource(socket)
-        self._spot_execution_busts = WalletSpotExecutionBustsResource(socket)
+        self._execution_busts = WalletExecutionBustsResource(socket)
         self._balances = WalletBalancesResource(socket)
         self._order_changes = WalletOrderChangesResource(socket)
 
@@ -69,16 +69,18 @@ class WalletResource:
         """
         return self._balances.for_wallet(address)
 
-    def spot_execution_busts(self, address: str) -> "WalletSpotExecutionBustsSubscription":
-        """Get spot execution busts for a specific wallet address.
+    def execution_busts(self, address: str) -> "WalletExecutionBustsSubscription":
+        """Get execution busts (failed fills) for a specific wallet address.
+
+        Unified across spot and perp markets.
 
         Args:
             address: The wallet address.
 
         Returns:
-            A subscription object for the wallet spot execution busts.
+            A subscription object for the wallet execution busts.
         """
-        return self._spot_execution_busts.for_wallet(address)
+        return self._execution_busts.for_wallet(address)
 
     def order_changes(self, address: str) -> "WalletOrderChangesSubscription":
         """Get order changes for a specific wallet address.
@@ -292,34 +294,34 @@ class WalletSpotExecutionsSubscription:
         self.socket.send_unsubscribe(channel=self.path)
 
 
-class WalletSpotExecutionBustsResource(SubscribableParameterizedResource):
-    """Resource for accessing wallet spot execution busts."""
+class WalletExecutionBustsResource(SubscribableParameterizedResource):
+    """Resource for accessing wallet execution busts (unified spot + perp)."""
 
     def __init__(self, socket: "ReyaSocket"):
-        """Initialize the wallet spot execution busts resource.
+        """Initialize the wallet execution busts resource.
 
         Args:
             socket: The WebSocket connection to use for this resource.
         """
-        super().__init__(socket, "/v2/wallet/{address}/spotExecutionBusts")
+        super().__init__(socket, "/v2/wallet/{address}/executionBusts")
 
-    def for_wallet(self, address: str) -> "WalletSpotExecutionBustsSubscription":
-        """Create a subscription for a specific wallet's spot execution busts.
+    def for_wallet(self, address: str) -> "WalletExecutionBustsSubscription":
+        """Create a subscription for a specific wallet's execution busts.
 
         Args:
             address: The wallet address.
 
         Returns:
-            A subscription object for the wallet spot execution busts.
+            A subscription object for the wallet's execution busts.
         """
-        return WalletSpotExecutionBustsSubscription(self.socket, address)
+        return WalletExecutionBustsSubscription(self.socket, address)
 
 
-class WalletSpotExecutionBustsSubscription:
-    """Manages a subscription to spot execution busts for a specific wallet."""
+class WalletExecutionBustsSubscription:
+    """Manages a subscription to execution busts for a specific wallet."""
 
     def __init__(self, socket: "ReyaSocket", address: str):
-        """Initialize a wallet spot execution busts subscription.
+        """Initialize a wallet execution busts subscription.
 
         Args:
             socket: The WebSocket connection to use for this subscription.
@@ -327,10 +329,10 @@ class WalletSpotExecutionBustsSubscription:
         """
         self.socket = socket
         self.address = address
-        self.path = f"/v2/wallet/{address}/spotExecutionBusts"
+        self.path = f"/v2/wallet/{address}/executionBusts"
 
     def subscribe(self, batched: bool = False) -> None:
-        """Subscribe to wallet spot execution busts.
+        """Subscribe to wallet execution busts.
 
         Args:
             batched: Whether to receive updates in batches.
@@ -338,7 +340,7 @@ class WalletSpotExecutionBustsSubscription:
         self.socket.send_subscribe(channel=self.path, batched=batched)
 
     def unsubscribe(self) -> None:
-        """Unsubscribe from wallet spot execution busts."""
+        """Unsubscribe from wallet execution busts."""
         self.socket.send_unsubscribe(channel=self.path)
 
 

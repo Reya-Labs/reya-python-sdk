@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+import pytest
+
 if TYPE_CHECKING:
     from sdk.open_api.models.depth import Depth
     from sdk.open_api.models.level import Level
@@ -21,15 +23,22 @@ logger = logging.getLogger("reya.integration_tests")
 
 CIRCUIT_BREAKER_PCT = Decimal("0.05")  # ±5% from oracle price
 
-# Extreme prices for safe no-match orders (guaranteed never to match)
-SAFE_NO_MATCH_BUY_PRICE = Decimal("10")  # $10 - far below any realistic ETH price
-# $1M - far above any realistic ETH price (~470× above $2k mark) while still
-# keeping the order's open notional under server-side caps. At qty=min_qty
-# (e.g. 0.001 ETH), $1M × 0.001 = $1,000 of open notional, comfortably below
-# the whitelisted-wallet RATE_LIMIT_GTC_MAX_OPEN_NOTIONAL_WHITELISTED cap
-# (currently $5,000 on staging api-executor). The earlier $10M value yielded
-# $10K notional and tripped that cap on full-suite runs.
-SAFE_NO_MATCH_SELL_PRICE = Decimal("1000000")
+# Extreme prices for safe no-match orders (guaranteed never to match).
+#
+# The matching engine validates `limit_px <= MAX_PRICE` where
+# MAX_PRICE = 2^49 in E9-scaled units ≈ 562_949 in real units (~$562k).
+# See protos/reya-chain/crates/matching-engine/src/base/validation/rules.rs
+# in reya-off-chain-monorepo.
+#
+# We pick $400k for SAFE_NO_MATCH_SELL_PRICE: well below MAX_PRICE so the
+# ME validator accepts it, yet still far above any realistic ETH/BTC price
+# (current ETH ≈ $2k, BTC ≈ $60k — would need ~7× movement to even
+# approach this), so the "guaranteed no match" intent is preserved.
+# At qty=min_qty this is also ~$400 open notional, well under the
+# server-side GTC notional caps (the concern behind main's old $1M value,
+# which is moot here since $1M would exceed the ME MAX_PRICE anyway).
+SAFE_NO_MATCH_BUY_PRICE = Decimal("10")  # $10 — far below any realistic ETH/BTC price
+SAFE_NO_MATCH_SELL_PRICE = Decimal("400000")  # $400k — below ME MAX_PRICE (~$562k), above realistic crypto prices
 
 
 @dataclass
@@ -311,3 +320,62 @@ def log_order_book_state(state: OrderBookState) -> None:
         )
     else:
         logger.info("  Asks: empty")
+
+
+async def skip_if_external_liquidity(
+    data_ops: "DataOperations",
+    symbol: str,
+    oracle_price: float,
+    *,
+    reason_prefix: str = "",
+) -> None:
+    """Skip the calling pytest test if any external liquidity is on the orderbook.
+
+    Mirrors the pattern used by `tests/spot/test_maker_taker_matching.py`
+    (which calls ``pytest.skip`` when ``spot_config.has_any_external_liquidity``
+    is true): tests that need to *rest* a maker order at oracle ±1% and then
+    cross it with a same-side taker only work in a controlled environment.
+    If somebody else's liquidity (typically a market-making bot running on
+    the same env) is inside ±5% of oracle, the maker's order would cross
+    that liquidity instead of resting on the book, and the test fails in a
+    way unrelated to what it's actually exercising.
+
+    Use at the top of any perp maker/taker test, or inside helpers that
+    rest a maker order at near-oracle prices.
+
+    Args:
+        data_ops: ReyaTester data operations, used to fetch the depth.
+        symbol: Market symbol (e.g. ``ETHRUSDPERP``).
+        oracle_price: Current oracle price; used to log circuit-breaker
+            bounds for context when skipping.
+        reason_prefix: Optional prefix to prepend to the skip message so
+            callers can identify which leg of the test caused the skip
+            (e.g. ``"_rest_maker_sell"``).
+    """
+    detector = LiquidityDetector(oracle_price)
+    state = await detector.get_order_book_state(data_ops, symbol)
+    if not state.has_any_liquidity:
+        return
+
+    log_order_book_state(state)
+    prefix = f"{reason_prefix}: " if reason_prefix else ""
+    pytest.skip(
+        f"{prefix}external {symbol} liquidity present "
+        f"(likely a market-making bot on the same env). "
+        "This test rests a maker order at oracle ±1% which would cross "
+        "any liquidity within the ±5% circuit-breaker band rather than "
+        "resting on the book. Rerun against a controlled environment."
+    )
+
+
+async def skip_if_external_config_liquidity(config, tester, reason: str) -> None:
+    """Config-flavoured twin of `skip_if_external_liquidity` for tests that
+    hold a `MarketTestConfig`: refreshes the config's cached book via the
+    tester's data ops and skips when ANY external liquidity is present.
+
+    Use the positional variant above when you only have data-ops + symbol +
+    oracle price (no config object).
+    """
+    await config.refresh_order_book(tester.data)
+    if config.has_any_external_liquidity:
+        pytest.skip(f"Skipping: external liquidity exists. {reason}")

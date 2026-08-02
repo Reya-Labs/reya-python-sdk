@@ -19,3 +19,7 @@ class TransactionReceiptError(ReyaRpcError):
 
 class BridgeFeeExceededError(ReyaRpcError):
     """Raised when bridge fee exceeds the specified limit."""
+
+
+class InvalidTokenAddressError(ReyaRpcError):
+    """Raised when a caller-supplied token address is not a valid Ethereum address."""

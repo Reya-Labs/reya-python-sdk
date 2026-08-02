@@ -1,0 +1,394 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: MIT
+//
+// EIP-712 signature parity harness — TS reference side.
+//
+// Reproduces the canonical signature bytes for three v2.3.0 envelopes (Order,
+// OrderCancel, MassCancel) using ethers v6. Run from this directory:
+//
+//   npm install
+//   node sign_ts.mjs
+//
+// Output is a JSON dict mapping {order, cancel, mass_cancel} → 0x-prefixed
+// hex. The Python parity test (test_signature_parity.py) hardcodes these
+// values and asserts the Python sign_* helpers produce the same bytes.
+//
+// The OrderDetails typed-data is the 14-field schema — postOnly is the 14th
+// field, immediately after reduceOnly — mirroring the canonical on-chain
+// OrderDetails typehash. The OrderCancel / MassCancel envelopes are unchanged.
+// If anything drifts, regenerate by re-running this script and updating the
+// expected hex in test_signature_parity.py.
+
+import { Wallet } from "ethers";
+
+// Fixed test vector — first hardhat well-known key. Address derives to
+// 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266. Never use in production.
+const PRIVATE_KEY =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+
+const CHAIN_ID = 89346162; // cronos / devnet1
+const ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"; // devnet1 OG proxy
+
+const domain = {
+  name: "Reya",
+  version: "1",
+  verifyingContract: ORDERS_GATEWAY,
+  // chainId is intentionally absent — verifyingChainId travels in the envelope.
+};
+
+// === Order (on-chain-verified) ===
+const orderTypes = {
+  Order: [
+    { name: "verifyingChainId", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "order", type: "OrderDetails" },
+  ],
+  OrderDetails: [
+    { name: "accountId", type: "uint128" },
+    { name: "marketId", type: "uint128" },
+    { name: "exchangeId", type: "uint128" },
+    { name: "orderType", type: "uint8" },
+    { name: "quantity", type: "int256" },
+    { name: "limitPrice", type: "uint256" },
+    { name: "triggerPrice", type: "uint256" },
+    { name: "timeInForce", type: "uint8" },
+    { name: "clientOrderId", type: "uint64" },
+    { name: "reduceOnly", type: "bool" },
+    { name: "postOnly", type: "bool" },
+    { name: "expiresAfter", type: "uint256" },
+    { name: "signer", type: "address" },
+    { name: "nonce", type: "uint256" },
+  ],
+};
+
+// LIMIT IOC perp buy: 0.5 qty @ 3000 limit price.
+const orderValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000000),
+  order: {
+    accountId: 12345n,
+    marketId: 1n, // ETH perp
+    exchangeId: 2n, // Reya DEX id
+    orderType: 0, // LIMIT
+    quantity: BigInt("500000000000000000"), // +0.5 E18 (signed; positive = buy)
+    limitPrice: BigInt("3000000000000000000000"), // 3000 E18
+    triggerPrice: 0n,
+    timeInForce: 1, // IOC
+    clientOrderId: 42n,
+    reduceOnly: false,
+    postOnly: false,
+    expiresAfter: 0n,
+    signer: SIGNER_ADDRESS,
+    nonce: BigInt(1700000000000000),
+  },
+};
+
+// LIMIT IOC perp SELL: identical to orderValue except the quantity sign. This
+// vector exists specifically to pin the is_buy=False → negative-quantity path,
+// which the buy vector above can't catch (a sign bug would still match a
+// positive expected value). Only `quantity` differs, so any drift here is
+// unambiguously the sign encoding.
+const orderSellValue = {
+  ...orderValue,
+  order: {
+    ...orderValue.order,
+    quantity: BigInt("-500000000000000000"), // -0.5 E18 (signed; negative = sell)
+  },
+};
+
+// Identical to orderValue except postOnly=true. Pins the maker-only flag's
+// signed path — the 14th OrderDetails field. Only `postOnly` differs, so any
+// drift here unambiguously isolates the postOnly encoding.
+const orderPostOnlyValue = {
+  ...orderValue,
+  order: {
+    ...orderValue.order,
+    postOnly: true,
+  },
+};
+
+// GTT *create* vector: identical to orderValue except timeInForce=2 (GTT) and a
+// non-zero expiresAfter strictly after the deadline (the order has to outlive
+// its own entry window). Pins the GTT create path's signed timeInForce==2 +
+// non-zero expiresAfter encoding — the base/sell/post_only vectors are all IOC
+// (timeInForce=1, expiresAfter=0), so a silent GTT→0/1 mismap would slip past
+// them while the wire string stayed "GTT". The Python side reproduces this both
+// via direct sign_order(int(TimeInForceInt.GTT)) and via
+// build_create_limit_order_payload.
+const orderGttCreateValue = {
+  ...orderValue,
+  order: {
+    ...orderValue.order,
+    timeInForce: 2, // GTT (rests + auto-expires at expiresAfter)
+    expiresAfter: BigInt(1745000600), // strictly after deadline 1745000000
+  },
+};
+
+// GTT create + postOnly=true: same as the GTT create vector with the maker-only
+// flag set, pinning that a GTT can also be post-only end-to-end (timeInForce==2
+// AND postOnly==true both signed).
+const orderGttPostOnlyValue = {
+  ...orderGttCreateValue,
+  order: {
+    ...orderGttCreateValue.order,
+    postOnly: true,
+  },
+};
+
+// === OrderCancel (matching-engine layer) ===
+const orderCancelTypes = {
+  OrderCancel: [
+    { name: "verifyingChainId", type: "uint64" },
+    { name: "deadline", type: "uint64" },
+    { name: "cancel", type: "OrderCancelDetails" },
+  ],
+  OrderCancelDetails: [
+    { name: "accountId", type: "uint64" },
+    { name: "marketId", type: "uint64" },
+    { name: "orderId", type: "uint64" },
+    { name: "clOrdId", type: "uint64" },
+    { name: "nonce", type: "uint64" },
+  ],
+};
+
+const orderCancelValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000060),
+  cancel: {
+    accountId: 12345n,
+    marketId: 1n,
+    orderId: BigInt("63552420354981888"),
+    clOrdId: 0n,
+    nonce: BigInt(1700000000000001),
+  },
+};
+
+// === MassCancel (matching-engine layer) ===
+const massCancelTypes = {
+  MassCancel: [
+    { name: "verifyingChainId", type: "uint64" },
+    { name: "deadline", type: "uint64" },
+    { name: "massCancel", type: "MassCancelDetails" },
+  ],
+  MassCancelDetails: [
+    { name: "accountId", type: "uint64" },
+    { name: "marketId", type: "uint64" },
+    { name: "nonce", type: "uint64" },
+  ],
+};
+
+const massCancelValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000120),
+  massCancel: {
+    accountId: 12345n,
+    marketId: 0n, // 0 = all markets (matches TS SDK ?? 0 fallback)
+    nonce: BigInt(1700000000000002),
+  },
+};
+
+// === CancelAllAfter (matching-engine layer, cancel-on-disconnect) ===
+const cancelAllAfterTypes = {
+  CancelAllAfter: [
+    { name: "verifyingChainId", type: "uint64" },
+    { name: "deadline", type: "uint64" },
+    { name: "cancelAllAfter", type: "CancelAllAfterDetails" },
+  ],
+  CancelAllAfterDetails: [
+    { name: "accountId", type: "uint64" },
+    { name: "timeoutMs", type: "uint64" },
+    { name: "nonce", type: "uint64" },
+  ],
+};
+
+const cancelAllAfterArmValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000180),
+  cancelAllAfter: {
+    accountId: 12345n,
+    timeoutMs: 30000n,
+    nonce: BigInt(1700000000000003),
+  },
+};
+
+// timeoutMs 0 = disarm; pins the zero path distinctly from the arm vector.
+const cancelAllAfterDisarmValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000240),
+  cancelAllAfter: {
+    accountId: 12345n,
+    timeoutMs: 0n,
+    nonce: BigInt(1700000000000004),
+  },
+};
+
+// Modify signs the SAME Order envelope over the full post-modify state — no
+// dedicated typed-data schema. This vector is orderValue with all four
+// modifiable fields changed (px/qty/postOnly/expiresAfter) on a resting GTT
+// (the modifiable order that legitimately carries a non-zero expiresAfter,
+// strictly after the deadline), and a fresh nonce; the Python side must
+// reproduce it through the modify payload builder, proving modify == order
+// signing over the post-modify struct.
+const orderModifyStateValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000300),
+  order: {
+    ...orderValue.order,
+    quantity: BigInt("750000000000000000"), // +0.75 E18 (new TOTAL qty)
+    limitPrice: BigInt("2950000000000000000000"), // 2950 E18 (new px)
+    timeInForce: 2, // GTT (resting + auto-expires at expiresAfter)
+    postOnly: true,
+    expiresAfter: BigInt(1745003600),
+    nonce: BigInt(1700000000000005),
+  },
+};
+
+// === Trigger orders (STOP_LOSS / TAKE_PROFIT) — the SAME Order envelope ===
+// Trigger orders reuse the on-chain-verified Order envelope; the only thing that
+// distinguishes them from a LIMIT is orderType (1 = STOP_LOSS, 2 = TAKE_PROFIT).
+// They sign quantity ±FULL_POSITION_STOP_SENTINEL — type(int256).max, RAW (not
+// E18-scaled) — with the sign carrying the close side (+sentinel = buy back a
+// short, −sentinel = sell out a long; reya-network #738 enforces the iff, and
+// the old quantity-0 encoding now reverts ZeroQuantity). They carry a real
+// triggerPrice, a real limitPrice, and rest GTC (timeInForce 0) with no expiry
+// (expiresAfter 0). Every LIMIT golden above pins orderType 0, so a wrong
+// orderType→uint8 mapping (or a struct-hash divergence) for triggers would slip
+// past all of them AND past a same-signer round-trip; only an independent
+// cross-language golden over orderType 1/2 catches it, failing here instead of
+// on-chain.
+const FULL_POSITION_STOP_SENTINEL = 2n ** 255n - 1n; // type(int256).max
+
+const orderStopLossValue = {
+  verifyingChainId: BigInt(CHAIN_ID),
+  deadline: BigInt(1745000360),
+  order: {
+    accountId: 12345n,
+    marketId: 1n,
+    exchangeId: 2n,
+    orderType: 1, // STOP_LOSS
+    quantity: FULL_POSITION_STOP_SENTINEL, // +sentinel: buy side (is_buy=true)
+    limitPrice: BigInt("2750000000000000000000"), // 2750 E18 (worst-acceptable px)
+    triggerPrice: BigInt("2800000000000000000000"), // 2800 E18 (fires here)
+    timeInForce: 0, // GTC — rests until the trigger fires
+    clientOrderId: 42n,
+    reduceOnly: false,
+    postOnly: false,
+    expiresAfter: 0n,
+    signer: SIGNER_ADDRESS,
+    nonce: BigInt(1700000000000006),
+  },
+};
+
+// TAKE_PROFIT is the STOP_LOSS vector with ONLY orderType flipped 1→2, so any
+// drift here unambiguously isolates the trigger orderType encoding (SL vs TP).
+const orderTakeProfitValue = {
+  ...orderStopLossValue,
+  order: {
+    ...orderStopLossValue.order,
+    orderType: 2, // TAKE_PROFIT
+  },
+};
+
+// Sell-side STOP_LOSS: ONLY the quantity sign flips (+sentinel → −sentinel), so
+// any drift here unambiguously isolates the is_buy → sentinel-sign path — the
+// exact failure mode the ±sentinel encoding exists to catch (a sign flip would
+// close the WRONG side's position at fire time).
+const orderStopLossSellValue = {
+  ...orderStopLossValue,
+  order: {
+    ...orderStopLossValue.order,
+    quantity: -FULL_POSITION_STOP_SENTINEL, // −sentinel: sell side (is_buy=false)
+  },
+};
+
+const wallet = new Wallet(PRIVATE_KEY);
+
+const orderSig = await wallet.signTypedData(domain, orderTypes, orderValue);
+const orderSellSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderSellValue,
+);
+const orderPostOnlySig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderPostOnlyValue,
+);
+const orderGttCreateSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderGttCreateValue,
+);
+const orderGttPostOnlySig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderGttPostOnlyValue,
+);
+const cancelSig = await wallet.signTypedData(
+  domain,
+  orderCancelTypes,
+  orderCancelValue,
+);
+const massCancelSig = await wallet.signTypedData(
+  domain,
+  massCancelTypes,
+  massCancelValue,
+);
+const cancelAllAfterArmSig = await wallet.signTypedData(
+  domain,
+  cancelAllAfterTypes,
+  cancelAllAfterArmValue,
+);
+const cancelAllAfterDisarmSig = await wallet.signTypedData(
+  domain,
+  cancelAllAfterTypes,
+  cancelAllAfterDisarmValue,
+);
+const orderModifyStateSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderModifyStateValue,
+);
+const orderStopLossSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderStopLossValue,
+);
+const orderTakeProfitSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderTakeProfitValue,
+);
+const orderStopLossSellSig = await wallet.signTypedData(
+  domain,
+  orderTypes,
+  orderStopLossSellValue,
+);
+
+console.log(
+  JSON.stringify(
+    {
+      signer_address: SIGNER_ADDRESS,
+      chain_id: CHAIN_ID,
+      orders_gateway: ORDERS_GATEWAY,
+      signatures: {
+        order: orderSig,
+        order_sell: orderSellSig,
+        order_post_only: orderPostOnlySig,
+        order_gtt_create: orderGttCreateSig,
+        order_gtt_post_only: orderGttPostOnlySig,
+        order_cancel: cancelSig,
+        mass_cancel: massCancelSig,
+        cancel_all_after_arm: cancelAllAfterArmSig,
+        cancel_all_after_disarm: cancelAllAfterDisarmSig,
+        order_modify_state: orderModifyStateSig,
+        order_trigger_stop_loss: orderStopLossSig,
+        order_trigger_take_profit: orderTakeProfitSig,
+        order_trigger_stop_loss_sell: orderStopLossSellSig,
+      },
+    },
+    null,
+    2,
+  ),
+);

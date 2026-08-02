@@ -10,7 +10,19 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 MAINNET_CHAIN_ID = 1729
-REYA_DEX_ID = 2
+
+# OrdersGateway proxy = the EIP-712 verifyingContract, per deployment. devnet1
+# (the perpOB testnet) and the cronos testnet share chain id 89346162 but use
+# different proxies, so REYA_ORDERS_GATEWAY selects between them (set per
+# environment in .env.example). Cronos is reachable only via that override.
+MAINNET_ORDERS_GATEWAY = "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"
+DEVNET1_ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"
+CRONOS_ORDERS_GATEWAY = "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"
+
+# Default exchange id resolved at import time. Set REYA_DEX_ID in the
+# environment to override (e.g., devnet1 only registers exchange id 1).
+# `TradingConfig.dex_id_override` still wins per-instance if set.
+REYA_DEX_ID = int(os.environ.get("REYA_DEX_ID", "2"))
 
 
 @dataclass
@@ -22,6 +34,8 @@ class TradingConfig:
     owner_wallet_address: str
     private_key: Optional[str] = None
     account_id: Optional[int] = None
+    orders_gateway_address: Optional[str] = None
+    dex_id_override: Optional[int] = None
 
     @property
     def is_mainnet(self) -> bool:
@@ -30,21 +44,32 @@ class TradingConfig:
 
     @property
     def dex_id(self) -> int:
-        """Get DEX ID"""
+        """Exchange id used as `OrderDetails.exchangeId` in signed orders.
+
+        Resolves to the ``REYA_DEX_ID`` env var when set (via
+        ``from_env``/``from_env_spot``), otherwise the canonical default.
+        The override exists because non-mainnet deployments (devnet1,
+        future testnets) may not have registered the canonical id-2
+        exchange yet — using id 1 (passive pool) lets order-entry tests
+        run end-to-end on those environments. Switch back to the
+        default once the target deployment registers id 2.
+        """
+        if self.dex_id_override is not None:
+            return self.dex_id_override
         return REYA_DEX_ID
 
     @property
     def default_orders_gateway_address(self) -> str:
-        """Get default OrdersGateway proxy contract address based on chain ID"""
-        if self.is_mainnet:
-            return "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"  # Mainnet address
-        else:
-            return "0x5a0ac2f89e0bdeafc5c549e354842210a3e87ca5"  # Testnet address
+        """OrdersGateway proxy contract address used as the EIP-712 verifyingContract.
 
-    @property
-    def pool_account_id(self) -> int:
-        """Get pool account ID based on chain ID"""
-        return 2 if self.is_mainnet else 4
+        Set ``REYA_ORDERS_GATEWAY`` per environment (see ``.env.example``); it
+        wins when present and is required to target cronos, which shares
+        devnet1's chain id. When unset, fall back to the mainnet or devnet1
+        default by chain id.
+        """
+        if self.orders_gateway_address:
+            return self.orders_gateway_address
+        return MAINNET_ORDERS_GATEWAY if self.is_mainnet else DEVNET1_ORDERS_GATEWAY
 
     @classmethod
     def from_env(cls) -> "TradingConfig":
@@ -53,11 +78,11 @@ class TradingConfig:
 
         chain_id = int(os.environ.get("CHAIN_ID", MAINNET_CHAIN_ID))
 
-        # Get API URL based on environment (mainnet or testnet)
+        # Get API URL based on environment (mainnet or devnet1, the perpOB testnet)
         if chain_id == MAINNET_CHAIN_ID:
             default_api_url = "https://api.reya.xyz/v2"
         else:
-            default_api_url = "https://api-cronos.reya.xyz/v2"
+            default_api_url = "https://api-devnet.reya-cronos.network/v2"
 
         # Require PERP_WALLET_ADDRESS_1
         owner_wallet_address = os.environ.get("PERP_WALLET_ADDRESS_1")
@@ -67,12 +92,15 @@ class TradingConfig:
                 "This should be the wallet address whose data you want to query."
             )
 
+        dex_id_env = os.environ.get("REYA_DEX_ID")
         return cls(
             api_url=os.environ.get("REYA_API_URL", default_api_url),
             chain_id=chain_id,
             owner_wallet_address=owner_wallet_address,
             private_key=os.environ.get("PERP_PRIVATE_KEY_1"),
             account_id=(int(os.environ["PERP_ACCOUNT_ID_1"]) if "PERP_ACCOUNT_ID_1" in os.environ else None),
+            orders_gateway_address=os.environ.get("REYA_ORDERS_GATEWAY"),
+            dex_id_override=int(dex_id_env) if dex_id_env else None,
         )
 
     @classmethod
@@ -95,11 +123,11 @@ class TradingConfig:
 
         chain_id = int(os.environ.get("CHAIN_ID", MAINNET_CHAIN_ID))
 
-        # Get API URL based on environment (mainnet or testnet)
+        # Get API URL based on environment (mainnet or devnet1, the perpOB testnet)
         if chain_id == MAINNET_CHAIN_ID:
             default_api_url = "https://api.reya.xyz/v2"
         else:
-            default_api_url = "https://api-cronos.reya.xyz/v2"
+            default_api_url = "https://api-devnet.reya-cronos.network/v2"
 
         # Get SPOT account credentials
         owner_wallet_address = os.environ.get(f"SPOT_WALLET_ADDRESS_{account_number}")
@@ -113,12 +141,15 @@ class TradingConfig:
         account_id_str = os.environ.get(f"SPOT_ACCOUNT_ID_{account_number}")
         account_id = int(account_id_str) if account_id_str else None
 
+        dex_id_env = os.environ.get("REYA_DEX_ID")
         return cls(
             api_url=os.environ.get("REYA_API_URL", default_api_url),
             chain_id=chain_id,
             owner_wallet_address=owner_wallet_address,
             private_key=private_key,
             account_id=account_id,
+            orders_gateway_address=os.environ.get("REYA_ORDERS_GATEWAY"),
+            dex_id_override=int(dex_id_env) if dex_id_env else None,
         )
 
 

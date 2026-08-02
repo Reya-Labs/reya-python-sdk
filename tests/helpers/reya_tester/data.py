@@ -2,19 +2,20 @@
 
 from typing import TYPE_CHECKING, Optional
 
+import asyncio
 import logging
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.account_balance import AccountBalance
 from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.execution_bust import ExecutionBust
+from sdk.open_api.models.execution_bust_list import ExecutionBustList
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
-from sdk.open_api.models.price import Price
 from sdk.open_api.models.spot_execution import SpotExecution
-from sdk.open_api.models.spot_execution_bust import SpotExecutionBust
-from sdk.open_api.models.spot_execution_bust_list import SpotExecutionBustList
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 
 if TYPE_CHECKING:
@@ -29,18 +30,57 @@ class DataOperations:
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
 
-    async def current_price(self, symbol: str = "ETHRUSDPERP") -> str:
-        """Fetch current market price for a symbol."""
-        price_info: Price = await self._t.client.markets.get_price(symbol)
-        logger.info(f"Price info: {price_info}")
-        current_price = price_info.oracle_price
+    async def current_price(self, symbol: str = "ETHRUSDPERP", max_attempts: int = 5) -> str:
+        """Fetch current perp mark price for a symbol, retrying through transient market-data gaps."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(max_attempts):
+            try:
+                current_price = await self._t.client.get_market_mark_price(symbol)
+                logger.info(f"💰 Current mark price for {symbol}: ${float(current_price):.2f}")
+                return current_price
+            except (ApiException, RuntimeError) as e:
+                # Only transient market-data gaps are retryable; anything else is a real error.
+                error_text = str(e)
+                if (
+                    "NO_PRICES_FOUND_FOR_SYMBOL_ERROR" not in error_text
+                    and "Price not found" not in error_text
+                    and "market data not found" not in error_text
+                    and "did not include markPrice" not in error_text
+                ):
+                    raise
+                last_exc = e
+                logger.warning(
+                    f"⚠️ market summary gap for {symbol} (attempt {attempt + 1}/{max_attempts}); " "retrying in 0.3s"
+                )
+            await asyncio.sleep(0.3)
 
-        if current_price:
-            logger.info(f"💰 Current market price for {symbol}: ${float(current_price):.2f}")
-            return current_price
-        else:
-            logger.info(f"❌ Current market price for {symbol} not found")
-            raise RuntimeError("Current market price not found")
+        raise RuntimeError(f"Current mark price for {symbol} unavailable after {max_attempts} attempts") from last_exc
+
+    async def asset_oracle_price(self, asset: str, max_attempts: int = 5) -> str:
+        """Fetch current asset oracle price, retrying through transient market-data gaps."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(max_attempts):
+            try:
+                current_price = (await self._t.client.get_asset_oracle_price(asset)).oracle_price
+                logger.info(f"💰 Current asset oracle price for {asset}: ${float(current_price):.2f}")
+                return current_price
+            except (ApiException, RuntimeError) as e:
+                error_text = str(e)
+                if (
+                    "Price not found" not in error_text
+                    and "market data not found" not in error_text
+                    and "Asset oracle price not found" not in error_text
+                ):
+                    raise
+                last_exc = e
+                logger.warning(
+                    f"⚠️ asset oracle price gap for {asset} (attempt {attempt + 1}/{max_attempts}); " "retrying in 0.3s"
+                )
+            await asyncio.sleep(0.3)
+
+        raise RuntimeError(
+            f"Current asset oracle price for {asset} unavailable after {max_attempts} attempts"
+        ) from last_exc
 
     async def positions(self) -> dict[str, Position]:
         """Get all current positions."""
@@ -112,7 +152,7 @@ class DataOperations:
 
     async def market_definition(self, symbol: str) -> MarketDefinition:
         """Get market configuration for a specific symbol."""
-        markets_config: list[MarketDefinition] = await self._t.client.reference.get_market_definitions()
+        markets_config: list[MarketDefinition] = await self._t.client.reference.get_perp_market_definitions()
         for config in markets_config:
             if config.symbol == symbol:
                 return config
@@ -130,21 +170,19 @@ class DataOperations:
         """Get all open orders."""
         return await self._t.client.get_open_orders()
 
-    async def spot_execution_busts(self) -> list[SpotExecutionBust]:
-        """Get spot execution busts for this wallet.
+    async def execution_busts(self) -> list[ExecutionBust]:
+        """Get execution busts (failed fills) for this wallet, across spot and perp.
 
-        Returns list of SpotExecutionBust objects (may be empty if no busts exist).
+        Returns list of ExecutionBust objects (may be empty).
         """
-        bust_list: SpotExecutionBustList = await self._t.client.get_spot_execution_busts()
+        bust_list: ExecutionBustList = await self._t.client.get_execution_busts()
         return bust_list.data if bust_list.data else []
 
-    async def market_spot_execution_busts(self, symbol: str) -> list[SpotExecutionBust]:
-        """Get spot execution busts for a specific market.
+    async def market_execution_busts(self, symbol: str) -> list[ExecutionBust]:
+        """Get execution busts for a specific market (spot or perp).
 
         Args:
-            symbol: Trading symbol (e.g., "WETHRUSD").
-
-        Returns list of SpotExecutionBust objects (may be empty if no busts exist).
+            symbol: Trading symbol (e.g., ``WETHRUSD`` or ``ETHRUSDPERP``).
         """
-        bust_list: SpotExecutionBustList = await self._t.client.markets.get_market_spot_execution_busts(symbol=symbol)
+        bust_list: ExecutionBustList = await self._t.client.markets.get_market_execution_busts(symbol=symbol)
         return bust_list.data if bust_list.data else []

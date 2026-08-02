@@ -39,6 +39,19 @@ python -m examples.websocket.market_monitoring
 python -m examples.rpc.trade_execution
 ```
 
+## Test tree layout (one axis per directory)
+* `tests/engine/` — market-AGNOSTIC matching-engine behavior, every test parametrized `[spot, perp]` via the root-conftest `market_config`/`maker`/`taker` fixtures (lazy: a one-market env never spins up the other market's sessions). This is the home for ALL shared engine behavior including the feature suites — lifecycle (GTC/IOC/cancel/SMP), plus `test_modify_*`, `test_cod_*`, `test_post_only_*`. Select a feature with its marker: `-m modify` / `-m cod` / `-m post_only`. Fill-producing modules assert settlement via the injected `settlement_probe` (spot balance deltas / perp position deltas; `tests/helpers/settlement.py`) and wire per-market cleanup via the autouse `settlement_cleanup_guard`.
+* `tests/spot/` — spot PHYSICS only (balance deltas, conservation, spotExecutions surfaces, pre-trade balance checks). `tests/perp/` — perp physics (baseline-relative positions, reduce-only, trigger orders).
+* `tests/api_contract/` — raw EIP-712/nonce/deadline envelope validation; live but never trades (no balance/position guards). Pinned to the spot market + a 2-test perp cross-market smoke.
+* `tests/ws_exec/` — WS order-entry transport (session semantics, error envelopes).
+* `tests/parity/` + `tests/validation/` — OFFLINE (no network), selectable via `pytest -m offline` (also by path, unchanged).
+* Selection: `-m spot` / `-m perp` are auto-derived from param ids + hand markers; `-m modify|cod|post_only` cross-cut the feature tests in `engine/` (and their offline guard twins in `validation/`).
+
+## Testing against devnet
+* The live suites (`tests/engine`, `tests/spot`, `tests/perp`, `tests/api_contract`, `tests/ws_exec`) run **live against devnet** — they place real orders, fill, settle on-chain, and assert on executions/balances.
+* **Before running the suite, kill any long-running example scripts** (e.g. `examples.websocket.perps.depth_market_maker`, any `python -m examples.*`). They maintain resting orders / open positions on the shared devnet test accounts and **pollute test state** — symptoms include `cancelledCount` mismatches, "reduce-only not rejected" (a leftover position exists), and matching against the wrong counterparty. Check with `ps -Ao pid,etime,command | grep -iE "examples\.|market_maker"` and kill stragglers before a run.
+* Tests share a small pool of devnet accounts; leftover orders from a crashed/aborted run can also pollute — a clean run starts from no resting orders / no open positions on the test accounts.
+
 ## Key Architecture
 - REST: client.py (main entry) -> resources/ (endpoints) -> auth/signatures.py (EIP-712) -> models/ (Pydantic)
 - RPC: actions/ (tx builders) -> abis/ (contract ABIs) -> config.py (network addresses)

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import asyncio
 import logging
 import time
+from decimal import Decimal
 
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.side import Side
@@ -26,16 +27,30 @@ class PositionOperations:
     def __init__(self, tester: "ReyaTester"):
         self._t = tester
 
+    async def signed_qty(self, symbol: str) -> Decimal:
+        """Signed position size on `symbol`: + long, − short, 0 when flat."""
+        position = await self._t.data.position(symbol)
+        if position is None or position.qty is None:
+            return Decimal("0")
+        qty = Decimal(str(position.qty))
+        # Sides on the API: 'B' = Bid/long (positive), 'A' = Ask/short (negative).
+        return qty if str(position.side) in ("Side.B", "B") else -qty
+
     async def close_all(self, fail_if_none: bool = True) -> None:
-        """Close all open positions."""
+        """Best-effort: try to flatten any open positions.
+
+        Under perpOB (peer-to-peer matching, no AMM), a reduce-only IOC only
+        closes a position if there's a counterparty on the book at a crossing
+        price. Without orchestration between maker and taker testers, the
+        cleanup IOC may end up CANCELLED with the position still open — that's
+        expected, not a test failure. Tests that genuinely need a clean
+        position slate should verify it explicitly via assertions on
+        `positions()` rather than relying on this helper.
+        """
         try:
             positions = await self._t.data.positions()
         except ApiException as e:
             logger.warning(f"Failed to get positions (API may not have market trackers in Redis): {e}")
-            if fail_if_none:
-                logger.warning(
-                    "Ignoring positions error since fail_if_none=True means we don't require positions to exist"
-                )
             return None
 
         if len(positions) == 0:
@@ -51,40 +66,73 @@ class PositionOperations:
                 logger.info(f"Position {symbol} already closed, skipping")
                 continue
 
-            price_with_offset = 0 if current_position.side == Side.B else 1000000000000
+            # Depth check: under perpOB, a reduce-only IOC only fills against
+            # resting counterparties. If the side we'd cross is empty, sending
+            # the IOC just burns a nonce and produces a CANCELLED order. Skip
+            # in that case — the orchestrated `perp_position_guard` fixture is
+            # responsible for cleaning up genuine residue between sessions.
+            close_is_buy = current_position.side != Side.B
+            try:
+                depth = await self._t.data.market_depth(symbol)
+            except ApiException as e:
+                logger.warning(f"Failed to fetch market depth for {symbol}: {e} — attempting IOC anyway")
+                depth = None
+
+            if depth is not None:
+                opposite_levels = depth.asks if close_is_buy else depth.bids
+                if not opposite_levels:
+                    logger.info(
+                        f"close_all: skipping reduce-only IOC for {symbol} — "
+                        f"no resting {'asks' if close_is_buy else 'bids'} to cross"
+                    )
+                    continue
+
+            # Sentinel prices anchored to oracle so the reduce-only IOC always
+            # crosses any resting order without violating ME bounds. The ME
+            # rejects `limit_px <= 0` and `limit_px > 2^64 / 1e9 ≈ 1.844e10`,
+            # so the legacy `0` / `1e12` sentinels don't work under perpOB.
+            # 0.5x / 1.5x oracle is wide enough to cross anything the test
+            # suite places (which sits within ±5% of oracle).
+            oracle_price = float(await self._t.data.current_price(symbol))
+            close_price = oracle_price * (0.5 if current_position.side == Side.B else 1.5)
 
             limit_order_params = LimitOrderParameters(
                 symbol=symbol,
-                is_buy=not (current_position.side == Side.B),
-                limit_px=str(price_with_offset),
+                is_buy=close_is_buy,
+                limit_px=str(round(close_price, 2)),
                 qty=str(current_position.qty),
                 time_in_force=TimeInForce.IOC,
                 reduce_only=True,
             )
             logger.debug(f"Order params: {limit_order_params}")
 
-            order_id = await self._t.orders.create_limit(limit_order_params)
-            assert order_id is None
+            try:
+                await self._t.orders.create_limit(limit_order_params)
+            except ApiException as e:
+                logger.warning(f"Reduce-only close attempt failed for {symbol}: {e}")
+                continue
 
-        # Wait for positions to be actually closed
+        # Wait briefly for positions to clear — short timeout because under
+        # perpOB the cleanup IOC may be CANCELLED with position still open
+        # (no counterparty), and there's no point waiting in that case.
         start_time = time.time()
-        timeout = 10
-
+        timeout = 3
         while time.time() - start_time < timeout:
             position_after = await self._t.data.positions()
             if len(position_after) == 0:
-                elapsed_time = time.time() - start_time
-                logger.info(f"✅ All positions closed successfully (took {elapsed_time:.2f}s)")
+                logger.info(f"✅ All positions closed (took {time.time() - start_time:.2f}s)")
                 return
+            await asyncio.sleep(0.1)
 
-            logger.debug(f"Still have {len(position_after)} positions, waiting...")
-            await asyncio.sleep(0.05)
-
-        # Timeout reached
+        # Timeout reached — best-effort, log and return rather than failing
+        # the test fixture. See class docstring for rationale.
         position_after = await self._t.data.positions()
         if len(position_after) > 0:
-            logger.error(f"Failed to close positions after {timeout}s timeout: {position_after}")
-            assert False
+            logger.warning(
+                f"close_all: {len(position_after)} position(s) remain open after {timeout}s — "
+                "under perpOB, reduce-only IOC requires a resting counterparty. "
+                f"Symbols: {list(position_after.keys())}"
+            )
 
     async def setup(
         self,
@@ -141,9 +189,13 @@ class PositionOperations:
 
         is_buy = position.side == Side.A
 
+        # See close_all comment: oracle-anchored sentinel within ME bounds.
+        oracle_price = float(await self._t.data.current_price(symbol))
+        close_price = oracle_price * (1.5 if is_buy else 0.5)
+
         close_order_params = LimitOrderParameters(
             symbol=symbol,
-            limit_px="0",
+            limit_px=str(round(close_price, 2)),
             is_buy=is_buy,
             time_in_force=TimeInForce.IOC,
             qty=qty,
@@ -167,9 +219,13 @@ class PositionOperations:
 
         is_buy = position.side == Side.A
 
+        # See close_all comment: oracle-anchored sentinel within ME bounds.
+        oracle_price = float(await self._t.data.current_price(symbol))
+        flip_price = oracle_price * (1.5 if is_buy else 0.5)
+
         flip_order_params = LimitOrderParameters(
             symbol=symbol,
-            limit_px="0",
+            limit_px=str(round(flip_price, 2)),
             is_buy=is_buy,
             time_in_force=TimeInForce.IOC,
             qty=flip_qty,

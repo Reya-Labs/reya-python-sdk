@@ -144,7 +144,7 @@ async def run_stop_loss_orders_test(client: ReyaTradingClient):
             symbol="ETHRUSDPERP",
             is_buy=False,
             trigger_px="1000",
-            trigger_type=OrderType.SL,
+            trigger_type=OrderType.STOP_LOSS,
         )
     )
     long_sl_response = handle_order_response("Stop Loss (Long Position)", response)
@@ -156,7 +156,7 @@ async def run_stop_loss_orders_test(client: ReyaTradingClient):
             symbol="ETHRUSDPERP",
             is_buy=True,
             trigger_px="9000",
-            trigger_type=OrderType.SL,
+            trigger_type=OrderType.STOP_LOSS,
         )
     )
     short_sl_response = handle_order_response("Stop Loss (Short Position)", response)
@@ -175,7 +175,7 @@ async def run_take_profit_orders_test(client: ReyaTradingClient):
             symbol="ETHRUSDPERP",
             is_buy=False,
             trigger_px="10000",
-            trigger_type=OrderType.TP,
+            trigger_type=OrderType.TAKE_PROFIT,
         )
     )
     long_tp_response = handle_order_response("Take Profit (Long Position)", response)
@@ -187,7 +187,7 @@ async def run_take_profit_orders_test(client: ReyaTradingClient):
             symbol="ETHRUSDPERP",
             is_buy=True,
             trigger_px="1500",
-            trigger_type=OrderType.TP,
+            trigger_type=OrderType.TAKE_PROFIT,
         )
     )
     short_tp_response = handle_order_response("Take Profit (Short Position)", response)
@@ -209,7 +209,11 @@ async def run_order_cancellation_test(client: ReyaTradingClient, order_ids: list
     order_id = valid_order_ids[0]
     logger.info(f"Attempting to cancel order: {order_id}")
 
-    response = await client.cancel_order(order_id=order_id)
+    response = await client.cancel_order(
+        symbol="ETHRUSDPERP",
+        account_id=client.config.account_id,
+        order_id=order_id,
+    )
     handle_order_response("Order Cancellation", response)
 
 

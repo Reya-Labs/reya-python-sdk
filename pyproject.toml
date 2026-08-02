@@ -1,6 +1,6 @@
 [project]
 name = "reya-python-sdk"
-version = "2.2.1.2"
+version = "3.0.18.0"
 description = "SDK for interacting with Reya Labs APIs"
 authors = [
     {name = "Reya Labs"}
@@ -69,13 +69,13 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 120
-extend-exclude = "sdk/async_api"
+extend-exclude = "sdk/async_api|sdk/async_exec_api"
 
 [tool.isort]
 # https://github.com/timothycrosley/isort/
 py_version = 310
 line_length = 120
-extend_skip_glob = ["sdk/async_api/*"]
+extend_skip_glob = ["sdk/async_api/*", "sdk/async_exec_api/*"]
 
 known_typing = ["typing", "types", "typing_extensions", "mypy", "mypy_extensions"]
 sections = ["FUTURE", "TYPING", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
@@ -119,8 +119,8 @@ ignore_errors = true
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
-max-module-lines=2000
-ignore-paths = ["sdk/async_api"]
+max-module-lines=2050
+ignore-paths = ["sdk/async_api", "sdk/async_exec_api"]
 disable = """
     consider-using-in,
     duplicate-code,
@@ -168,10 +168,8 @@ markers = [
     "spot: Spot trading tests (ETHRUSD, BTCRUSD)",
     "perp: Perpetual trading tests (ETHRUSDPERP, BTCRUSDPERP)",
     "market_data: Market data endpoint tests",
-    "slow: Tests that take longer than 5 seconds",
     "maker_taker: Tests requiring two accounts (maker and taker)",
     "websocket: Tests that verify WebSocket events",
-    "rest: Tests that verify REST API responses",
     "e2e: Full end-to-end flow tests",
     "ioc: Immediate-Or-Cancel order tests",
     "gtc: Good-Till-Cancelled order tests",
@@ -181,5 +179,12 @@ markers = [
     "validation: API validation tests (signature, nonce, deadline, etc.)",
     "error: Error handling tests",
     "rest_api: REST API endpoint tests",
-    "bust: Deliberate spot execution bust tests",
+    "cod: Cancel-on-disconnect (cancelAllAfter dead-man's-switch) tests",
+    "modify: In-place order modification (modifyOrder) tests",
+    "post_only: Post-only (maker-only) order tests",
+    "gtt: Good-Till-Time (auto-expiring resting order) tests",
+    "offline: No-network tests (parity golden vectors + client guards) — safe without devnet/.env",
+    "localnet: Market-data pipeline tests that need the local k3d stack (batching, depth continuity, 1012/1013 resync/backpressure). Some require LOCALNET_KUBECONFIG to restart the ME.",
+    "strict_spot_prerequisites: Internal marker for tests that must fail on missing spot prerequisites",
+    "strict_ws_exec_prerequisites: Internal marker for tests that must fail on missing ws-exec prerequisites",
 ]

@@ -8,6 +8,7 @@ import os
 
 from dotenv import load_dotenv
 
+from sdk.open_api.models.cancel_all_after_response import CancelAllAfterResponse
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_websocket import ReyaSocket
@@ -59,30 +60,44 @@ class ReyaTester:
         tester.ws.get_balance_update_count()
     """
 
-    def __init__(self, spot_account_number: Optional[int] = None):
+    def __init__(
+        self,
+        spot_account_number: Optional[int] = None,
+        perp_account_number: Optional[int] = None,
+    ):
         """
         Initialize ReyaTester with specified account configuration.
 
         Args:
-            spot_account_number: Optional spot account to use (1 or 2) for spot tests.
-                                If None, uses default PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1.
-                                If 1, uses SPOT_ACCOUNT_ID_1, SPOT_PRIVATE_KEY_1, SPOT_WALLET_ADDRESS_1.
-                                If 2, uses SPOT_ACCOUNT_ID_2, SPOT_PRIVATE_KEY_2, SPOT_WALLET_ADDRESS_2.
+            spot_account_number: Optional spot account (1 or 2) for spot tests.
+                If set, uses SPOT_ACCOUNT_ID_<N>, SPOT_PRIVATE_KEY_<N>, SPOT_WALLET_ADDRESS_<N>.
+            perp_account_number: Optional perp account (1 or 2) for perp orderbook
+                maker/taker tests. If set, uses PERP_ACCOUNT_ID_<N>, PERP_PRIVATE_KEY_<N>,
+                PERP_WALLET_ADDRESS_<N>. ``perp_account_number=1`` is also the default
+                when both args are None (backwards compat).
+
+        Exactly one of spot_account_number / perp_account_number may be set; if both
+        are None, the legacy default is PERP_ACCOUNT_ID_1.
         """
         load_dotenv()
+
+        if spot_account_number is not None and perp_account_number is not None:
+            raise ValueError("spot_account_number and perp_account_number are mutually exclusive")
 
         # Track if this is a spot account (cannot trade perps)
         self._is_spot_account = spot_account_number is not None
         self._spot_account_number = spot_account_number
+        self._perp_account_number = perp_account_number
 
-        if spot_account_number is None:
-            # Default - use standard config (PERP_ACCOUNT_ID_1, PERP_PRIVATE_KEY_1, PERP_WALLET_ADDRESS_1)
+        if spot_account_number is None and perp_account_number in (None, 1):
+            # Default — PERP_ACCOUNT_ID_1 via TradingConfig.from_env()
             self.client = ReyaTradingClient()
         elif spot_account_number in (1, 2):
-            # Spot account - create client with explicit spot account config
             self.client = self._create_client_for_spot_account(spot_account_number)
+        elif perp_account_number == 2:
+            self.client = self._create_client_for_perp_account(perp_account_number)
         else:
-            raise ValueError(f"Invalid spot_account_number: {spot_account_number}. Must be None, 1, or 2.")
+            raise ValueError(f"Invalid account selection: spot={spot_account_number} perp={perp_account_number}")
 
         # Store account properties - these must be set for tests to work
         assert self.client is not None, "Client must be initialized"
@@ -109,36 +124,52 @@ class ReyaTester:
 
     def _create_client_for_spot_account(self, spot_account_number: int) -> ReyaTradingClient:
         """Create a ReyaTradingClient configured for a spot account."""
-        account_id = os.environ.get(f"SPOT_ACCOUNT_ID_{spot_account_number}")
-        private_key = os.environ.get(f"SPOT_PRIVATE_KEY_{spot_account_number}")
-        wallet_address = os.environ.get(f"SPOT_WALLET_ADDRESS_{spot_account_number}")
+        return self._create_client_for_account("SPOT", spot_account_number)
+
+    def _create_client_for_perp_account(self, perp_account_number: int) -> ReyaTradingClient:
+        """Create a ReyaTradingClient configured for the secondary perp account.
+
+        PERP_ACCOUNT_ID_2 / PERP_PRIVATE_KEY_2 / PERP_WALLET_ADDRESS_2 unlock perp
+        orderbook maker/taker tests; under perpOB every fill needs a counterparty
+        on the opposite side of the book.
+        """
+        return self._create_client_for_account("PERP", perp_account_number)
+
+    def _create_client_for_account(self, prefix: str, account_number: int) -> ReyaTradingClient:
+        """Build a client from {PREFIX}_ACCOUNT_ID_N env vars (PREFIX in {SPOT, PERP})."""
+        account_id = os.environ.get(f"{prefix}_ACCOUNT_ID_{account_number}")
+        private_key = os.environ.get(f"{prefix}_PRIVATE_KEY_{account_number}")
+        wallet_address = os.environ.get(f"{prefix}_WALLET_ADDRESS_{account_number}")
 
         if not all([account_id, private_key, wallet_address]):
             logger.warning(
-                f"Spot Account {spot_account_number} not fully configured. Missing one of: SPOT_ACCOUNT_ID_{spot_account_number}, SPOT_PRIVATE_KEY_{spot_account_number}, SPOT_WALLET_ADDRESS_{spot_account_number}"
+                f"{prefix} Account {account_number} not fully configured. Missing one of: "
+                f"{prefix}_ACCOUNT_ID_{account_number}, {prefix}_PRIVATE_KEY_{account_number}, "
+                f"{prefix}_WALLET_ADDRESS_{account_number}"
             )
-            # Return a client with None values - tests will skip if needed
             return ReyaTradingClient()
 
-        # Get base config to inherit api_url and chain_id
         base_client = ReyaTradingClient()
         base_config = base_client.config
 
-        # Create new config with spot account values
         if wallet_address is None:
-            raise ValueError("wallet_address is required for spot account")
+            raise ValueError(f"wallet_address is required for {prefix} account")
         if account_id is None:
-            raise ValueError("account_id is required for spot account")
-        spot_config = TradingConfig(
+            raise ValueError(f"account_id is required for {prefix} account")
+        config = TradingConfig(
             api_url=base_config.api_url,
             chain_id=base_config.chain_id,
             owner_wallet_address=wallet_address,
             private_key=private_key,
             account_id=int(account_id),
+            # Carry env-var-driven overrides from the base config so secondary
+            # accounts sign with the same OrdersGateway domain and exchange id
+            # as account 1 — otherwise they fall back to chain-id defaults that
+            # may not match the deployment (e.g. devnet1).
+            orders_gateway_address=base_config.orders_gateway_address,
+            dex_id_override=base_config.dex_id_override,
         )
-
-        # Create client with the spot config directly
-        return ReyaTradingClient(config=spot_config)
+        return ReyaTradingClient(config=config)
 
     async def setup(self) -> None:
         """Set up WebSocket connection for trade monitoring."""
@@ -186,6 +217,11 @@ class ReyaTester:
         return self._spot_account_number
 
     @property
+    def perp_account_number(self) -> Optional[int]:
+        """Get the perp account number (1 or 2) if explicitly selected."""
+        return self._perp_account_number
+
+    @property
     def is_spot_account(self) -> bool:
         """Check if this tester is configured for a spot account."""
         return self._is_spot_account
@@ -208,6 +244,22 @@ class ReyaTester:
             PerpTradeContext: Context manager for trade verification.
         """
         return PerpTradeContext(tester=self)
+
+    async def arm_cod(self, timeout_ms: int) -> CancelAllAfterResponse:
+        """Arm or refresh the account-wide cancel-all-after countdown
+        (cancel-on-disconnect dead-man's-switch).
+
+        Thin wrapper over ``client.cancel_all_after``; ``timeout_ms`` must be
+        within [5000, 60000] ms. Each call replaces the running countdown.
+        """
+        return await self.client.cancel_all_after(timeout_ms=timeout_ms)
+
+    async def disarm_cod(self) -> CancelAllAfterResponse:
+        """Disarm the cancel-all-after countdown (``timeoutMs=0``).
+
+        Idempotent server-side: disarming an unarmed account is a no-op.
+        """
+        return await self.client.cancel_all_after(timeout_ms=0)
 
     def get_next_nonce(self) -> int:
         """

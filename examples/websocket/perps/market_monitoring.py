@@ -51,7 +51,7 @@ def on_open(ws):
 
 
 def handle_markets_summary_data(payload: MarketsSummaryUpdatePayload) -> None:
-    """Handle /v2/markets/summary channel data."""
+    """Handle /v2/perpMarkets/summary channel data."""
     logger.info("📊 All Markets Summary Update:")
     logger.info(f"  ├─ Timestamp: {payload.timestamp}")
     logger.info(f"  ├─ Channel: {payload.channel}")
@@ -70,7 +70,7 @@ def handle_markets_summary_data(payload: MarketsSummaryUpdatePayload) -> None:
 
 
 def handle_market_summary_data(payload: MarketSummaryUpdatePayload) -> None:
-    """Handle /v2/market/:symbol/summary channel data."""
+    """Handle /v2/perpMarket/:symbol/summary channel data."""
     market = payload.data
 
     logger.info(f"📈 Market Summary Update for {market.symbol}:")
@@ -80,11 +80,9 @@ def handle_market_summary_data(payload: MarketSummaryUpdatePayload) -> None:
     logger.info(f"  ├─ Volume 24h: {market.volume24h}")
     logger.info(f"  ├─ Price Change 24h: {market.px_change24h or 'N/A'}")
     logger.info(f"  ├─ Funding Rate: {market.funding_rate}")
-    logger.info(f"  ├─ Long OI: {market.long_oi_qty}")
-    logger.info(f"  ├─ Short OI: {market.short_oi_qty}")
     logger.info(f"  ├─ Total OI: {market.oi_qty}")
-    logger.info(f"  ├─ Oracle Price: {market.throttled_oracle_price or 'N/A'}")
-    logger.info(f"  └─ Pool Price: {market.throttled_pool_price or 'N/A'}")
+    logger.info(f"  ├─ Mark Price: {market.mark_price or 'N/A'}")
+    logger.info(f"  └─ Throttled Mid Price: {market.throttled_mid_price or 'N/A'}")
 
 
 def handle_market_perp_executions_data(payload: MarketPerpExecutionUpdatePayload) -> None:
@@ -97,11 +95,13 @@ def handle_market_perp_executions_data(payload: MarketPerpExecutionUpdatePayload
     # Showcase individual execution data structure
     for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
         logger.info(f"    Execution {i + 1}: {execution.symbol}")
-        logger.info(f"      ├─ Account ID: {execution.account_id}")
+        logger.info(f"      ├─ Taker Account ID: {execution.taker_account_id}")
+        logger.info(f"      ├─ Maker Account ID: {execution.maker_account_id}")
         logger.info(f"      ├─ Side: {execution.side.value}")
         logger.info(f"      ├─ Quantity: {execution.qty}")
         logger.info(f"      ├─ Price: {execution.price}")
-        logger.info(f"      ├─ Fee: {execution.fee}")
+        logger.info(f"      ├─ Taker Fee: {execution.taker_fee}")
+        logger.info(f"      ├─ Maker Fee: {execution.maker_fee}")
         logger.info(f"      ├─ Type: {execution.type.value}")
         logger.info(f"      ├─ Timestamp: {execution.timestamp}")
         logger.info(f"      └─ Sequence: {execution.sequence_number}")

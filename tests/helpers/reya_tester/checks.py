@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional, Union
 import asyncio
 import logging
 import os
+from decimal import Decimal
 
 import pytest
 
@@ -39,7 +40,7 @@ class Checks:
         open_order: Optional[Union[Order, AsyncOrder]] = await self._t.data.open_order(order_id)
 
         # For trigger orders (SL/TP), if not found in open orders, check WebSocket
-        if open_order is None and expected_order.order_type in [OrderType.SL, OrderType.TP]:
+        if open_order is None and expected_order.order_type in [OrderType.STOP_LOSS, OrderType.TAKE_PROFIT]:
             ws_order = self._t.ws.orders.get(str(order_id))
             if ws_order:
                 open_order = ws_order
@@ -101,7 +102,12 @@ class Checks:
                 logger.warning(f"Order {order.order_id} exists in matching engine, waiting for cancellation...")
                 legitimate_orders.append(order)
             except ApiException as e:
-                if "Missing order" in str(e):
+                # Both messages mean "the matching engine has no record of this order":
+                # - "Missing order" — legacy AMM-era message
+                # - "Order not found" — perpOB-era message (CANCEL_ORDER_OTHER_ERROR)
+                # In either case, the order is settled/cancelled on chain but the
+                # API DB hasn't caught up — treat as stale, not legitimate.
+                if "Missing order" in str(e) or "Order not found" in str(e):
                     logger.info(f"Order {order.order_id} is stale (doesn't exist in matching engine), ignoring")
                 else:
                     logger.warning(f"Unexpected error cancelling order {order.order_id}: {e}")
@@ -143,8 +149,22 @@ class Checks:
         expected_avg_entry_price: Optional[str] = None,
         expected_last_trade_sequence_number: Optional[int] = None,
     ) -> None:
-        """Verify position exists with expected values."""
+        """Verify position exists with expected values.
+
+        Briefly polls the API view to absorb the indexer-write lag between
+        on-chain settlement and the position appearing in
+        `/v2/wallet/{addr}/positions`. The position itself is on-chain
+        immediately after the fill response, but the off-chain position
+        view trails by ~hundreds of ms while the indexer processes the
+        `PassivePerpExecutionV3` event. Without this retry, fast tests
+        race the indexer and see no position.
+        """
         pos = await self._t.data.position(symbol)
+        if pos is None:
+            deadline = asyncio.get_event_loop().time() + 3.0
+            while pos is None and asyncio.get_event_loop().time() < deadline:
+                await asyncio.sleep(0.1)
+                pos = await self._t.data.position(symbol)
         if pos is None:
             raise RuntimeError("check_position: Position not found")
 
@@ -164,6 +184,43 @@ class Checks:
             assert (
                 pos.last_trade_sequence_number == expected_last_trade_sequence_number
             ), "check_position: Last trade sequence number does not match"
+
+    async def position_delta(
+        self,
+        symbol: str,
+        baseline: Decimal,
+        expected_delta: Decimal,
+        expected_account_id: Optional[int] = None,
+        expected_exchange_id: Optional[int] = None,
+        timeout: float = 3.0,
+    ) -> None:
+        """Assert the signed position moved by exactly `expected_delta` from `baseline`.
+
+        Perp tests are baseline-relative: accounts may carry pre-existing
+        positions, so tests assert the signed move their own trades caused
+        rather than absolute position state. Polls briefly to absorb the
+        indexer-write lag (same rationale as `position`). When the expected
+        final signed quantity is non-zero, the position record's identity
+        fields are verified too.
+        """
+        expected = baseline + expected_delta
+        current = await self._t.positions.signed_qty(symbol)
+        deadline = asyncio.get_event_loop().time() + timeout
+        while current != expected and asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(0.1)
+            current = await self._t.positions.signed_qty(symbol)
+        assert current == expected, (
+            f"check_position_delta: expected signed qty {expected} "
+            f"(baseline {baseline} + delta {expected_delta}), got {current}"
+        )
+
+        if expected != 0:
+            pos = await self._t.data.position(symbol)
+            assert pos is not None, "check_position_delta: non-zero signed qty but no position record"
+            if expected_account_id is not None:
+                assert pos.account_id == expected_account_id, "check_position_delta: Account ID does not match"
+            if expected_exchange_id is not None:
+                assert pos.exchange_id == expected_exchange_id, "check_position_delta: Exchange ID does not match"
 
     async def position_not_open(self, symbol: str) -> None:
         """Assert position is closed via both REST and WebSocket."""
@@ -186,11 +243,12 @@ class Checks:
         assert (
             order_execution.symbol == expected_order.symbol
         ), "check_order_execution: Order execution symbol does not match"
-        assert (
-            order_execution.account_id == expected_order.account_id
-        ), "check_order_execution: Order execution account ID does not match"
-        assert (
-            order_execution.qty == expected_order.qty if expected_qty is None else expected_qty
+        assert expected_order.account_id in (
+            order_execution.taker_account_id,
+            order_execution.maker_account_id,
+        ), "check_order_execution: Order execution account ID does not match either taker or maker"
+        assert order_execution.qty == (
+            expected_order.qty if expected_qty is None else expected_qty
         ), "check_order_execution: Order execution qty does not match"
         assert order_execution.side == expected_order.side, "check_order_execution: Order execution side does not match"
         assert (
@@ -231,7 +289,9 @@ class Checks:
             spot_execution.exchange_id == self._t.client.config.dex_id
         ), "check_spot_execution: Exchange ID does not match"
         assert spot_execution.symbol == expected_order.symbol, "check_spot_execution: Symbol does not match"
-        assert spot_execution.account_id == expected_order.account_id, "check_spot_execution: Account ID does not match"
+        assert (
+            spot_execution.taker_account_id == expected_order.account_id
+        ), "check_spot_execution: Taker account ID does not match"
         assert spot_execution.qty == (
             expected_order.qty if expected_qty is None else expected_qty
         ), "check_spot_execution: Quantity does not match"
