@@ -70,7 +70,7 @@ ENGINE_REJECT_WIRE_CODES = [
     # until specs 3.0.20 the reachable ones had nowhere to land.
     (86, "TRIGGER_REQUIRES_GTC", "TRIGGER_REQUIRES_GTC_ERROR"),
     (90, "TRIGGER_DUPLICATE_PROTECTION", "TRIGGER_ALREADY_EXISTS_ERROR"),
-    (91, "ORDER_EXPIRY_TOO_NEAR", "ORDER_EXPIRES_TOO_SOON_ERROR"),
+    (91, "ORDER_EXPIRES_TOO_SOON", "ORDER_EXPIRES_TOO_SOON_ERROR"),
 ]
 
 # The members specs 3.0.19 added for the risk taxonomy. Anything the engine
