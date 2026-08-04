@@ -5,7 +5,7 @@ from decimal import ROUND_FLOOR, Decimal
 import pytest
 
 from sdk.open_api.exceptions import ApiException
-from sdk.open_api.models import OrderStatus
+from sdk.open_api.models import OrderStatus, RequestError, RequestErrorCode
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.market_config import SpotTestConfig
@@ -26,9 +26,10 @@ def _first_step_above(value: Decimal, step: Decimal) -> Decimal:
 
 
 def _assert_insufficient_balance(error: ApiException) -> None:
-    error_msg = str(error)
-    assert "INSUFFICIENT_BALANCE_ERROR" in error_msg
-    assert "Insufficient balance" in error_msg
+    assert isinstance(error.data, RequestError)
+    assert error.data.error == RequestErrorCode.INSUFFICIENT_BALANCE_ERROR
+    assert "insufficient spot balance" in error.data.message.lower()
+    assert "shortfall" in error.data.message.lower()
 
 
 @pytest.mark.spot
