@@ -14,6 +14,8 @@ the initial snapshot contains the correct state before incremental updates.
 import asyncio
 import logging
 import time
+from collections.abc import Sequence
+from decimal import Decimal
 
 import pytest
 
@@ -25,6 +27,35 @@ from tests.helpers.builders import OrderBuilder
 from tests.helpers.market_config import SpotTestConfig
 
 logger = logging.getLogger("reya.integration_tests")
+
+
+async def _wait_for_depth_levels(
+    tester: ReyaTester,
+    symbol: str,
+    *,
+    bid_prices: Sequence[Decimal | float] = (),
+    ask_prices: Sequence[Decimal | float] = (),
+    timeout: float = 5.0,
+) -> Depth:
+    expected_bids = {Decimal(str(price)) for price in bid_prices}
+    expected_asks = {Decimal(str(price)) for price in ask_prices}
+    deadline = asyncio.get_running_loop().time() + timeout
+    last_depth: Depth | None = None
+
+    while asyncio.get_running_loop().time() < deadline:
+        last_depth = tester.ws.last_depth.get(symbol)
+        if last_depth is not None:
+            observed_bids = {Decimal(level.px) for level in last_depth.bids}
+            observed_asks = {Decimal(level.px) for level in last_depth.asks}
+            if expected_bids <= observed_bids and expected_asks <= observed_asks:
+                return last_depth
+        await asyncio.sleep(0.05)
+
+    raise AssertionError(
+        f"Depth for {symbol} did not contain bids={sorted(expected_bids)} "
+        f"and asks={sorted(expected_asks)} within {timeout}s; last depth={last_depth}"
+    )
+
 
 # DEPTH CHANNEL SNAPSHOT TESTS
 # ============================================================================
@@ -78,12 +109,12 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
     spot_tester.ws.last_depth.clear()
     spot_tester.ws.subscribe_to_market_depth(spot_config.symbol)
 
-    # Wait for snapshot to arrive
-    await asyncio.sleep(0.5)
-
     # Step 3: Verify initial snapshot contains our orders
-    depth_snapshot = spot_tester.ws.last_depth.get(spot_config.symbol)
-    assert depth_snapshot is not None, "Should have received depth snapshot via WebSocket"
+    depth_snapshot = await _wait_for_depth_levels(
+        spot_tester,
+        spot_config.symbol,
+        bid_prices=prices,
+    )
     assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
 
     bids = depth_snapshot.bids
@@ -172,11 +203,13 @@ async def test_spot_depth_ws_snapshot_with_asks(
     maker_tester.ws.last_depth.clear()
     maker_tester.ws.subscribe_to_market_depth(spot_config.symbol)
 
-    await asyncio.sleep(0.5)
-
     # Verify snapshot
-    depth_snapshot = maker_tester.ws.last_depth.get(spot_config.symbol)
-    assert depth_snapshot is not None, "Should have received depth snapshot"
+    depth_snapshot = await _wait_for_depth_levels(
+        maker_tester,
+        spot_config.symbol,
+        bid_prices=(bid_price,),
+        ask_prices=(ask_price,),
+    )
     assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
 
     bids = depth_snapshot.bids
