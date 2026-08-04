@@ -186,6 +186,7 @@ async def test_position_increase_long(perp_maker_tester: ReyaTester, perp_taker_
     # First leg
     await _rest_maker_sell(perp_maker_tester, market_price)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=True)
+    await _wait_settled(perp_taker_tester, baseline, PERP_DELTA)
 
     # Second leg (more maker liquidity, then more taker IOC)
     await _rest_maker_sell(perp_maker_tester, market_price)
@@ -208,6 +209,7 @@ async def test_position_increase_short(perp_maker_tester: ReyaTester, perp_taker
 
     await _rest_maker_buy(perp_maker_tester, market_price)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=False)
+    await _wait_settled(perp_taker_tester, baseline, -PERP_DELTA)
 
     await _rest_maker_buy(perp_maker_tester, market_price)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=False)
