@@ -72,14 +72,15 @@ async def _open_localnet_long(
     taker: ReyaTester,
     symbol: str,
     qty: str = "0.01",
-) -> tuple[Decimal, Decimal, int]:
+) -> tuple[Decimal, Decimal, int, Decimal]:
     """Open a deterministic long for the trigger owner on an empty Localnet book.
 
     Perp OB has no pool counterparty, so a standalone IOC is not a position
     fixture. Rest an explicit maker ask first, cross it from the trigger owner,
-    and return the observed position sequence used to prove that create/cancel
-    did not fire the trigger.
+    and return both the observed position sequence and signed-quantity baseline
+    used to prove that create/cancel did not fire the trigger.
     """
+    baseline = await taker.positions.signed_qty(symbol)
     baseline_seq = await taker.get_last_perp_execution_sequence_number()
     market_price = Decimal(str(await taker.data.current_price(symbol)))
     tick_size = Decimal(str((await taker.data.market_definition(symbol)).tick_size))
@@ -115,7 +116,14 @@ async def _open_localnet_long(
         )
     )
     sequence_after_position = await _confirm_open_fill_sequence(taker, symbol, baseline_seq)
-    return market_price, tick_size, sequence_after_position
+    await taker.check.position_delta(
+        symbol=symbol,
+        baseline=baseline,
+        expected_delta=Decimal(qty),
+        expected_exchange_id=REYA_DEX_ID,
+        expected_account_id=taker.account_id,
+    )
+    return market_price, tick_size, sequence_after_position, baseline
 
 
 def assert_tp_sl_order_submission(
@@ -155,7 +163,7 @@ async def test_success_tp_order_create_cancel(
     reya_tester = perp_taker_tester
     _require_exact_source_localnet(reya_tester)
     symbol = "ETHRUSDPERP"
-    market_price, tick_size, sequence_after_position = await _open_localnet_long(
+    market_price, tick_size, sequence_after_position, baseline = await _open_localnet_long(
         perp_maker_tester,
         reya_tester,
         symbol,
@@ -178,12 +186,12 @@ async def test_success_tp_order_create_cancel(
     active_tp_order = await reya_tester.wait.for_order_creation(order_id=tp_order.order_id)
     expected_tp_order = trigger_order_params_to_order(tp_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(tp_order.order_id, expected_tp_order)
-    await reya_tester.check.position(
+    await reya_tester.check.position_delta(
+        symbol=symbol,
+        baseline=baseline,
+        expected_delta=Decimal("0.01"),
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
-        symbol=symbol,
-        expected_qty="0.01",
-        expected_side=Side.A if tp_params.is_buy else Side.B,
     )
 
     # CANCEL order
@@ -195,12 +203,12 @@ async def test_success_tp_order_create_cancel(
 
     await reya_tester.wait.for_order_state(active_tp_order.order_id, OrderStatus.CANCELLED)
     await reya_tester.check_no_order_execution_since(sequence_after_position)
-    await reya_tester.check.position(
+    await reya_tester.check.position_delta(
+        symbol=symbol,
+        baseline=baseline,
+        expected_delta=Decimal("0.01"),
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
-        symbol=symbol,
-        expected_qty="0.01",
-        expected_side=Side.A if tp_params.is_buy else Side.B,
     )
 
     logger.info("TP order cancel test completed successfully")
@@ -215,7 +223,7 @@ async def test_success_sl_order_create_cancel(
     reya_tester = perp_taker_tester
     _require_exact_source_localnet(reya_tester)
     symbol = "ETHRUSDPERP"
-    market_price, tick_size, sequence_after_position = await _open_localnet_long(
+    market_price, tick_size, sequence_after_position, baseline = await _open_localnet_long(
         perp_maker_tester,
         reya_tester,
         symbol,
@@ -236,12 +244,12 @@ async def test_success_sl_order_create_cancel(
     active_sl_order = await reya_tester.wait.for_order_creation(order_id=order_response.order_id, timeout=10)
     expected_sl_order = trigger_order_params_to_order(sl_params, reya_tester.account_id)
     await reya_tester.check.open_order_created(order_response.order_id, expected_sl_order)
-    await reya_tester.check.position(
+    await reya_tester.check.position_delta(
+        symbol=symbol,
+        baseline=baseline,
+        expected_delta=Decimal("0.01"),
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
-        symbol=symbol,
-        expected_qty="0.01",
-        expected_side=Side.A if sl_params.is_buy else Side.B,
     )
 
     # CANCEL
@@ -252,12 +260,12 @@ async def test_success_sl_order_create_cancel(
     )
     await reya_tester.wait.for_order_state(active_sl_order.order_id, OrderStatus.CANCELLED)
     await reya_tester.check_no_order_execution_since(sequence_after_position)
-    await reya_tester.check.position(
+    await reya_tester.check.position_delta(
+        symbol=symbol,
+        baseline=baseline,
+        expected_delta=Decimal("0.01"),
         expected_exchange_id=REYA_DEX_ID,
         expected_account_id=reya_tester.account_id,
-        symbol=symbol,
-        expected_qty="0.01",
-        expected_side=Side.A if sl_params.is_buy else Side.B,
     )
 
     logger.info("SL order cancel test completed successfully")
