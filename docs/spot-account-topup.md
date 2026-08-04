@@ -18,7 +18,7 @@ How to create and fund spot accounts on the Reya Cronos testnet using Foundry's 
 
 | Setting | Value |
 |---------|-------|
-| RPC URL | `https://rpc-reya-cronos.t.conduit.xyz` |
+| RPC URL | `https://rpc-reya-cronos.t.conduit.xyz/<API_KEY>` |
 | Chain ID | `89346162` |
 
 ## Step 1: Check Wallet Balances
