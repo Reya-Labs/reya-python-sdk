@@ -21,6 +21,7 @@ from tests.helpers import ReyaTester
 from tests.helpers.liquidity_detector import skip_if_external_liquidity
 from tests.helpers.price_helpers import format_price, quantize_price
 from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
+from tests.helpers.reya_tester.matchers import ExecutionMatcher
 
 # The SL/TP backbone arms, tracks, modifies, and cancels trigger orders but does
 # NOT fire them — evaluation, the fired child, OCO, and auto-cancel-on-close all
@@ -46,25 +47,24 @@ def _require_exact_source_localnet(reya_tester: ReyaTester) -> None:
 
 
 async def _confirm_open_fill_sequence(
-    reya_tester: ReyaTester, symbol: str, baseline_seq: int, timeout: float = 10.0
+    reya_tester: ReyaTester, expected_order: Order, baseline_seq: int, timeout: float = 10.0
 ) -> int:
-    """Confirm the position-opening fill landed and return its trade sequence number.
+    """Return the current opening order's wallet-execution sequence number.
 
-    Sourced from the positions stream, which reflects a fill deterministically, rather
-    than the ``/perpExecutions`` REST endpoint whose order-history indexer intermittently
-    lags or drops the newest execution under the suite's rapid create/fill/close cadence.
-    Waits for a position whose ``last_trade_sequence_number`` is past ``baseline_seq`` (the
-    max execution sequence captured before the order), so a stale position from an earlier
-    run is never mistaken for this fill. The returned sequence is the baseline fed to
-    ``check_no_order_execution_since``.
+    The session can receive a delayed position update from the preceding test after
+    ``baseline_seq`` is read. Match the wallet execution to this exact order so that stale
+    position state cannot become the baseline for ``check_no_order_execution_since``.
     """
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
-        position = await reya_tester.data.position(symbol)
-        if position is not None and position.last_trade_sequence_number > baseline_seq:
-            return position.last_trade_sequence_number
+        execution = reya_tester.ws.perp_executions.find_last(
+            lambda item: (item.sequence_number or 0) > baseline_seq
+            and ExecutionMatcher.match_perp(item, expected_order)
+        )
+        if execution is not None and execution.sequence_number is not None:
+            return execution.sequence_number
         await asyncio.sleep(0.1)
-    raise AssertionError(f"Position-opening fill not reflected past sequence {baseline_seq} within {timeout}s")
+    raise AssertionError(f"Opening fill not observed past sequence {baseline_seq} within {timeout}s")
 
 
 async def _open_localnet_long(
@@ -105,17 +105,17 @@ async def _open_localnet_long(
     assert maker_order_id is not None
     await maker.wait.for_order_creation(maker_order_id)
 
-    await taker.orders.create_limit(
-        LimitOrderParameters(
-            symbol=symbol,
-            is_buy=True,
-            limit_px=taker_px,
-            qty=qty,
-            time_in_force=TimeInForce.IOC,
-            reduce_only=False,
-        )
+    taker_params = LimitOrderParameters(
+        symbol=symbol,
+        is_buy=True,
+        limit_px=taker_px,
+        qty=qty,
+        time_in_force=TimeInForce.IOC,
+        reduce_only=False,
     )
-    sequence_after_position = await _confirm_open_fill_sequence(taker, symbol, baseline_seq)
+    await taker.orders.create_limit(taker_params)
+    expected_order = limit_order_params_to_order(taker_params, taker.account_id)
+    sequence_after_position = await _confirm_open_fill_sequence(taker, expected_order, baseline_seq)
     await taker.check.position_delta(
         symbol=symbol,
         baseline=baseline,
