@@ -105,8 +105,9 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
     # Wait for orders to be fully indexed
     await asyncio.sleep(0.2)
 
-    # Step 2: Clear depth state and subscribe to depth channel
-    spot_tester.ws.last_depth.clear()
+    # Step 2: Subscribe to depth channel. The fixture already clears tracked
+    # state, while the session-scoped socket may still be subscribed from an
+    # earlier test and have received these order updates already.
     spot_tester.ws.subscribe_to_market_depth(spot_config.symbol)
 
     # Step 3: Verify initial snapshot contains our orders
@@ -199,8 +200,8 @@ async def test_spot_depth_ws_snapshot_with_asks(
     # Wait for orders to be indexed
     await asyncio.sleep(0.2)
 
-    # Subscribe to depth
-    maker_tester.ws.last_depth.clear()
+    # Subscribe to depth. Preserve any updates received by the session-scoped
+    # subscription while the orders above were being created.
     maker_tester.ws.subscribe_to_market_depth(spot_config.symbol)
 
     # Verify snapshot
@@ -272,7 +273,6 @@ async def test_spot_depth_ws_incremental_after_snapshot(spot_config: SpotTestCon
     await spot_tester.orders.close_all(fail_if_none=False)
 
     # Step 1: Subscribe to depth and get initial snapshot
-    spot_tester.ws.last_depth.clear()
     spot_tester.ws.subscribe_to_market_depth(spot_config.symbol)
 
     await asyncio.sleep(0.3)
