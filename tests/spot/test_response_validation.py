@@ -162,6 +162,7 @@ async def test_order_response_fields_after_partial_fill(
 
     logger.info(f"Maker placing GTC buy: {maker_qty} @ ${maker_price}")
     maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    assert maker_order_id is not None
     await maker_tester.wait.for_order_creation(maker_order_id)
 
     # Taker partially fills with smaller quantity
@@ -331,27 +332,24 @@ async def test_spot_execution_side_correctness(
     maker_params = OrderBuilder.from_config(spot_config).buy().price(str(maker_price)).gtc().build()
 
     maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    assert maker_order_id is not None
     await maker_tester.wait.for_order_creation(maker_order_id)
 
     # Taker sells into it
     taker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).ioc().build()
-    await taker_tester.orders.create_limit(taker_params)
-    await asyncio.sleep(0.3)
+    taker_order_id = await taker_tester.orders.create_limit(taker_params)
+    assert taker_order_id is not None
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
-    # Fetch taker's executions
-    assert taker_tester.owner_wallet_address is not None, "Taker wallet address should not be None"
-    executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
-        address=taker_tester.owner_wallet_address
+    execution = await _wait_for_wallet_spot_execution(
+        taker_tester,
+        taker_order_id=taker_order_id,
+        maker_order_id=maker_order_id,
     )
 
-    assert len(executions.data) > 0, "Should have at least one execution"
-
-    latest = executions.data[0]
-
     # Taker was selling, so side should be A (Ask/Sell)
-    assert latest.side.value == "A", f"Taker sold, expected side=A (Ask), got {latest.side}"
-    logger.info(f"✅ Taker execution side is correct: {latest.side}")
+    assert execution.side.value == "A", f"Taker sold, expected side=A (Ask), got {execution.side}"
+    logger.info(f"✅ Taker execution side is correct: {execution.side}")
 
     # Verify no open orders remain
     await maker_tester.check.no_open_orders()
