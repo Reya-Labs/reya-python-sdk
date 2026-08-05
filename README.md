@@ -308,6 +308,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Network Resources
+
+- [OpenChainBench live latency benchmark](https://openchainbench.com/benchmarks/reya-rpc) — independent p50/p90/p99 latency measurements for free Reya RPC endpoints, updated every 60 s
+
 ## Support
 
 For any questions or support, please open a ticket on [Discord](https://discord.com/invite/reyaxyz).
