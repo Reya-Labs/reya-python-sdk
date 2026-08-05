@@ -718,12 +718,20 @@ async def _restore_to_baseline(  # pylint: disable=redefined-outer-name
         logger.warning(f"  [restore] restore cross threw {type(e).__name__}: {e}")
         return
 
-    residual_maker = await maker.positions.signed_qty(symbol) - maker_baseline
-    residual_taker = await taker.positions.signed_qty(symbol) - taker_baseline
-    if abs(residual_maker) >= min_qty or abs(residual_taker) >= min_qty:
-        logger.warning(f"  [restore] residual delta after restore: maker {residual_maker:+}, taker {residual_taker:+}")
-    else:
-        logger.info("  [restore] ✅ both accounts back at baseline")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10.0
+    while True:
+        residual_maker = await maker.positions.signed_qty(symbol) - maker_baseline
+        residual_taker = await taker.positions.signed_qty(symbol) - taker_baseline
+        if abs(residual_maker) < min_qty and abs(residual_taker) < min_qty:
+            logger.info("  [restore] ✅ both accounts back at baseline")
+            return
+        if loop.time() >= deadline:
+            raise AssertionError(
+                "perp baseline restore did not settle within 10s: "
+                f"maker residual {residual_maker:+}, taker residual {residual_taker:+}"
+            )
+        await asyncio.sleep(0.2)
 
 
 # ============================================================================
