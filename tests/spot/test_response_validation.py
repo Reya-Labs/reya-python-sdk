@@ -27,6 +27,36 @@ from tests.helpers.validators import validate_order_fields, validate_spot_execut
 logger = logging.getLogger("reya.integration_tests")
 
 
+async def _wait_for_wallet_spot_execution(
+    tester: ReyaTester,
+    *,
+    taker_order_id: str,
+    maker_order_id: str,
+    timeout: float = 10.0,
+) -> SpotExecution:
+    if tester.owner_wallet_address is None:
+        raise AssertionError("Wallet address should not be None")
+
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        executions = await tester.client.wallet.get_wallet_spot_executions(address=tester.owner_wallet_address)
+        execution = next(
+            (
+                item
+                for item in executions.data
+                if str(item.taker_order_id) == str(taker_order_id) and str(item.maker_order_id) == str(maker_order_id)
+            ),
+            None,
+        )
+        if execution is not None:
+            return execution
+        await asyncio.sleep(0.1)
+
+    raise AssertionError(
+        f"Execution for taker order {taker_order_id} and maker order {maker_order_id} " f"not indexed within {timeout}s"
+    )
+
+
 # =============================================================================
 # ORDER RESPONSE VALIDATION
 # =============================================================================
@@ -132,6 +162,7 @@ async def test_order_response_fields_after_partial_fill(
 
     logger.info(f"Maker placing GTC buy: {maker_qty} @ ${maker_price}")
     maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    assert maker_order_id is not None
     await maker_tester.wait.for_order_creation(maker_order_id)
 
     # Taker partially fills with smaller quantity
@@ -301,27 +332,24 @@ async def test_spot_execution_side_correctness(
     maker_params = OrderBuilder.from_config(spot_config).buy().price(str(maker_price)).gtc().build()
 
     maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    assert maker_order_id is not None
     await maker_tester.wait.for_order_creation(maker_order_id)
 
     # Taker sells into it
     taker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).ioc().build()
-    await taker_tester.orders.create_limit(taker_params)
-    await asyncio.sleep(0.3)
+    taker_order_id = await taker_tester.orders.create_limit(taker_params)
+    assert taker_order_id is not None
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
-    # Fetch taker's executions
-    assert taker_tester.owner_wallet_address is not None, "Taker wallet address should not be None"
-    executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
-        address=taker_tester.owner_wallet_address
+    execution = await _wait_for_wallet_spot_execution(
+        taker_tester,
+        taker_order_id=taker_order_id,
+        maker_order_id=maker_order_id,
     )
 
-    assert len(executions.data) > 0, "Should have at least one execution"
-
-    latest = executions.data[0]
-
     # Taker was selling, so side should be A (Ask/Sell)
-    assert latest.side.value == "A", f"Taker sold, expected side=A (Ask), got {latest.side}"
-    logger.info(f"✅ Taker execution side is correct: {latest.side}")
+    assert execution.side.value == "A", f"Taker sold, expected side=A (Ask), got {execution.side}"
+    logger.info(f"✅ Taker execution side is correct: {execution.side}")
 
     # Verify no open orders remain
     await maker_tester.check.no_open_orders()
@@ -395,11 +423,13 @@ async def test_spot_execution_maker_vs_taker_fields(
         taker_params = OrderBuilder.from_config(spot_config).sell().price(str(maker_price)).ioc().build()
 
     maker_order_id = await maker_tester.orders.create_limit(maker_params)
+    assert maker_order_id is not None
     await maker_tester.wait.for_order_creation(maker_order_id)
     logger.info(f"✅ Maker order created: {maker_order_id}")
 
     taker_response = await taker_tester.orders.create_limit(taker_params)
     taker_order_id = taker_response
+    assert taker_order_id is not None
     logger.info(f"Taker order sent: {taker_order_id}")
 
     # Wait for maker order to be filled
@@ -407,29 +437,20 @@ async def test_spot_execution_maker_vs_taker_fields(
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
     logger.info("✅ Trade executed")
 
-    # Fetch executions from BOTH wallets
-    await asyncio.sleep(0.3)  # Allow indexing
-
-    assert taker_tester.owner_wallet_address is not None, "Taker wallet address should not be None"
-    assert maker_tester.owner_wallet_address is not None, "Maker wallet address should not be None"
-    taker_executions: SpotExecutionList = await taker_tester.client.wallet.get_wallet_spot_executions(
-        address=taker_tester.owner_wallet_address
+    # Fetch the exact execution from both wallet views. Indexing is asynchronous,
+    # so wait for evidence rather than assuming it completes within a fixed sleep.
+    taker_exec, maker_exec = await asyncio.gather(
+        _wait_for_wallet_spot_execution(
+            taker_tester,
+            taker_order_id=taker_order_id,
+            maker_order_id=maker_order_id,
+        ),
+        _wait_for_wallet_spot_execution(
+            maker_tester,
+            taker_order_id=taker_order_id,
+            maker_order_id=maker_order_id,
+        ),
     )
-    maker_executions: SpotExecutionList = await maker_tester.client.wallet.get_wallet_spot_executions(
-        address=maker_tester.owner_wallet_address
-    )
-
-    assert len(taker_executions.data) > 0, "Taker should have at least one execution"
-    assert len(maker_executions.data) > 0, "Maker should have at least one execution"
-
-    # Find the matching executions
-    # Taker's execution: taker_order_id = taker's order
-    # Maker's execution: maker_order_id = maker's order
-    taker_exec = next((e for e in taker_executions.data if str(e.taker_order_id) == str(taker_order_id)), None)
-    maker_exec = next((e for e in maker_executions.data if str(e.maker_order_id) == str(maker_order_id)), None)
-
-    assert taker_exec is not None, f"Taker execution for order {taker_order_id} not found"
-    assert maker_exec is not None, f"Maker execution for maker_order {maker_order_id} not found"
 
     logger.info("Found matching executions for both maker and taker")
 
