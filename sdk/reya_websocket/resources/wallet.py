@@ -425,9 +425,9 @@ class WalletAccountsSubscription:
         self.address = address
         self.path = f"/v2/wallet/{address}/accounts"
 
-    def subscribe(self, batched: bool = False) -> None:
+    def subscribe(self) -> None:
         """Subscribe to account creation and removal updates."""
-        self.socket.send_subscribe(channel=self.path, batched=batched)
+        self.socket.send_subscribe(channel=self.path)
 
     def unsubscribe(self) -> None:
         """Unsubscribe from account-discovery updates."""

@@ -15,7 +15,7 @@ Happy paths (11) — all driven via :class:`ReyaWsExecClient`:
     3. Spot createOrder + cancelOrder by clientOrderId
     4. Spot cancelAll, symbol-scoped (opens N orders, mass-cancels them)
     5. Spot cancelAll, account-wide (no symbol scope)
-    6. Perp createOrder (LIMIT GTC conditional, rests) + cancel
+    6. Perp createOrder (LIMIT GTC, rests) + cancel
     7. Perp createOrder (TP) + cancel (staged; deployment-gated skip)
     8. Perp createOrder (SL) + cancel (staged; deployment-gated skip)
     9/10. Perp IOC increase + reduce-only close (paired and settlement-gated so
@@ -909,7 +909,7 @@ _SLTP_FACADE_SKIP = pytest.mark.skip(
 
 
 async def test_perp_limit_gtc_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
-    """Flow 6: perp LIMIT GTC conditional rests, then cancel."""
+    """Flow 6: perp LIMIT GTC rests, then cancel."""
     await flow_perp_create_limit_gtc_and_cancel(perp_ws, qty=harness.perp_qty)
 
 

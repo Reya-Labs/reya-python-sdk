@@ -5,7 +5,9 @@ from typing import Any, cast
 import importlib
 
 import pytest
+from pydantic import ValidationError
 
+from sdk.async_api.account_update_data import AccountUpdateData
 from sdk.async_api.account_update_payload import AccountUpdatePayload
 from sdk.open_api.api.specs_api import SpecsApi
 from sdk.open_api.configuration import Configuration
@@ -70,11 +72,11 @@ def test_wallet_accounts_subscription_uses_canonical_channel() -> None:
     subscription = WalletResource(cast(Any, socket)).accounts("0xabc")
 
     assert subscription.path == "/v2/wallet/0xabc/accounts"
-    subscription.subscribe(batched=True)
+    subscription.subscribe()
     subscription.unsubscribe()
 
     assert socket.calls == [
-        ("subscribe", "/v2/wallet/0xabc/accounts", {"batched": True}),
+        ("subscribe", "/v2/wallet/0xabc/accounts", {}),
         ("unsubscribe", "/v2/wallet/0xabc/accounts", {}),
     ]
 
@@ -106,3 +108,62 @@ def test_wallet_account_update_is_typed() -> None:
     assert isinstance(message, AccountUpdatePayload)
     assert message.data[0].account_id == "123"
     assert message.data[0].is_main_perp_account is True
+
+
+def account_update_data() -> dict[str, Any]:
+    """Return one schema-valid account update for validation regressions."""
+    return {
+        "accountId": "123",
+        "owner": "0x1111111111111111111111111111111111111111",
+        "mainAccountId": None,
+        "spotAccountId": None,
+        "isMainPerpAccount": False,
+        "isSpotAccount": False,
+    }
+
+
+@pytest.mark.parametrize("field", ["mainAccountId", "spotAccountId"])
+def test_wallet_account_update_requires_nullable_fields(field: str) -> None:
+    data = account_update_data()
+    data.pop(field)
+
+    with pytest.raises(ValidationError):
+        AccountUpdateData.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("accountId", "not-decimal"),
+        ("owner", "0x1234"),
+        ("mainAccountId", "not-decimal"),
+        ("spotAccountId", "not-decimal"),
+    ],
+)
+def test_wallet_account_update_enforces_patterns(field: str, value: str) -> None:
+    data = account_update_data()
+    data[field] = value
+
+    with pytest.raises(ValidationError):
+        AccountUpdateData.model_validate(data)
+
+
+def test_wallet_account_update_rejects_unspecified_properties() -> None:
+    data = account_update_data()
+    data["unexpected"] = True
+
+    with pytest.raises(ValidationError):
+        AccountUpdateData.model_validate(data)
+
+
+def test_wallet_account_update_payload_rejects_unspecified_properties() -> None:
+    with pytest.raises(ValidationError):
+        AccountUpdatePayload.model_validate(
+            {
+                "type": "channel_data",
+                "timestamp": 1_753_100_000_000,
+                "channel": "/v2/wallet/0x1111111111111111111111111111111111111111/accounts",
+                "data": [account_update_data()],
+                "unexpected": True,
+            }
+        )
