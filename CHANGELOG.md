@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Typed read-side WebSocket account discovery via
+  `socket.wallet.accounts(address)`, generated from the canonical
+  `/v2/wallet/{address}/accounts` AsyncAPI channel.
 - Trigger-order repricing: `ModifyOrderParameters` gains an `order_type` field
   (default `LIMIT`), and `build_modify_order_payload` signs and wires that order
   type instead of a hardcoded `LIMIT`. A `STOP_LOSS`/`TAKE_PROFIT` modify now
@@ -33,6 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values and caps the future-distance at 24h before signing.
 
 ### Changed
+- The ws-exec quickstart now defaults to the current devnet endpoint, exposes
+  offline-testable URL/order builders, and links to the actual pytest live
+  suite instead of the removed `tests/ws_exec/mvp.py` harness.
 - **BREAKING (server-driven, SDK-passthrough): `start_time` / `end_time` on
   market-data executions, busts, and candle endpoints are now interpreted by
   the server as Unix-milliseconds since epoch (not sequence numbers).** The
