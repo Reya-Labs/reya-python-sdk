@@ -2,8 +2,7 @@
 
 from typing import Any, cast
 
-import importlib.util
-from pathlib import Path
+import importlib
 
 import pytest
 
@@ -17,11 +16,7 @@ from sdk.reya_websocket.socket import ReyaSocket
 
 pytestmark = pytest.mark.offline
 
-_EXAMPLE_PATH = Path(__file__).parents[2] / "examples/websocket/exec/ws_exec.py"
-_EXAMPLE_SPEC = importlib.util.spec_from_file_location("perpob_ws_exec_example", _EXAMPLE_PATH)
-assert _EXAMPLE_SPEC is not None and _EXAMPLE_SPEC.loader is not None
-_EXAMPLE = importlib.util.module_from_spec(_EXAMPLE_SPEC)
-_EXAMPLE_SPEC.loader.exec_module(_EXAMPLE)
+_EXAMPLE = importlib.import_module("examples.websocket.exec.ws_exec")
 
 
 class RecordingSocket:
