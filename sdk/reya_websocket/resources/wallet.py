@@ -409,7 +409,7 @@ class WalletBalancesSubscription:
 class WalletAccountsResource(SubscribableParameterizedResource):
     """Resource for wallet account-discovery updates."""
 
-    def __init__(self, socket: "ReyaSocket"):
+    def __init__(self, socket: "ReyaSocket") -> None:
         super().__init__(socket, "/v2/wallet/{address}/accounts")
 
     def for_wallet(self, address: str) -> "WalletAccountsSubscription":
@@ -420,7 +420,7 @@ class WalletAccountsResource(SubscribableParameterizedResource):
 class WalletAccountsSubscription:
     """Manages account-discovery updates for a wallet."""
 
-    def __init__(self, socket: "ReyaSocket", address: str):
+    def __init__(self, socket: "ReyaSocket", address: str) -> None:
         self.socket = socket
         self.address = address
         self.path = f"/v2/wallet/{address}/accounts"

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import inspect
+
 import pytest
 from pydantic import ValidationError
 
@@ -86,6 +88,23 @@ def test_execution_type_enums_share_specs_values() -> None:
     """REST and wallet-info WS must expose the same public execution types."""
     assert {execution_type.value for execution_type in RestExecutionType} == EXECUTION_TYPES
     assert {execution_type.value for execution_type in WsInfoExecutionType} == EXECUTION_TYPES
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    [
+        "get_market_depth",
+        "get_market_depth_with_http_info",
+        "get_market_depth_without_preload_content",
+    ],
+)
+def test_market_depth_limit_preserves_positional_timeout(method_name: str) -> None:
+    signature = inspect.signature(getattr(MarketDataApi, method_name))
+    bound = signature.bind(None, "ETHRUSDPERP", 5.0, limit=10)
+
+    assert bound.arguments["_request_timeout"] == 5.0
+    assert bound.arguments["limit"] == 10
+    assert signature.parameters["limit"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_rest_fee_tier_parameters_exposes_only_30_day_volume() -> None:

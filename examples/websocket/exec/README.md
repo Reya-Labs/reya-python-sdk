@@ -15,6 +15,7 @@ all exercised by this quickstart.
 
 ```python
 import asyncio
+import os
 
 from sdk.open_api.models import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
@@ -29,7 +30,9 @@ async def main():
 
     async with ReyaWsExecClient(
         rest_client=rest,
-        ws_url="wss://ws-exec-devnet.reya-cronos.network",
+        ws_url=os.environ.get(
+            "REYA_WS_EXEC_URL", "wss://ws-exec-devnet.reya-cronos.network"
+        ),
     ) as ws:
         response = await ws.create_limit_order(
             LimitOrderParameters(

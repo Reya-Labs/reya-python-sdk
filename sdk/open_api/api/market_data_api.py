@@ -599,7 +599,6 @@ class MarketDataApi:
     async def get_market_depth(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
-        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=1)]], Field(description="Optional cap on the number of aggregated price levels returned per side. The parameter must be an integer >= 1 (as declared by `minimum`); when set to N, the response contains only the top N levels on each side — the N best (highest) bids and the N best (lowest) asks. Omit to receive the full order book (the default). Out-of-contract values (anything below 1) are not rejected — the server safely degrades to returning the full book, the same as omitting the parameter.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -612,6 +611,8 @@ class MarketDataApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+        *,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=1)]], Field(description="Optional cap on the number of aggregated price levels returned per side. The parameter must be an integer >= 1 (as declared by `minimum`); when set to N, the response contains only the top N levels on each side — the N best (highest) bids and the N best (lowest) asks. Omit to receive the full order book (the default). Out-of-contract values (anything below 1) are not rejected — the server safely degrades to returning the full book, the same as omitting the parameter.")] = None,
     ) -> Depth:
         """Get market depth snapshot
 
@@ -672,7 +673,6 @@ class MarketDataApi:
     async def get_market_depth_with_http_info(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
-        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=1)]], Field(description="Optional cap on the number of aggregated price levels returned per side. The parameter must be an integer >= 1 (as declared by `minimum`); when set to N, the response contains only the top N levels on each side — the N best (highest) bids and the N best (lowest) asks. Omit to receive the full order book (the default). Out-of-contract values (anything below 1) are not rejected — the server safely degrades to returning the full book, the same as omitting the parameter.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -685,6 +685,8 @@ class MarketDataApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+        *,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=1)]], Field(description="Optional cap on the number of aggregated price levels returned per side. The parameter must be an integer >= 1 (as declared by `minimum`); when set to N, the response contains only the top N levels on each side — the N best (highest) bids and the N best (lowest) asks. Omit to receive the full order book (the default). Out-of-contract values (anything below 1) are not rejected — the server safely degrades to returning the full book, the same as omitting the parameter.")] = None,
     ) -> ApiResponse[Depth]:
         """Get market depth snapshot
 
@@ -745,7 +747,6 @@ class MarketDataApi:
     async def get_market_depth_without_preload_content(
         self,
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
-        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=1)]], Field(description="Optional cap on the number of aggregated price levels returned per side. The parameter must be an integer >= 1 (as declared by `minimum`); when set to N, the response contains only the top N levels on each side — the N best (highest) bids and the N best (lowest) asks. Omit to receive the full order book (the default). Out-of-contract values (anything below 1) are not rejected — the server safely degrades to returning the full book, the same as omitting the parameter.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -758,6 +759,8 @@ class MarketDataApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+        *,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=1)]], Field(description="Optional cap on the number of aggregated price levels returned per side. The parameter must be an integer >= 1 (as declared by `minimum`); when set to N, the response contains only the top N levels on each side — the N best (highest) bids and the N best (lowest) asks. Omit to receive the full order book (the default). Out-of-contract values (anything below 1) are not rejected — the server safely degrades to returning the full book, the same as omitting the parameter.")] = None,
     ) -> RESTResponseType:
         """Get market depth snapshot
 

@@ -34,14 +34,14 @@ class RecordingSocket:
         self.calls.append(("unsubscribe", channel, kwargs))
 
 
-def test_ws_exec_example_defaults_to_current_devnet(monkeypatch) -> None:
+def test_ws_exec_example_defaults_to_current_devnet(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("REYA_WS_EXEC_URL", raising=False)
 
     assert _EXAMPLE.resolve_ws_exec_url() == _EXAMPLE.DEFAULT_WS_EXEC_URL
     assert _EXAMPLE.DEFAULT_WS_EXEC_URL == "wss://ws-exec-devnet.reya-cronos.network"
 
 
-def test_ws_exec_example_accepts_environment_override(monkeypatch) -> None:
+def test_ws_exec_example_accepts_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REYA_WS_EXEC_URL", "wss://ws-exec-staging.reya.xyz")
 
     assert _EXAMPLE.resolve_ws_exec_url() == "wss://ws-exec-staging.reya.xyz"
