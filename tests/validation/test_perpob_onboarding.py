@@ -5,6 +5,8 @@ from typing import Any, cast
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from sdk.async_api.account_update_payload import AccountUpdatePayload
 from sdk.open_api.api.specs_api import SpecsApi
 from sdk.open_api.configuration import Configuration
@@ -12,6 +14,8 @@ from sdk.open_api.models import TimeInForce
 from sdk.reya_websocket.config import WebSocketConfig
 from sdk.reya_websocket.resources.wallet import WalletResource
 from sdk.reya_websocket.socket import ReyaSocket
+
+pytestmark = pytest.mark.offline
 
 _EXAMPLE_PATH = Path(__file__).parents[2] / "examples/websocket/exec/ws_exec.py"
 _EXAMPLE_SPEC = importlib.util.spec_from_file_location("perpob_ws_exec_example", _EXAMPLE_PATH)
