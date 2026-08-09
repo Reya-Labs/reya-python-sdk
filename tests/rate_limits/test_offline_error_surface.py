@@ -188,18 +188,41 @@ def test_retry_after_assertion_is_not_vacuous() -> None:
         assert_retry_after_plausible(rest_reject(exc), 60.0, "offline missing-header")
 
 
+def _request_error_has_typed_retry_after() -> bool:
+    """Has ``RequestError`` been regenerated with a real ``retryAfterMs`` field?
+
+    ``model_fields`` is keyed by the PYTHON attribute name, and
+    openapi-generator emits ``retry_after_ms`` with ``alias="retryAfterMs"``.
+    Probing ``model_fields`` for the wire name would therefore stay false
+    forever — vacuously "pre-regen" — so both the snake_case name and the
+    declared aliases are checked.
+    """
+    return any(
+        name == "retry_after_ms" or field.alias == "retryAfterMs" for name, field in RequestError.model_fields.items()
+    )
+
+
 def test_request_error_model_gap_matches_the_helper_strategy() -> None:
     """Pin the generated-model gap the helpers work around.
 
-    ``retryAfterMs`` has no field on ``RequestError`` but survives in
-    ``additional_properties``; a code the enum does not know cannot be parsed
-    at all. Written to hold both before and after regeneration.
+    Pre-regen ``retryAfterMs`` has no field on ``RequestError`` and survives in
+    ``additional_properties``; post-regen ``from_dict`` routes it into the
+    typed field instead and the bag is empty, because a key only lands in
+    ``additional_properties`` when it is absent from ``__properties``. Both
+    halves are written conditionally so regeneration flips them rather than
+    breaking them — which is exactly what ``rl_errors`` already tolerates.
     """
-    assert "retryAfterMs" not in RequestError.model_fields
-
     known = RequestError.from_dict({"error": RATE_LIMITED_ERROR, "message": "m", "retryAfterMs": 1234})
     assert known is not None
-    assert known.additional_properties.get("retryAfterMs") == 1234
+
+    if _request_error_has_typed_retry_after():
+        # Read dynamically: the attribute does not exist on the pre-regen model,
+        # so a static access would not type-check until the spec is tagged.
+        assert getattr(known, "retry_after_ms") == 1234
+        assert known.to_dict()["retryAfterMs"] == 1234
+    else:
+        assert "retry_after_ms" not in RequestError.model_fields
+        assert known.additional_properties.get("retryAfterMs") == 1234
 
     unknown_payload = {"error": NOT_WHITELISTED_ERROR, "message": "m"}
     if NOT_WHITELISTED_ERROR in {member.value for member in RequestErrorCode}:

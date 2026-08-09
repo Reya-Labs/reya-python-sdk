@@ -17,6 +17,8 @@ from decimal import Decimal
 import pytest
 
 from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
@@ -38,6 +40,12 @@ RESTING_BUY_FACTOR = Decimal("0.5")
 #: Spot definitions expose the wrapped base asset; oracle prices use the
 #: unwrapped symbol (same mapping the root conftest applies).
 _ORACLE_ASSET_ALIASES = {"WETH": "ETH", "WBTC": "BTC"}
+
+#: Order types that are ARMED protection rather than resting liquidity. The
+#: eject sweep removes resting orders and deliberately keeps these (see
+#: ``test_eject_flow``): ejecting an account does not close its positions, so
+#: taking its stops away would leave it unprotected.
+TRIGGER_ORDER_TYPES = (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
 
 
 @dataclass(frozen=True)
@@ -244,12 +252,27 @@ async def assert_not_whitelist_gated(awaitable: object, label: str) -> RestRejec
     return reject
 
 
-async def open_order_ids(client: ReyaTradingClient, symbol: str | None = None) -> list[str]:
-    """Order ids currently resting for the client's account (optionally per symbol)."""
+async def open_orders(client: ReyaTradingClient, symbol: str | None = None) -> list[Order]:
+    """Open orders for the client's account, optionally narrowed to one symbol."""
     orders = await client.get_open_orders()
+    return [order for order in orders if order.order_id is not None and (symbol is None or order.symbol == symbol)]
+
+
+async def open_order_ids(client: ReyaTradingClient, symbol: str | None = None) -> list[str]:
+    """Order ids currently open for the client's account (optionally per symbol)."""
+    return [order.order_id for order in await open_orders(client, symbol)]
+
+
+async def resting_order_ids(client: ReyaTradingClient, symbol: str | None = None) -> list[str]:
+    """Ids of RESTING (non-trigger) orders — what the eject sweep removes."""
     return [
-        order.order_id for order in orders if order.order_id is not None and (symbol is None or order.symbol == symbol)
+        order.order_id for order in await open_orders(client, symbol) if order.order_type not in TRIGGER_ORDER_TYPES
     ]
+
+
+async def armed_trigger_ids(client: ReyaTradingClient, symbol: str | None = None) -> list[str]:
+    """Ids of ARMED SL/TP triggers — what the eject sweep deliberately keeps."""
+    return [order.order_id for order in await open_orders(client, symbol) if order.order_type in TRIGGER_ORDER_TYPES]
 
 
 async def wait_for_open_order_count(

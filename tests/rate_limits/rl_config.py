@@ -212,6 +212,7 @@ class RateLimitSuiteConfig:
     """Everything the suite reads from the environment, resolved once."""
 
     symbol: str
+    trigger_symbol: str | None
     limits: StandardTierLimits
     timing: SuiteTiming
     eject_cmd: str | None
@@ -258,6 +259,10 @@ def load_suite_config() -> RateLimitSuiteConfig:
 
     return RateLimitSuiteConfig(
         symbol=_env_str("RL_TEST_SYMBOL", "WETHRUSD"),
+        # Optional and deliberately without a default: SL/TP is perp-only while
+        # the rest of the suite is spot-only, so the eject test can only prove
+        # trigger RETENTION where the wiring points it at a perp market.
+        trigger_symbol=os.environ.get("RL_TEST_TRIGGER_SYMBOL") or None,
         limits=limits,
         timing=timing,
         eject_cmd=os.environ.get("RL_TEST_EJECT_CMD") or None,

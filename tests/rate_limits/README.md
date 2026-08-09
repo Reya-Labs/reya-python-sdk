@@ -17,7 +17,7 @@ seed the standard test wallets into `rl_whitelist` (heavy wallets into
 | `test_whitelist_gate.py` | opt-in | §3 gate: create + modify rejected `403 NOT_WHITELISTED_ERROR`; cancel / cancelAll / cancelAllAfter asserted **not** gated (risk-off carve-out); reads unaffected |
 | `test_gcra_buckets.py` | opt-in | §4.1 place bucket → `429 RATE_LIMITED_ERROR` + `Retry-After`; the **cancel carve-out** (risk-off flows while place-limited); recovery after `Retry-After`; cancel/place bucket independence |
 | `test_open_order_caps.py` | opt-in | §4.2 count cap → `OPEN_ORDER_COUNT_EXCEEDED_ERROR`; notional cap on a qty-up modify → `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`; IOC exempt |
-| `test_eject_flow.py` | opt-in + eject hook | §3 reactive eject: creates **and modifies** blocked 403-class, **cancels still flow**, book swept empty, un-eject restores trading |
+| `test_eject_flow.py` | opt-in + eject hook | §3 reactive eject: creates **and modifies** blocked 403-class, **cancels still flow**, **resting** orders swept while **armed SL/TP are retained**, un-eject restores trading |
 | `test_ws_exec_parity.py` | opt-in + `REYA_WS_EXEC_URL` | §8 ws-exec envelope carries the same codes (+ `retryAfterMs`) |
 
 Run them with:
@@ -48,6 +48,56 @@ while its cancels, mass-cancel and COD ops stay open and its resting orders are
 removed by the ME sweep.
 
 The suite encodes this asymmetry directly — `assert_not_whitelist_gated`
+(`rl_actions.py`) accepts any outcome for a risk-off op *except* a gate verdict
+(`NOT_WHITELISTED_ERROR`, or any 403-class status), so it stays valid whether
+the deployment answers with a success or an order-not-found-class error.
+
+## Eject sweep scope (design ruling, 2026-08)
+
+The eject sweep clears **resting** orders and deliberately **retains armed
+stop-loss / take-profit orders**. Ejecting an account does not close its
+positions, so cancelling its protective stops would leave it unprotected in
+exactly the situation the eject was meant to de-risk. The invariant is "an
+ejected account holds no resting liquidity", **not** "an ejected account has an
+empty book".
+
+**Retention is a property of the SWEEP, not of mass-cancel.** The ME's cancel
+path takes a `skip_protective_stops` flag and the three callers differ:
+
+| Caller | Protective stops |
+| --- | --- |
+| Eject sweep | **retained** (this ruling) |
+| COD fire (dead-man's switch) | **retained** |
+| User-initiated `cancelAll` / mass-cancel | **cancelled** |
+
+So an explicit user cancelAll does empty the book, triggers included — that is
+the user asking for it, not the system de-risking them. Do not generalise the
+eject ruling into "triggers are never mass-cancelled". A practical consequence
+for this suite: `ensure_flat` cancels through mass-cancel, so it *will* clear a
+leftover probe trigger; there is no leak risk into later tests.
+
+`test_eject_flow.py` polls `resting_order_ids` (non-trigger orders only) for the
+sweep, and — when the harness can arm one — asserts that an armed stop is still
+open afterwards. Arming is best-effort: SL/TP is perp-only while the rest of the
+suite is spot-only, so the retention assertion runs only when
+`RL_TEST_TRIGGER_SYMBOL` points at a perp market, and is logged as not-probed
+otherwise. Every refusal path (unknown symbol, no mark price, a stop already
+armed) skips the probe rather than failing the eject test.
+
+**Arming does NOT require an open position.** The trigger contract is
+whole-position-at-fire-time: the client omits `qty`, the EIP-712 envelope signs
+the ±int256.max full-position sentinel, and the close size is derived from the
+live position *when the trigger fires*. The arm-time gates are only "perp
+market" and "at most one STOP_LOSS and one TAKE_PROFIT per (account, market)" —
+the latter being what raises `TRIGGER_ALREADY_EXISTS_ERROR`. The localnet wiring
+can therefore point `RL_TEST_TRIGGER_SYMBOL` at any perp market, with no need to
+pre-open a position on it.
+
+Note the second-order effect on the whitelist gate: the same ruling is why a
+de-whitelisted owner keeps its stops. The gate blocks create and modify, so it
+cannot arm a NEW stop while gated — the ones already armed simply stay.
+
+The remaining risk-off carve-out is unchanged — `assert_not_whitelist_gated`
 (`rl_actions.py`) accepts any outcome for a risk-off op *except* a gate verdict
 (`NOT_WHITELISTED_ERROR`, or any 403-class status), so it stays valid whether
 the deployment answers with a success or an order-not-found-class error.
@@ -87,9 +137,12 @@ much larger limits will make the burst tests time out on their attempt bound.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `RL_TEST_SYMBOL` | `WETHRUSD` | Spot market used for all resting orders. Skips if absent from `/v2/spotMarketDefinitions` |
+| `RL_TEST_TRIGGER_SYMBOL` | *(none)* | Optional **perp** market on which `test_eject_flow.py` arms one far-out-of-the-money stop, to prove the sweep **retains** it. No default and no fallback: unset means the retention assertion is logged as not-probed and the rest of the eject flow still runs |
 
 Spot is used deliberately: a far-below-oracle GTC BUY rests forever, so the
-suite needs no counterparty, no fills, and no settlement.
+suite needs no counterparty, no fills, and no settlement. SL/TP is perp-only, so
+the trigger-retention probe is the one place the suite reaches for a perp
+market — and it is optional for exactly that reason.
 
 ### Standard-tier limits as deployed
 

@@ -16,8 +16,11 @@ nothing sent by anyone. The four observable consequences:
    explicitly: a cancel issued immediately after the eject must either succeed
    or lose the race to the sweep (an order-not-found-class error). A gate
    verdict fails;
-3. resting orders are swept empty by the ME within one poll interval (the
-   standing "ejected implies empty book" invariant);
+3. **resting** orders are swept by the ME within one poll interval, while
+   **armed SL/TP triggers are RETAINED** (design ruling, 2026-08). Ejecting an
+   account does not close its positions, so cancelling its protective stops
+   would leave it unprotected in exactly the situation the eject was meant to
+   de-risk. The sweep is therefore "no resting liquidity", not "empty book";
 4. un-ejecting restores trading.
 
 ``rl_ejected_accounts`` lives in the off-chain Postgres, which this repo cannot
@@ -35,20 +38,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from decimal import Decimal
 
 import pytest
 
 from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.models.orders import ModifyOrderParameters
+from sdk.reya_rest_api.models.orders import ModifyOrderParameters, TriggerOrderParameters
 from tests.rate_limits.rl_actions import (
     RlMarket,
+    armed_trigger_ids,
     assert_not_whitelist_gated,
     create_resting_order,
     ensure_flat,
     open_order_ids,
+    quantize_down,
     resting_order,
+    resting_order_ids,
     wire,
 )
 from tests.rate_limits.rl_config import (
@@ -69,6 +77,10 @@ RESTING_ORDERS = 2
 #: check run before the order lookup, so an absent id still yields the eject
 #: verdict — and cannot race the sweep the way a real order id would.
 ABSENT_ORDER_ID = 1
+
+#: A stop this far below the mark rests armed for the whole test instead of
+#: firing — the same "far out of the money" trick the spot resting order uses.
+TRIGGER_PRICE_FACTOR = Decimal("0.5")
 
 
 def _assert_eject_reject(reject: RestReject, label: str) -> None:
@@ -134,17 +146,23 @@ async def _poll_until_create_accepted(
     )
 
 
-async def _poll_until_book_empty(
+async def _poll_until_resting_orders_swept(
     client: ReyaTradingClient,
     market: RlMarket,
     config: RateLimitSuiteConfig,
 ) -> None:
-    """Wait for the ME eject sweep to empty the account's book (read-only poll)."""
+    """Wait for the ME eject sweep to clear the account's RESTING orders.
+
+    Read-only poll, and deliberately scoped to non-trigger orders: an armed
+    SL/TP is not resting liquidity and the sweep keeps it (see the module
+    docstring), so polling for an EMPTY book would be asserting the opposite of
+    the ruling.
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + config.timing.eject_timeout_s
     remaining: list[str] = []
     while loop.time() < deadline:
-        remaining = await open_order_ids(client, market.symbol)
+        remaining = await resting_order_ids(client, market.symbol)
         if not remaining:
             return
         await asyncio.sleep(config.timing.poll_interval_s)
@@ -153,7 +171,56 @@ async def _poll_until_book_empty(
     )
 
 
-async def test_eject_blocks_creates_sweeps_the_book_and_uneject_restores_trading(
+async def _arm_trigger_if_possible(
+    client: ReyaTradingClient,
+    config: RateLimitSuiteConfig,
+) -> str | None:
+    """Best-effort: arm one far-out-of-the-money stop so retention can be proven.
+
+    Returns the armed order id, or ``None`` when the harness cannot arm one —
+    in which case the caller records why and the rest of the eject flow still
+    runs. SL/TP is perp-only while this suite is otherwise spot-only, so an arm
+    is only attempted when the wiring points ``RL_TEST_TRIGGER_SYMBOL`` at a
+    perp market. No position is needed: the close size is derived from the live
+    position at FIRE time, so arming is gated on the market being a perp and on
+    the one-STOP_LOSS-and-one-TAKE_PROFIT-per-(account, market) bound only.
+    Every foreseeable refusal (unknown symbol, no mark price yet, a stop already
+    armed there) is a skip rather than a failure: this probe strengthens the
+    eject test, it must never be able to fail it.
+    """
+    symbol = config.trigger_symbol
+    if symbol is None:
+        logger.info("armed-trigger retention not probed: RL_TEST_TRIGGER_SYMBOL is unset")
+        return None
+
+    try:
+        definitions = await client.reference.get_perp_market_definitions()
+        definition = next((item for item in definitions if item.symbol == symbol), None)
+        if definition is None:
+            logger.info("armed-trigger retention not probed: %s is not a perp market", symbol)
+            return None
+        summary = await client.markets.get_perp_market_summary(symbol)
+        if summary.mark_price is None:
+            logger.info("armed-trigger retention not probed: %s has no mark price yet", symbol)
+            return None
+        trigger_px = quantize_down(Decimal(summary.mark_price) * TRIGGER_PRICE_FACTOR, Decimal(definition.tick_size))
+        response = await client.create_trigger_order(
+            TriggerOrderParameters(
+                symbol=symbol,
+                is_buy=False,
+                trigger_px=wire(trigger_px),
+                trigger_type=OrderType.STOP_LOSS,
+            )
+        )
+    except (ApiException, ValueError) as exc:
+        logger.info("armed-trigger retention not probed: could not arm on %s (%s)", symbol, exc)
+        return None
+
+    logger.info("armed a stop on %s at %s (orderId=%s)", symbol, trigger_px, response.order_id)
+    return response.order_id
+
+
+async def test_eject_blocks_creates_sweeps_resting_orders_keeps_stops_and_uneject_restores_trading(
     rl_client: ReyaTradingClient,
     rl_market: RlMarket,
     rl_suite_config: RateLimitSuiteConfig,
@@ -173,6 +240,8 @@ async def test_eject_blocks_creates_sweeps_the_book_and_uneject_restores_trading
         f"the eject flow needs {RESTING_ORDERS} resting orders (one to cancel by hand, one for the "
         f"sweep to prove itself); only {len(resting)} are open"
     )
+
+    armed_trigger_id = await _arm_trigger_if_possible(rl_client, rl_suite_config)
 
     ejected = False
     try:
@@ -222,11 +291,32 @@ async def test_eject_blocks_creates_sweeps_the_book_and_uneject_restores_trading
         logger.info("eject reject observed (modify): %s", modify_reject.describe())
         _assert_eject_reject(modify_reject, "ejected-account modify")
 
-        await _poll_until_book_empty(rl_client, rl_market, rl_suite_config)
-        logger.info("eject sweep emptied the book")
+        await _poll_until_resting_orders_swept(rl_client, rl_market, rl_suite_config)
+        logger.info("eject sweep cleared the resting orders")
+
+        # The sweep is "no resting liquidity", NOT "empty book": an eject does
+        # not close positions, so the armed stops protecting them are kept.
+        if armed_trigger_id is not None:
+            surviving = await armed_trigger_ids(rl_client)
+            assert armed_trigger_id in surviving, (
+                f"the eject sweep cancelled armed trigger {armed_trigger_id}; ejecting does not close "
+                f"positions, so protective stops must survive it (armed triggers now open: {surviving})"
+            )
+            logger.info("armed trigger %s survived the eject sweep", armed_trigger_id)
     finally:
         if ejected:
             rl_eject_hook.uneject(wallet=wallet, account_id=account_id)
+        if armed_trigger_id is not None:
+            # Cleanup only — a failure here must never mask the test's own
+            # outcome (same discipline as ``ensure_flat``).
+            try:
+                await rl_client.cancel_order(
+                    order_id=armed_trigger_id,
+                    symbol=str(rl_suite_config.trigger_symbol),
+                    account_id=account_id,
+                )
+            except (ApiException, OSError, RuntimeError) as exc:
+                logger.warning("could not disarm probe trigger %s (%s: %s)", armed_trigger_id, type(exc).__name__, exc)
 
     order_id = await _poll_until_create_accepted(rl_client, rl_market, rl_suite_config)
     logger.info("trading resumed after un-eject: orderId=%s", order_id)
