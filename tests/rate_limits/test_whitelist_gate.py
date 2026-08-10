@@ -41,7 +41,7 @@ from tests.rate_limits.rl_config import (
     RateLimitSuiteConfig,
     requires_rate_limits,
 )
-from tests.rate_limits.rl_errors import RestReject, capture_rest_reject
+from tests.rate_limits.rl_errors import RestReject, assert_no_retry_after, capture_rest_reject
 
 logger = logging.getLogger("reya.rate_limits")
 
@@ -74,6 +74,7 @@ def _assert_gate_reject(reject: RestReject, label: str) -> None:
     assert (
         reject.status == HTTP_FORBIDDEN
     ), f"[{label}] expected HTTP {HTTP_FORBIDDEN} (403-class); got {reject.describe()}"
+    assert_no_retry_after(reject, label)
 
 
 # ---- Gated: the exposure-increasing ops ------------------------------------
@@ -112,6 +113,24 @@ async def test_modify_order_is_gated(rl_non_whitelisted_client: ReyaTradingClien
     )
     logger.info("whitelist gate (modify): %s", reject.describe())
     _assert_gate_reject(reject, "non-whitelisted modify")
+
+
+async def test_create_for_an_unresolvable_account_is_gated(
+    rl_unknown_owner_client: ReyaTradingClient, gate_market: RlMarket
+) -> None:
+    """An ``accountId`` that resolves to NO owner → 403 NOT_WHITELISTED_ERROR.
+
+    The gate is owner-keyed, so "no owner" must fail closed onto the same
+    verdict as "owner not in the whitelist" — the one row of the §3 verb table
+    a client can reach without fault injection. Failing open here would let an
+    unknown id skip the gate entirely.
+    """
+    reject = await capture_rest_reject(
+        rl_unknown_owner_client.create_limit_order(resting_order(gate_market)),
+        "unknown-owner create",
+    )
+    logger.info("whitelist gate (unknown owner): %s", reject.describe())
+    _assert_gate_reject(reject, "unknown-owner create")
 
 
 # ---- Not gated: risk-off always flows --------------------------------------

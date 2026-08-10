@@ -11,12 +11,14 @@ The live modules build their OWN REST clients rather than reusing the shared
 
 from __future__ import annotations
 
+from typing import Callable
+
 import asyncio
 import logging
 import os
 import shlex
 import subprocess  # nosec B404 — the eject hook is an operator-supplied command template
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 
 import pytest
 import pytest_asyncio
@@ -69,20 +71,51 @@ def rl_suite_config() -> rl_config.RateLimitSuiteConfig:
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def rl_client() -> AsyncIterator[ReyaTradingClient]:
-    """REST client for the whitelisted, Standard-tier account under test."""
-    credentials = rl_config.standard_credentials()
-    if credentials is None:
-        pytest.skip(f"rate-limit suite needs a Standard-tier account: {rl_config.standard_credentials_env_hint()}")
+async def rl_standard_client_provider() -> AsyncIterator[Callable[[], Awaitable[ReyaTradingClient | None]]]:
+    """Lazily build (once) the Standard-tier client, or hand back ``None``.
 
-    client = await _started_client(credentials)
-    logger.info(
-        "rate-limit suite standard account: id=%s wallet=%s", credentials.account_id, credentials.wallet_address
-    )
+    A provider rather than the client itself, for two reasons:
+
+    * ``rl_isolation`` must reach the client without ``request.getfixturevalue``
+      — pytest-asyncio sets an async fixture up by driving its own runner, which
+      raises ``RuntimeError: Runner.run() cannot be called from a running event
+      loop`` unless the fixture happens to be cached already by an earlier test;
+    * a fixture PARAMETER is resolved eagerly, so depending on the client
+      directly would open a live session even for an ``-m offline`` run on a
+      wired machine. Called lazily, offline runs stay offline.
+    """
+    built: dict[str, ReyaTradingClient] = {}
+
+    async def provide() -> ReyaTradingClient | None:
+        credentials = rl_config.standard_credentials()
+        if credentials is None or not rl_config.RATE_LIMITS_ENABLED:
+            return None
+        if "client" not in built:
+            built["client"] = await _started_client(credentials)
+            logger.info(
+                "rate-limit suite standard account: id=%s wallet=%s",
+                credentials.account_id,
+                credentials.wallet_address,
+            )
+        return built["client"]
+
     try:
-        yield client
+        yield provide
     finally:
-        await client.close()
+        client = built.get("client")
+        if client is not None:
+            await client.close()
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def rl_client(  # pylint: disable=redefined-outer-name
+    rl_standard_client_provider: Callable[[], Awaitable[ReyaTradingClient | None]],
+) -> ReyaTradingClient:
+    """REST client for the whitelisted, Standard-tier account under test."""
+    client = await rl_standard_client_provider()
+    if client is None:
+        pytest.skip(f"rate-limit suite needs a Standard-tier account: {rl_config.standard_credentials_env_hint()}")
+    return client
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
@@ -97,6 +130,62 @@ async def rl_non_whitelisted_client() -> AsyncIterator[ReyaTradingClient]:
 
     client = await _started_client(credentials)
     logger.info("rate-limit suite non-whitelisted account: id=%s", credentials.account_id)
+    try:
+        yield client
+    finally:
+        await client.close()
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def rl_trigger_client() -> AsyncIterator[ReyaTradingClient | None]:
+    """REST client for the PERP identity that arms protective stops.
+
+    Deliberately its own triple with no fallback — inheriting the spot Standard
+    account is what let the retention probe arm against a mis-wired identity and
+    still report a green test.
+
+    Yields ``None`` rather than skipping so the eject flow can run its other
+    four assertions unwired, while the trigger-only modules skip themselves.
+    """
+    credentials = rl_config.trigger_credentials()
+    if credentials is None or not rl_config.RATE_LIMITS_ENABLED:
+        yield None
+        return
+
+    client = await _started_client(credentials)
+    logger.info("rate-limit suite trigger account: id=%s wallet=%s", credentials.account_id, credentials.wallet_address)
+    try:
+        yield client
+    finally:
+        await client.close()
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def rl_unknown_owner_client(  # pylint: disable=redefined-outer-name
+    rl_suite_config: rl_config.RateLimitSuiteConfig,
+) -> AsyncIterator[ReyaTradingClient]:
+    """A client claiming an ``accountId`` that resolves to NO owner.
+
+    Signs with the non-whitelisted key so a misconfigured id can never be a
+    whitelisted wallet's account. The gate keys on the owner resolved from the
+    id and runs before signature verification, so the signer is irrelevant to
+    the verdict under test.
+    """
+    credentials = rl_config.non_whitelisted_credentials()
+    if credentials is None:
+        pytest.skip(
+            "unknown-owner coverage borrows the non-whitelisted signing key: "
+            f"{rl_config.non_whitelisted_credentials_env_hint()}"
+        )
+
+    client = await _started_client(
+        rl_config.AccountCredentials(
+            account_id=rl_suite_config.unknown_account_id,
+            private_key=credentials.private_key,
+            wallet_address=credentials.wallet_address,
+        )
+    )
+    logger.info("rate-limit suite unknown-owner account id: %s", rl_suite_config.unknown_account_id)
     try:
         yield client
     finally:
@@ -174,22 +263,22 @@ def rl_eject_hook(rl_suite_config: rl_config.RateLimitSuiteConfig):  # pylint: d
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)
 async def rl_isolation(  # pylint: disable=redefined-outer-name
-    request, rl_suite_config: rl_config.RateLimitSuiteConfig
+    request,
+    rl_suite_config: rl_config.RateLimitSuiteConfig,
+    rl_standard_client_provider: Callable[[], Awaitable[ReyaTradingClient | None]],
 ) -> AsyncIterator[None]:
     """Per-test isolation for the LIVE rate-limit tests.
 
     Teardown flattens the account and then sleeps long enough for a drained
     GCRA place bucket to refill, so one bucket-exhausting test cannot poison
-    the next one. Offline tests and skipped sessions never touch the network.
+    the next one. Offline tests and unwired sessions never touch the network.
     """
-    if request.node.get_closest_marker("offline") is not None or not rl_config.RATE_LIMITS_ENABLED:
+    if request.node.get_closest_marker("offline") is not None:
         yield
         return
 
-    client: ReyaTradingClient | None = None
-    try:
-        client = request.getfixturevalue("rl_client")
-    except pytest.skip.Exception:
+    client = await rl_standard_client_provider()
+    if client is None:
         yield
         return
 

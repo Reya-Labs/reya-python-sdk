@@ -2,7 +2,7 @@
 
 One DB transaction removes the wallet from ``rl_whitelist`` and inserts its
 accounts into ``rl_ejected_accounts``; from there the system converges with
-nothing sent by anyone. The four observable consequences:
+nothing sent by anyone. The five observable consequences:
 
 1. new **creates and modifies** are rejected 403-class — ``NOT_WHITELISTED_ERROR``
    from the edge or ``ACCOUNT_SUSPENDED_ERROR`` from the ME admission check,
@@ -21,7 +21,13 @@ nothing sent by anyone. The four observable consequences:
    account does not close its positions, so cancelling its protective stops
    would leave it unprotected in exactly the situation the eject was meant to
    de-risk. The sweep is therefore "no resting liquidity", not "empty book";
-4. un-ejecting restores trading.
+4. the dead-man's switch **splits**: an ARM or REFRESH (``timeoutMs > 0``) is
+   refused ``403 ACCOUNT_SUSPENDED_ERROR`` while a DISARM (``timeoutMs = 0``)
+   always succeeds. That is design option (b), which both layers ship. The arm
+   leg is also the only place in the suite that pins ``ACCOUNT_SUSPENDED_ERROR``
+   on a live run: cancelAllAfter is not whitelist-gated, so the edge's
+   whitelist verdict cannot win the race the way it does on create/modify;
+5. un-ejecting restores trading.
 
 ``rl_ejected_accounts`` lives in the off-chain Postgres, which this repo cannot
 reach, so the eject step is delegated to the operator-supplied
@@ -38,34 +44,35 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from decimal import Decimal
 
 import pytest
 
 from sdk.open_api.exceptions import ApiException
-from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.models.orders import ModifyOrderParameters, TriggerOrderParameters
+from sdk.reya_rest_api.models.orders import ModifyOrderParameters
 from tests.rate_limits.rl_actions import (
     RlMarket,
+    arm_protective_stop,
     armed_trigger_ids,
     assert_not_whitelist_gated,
     create_resting_order,
     ensure_flat,
     open_order_ids,
-    quantize_down,
+    resolve_perp_market,
     resting_order,
     resting_order_ids,
     wire,
 )
 from tests.rate_limits.rl_config import (
+    ACCOUNT_SUSPENDED_ERROR,
     EJECT_REJECT_CODES,
     HTTP_FORBIDDEN,
     RateLimitSuiteConfig,
     requires_rate_limits,
+    trigger_credentials_env_hint,
 )
-from tests.rate_limits.rl_errors import RestReject, capture_rest_reject, rest_reject
+from tests.rate_limits.rl_errors import RestReject, assert_no_retry_after, capture_rest_reject, rest_reject
 
 logger = logging.getLogger("reya.rate_limits")
 
@@ -78,9 +85,10 @@ RESTING_ORDERS = 2
 #: verdict — and cannot race the sweep the way a real order id would.
 ABSENT_ORDER_ID = 1
 
-#: A stop this far below the mark rests armed for the whole test instead of
-#: firing — the same "far out of the money" trick the spot resting order uses.
-TRIGGER_PRICE_FACTOR = Decimal("0.5")
+#: The shortest countdown the wire contract accepts; used for the arm that must
+#: be REFUSED, so nothing is left armed even if the deployment admits it.
+COD_ARM_TIMEOUT_MS = 5000
+COD_DISARM_TIMEOUT_MS = 0
 
 
 def _assert_eject_reject(reject: RestReject, label: str) -> None:
@@ -95,6 +103,7 @@ def _assert_eject_reject(reject: RestReject, label: str) -> None:
         reject.code in EJECT_REJECT_CODES
     ), f"[{label}] must be rejected with one of {EJECT_REJECT_CODES}; got {reject.describe()}"
     assert reject.status == HTTP_FORBIDDEN, f"[{label}] eject rejects are 403-class; got {reject.describe()}"
+    assert_no_retry_after(reject, label)
 
 
 def _poll_interval(config: RateLimitSuiteConfig) -> float:
@@ -171,59 +180,81 @@ async def _poll_until_resting_orders_swept(
     )
 
 
-async def _arm_trigger_if_possible(
-    client: ReyaTradingClient,
+async def _arm_retention_probe(
+    trigger_client: ReyaTradingClient,
+    standard_client: ReyaTradingClient,
     config: RateLimitSuiteConfig,
-) -> str | None:
-    """Best-effort: arm one far-out-of-the-money stop so retention can be proven.
+) -> str:
+    """Arm one far-out-of-the-money stop so retention can be proven.
 
-    Returns the armed order id, or ``None`` when the harness cannot arm one —
-    in which case the caller records why and the rest of the eject flow still
-    runs. SL/TP is perp-only while this suite is otherwise spot-only, so an arm
-    is only attempted when the wiring points ``RL_TEST_TRIGGER_SYMBOL`` at a
-    perp market. No position is needed: the close size is derived from the live
-    position at FIRE time, so arming is gated on the market being a perp and on
-    the one-STOP_LOSS-and-one-TAKE_PROFIT-per-(account, market) bound only.
-    Every foreseeable refusal (unknown symbol, no mark price yet, a stop already
-    armed there) is a skip rather than a failure: this probe strengthens the
-    eject test, it must never be able to fail it.
+    Configured means REQUIRED: when ``RL_TEST_TRIGGER_SYMBOL`` is set, every
+    failure path here fails the test. The previous best-effort version degraded
+    to "not probed" on a mis-wired identity, which produced a green run that had
+    asserted nothing — the exact failure mode the knob's lack of a default was
+    meant to prevent.
+
+    The eject hook ejects by OWNER WALLET, so a trigger identity under a
+    different owner would never be ejected and the retention assertion would be
+    vacuous. That is checked here rather than assumed.
     """
     symbol = config.trigger_symbol
-    if symbol is None:
-        logger.info("armed-trigger retention not probed: RL_TEST_TRIGGER_SYMBOL is unset")
-        return None
+    assert symbol is not None, "caller must check trigger_symbol before arming"
 
+    trigger_wallet = trigger_client.config.owner_wallet_address
+    standard_wallet = standard_client.config.owner_wallet_address
+    assert trigger_wallet.lower() == standard_wallet.lower(), (
+        f"the trigger identity (wallet {trigger_wallet}) must be owned by the same wallet as the Standard "
+        f"account ({standard_wallet}): the eject hook ejects by owner wallet, so a different owner would "
+        "leave the trigger account un-ejected and the retention assertion vacuous"
+    )
+
+    market = await resolve_perp_market(trigger_client, symbol)
     try:
-        definitions = await client.reference.get_perp_market_definitions()
-        definition = next((item for item in definitions if item.symbol == symbol), None)
-        if definition is None:
-            logger.info("armed-trigger retention not probed: %s is not a perp market", symbol)
-            return None
-        summary = await client.markets.get_perp_market_summary(symbol)
-        if summary.mark_price is None:
-            logger.info("armed-trigger retention not probed: %s has no mark price yet", symbol)
-            return None
-        trigger_px = quantize_down(Decimal(summary.mark_price) * TRIGGER_PRICE_FACTOR, Decimal(definition.tick_size))
-        response = await client.create_trigger_order(
-            TriggerOrderParameters(
-                symbol=symbol,
-                is_buy=False,
-                trigger_px=wire(trigger_px),
-                trigger_type=OrderType.STOP_LOSS,
-            )
+        order_id = await arm_protective_stop(trigger_client, market)
+    except ApiException as exc:
+        reject = rest_reject(exc)
+        pytest.fail(
+            f"RL_TEST_TRIGGER_SYMBOL={symbol} is configured but the retention probe could not arm a stop "
+            f"({reject.describe()}); unset the knob or fix the wiring — a silently unprobed retention "
+            "assertion is what this guard exists to prevent",
+            pytrace=False,
         )
-    except (ApiException, ValueError) as exc:
-        logger.info("armed-trigger retention not probed: could not arm on %s (%s)", symbol, exc)
-        return None
+    logger.info("armed a stop on %s (orderId=%s, mark=%s)", symbol, order_id, market.oracle_price)
+    return order_id
 
-    logger.info("armed a stop on %s at %s (orderId=%s)", symbol, trigger_px, response.order_id)
-    return response.order_id
+
+async def _assert_cancel_all_after_split(client: ReyaTradingClient, account_id: int) -> None:
+    """Pin design option (b): an ejected account's ARM is refused, DISARM is not.
+
+    This is also the suite's only live pin of ``ACCOUNT_SUSPENDED_ERROR``.
+    cancelAllAfter is never whitelist-gated, so the edge's whitelist verdict —
+    which normally wins the race on create/modify because the eject transaction
+    also deletes the ``rl_whitelist`` row — cannot answer here. Whatever refuses
+    the arm did so *because the account is ejected*.
+    """
+    arm_reject = await capture_rest_reject(
+        client.cancel_all_after(timeout_ms=COD_ARM_TIMEOUT_MS, account_id=account_id),
+        "ejected-account cancelAllAfter arm",
+    )
+    logger.info("ejected cancelAllAfter arm: %s", arm_reject.describe())
+    assert arm_reject.code == ACCOUNT_SUSPENDED_ERROR, (
+        f"an ejected account's cancelAllAfter arm must be refused {ACCOUNT_SUSPENDED_ERROR} (design option (b), "
+        f"shipped on both layers); got {arm_reject.describe()}"
+    )
+    assert arm_reject.status == HTTP_FORBIDDEN, f"the arm refusal is 403-class; got {arm_reject.describe()}"
+    assert_no_retry_after(arm_reject, "ejected-account cancelAllAfter arm")
+
+    # Disarm stays open under both options: a blocked disarm would let a
+    # false-positive countdown flatten a book the operator is already unwinding.
+    await client.cancel_all_after(timeout_ms=COD_DISARM_TIMEOUT_MS, account_id=account_id)
+    logger.info("ejected cancelAllAfter disarm accepted")
 
 
 async def test_eject_blocks_creates_sweeps_resting_orders_keeps_stops_and_uneject_restores_trading(
     rl_client: ReyaTradingClient,
     rl_market: RlMarket,
     rl_suite_config: RateLimitSuiteConfig,
+    rl_trigger_client: ReyaTradingClient | None,
     rl_eject_hook,
 ) -> None:
     """The full eject lifecycle over one account."""
@@ -241,7 +272,16 @@ async def test_eject_blocks_creates_sweeps_resting_orders_keeps_stops_and_unejec
         f"sweep to prove itself); only {len(resting)} are open"
     )
 
-    armed_trigger_id = await _arm_trigger_if_possible(rl_client, rl_suite_config)
+    armed_trigger_id: str | None = None
+    if rl_suite_config.trigger_symbol is None:
+        logger.info("armed-trigger retention not probed: RL_TEST_TRIGGER_SYMBOL is unset")
+    else:
+        assert rl_trigger_client is not None, (
+            f"RL_TEST_TRIGGER_SYMBOL={rl_suite_config.trigger_symbol} is set but the perp identity is not: "
+            f"{trigger_credentials_env_hint()}. The knobs are paired on purpose — the probe must never fall back to "
+            "the spot Standard account"
+        )
+        armed_trigger_id = await _arm_retention_probe(rl_trigger_client, rl_client, rl_suite_config)
 
     ejected = False
     try:
@@ -296,24 +336,26 @@ async def test_eject_blocks_creates_sweeps_resting_orders_keeps_stops_and_unejec
 
         # The sweep is "no resting liquidity", NOT "empty book": an eject does
         # not close positions, so the armed stops protecting them are kept.
-        if armed_trigger_id is not None:
-            surviving = await armed_trigger_ids(rl_client)
+        if armed_trigger_id is not None and rl_trigger_client is not None:
+            surviving = await armed_trigger_ids(rl_trigger_client)
             assert armed_trigger_id in surviving, (
                 f"the eject sweep cancelled armed trigger {armed_trigger_id}; ejecting does not close "
                 f"positions, so protective stops must survive it (armed triggers now open: {surviving})"
             )
             logger.info("armed trigger %s survived the eject sweep", armed_trigger_id)
+
+        await _assert_cancel_all_after_split(rl_client, account_id)
     finally:
         if ejected:
             rl_eject_hook.uneject(wallet=wallet, account_id=account_id)
-        if armed_trigger_id is not None:
+        if armed_trigger_id is not None and rl_trigger_client is not None:
             # Cleanup only — a failure here must never mask the test's own
             # outcome (same discipline as ``ensure_flat``).
             try:
-                await rl_client.cancel_order(
+                await rl_trigger_client.cancel_order(
                     order_id=armed_trigger_id,
                     symbol=str(rl_suite_config.trigger_symbol),
-                    account_id=account_id,
+                    account_id=rl_trigger_client.config.account_id,
                 )
             except (ApiException, OSError, RuntimeError) as exc:
                 logger.warning("could not disarm probe trigger %s (%s: %s)", armed_trigger_id, type(exc).__name__, exc)

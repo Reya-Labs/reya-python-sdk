@@ -128,6 +128,11 @@ _NON_WHITELISTED_ENV = (
     "RL_TEST_NON_WHITELISTED_PRIVATE_KEY",
     "RL_TEST_NON_WHITELISTED_WALLET_ADDRESS",
 )
+_TRIGGER_ENV = (
+    "RL_TEST_TRIGGER_ACCOUNT_ID",
+    "RL_TEST_TRIGGER_PRIVATE_KEY",
+    "RL_TEST_TRIGGER_WALLET_ADDRESS",
+)
 
 
 def _resolve_credentials(names: tuple[str, str, str]) -> AccountCredentials | None:
@@ -165,6 +170,23 @@ def non_whitelisted_credentials_env_hint() -> str:
     return " / ".join(_NON_WHITELISTED_ENV)
 
 
+def trigger_credentials() -> AccountCredentials | None:
+    """The PERP identity that arms the retention probe's protective stop.
+
+    No fallback to the Standard account: SL/TP is perp-only while the rest of
+    the suite is spot-only, and inheriting the spot identity is what let the
+    probe arm against a mis-wired account and report "not probed" on a green
+    test. The eject hook ejects by OWNER WALLET, so the wiring must point this
+    triple at an account owned by the same wallet as the Standard account —
+    the eject test asserts that rather than assuming it.
+    """
+    return _resolve_credentials(_TRIGGER_ENV)
+
+
+def trigger_credentials_env_hint() -> str:
+    return " / ".join(_TRIGGER_ENV)
+
+
 # --------------------------------------------------------------------------
 # Tier parameters + timings
 # --------------------------------------------------------------------------
@@ -184,7 +206,11 @@ class StandardTierLimits:
     cancel_per_min: int
     cancel_burst: int
     bulk_cancel_per_min: int
+    bulk_cancel_burst: int
+    cod_control_per_min: int
+    cod_control_burst: int
     open_order_count_cap: int
+    open_order_per_market_cap: int
     open_notional_cap: Decimal
 
     @property
@@ -213,6 +239,8 @@ class RateLimitSuiteConfig:
 
     symbol: str
     trigger_symbol: str | None
+    unknown_account_id: int
+    ws_inbound_msg_burst: int
     limits: StandardTierLimits
     timing: SuiteTiming
     eject_cmd: str | None
@@ -225,8 +253,12 @@ class RateLimitSuiteConfig:
         refill, then clamped by ``RL_TEST_MAX_BURST_ATTEMPTS`` so a
         misconfigured deployment cannot spin forever.
         """
-        refill_slack = math.ceil(self.limits.place_per_min / 60.0) * 5
-        return min(self.timing.max_burst_attempts, self.limits.place_burst + refill_slack + 20)
+        return self.bucket_attempt_bound(self.limits.place_per_min, self.limits.place_burst)
+
+    def bucket_attempt_bound(self, per_min: int, burst: int) -> int:
+        """The same sizing for any of the four §4.1 buckets."""
+        refill_slack = math.ceil(per_min / 60.0) * 5
+        return min(self.timing.max_burst_attempts, burst + refill_slack + 20)
 
 
 def load_suite_config() -> RateLimitSuiteConfig:
@@ -237,7 +269,11 @@ def load_suite_config() -> RateLimitSuiteConfig:
         cancel_per_min=_env_int("RL_TEST_STANDARD_CANCEL_PER_MIN", 120),
         cancel_burst=_env_int("RL_TEST_STANDARD_CANCEL_BURST", 10),
         bulk_cancel_per_min=_env_int("RL_TEST_STANDARD_BULK_CANCEL_PER_MIN", 10),
+        bulk_cancel_burst=_env_int("RL_TEST_STANDARD_BULK_CANCEL_BURST", 5),
+        cod_control_per_min=_env_int("RL_TEST_COD_CONTROL_PER_MIN", 100),
+        cod_control_burst=_env_int("RL_TEST_COD_CONTROL_BURST", 10),
         open_order_count_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP", 10),
+        open_order_per_market_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_PER_MARKET_CAP", 5),
         open_notional_cap=_env_decimal("RL_TEST_STANDARD_OPEN_NOTIONAL_CAP", "5000"),
     )
 
@@ -263,6 +299,8 @@ def load_suite_config() -> RateLimitSuiteConfig:
         # the rest of the suite is spot-only, so the eject test can only prove
         # trigger RETENTION where the wiring points it at a perp market.
         trigger_symbol=os.environ.get("RL_TEST_TRIGGER_SYMBOL") or None,
+        unknown_account_id=_env_int("RL_TEST_UNKNOWN_ACCOUNT_ID", 999_999_999),
+        ws_inbound_msg_burst=_env_int("RL_TEST_WS_INBOUND_MSG_BURST", 100),
         limits=limits,
         timing=timing,
         eject_cmd=os.environ.get("RL_TEST_EJECT_CMD") or None,

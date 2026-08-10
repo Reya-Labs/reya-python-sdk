@@ -26,17 +26,33 @@ Findings pinned here (see tests/rate_limits/README.md § Findings):
 
 from __future__ import annotations
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
+import asyncio
 import json
+import struct
 
 import pytest
+from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+    ABNF,
+    WebSocketConnectionClosedException,
+    WebSocketTimeoutException,
+)
 
 from sdk.open_api.api_client import ApiClient
 from sdk.open_api.configuration import Configuration
 from sdk.open_api.exceptions import ApiException, ForbiddenException, ServiceException
 from sdk.open_api.models.request_error import RequestError
 from sdk.open_api.models.request_error_code import RequestErrorCode
+from sdk.reya_ws_exec import (
+    WS_CLOSE_MSG_RATE_EXCEEDED,
+    ReyaWsExecClient,
+    WsExecConnectionClosedError,
+    WsExecOperationError,
+    WsExecProtocolError,
+)
+from sdk.reya_ws_exec.client import _parse_close_payload
 from tests.rate_limits.rl_config import (
     ACCOUNT_SUSPENDED_ERROR,
     CAPACITY_LIMITED_ERROR,
@@ -48,7 +64,7 @@ from tests.rate_limits.rl_config import (
     OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
     RATE_LIMITED_ERROR,
 )
-from tests.rate_limits.rl_errors import assert_retry_after_plausible, rest_reject, ws_reject
+from tests.rate_limits.rl_errors import assert_no_retry_after, assert_retry_after_plausible, rest_reject, ws_reject
 
 pytestmark = [pytest.mark.offline, pytest.mark.rate_limits]
 
@@ -112,10 +128,16 @@ def _raise_through_sdk(
 
 @RESPONSE_MAPS
 def test_rate_limited_429_exposes_status_headers_and_code(response_types_map: dict[str, str]) -> None:
-    """429 → status + Retry-After header + RATE_LIMITED_ERROR + retryAfterMs."""
+    """429 → status + Retry-After header + RATE_LIMITED_ERROR.
+
+    The body is the REAL edge body: ``{error, message}``. On REST the backoff
+    hint travels in the ``Retry-After`` header ONLY — ``retryAfterMs`` is the
+    ws-exec envelope's field — so the header is what the live modules may
+    assert and the body's hint must read as absent here.
+    """
     exc = _raise_through_sdk(
         HTTP_RATE_LIMITED,
-        {"error": RATE_LIMITED_ERROR, "message": "too many creates", "retryAfterMs": 2500},
+        {"error": RATE_LIMITED_ERROR, "message": "too many creates"},
         headers={"Retry-After": "3"},
         response_types_map=response_types_map,
     )
@@ -124,8 +146,25 @@ def test_rate_limited_429_exposes_status_headers_and_code(response_types_map: di
     assert reject.status == HTTP_RATE_LIMITED
     assert reject.code == RATE_LIMITED_ERROR
     assert reject.message == "too many creates"
-    assert reject.retry_after_ms == 2500
+    assert reject.retry_after_ms is None
     assert assert_retry_after_plausible(reject, 60.0, "offline 429") == 3.0
+
+
+def test_rest_body_retry_after_ms_is_a_defensive_fallback_not_a_contract() -> None:
+    """Document the body read: it works, but no REST contract produces it.
+
+    The edge builds its error body as ``{error, message}`` and puts the hint in
+    ``Retry-After``. ``rest_reject`` still reads ``retryAfterMs`` off the body so
+    a deployment that starts echoing the ws-exec field is not silently ignored —
+    but this is the ONLY place that behaviour is exercised, deliberately, so no
+    live REST assertion can come to depend on it.
+    """
+    exc = _raise_through_sdk(
+        HTTP_RATE_LIMITED,
+        {"error": RATE_LIMITED_ERROR, "message": "synthetic body", "retryAfterMs": 2500},
+        headers={"Retry-After": "3"},
+    )
+    assert rest_reject(exc).retry_after_ms == 2500
 
 
 @RESPONSE_MAPS
@@ -174,11 +213,41 @@ def test_not_whitelisted_403_is_a_forbidden_exception(response_types_map: dict[s
 def test_every_v1_code_extracts_without_the_generated_enum(code: str) -> None:
     """All six v1 codes extract from the raw payload, enum coverage or not.
 
-    Three of them are not in ``RequestErrorCode`` today; this is what makes the
-    live modules safe to write before the spec is tagged.
+    FIVE of the six are missing from ``RequestErrorCode`` today — only
+    ``RATE_LIMITED_ERROR`` is present — which is what makes the live modules
+    safe to write before the spec is tagged.
     """
-    exc = _raise_through_sdk(HTTP_RATE_LIMITED, {"error": code, "message": "m", "retryAfterMs": 1})
+    exc = _raise_through_sdk(HTTP_RATE_LIMITED, {"error": code, "message": "m"})
     assert rest_reject(exc).code == code
+
+
+def test_the_generated_enum_is_missing_exactly_the_five_documented_codes() -> None:
+    """Pin the enum gap the suite's plain-string codes work around.
+
+    Stated as an exact set rather than a count so a partial regeneration is
+    caught: the moment the spec is tagged this flips to an empty set and the
+    ``TODO(post-regen)`` in ``rl_errors`` becomes actionable.
+    """
+    v1_codes = {
+        RATE_LIMITED_ERROR,
+        OPEN_ORDER_COUNT_EXCEEDED_ERROR,
+        OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
+        CAPACITY_LIMITED_ERROR,
+        ACCOUNT_SUSPENDED_ERROR,
+        NOT_WHITELISTED_ERROR,
+    }
+    known = {member.value for member in RequestErrorCode}
+    missing = v1_codes - known
+    assert missing in (
+        {
+            NOT_WHITELISTED_ERROR,
+            ACCOUNT_SUSPENDED_ERROR,
+            CAPACITY_LIMITED_ERROR,
+            OPEN_ORDER_COUNT_EXCEEDED_ERROR,
+            OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
+        },
+        set(),
+    ), f"unexpected RequestErrorCode coverage; missing v1 codes: {sorted(missing)}"
 
 
 def test_retry_after_assertion_is_not_vacuous() -> None:
@@ -186,6 +255,25 @@ def test_retry_after_assertion_is_not_vacuous() -> None:
     exc = _raise_through_sdk(HTTP_RATE_LIMITED, {"error": RATE_LIMITED_ERROR, "message": "no header"})
     with pytest.raises(AssertionError, match="must carry a Retry-After header"):
         assert_retry_after_plausible(rest_reject(exc), 60.0, "offline missing-header")
+
+
+def test_403_no_retry_after_assertion_is_not_vacuous() -> None:
+    """A 403 that DOES carry Retry-After must fail the assertion.
+
+    The live gate and eject modules assert that access-control rejects carry no
+    ``Retry-After`` — a 403 answers "not you", never "not yet". That assertion is
+    only worth anything if a header would actually trip it.
+    """
+    clean = _raise_through_sdk(HTTP_FORBIDDEN, {"error": NOT_WHITELISTED_ERROR, "message": "no header"})
+    assert_no_retry_after(rest_reject(clean), "offline 403 clean")
+
+    with_header = _raise_through_sdk(
+        HTTP_FORBIDDEN,
+        {"error": NOT_WHITELISTED_ERROR, "message": "wrongly retryable"},
+        headers={"Retry-After": "5"},
+    )
+    with pytest.raises(AssertionError, match="must carry no Retry-After"):
+        assert_no_retry_after(rest_reject(with_header), "offline 403 with header")
 
 
 def _request_error_has_typed_retry_after() -> bool:
@@ -234,11 +322,7 @@ def test_request_error_model_gap_matches_the_helper_strategy() -> None:
 
 
 def test_ws_exec_error_envelope_extraction() -> None:
-    """The ws-exec envelope carries the code and the optional ``retryAfterMs``.
-
-    Read straight off the frame: ``WsExecOperationError`` only exposes
-    ``code`` / ``message`` / ``request_id`` and drops ``retryAfterMs``.
-    """
+    """The ws-exec envelope carries the code and the optional ``retryAfterMs``."""
     frame = {
         "id": "abc123",
         "ok": False,
@@ -248,13 +332,187 @@ def test_ws_exec_error_envelope_extraction() -> None:
     assert reject.code == RATE_LIMITED_ERROR
     assert reject.retry_after_ms == 750
 
-    forbidden = ws_reject(
-        {"ok": False, "error": {"error": NOT_WHITELISTED_ERROR, "message": "nope"}}, "offline ws gate"
-    )
-    assert forbidden.code == NOT_WHITELISTED_ERROR
-    assert forbidden.retry_after_ms is None
+    # The hint is set ONLY alongside RATE_LIMITED: waiting does not free a cap
+    # slot and never clears an access-control verdict, so both must read absent.
+    for code in (OPEN_ORDER_COUNT_EXCEEDED_ERROR, ACCOUNT_SUSPENDED_ERROR, NOT_WHITELISTED_ERROR):
+        without_hint = ws_reject({"ok": False, "error": {"error": code, "message": "nope"}}, f"offline ws {code}")
+        assert without_hint.code == code
+        assert without_hint.retry_after_ms is None
 
 
 def test_ws_exec_ok_envelope_is_not_mistaken_for_a_reject() -> None:
     with pytest.raises(AssertionError, match="expected ok=false"):
         ws_reject({"ok": True, "payload": {"orderId": "1"}}, "offline ws ok")
+
+
+def test_ws_exec_operation_error_carries_the_retry_hint() -> None:
+    """``WsExecOperationError`` exposes ``retry_after_ms`` off the envelope.
+
+    The hand-written ws-exec client is not regenerated from the spec, so this
+    accessor is the only thing that stops a ws-exec caller from having to
+    re-parse the frame the client already parsed.
+    """
+    limited = ReyaWsExecClient._extract_ok_payload  # pylint: disable=protected-access
+
+    with pytest.raises(WsExecOperationError) as excinfo:
+        limited(
+            {"ok": False, "error": {"error": RATE_LIMITED_ERROR, "message": "slow down", "retryAfterMs": 750}},
+            "req-1",
+        )
+    assert excinfo.value.code == RATE_LIMITED_ERROR
+    assert excinfo.value.retry_after_ms == 750
+
+    with pytest.raises(WsExecOperationError) as no_hint:
+        limited({"ok": False, "error": {"error": ACCOUNT_SUSPENDED_ERROR, "message": "suspended"}}, "req-2")
+    assert no_hint.value.retry_after_ms is None
+
+
+def test_close_frame_payload_yields_the_4029_code_and_reason() -> None:
+    """A close frame's status code and reason are both recoverable.
+
+    ``WebSocket.recv`` collapses a close frame into ``""``, which is why the
+    reader reads at the frame layer instead: the per-connection message-rate
+    cap is expressed purely as a close code, so swallowing it would make the
+    control invisible to a client.
+    """
+    body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + b"MSG_RATE_EXCEEDED retry_after_ms=1000"
+    assert _parse_close_payload(body) == (WS_CLOSE_MSG_RATE_EXCEEDED, "MSG_RATE_EXCEEDED retry_after_ms=1000")
+
+    # RFC 6455 allows an empty body and a code-only body.
+    assert _parse_close_payload(b"") == (None, None)
+    assert _parse_close_payload(struct.pack("!H", 1000)) == (1000, None)
+
+
+class _StubWebSocket:
+    """Replays a scripted sequence, then behaves like a dead socket.
+
+    An entry is either an ``(opcode, frame)`` tuple to return or an exception
+    instance to raise, so a script can interleave recv timeouts with frames.
+    """
+
+    def __init__(self, script: list[Any]) -> None:
+        self._script = list(script)
+
+    def settimeout(self, _timeout: float) -> None:
+        pass
+
+    def recv_data_frame(self, **_kwargs: Any) -> tuple[int, Any]:
+        if not self._script:
+            raise WebSocketConnectionClosedException("stub drained")
+        step = self._script.pop(0)
+        if isinstance(step, BaseException):
+            raise step
+        return cast(tuple[int, Any], step)
+
+
+async def test_reader_loop_fails_in_flight_requests_on_a_4029_close() -> None:
+    """The close is read, recorded, and turned into indeterminate failures.
+
+    Drives the real reader loop over a scripted close frame. Without this the
+    4029 path would only be exercised on a live relayer: the previous reader
+    caught a server close with the same ``except`` as its own recv timeout and
+    continued, so in-flight requests hung to their own deadline and the code was
+    never read at all.
+    """
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    close_body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + b"MSG_RATE_EXCEEDED retry_after_ms=1000"
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(Any, _StubWebSocket([(ABNF.OPCODE_CLOSE, SimpleNamespace(data=close_body))]))
+    future = client._register("req-1")
+
+    await asyncio.to_thread(client._reader_loop)
+
+    with pytest.raises(WsExecConnectionClosedError) as excinfo:
+        await asyncio.wait_for(future, timeout=5.0)
+    assert excinfo.value.close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+    assert excinfo.value.request_id == "req-1"
+    assert client.last_close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+    assert client.last_close_reason == "MSG_RATE_EXCEEDED retry_after_ms=1000"
+
+
+async def test_sends_are_refused_once_the_connection_is_known_dead() -> None:
+    """After the close, a NEW request is refused rather than silently buffered.
+
+    A send into a dead socket can be accepted by the OS and go nowhere, leaving
+    the caller waiting out its own 15 s deadline for a server that already hung
+    up. Refusing immediately keeps the reconcile rule reachable.
+    """
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    close_body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + b"MSG_RATE_EXCEEDED retry_after_ms=1000"
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(Any, _StubWebSocket([(ABNF.OPCODE_CLOSE, SimpleNamespace(data=close_body))]))
+
+    await asyncio.to_thread(client._reader_loop)
+
+    with pytest.raises(WsExecConnectionClosedError) as excinfo:
+        await client.ping()
+    assert excinfo.value.close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+
+
+async def test_reader_loop_survives_its_own_recv_timeout() -> None:
+    """An idle second is not a disconnect — the reader must keep reading.
+
+    The inverse of the bug this file's other reader tests pin: the fix separated
+    a server close from the 1 s recv timeout, and this is what stops the
+    separation from being re-collapsed the other way. Were the timeout treated
+    as a transport failure, every idle second would fail the in-flight requests
+    and kill the thread, so the 4029 close would never be reached at all.
+    """
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    close_body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + b"idle then closed"
+    pong = json.dumps({"type": "pong", "id": "req-3"}).encode("utf-8")
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(
+        Any,
+        _StubWebSocket(
+            [
+                WebSocketTimeoutException("idle"),
+                WebSocketTimeoutException("still idle"),
+                (ABNF.OPCODE_TEXT, SimpleNamespace(data=pong)),
+                WebSocketTimeoutException("idle again"),
+                (ABNF.OPCODE_CLOSE, SimpleNamespace(data=close_body)),
+            ]
+        ),
+    )
+    future = client._register("req-3")
+
+    await asyncio.to_thread(client._reader_loop)
+
+    # The pong arrived after two timeouts, so the request resolved rather than
+    # being failed indeterminate by a reader that mistook idling for death.
+    assert await asyncio.wait_for(future, timeout=5.0) == {"type": "pong", "id": "req-3"}
+    assert client.last_close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+
+
+async def test_reader_loop_fails_in_flight_requests_on_an_abrupt_transport_failure() -> None:
+    """A death with no close frame is indeterminate too, with no code to name."""
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(Any, _StubWebSocket([]))
+    future = client._register("req-2")
+
+    await asyncio.to_thread(client._reader_loop)
+
+    with pytest.raises(WsExecConnectionClosedError) as excinfo:
+        await asyncio.wait_for(future, timeout=5.0)
+    assert excinfo.value.close_code is None
+    assert client.last_close_code is None
+
+
+def test_connection_closed_error_names_the_close_and_the_reconcile_rule() -> None:
+    """The indeterminate error is loud about being indeterminate.
+
+    A caller that sees this must reconcile, not re-send: the relayer may have
+    forwarded the request to the engine before closing. Reporting it as a
+    timeout would read as "never happened" and invite a duplicate order.
+    """
+    error = WsExecConnectionClosedError(WS_CLOSE_MSG_RATE_EXCEEDED, "MSG_RATE_EXCEEDED retry_after_ms=1000", "req-9")
+    assert isinstance(error, WsExecProtocolError)
+    assert error.close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+    assert error.request_id == "req-9"
+    assert "indeterminate" in str(error)
+    assert "openOrders" in str(error)

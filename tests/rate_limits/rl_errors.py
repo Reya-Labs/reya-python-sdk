@@ -100,7 +100,14 @@ def _code_from_payload(payload: dict[str, Any] | None) -> str | None:
 
 @dataclass(frozen=True)
 class RestReject:
-    """One REST rejection, flattened to the fields the wire contract defines."""
+    """One REST rejection, flattened to the fields the wire contract defines.
+
+    ``retry_after_ms`` is a **defensive fallback, not a REST contract**: on REST
+    the backoff hint travels in the ``Retry-After`` header only, and the edge
+    builds the error body as ``{error, message}``. The body is read anyway so a
+    deployment that starts echoing the ws-exec field is not silently ignored —
+    but no REST assertion may require it.
+    """
 
     status: int | None
     code: str | None
@@ -176,8 +183,9 @@ def ws_reject(frame: dict[str, Any], label: str) -> WsReject:
     """Flatten a ws-exec error envelope, asserting it IS an error envelope.
 
     Read straight off the frame rather than via ``WsExecOperationError``: the
-    high-level client's exception only carries ``code`` / ``message`` /
-    ``request_id`` and drops ``retryAfterMs`` (see the suite README's findings).
+    relayer's envelope is what these tests assert on, so nothing here depends on
+    the client's parsing. (``WsExecOperationError`` does carry ``retry_after_ms``
+    now — see the suite README's findings — but it is pinned separately.)
     """
     if frame.get("ok"):
         raise AssertionError(f"[{label}] expected ok=false, got payload={frame.get('payload')!r}")
@@ -192,6 +200,19 @@ def ws_reject(frame: dict[str, Any], label: str) -> WsReject:
         code=str(error["error"]) if error.get("error") is not None else None,
         message=str(message) if message is not None else None,
         retry_after_ms=retry_after_ms,
+    )
+
+
+def assert_no_retry_after(reject: RestReject, label: str) -> None:
+    """Assert an access-control 403 carries NO ``Retry-After``.
+
+    A 403 answers "not you", never "not yet": there is no wait that clears a
+    whitelist or eject verdict, so advertising a backoff would invite a client
+    to retry-loop against a decision that will not change.
+    """
+    assert reject.retry_after_header is None, (
+        f"[{label}] a 403 access-control reject must carry no Retry-After (waiting never clears it); "
+        f"got {reject.describe()}"
     )
 
 
