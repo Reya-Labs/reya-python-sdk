@@ -19,6 +19,7 @@ from sdk.open_api.models.spot_execution_list import SpotExecutionList
 from tests.helpers.validators import validate_order_fields, validate_spot_execution_fields
 
 from .matchers import ExecutionMatcher, FieldValidator
+from .order_state import OrderStatusLike, OrderTerminalStateError, cancel_reason_of, order_status_value
 
 if TYPE_CHECKING:
     from .tester import ReyaTester
@@ -298,7 +299,9 @@ class Waiters:
             f"order_id={order_id}, rest: {rest_execution is not None}, ws: {ws_execution is not None}"
         )
 
-    async def for_order_state(self, order_id: Optional[str], expected_status: OrderStatus, timeout: int = 10) -> str:
+    async def for_order_state(
+        self, order_id: Optional[str], expected_status: OrderStatusLike, timeout: int = 10
+    ) -> str:
         """Wait for order to reach a specific state.
 
         Uses WS as the PRIMARY and AUTHORITATIVE source of truth for order status.
@@ -309,12 +312,14 @@ class Waiters:
         - REST can only confirm "order is no longer open" (not the specific status)
 
         Returns the order_id if successful.
-        Raises RuntimeError if order reaches unexpected state or times out.
+        Raises `OrderTerminalStateError` if the order settles in a different
+        terminal state, or RuntimeError if it times out.
         """
         if order_id is None:
             raise ValueError("order_id is required for for_order_state (got None)")
-        logger.debug(f"⏳ Waiting for order {order_id} to reach state: {expected_status.value}...")
-        assert expected_status != OrderStatus.OPEN, "use for_order_creation instead"
+        expected_value = order_status_value(expected_status)
+        logger.debug(f"⏳ Waiting for order {order_id} to reach state: {expected_value}...")
+        assert expected_value != OrderStatus.OPEN.value, "use for_order_creation instead"
 
         start_time = time.time()
         ws_confirmed = False
@@ -323,20 +328,25 @@ class Waiters:
         while time.time() - start_time < timeout:
             # Step 1: WS is the PRIMARY source - wait for WS to show the status
             ws_order = self._t.ws.orders.get(str(order_id))
-            ws_status_value = ws_order.status.value if ws_order else None
+            ws_status_value = order_status_value(ws_order.status) if ws_order else None
 
             if ws_order and ws_status_value:
                 # Check if WS shows an unexpected terminal state
-                if ws_status_value != OrderStatus.OPEN.value and ws_status_value != expected_status.value:
-                    raise RuntimeError(
-                        f"Order {order_id} reached {ws_status_value} state via WS, but expected {expected_status.value}"
+                if ws_status_value != OrderStatus.OPEN.value and ws_status_value != expected_value:
+                    cancel_reason, cancel_reason_message = cancel_reason_of(ws_order)
+                    raise OrderTerminalStateError(
+                        order_id=order_id,
+                        observed_status=ws_status_value,
+                        expected_status=expected_value,
+                        cancel_reason=cancel_reason,
+                        cancel_reason_message=cancel_reason_message,
                     )
 
                 # Check if WS confirms the expected state
-                if not ws_confirmed and ws_status_value == expected_status.value:
+                if not ws_confirmed and ws_status_value == expected_value:
                     elapsed_time = time.time() - start_time
                     logger.info(
-                        f" ✅ Order reached {expected_status.value} state via WS: {order_id} (took {elapsed_time:.2f}s)"
+                        f" ✅ Order reached {expected_value} state via WS: {order_id} (took {elapsed_time:.2f}s)"
                     )
                     ws_confirmed = True
 
@@ -360,10 +370,15 @@ class Waiters:
 
         # Timeout - provide detailed error with current state
         ws_order = self._t.ws.orders.get(str(order_id))
-        ws_status = ws_order.status.value if ws_order else "not found"
+        ws_status = order_status_value(ws_order.status) if ws_order else "not found"
+        # A cancelled-but-unattributed order is the case this used to lose: name
+        # the reason here too, so a timeout says why rather than only what.
+        cancel_reason, cancel_reason_message = cancel_reason_of(ws_order) if ws_order else (None, None)
+        reason_suffix = f", cancelReason: {cancel_reason} ({cancel_reason_message})" if cancel_reason else ""
         raise RuntimeError(
-            f"Order {order_id} did not reach {expected_status.value} state after {timeout}s. "
+            f"Order {order_id} did not reach {expected_value} state after {timeout}s. "
             f"WS status: {ws_status}, WS confirmed: {ws_confirmed}, REST verified: {rest_verified}"
+            f"{reason_suffix}"
         )
 
     async def for_order_creation(
@@ -397,7 +412,7 @@ class Waiters:
             if ws_order is None:
                 ws_ord = self._t.ws.orders.get(str(order_id))
                 if ws_ord:
-                    ws_status = ws_ord.status.value if hasattr(ws_ord.status, "value") else ws_ord.status
+                    ws_status = order_status_value(ws_ord.status)
                     if ws_status in ["OPEN", "PARTIALLY_FILLED"]:
                         elapsed_time = time.time() - start_time
                         logger.info(

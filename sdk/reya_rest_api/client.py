@@ -81,6 +81,36 @@ CANCEL_ALL_AFTER_MAX_TIMEOUT_MS = 60_000
 _SPOT_MARKET_ID_OFFSET = 10_000_000_000
 
 
+def _reject_zero_deadline(deadline: int) -> None:
+    """A signed envelope deadline must be explicit.
+
+    Zero is refused at intake: the settlement calldata builder would otherwise
+    infer the deadline from `expiresAfter`, and the reconstructed digest would
+    recover the wrong signer whenever the two differ.
+    """
+    if deadline == 0:
+        raise ValueError("deadline must be an explicit non-zero signature-validity window")
+
+
+def _require_settlement_headroom(expires_after: int, headroom_s: int, now_s: int) -> None:
+    """Refuse a lifetime that does not outlast the settlement headroom.
+
+    This is independent of the `expiresAfter > deadline` coupling: a caller that
+    pins a short deadline satisfies that check while still signing a lifetime
+    the engine refuses. Failing here names the rule instead of burning a nonce
+    on an order that cannot be admitted.
+    """
+    if expires_after == PERPETUAL_LIFETIME:
+        return
+    earliest_admissible = now_s + headroom_s
+    if expires_after <= earliest_admissible:
+        raise ValueError(
+            f"expires_after={expires_after} does not outlast the {headroom_s}s settlement "
+            f"headroom (needs > {earliest_admissible}). Set REYA_SETTLEMENT_HEADROOM_S to the "
+            "target deployment's value if it runs a different one."
+        )
+
+
 def _reject_zero_client_order_id(client_order_id: Optional[int]) -> None:
     if client_order_id == 0:
         raise ValueError("client_order_id must be omitted rather than set to 0")
@@ -299,8 +329,6 @@ class ReyaTradingClient:
         is_perp_ioc = is_ioc and not is_spot_market
         _reject_zero_client_order_id(params.client_order_id)
 
-        nonce = self._get_next_nonce()
-
         # `deadline` (entry-time signature validity) and `expiresAfter` (on-chain
         # order lifetime) are independent — see the constants block. Defaults:
         #   - deadline     → now + 60s for every order type (short entry window)
@@ -309,13 +337,15 @@ class ReyaTradingClient:
         #                    cancelled; IOC never rests, so its lifetime is moot)
         # An explicit `params.deadline` / `params.expires_after` overrides each
         # field independently.
-        deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+        now_s = int(time.time())
+        deadline = params.deadline if params.deadline is not None else now_s + DEFAULT_DEADLINE_S
         expires_after = params.expires_after if params.expires_after is not None else PERPETUAL_LIFETIME
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
         # TIF <-> expiresAfter coupling (mirrors the off-chain validator + the ME):
         # GTC never expires; GTT always expires strictly after the deadline.
         # IOC never rests, so its lifetime is moot. Fail fast before signing.
+        _reject_zero_deadline(deadline)
         if params.time_in_force == TimeInForce.GTT:
             if expires_after == 0:
                 raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
@@ -323,6 +353,11 @@ class ReyaTradingClient:
                 raise ValueError("GTT expires_after must be greater than deadline")
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
             raise ValueError("GTC orders must omit expires_after")
+        _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, now_s)
+
+        # Every rejection above is unconditional, so the nonce is claimed only
+        # once the request is known to be admissible.
+        nonce = self._get_next_nonce()
 
         # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
         # be ABSENT on spot ("not supported for spot markets") and perp GTC
@@ -393,6 +428,22 @@ class ReyaTradingClient:
         and the API rejects it on spot. `expires_after` (order lifetime) is
         signed and enforced on-chain at fill time; it is independent from
         `deadline` (signature validity, enforced by the API at entry).
+
+        `reduce_only` is sized against your SETTLED position, so a FILLED ack is
+        not yet something you can reduce. Close a just-opened position and the
+        engine may refuse it with `reduce-only order has nothing to reduce`
+        (or, part-way through settling, `...would increase or flip position
+        direction`) until that opening fill settles on chain — milliseconds
+        locally, a chain round-trip in production. This is deliberate: crediting
+        an unsettled increase would let a "close" become an open if the increase
+        busts, which is the thing reduce-only exists to prevent.
+
+        So either wait for the position to be observable — poll `positions` (or
+        the position-update stream) until it reflects the opening fill — before
+        sending the reduce-only close, or send a plain opposite-side order with
+        `reduce_only=False`, which is admitted throughout. Do NOT blind-retry:
+        the refusal is a correct verdict about a real state, not a transient
+        error, and it clears when the position settles, not when you retry.
         """
         payload, _nonce = self.build_create_limit_order_payload(params)
         return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
@@ -423,6 +474,7 @@ class ReyaTradingClient:
         # is the independent entry-time signature-validity window. An explicit
         # `params.deadline` still wins.
         deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+        _reject_zero_deadline(deadline)
         expires_after = PERPETUAL_LIFETIME
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
@@ -751,8 +803,9 @@ class ReyaTradingClient:
             raise ValueError("Signature generator is required for order signing")
 
         market_id = self.get_market_id_from_symbol(params.symbol)
-        nonce = params.nonce if params.nonce is not None else self._get_next_nonce()
-        deadline = params.deadline if params.deadline is not None else int(time.time()) + DEFAULT_DEADLINE_S
+        now_s = int(time.time())
+        deadline = params.deadline if params.deadline is not None else now_s + DEFAULT_DEADLINE_S
+        _reject_zero_deadline(deadline)
         is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
 
         # TIF <-> expiresAfter coupling, checked against the RESTING order's
@@ -776,6 +829,9 @@ class ReyaTradingClient:
                 raise ValueError("GTT expires_after must be greater than deadline")
         elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
             raise ValueError("GTC orders must omit expires_after")
+        _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, now_s)
+
+        nonce = params.nonce if params.nonce is not None else self._get_next_nonce()
 
         # Single-field PRO-438 contract: client_order_id is both the lookup key
         # when order_id is absent and the restated immutable signed into

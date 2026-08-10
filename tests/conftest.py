@@ -31,6 +31,7 @@ from sdk.open_api.api_client import ApiClient  # noqa: E402
 from sdk.open_api.configuration import Configuration  # noqa: E402
 from sdk.open_api.exceptions import ApiException  # noqa: E402
 from sdk.open_api.models import TimeInForce  # noqa: E402
+from sdk.reya_rest_api import client as reya_client_module  # noqa: E402
 from sdk.reya_rest_api.config import MAINNET_CHAIN_ID  # noqa: E402
 from sdk.reya_rest_api.models.orders import LimitOrderParameters  # noqa: E402
 from tests.helpers import ReyaTester  # noqa: E402
@@ -41,6 +42,7 @@ from tests.helpers.market_config import (  # noqa: E402
     SpotTestConfig,
     fetch_spot_market_configs,
 )
+from tests.helpers.offline_clock import PinnedClock, assert_pinned_clock_is_in_the_past  # noqa: E402
 from tests.helpers.price_helpers import limit_price, quantize_price  # noqa: E402
 from tests.helpers.reya_tester import logger  # noqa: E402
 from tests.helpers.settlement import make_settlement_probe  # noqa: E402
@@ -126,6 +128,23 @@ def pytest_collection_modifyitems(items):
 def spot_asset(request):
     """Get the selected spot asset from CLI option."""
     return request.config.getoption("--spot-asset").upper()
+
+
+@pytest.fixture(autouse=True)
+def pin_offline_clock(request, monkeypatch):
+    """Freeze the client's clock for every `offline`-marked test.
+
+    The offline suites pin their signed inputs to the April-2025 window the TS
+    parity vectors were generated at. Leaving the client on the wall clock
+    makes two things break in ways that read as logic regressions: a defaulted
+    `deadline` changes every run, and any rule expressed against "now" compares
+    a pinned past expiry against the real present. Pinning the clock is what
+    keeps one client code path usable by both live and offline callers.
+    """
+    if request.node.get_closest_marker("offline") is None:
+        return
+    assert_pinned_clock_is_in_the_past()
+    monkeypatch.setattr(reya_client_module, "time", PinnedClock())
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)

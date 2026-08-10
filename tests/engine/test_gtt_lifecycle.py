@@ -30,6 +30,13 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import full_state_modify_params
+from tests.helpers.gtt_timing import (
+    GTT_REAP_DEADLINE_OFFSET_S,
+    GTT_REAP_DETECT_BOUND_S,
+    GTT_REAP_EXPIRY_OFFSET_S,
+    GTT_REAP_PRE_EXPIRY_MARGIN_S,
+    REAP_WAIT_TIMEOUT_S,
+)
 from tests.helpers.liquidity_detector import skip_if_external_config_liquidity
 from tests.helpers.market_config import PerpTestConfig, SpotTestConfig
 from tests.helpers.order_lifecycle import rest_gtc, rest_gtt, wait_for_order_fields
@@ -46,12 +53,6 @@ GTT_LIFETIME_S = 300
 # (the ME reaper scans on a ~500ms interval), so these are REAL waits; the
 # margins absorb ME<->test clock skew (cf. the COD tests' WSL2-skew note) and
 # devnet Redis->indexer->WS propagation. Tune if devnet timing changes.
-GTT_REAP_DEADLINE_OFFSET_S = 20  # EIP-712 signature validity for the create (must be < expiry)
-GTT_REAP_EXPIRY_OFFSET_S = 55  # near-future expiry with room to observe OPEN first
-GTT_REAP_PRE_EXPIRY_MARGIN_S = 15  # assert "still resting" this far before expiry (skew margin)
-GTT_REAP_DETECT_BOUND_S = 40  # max acceptable lag from expiry to observing CANCELLED
-# Wait budget once we start polling for the reap (from ~pre-expiry to detection).
-_REAP_WAIT_TIMEOUT_S = GTT_REAP_PRE_EXPIRY_MARGIN_S + GTT_REAP_DETECT_BOUND_S + 10
 
 
 @pytest.mark.asyncio
@@ -117,7 +118,7 @@ async def test_gtt_reaped_at_expiry(
     )
 
     # Upper bound: reaped within a finite window AFTER expiry — no explicit cancel.
-    await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=_REAP_WAIT_TIMEOUT_S)
+    await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=REAP_WAIT_TIMEOUT_S)
     ws_order = maker.ws.orders.get(str(order_id))
     assert ws_order is not None, f"[{market_type}] missing WS cancelled GTT order {order_id}"
     assert (
@@ -180,7 +181,7 @@ async def test_gtc_survives_while_gtt_is_reaped(
         assert gtc_pre is not None and gtc_pre.status == OrderStatus.OPEN, f"[{market_type}] GTC must rest"
 
         # The GTT is auto-reaped at its expiry (no explicit cancel)...
-        await maker.wait.for_order_state(gtt_id, OrderStatus.CANCELLED, timeout=_REAP_WAIT_TIMEOUT_S)
+        await maker.wait.for_order_state(gtt_id, OrderStatus.CANCELLED, timeout=REAP_WAIT_TIMEOUT_S)
 
         # ...and the GTC is STILL OPEN — it has no expiry and the reaper never
         # touches it. This is the load-bearing assertion: a GTC is removed ONLY
