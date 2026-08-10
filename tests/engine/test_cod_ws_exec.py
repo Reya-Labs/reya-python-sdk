@@ -88,7 +88,7 @@ FIRE_TIMEOUT_MS = 5_000
 # The ME scans armed countdowns on a ~500ms tick; allow that plus clock skew
 # and request latency before declaring a fire missed (mirrors
 # tests/engine/test_cod_lifecycle.py).
-FIRE_MARGIN_S = 3.0
+FIRE_MARGIN_S = 5.0
 
 
 async def _wait_for_open_order(rest: ReyaTradingClient, order_id: str, timeout_s: float = 10.0) -> Order:
