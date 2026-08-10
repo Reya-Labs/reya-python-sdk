@@ -13,6 +13,8 @@ typed generated request models posted via `tester.client.orders.<op>`, with
 error codes asserted on the ApiException body text.
 """
 
+import asyncio
+import re
 import time
 
 import pytest
@@ -50,6 +52,30 @@ def _raw_cancel_all_after_request(
     )
 
 
+_RETRY_HINT_RE = re.compile(r"retry after (\d+) ms", re.IGNORECASE)
+
+
+async def _cancel_all_after_paced(tester: ReyaTester, request: CancelAllAfterRequest, *, attempts: int = 6):
+    """Send a raw cancelAllAfter, honouring RATE_LIMITED_ERROR retry hints.
+
+    Admission precedes validation, so under cod-control pressure either branch
+    of a validation probe can see a 429 first; a rate-limited reject is a
+    non-event (no nonce burn), so resending the same signed payload is safe.
+    """
+    last_exc: ApiException | None = None
+    for _ in range(attempts):
+        try:
+            return await tester.client.orders.cancel_all_after(request)
+        except ApiException as exc:
+            if "RATE_LIMITED_ERROR" not in str(exc):
+                raise
+            match = _RETRY_HINT_RE.search(str(exc))
+            hint = int(match.group(1)) if match else 1_000
+            last_exc = exc
+            await asyncio.sleep((hint + 100) / 1000)
+    raise last_exc  # type: ignore[misc]
+
+
 @pytest.mark.asyncio
 # Only values inside the schema envelope [0, 60000] can reach the server through
 # the generated CancelAllAfterRequest model (timeoutMs is Field(le=60000, ge=0)).
@@ -76,7 +102,7 @@ async def test_timeout_validation_via_api(spot_tester: ReyaTester, timeout_ms: i
 
     if not accepted:
         with pytest.raises(ApiException) as exc_info:
-            await spot_tester.client.orders.cancel_all_after(request)
+            await _cancel_all_after_paced(spot_tester, request)
         error_msg = str(exc_info.value)
         assert (
             "INPUT_VALIDATION_ERROR" in error_msg
@@ -84,7 +110,7 @@ async def test_timeout_validation_via_api(spot_tester: ReyaTester, timeout_ms: i
         logger.info(f"✅ timeoutMs={timeout_ms} rejected with INPUT_VALIDATION_ERROR")
         return
 
-    response = await spot_tester.client.orders.cancel_all_after(request)
+    response = await _cancel_all_after_paced(spot_tester, request)
     try:
         assert response.timeout_ms == timeout_ms
         if timeout_ms == 0:
