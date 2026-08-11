@@ -19,7 +19,7 @@ seed the standard test wallets into `rl_whitelist` (heavy wallets into
 | `test_open_order_caps.py` | opt-in | §4.2 count cap (account total **and** per market) → `OPEN_ORDER_COUNT_EXCEEDED_ERROR`; notional cap on a **create** and on a qty-up modify → `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`; IOC and armed-trigger exemptions from the count cap |
 | `test_eject_flow.py` | opt-in + eject hook | §3 reactive eject: creates **and modifies** blocked 403-class, **cancels still flow**, **resting** orders swept while **armed SL/TP are retained**, cancelAllAfter **arm refused / disarm open** (option (b)), un-eject restores trading |
 | `test_ws_exec_parity.py` | opt-in + `REYA_WS_EXEC_URL` | §8 ws-exec envelope parity for `NOT_WHITELISTED_ERROR`, `RATE_LIMITED_ERROR`, `OPEN_ORDER_COUNT_EXCEEDED_ERROR` and `ACCOUNT_SUSPENDED_ERROR` |
-| `test_ws_msg_rate_cap.py` | opt-in + `REYA_WS_EXEC_URL` | §7 per-connection inbound message-rate cap: close code **4029**, its reason, in-flight requests surfaced as **indeterminate**, reconnect works |
+| `test_ws_msg_rate_cap.py` | opt-in + `REYA_WS_EXEC_URL` | §7 per-connection inbound message-rate cap: close code **4029**, its reason, in-flight requests surfaced as **indeterminate**, reconnect works, and the close does **not** fire cancel-on-disconnect (`-m cod`: a countdown armed over the killed connection leaves the book intact and is refreshable over the new one) |
 
 Run them with:
 
