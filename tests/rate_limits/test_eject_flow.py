@@ -34,6 +34,12 @@ reach, so the eject step is delegated to the operator-supplied
 ``RL_TEST_EJECT_CMD`` / ``RL_TEST_UNEJECT_CMD`` templates (see the suite
 README). The test skips cleanly when they are unset.
 
+A second test uses the optional ``RL_TEST_EJECT_ONLY_CMD``, which ejects while
+LEAVING the whitelist row in place. That is the only configuration in which the
+create path attributes its refusal: with the default hook either 403 code is
+correct, so an ME whose ejected-set check did nothing would still pass the flow
+above on the edge's whitelist verdict alone.
+
 Convergence is observed by polling ``openOrders``; the equivalent signal on the
 ``walletOrderChanges`` WebSocket stream is a stream of cancels for the same
 orders. Polling is used here because it needs no subscription lifecycle and
@@ -68,6 +74,7 @@ from tests.rate_limits.rl_config import (
     ACCOUNT_SUSPENDED_ERROR,
     EJECT_REJECT_CODES,
     HTTP_FORBIDDEN,
+    NOT_WHITELISTED_ERROR,
     RateLimitSuiteConfig,
     requires_rate_limits,
     trigger_credentials_env_hint,
@@ -362,3 +369,51 @@ async def test_eject_blocks_creates_sweeps_resting_orders_keeps_stops_and_unejec
 
     order_id = await _poll_until_create_accepted(rl_client, rl_market, rl_suite_config)
     logger.info("trading resumed after un-eject: orderId=%s", order_id)
+
+
+async def test_eject_without_de_whitelisting_pins_the_matching_engines_own_verdict(
+    rl_client: ReyaTradingClient,
+    rl_market: RlMarket,
+    rl_suite_config: RateLimitSuiteConfig,
+    rl_eject_only_hook,
+) -> None:
+    """Eject WITHOUT de-whitelisting → the create refusal must be ACCOUNT_SUSPENDED.
+
+    The default eject is one transaction that ALSO deletes the ``rl_whitelist``
+    row, so a create can legitimately be refused by either layer and
+    ``EJECT_REJECT_CODES`` accepts both — which means the flow above cannot tell
+    whether the ME's admission check works at all. A deployment whose ejected-set
+    check silently did nothing would still pass it, on the edge's whitelist
+    verdict alone.
+
+    ``RL_TEST_EJECT_ONLY_CMD`` inserts the same ``rl_ejected_accounts`` rows and
+    leaves the whitelist row in place. The edge therefore admits the request, and
+    the only thing left that can refuse it is the matching engine. That makes
+    ``ACCOUNT_SUSPENDED_ERROR`` the sole correct answer here — the one place on
+    the create path where the two layers are distinguishable.
+    """
+    wallet = rl_client.config.owner_wallet_address
+    account_id = rl_client.config.account_id
+    assert account_id is not None
+
+    await ensure_flat(rl_client, rl_suite_config, rl_market.symbol)
+
+    rl_eject_only_hook.eject(wallet=wallet, account_id=account_id)
+    try:
+        reject = await _poll_until_create_rejected(rl_client, rl_market, rl_suite_config)
+        logger.info("eject-only reject observed (create): %s", reject.describe())
+        assert reject.code == ACCOUNT_SUSPENDED_ERROR, (
+            f"with the whitelist row intact the edge gate cannot answer, so an ejected account's create must be "
+            f"refused {ACCOUNT_SUSPENDED_ERROR} by the matching engine; got {reject.describe()} — a "
+            f"{NOT_WHITELISTED_ERROR} here means RL_TEST_EJECT_ONLY_CMD removed the whitelist row after all, "
+            "and this test proves nothing about the ME"
+        )
+        assert reject.status == HTTP_FORBIDDEN, f"eject rejects are 403-class; got {reject.describe()}"
+        assert_no_retry_after(reject, "eject-only create")
+    finally:
+        rl_eject_only_hook.uneject(wallet=wallet, account_id=account_id)
+
+    # Un-eject is asserted rather than assumed: a hook that silently failed here
+    # would leave every later test in the session failing for the wrong reason.
+    order_id = await _poll_until_create_accepted(rl_client, rl_market, rl_suite_config)
+    logger.info("trading resumed after un-eject (eject-only): orderId=%s", order_id)

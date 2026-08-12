@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 
 import pytest
 
@@ -55,16 +54,11 @@ from tests.rate_limits.rl_actions import (
     wait_for_open_order_count,
 )
 from tests.rate_limits.rl_config import RATE_LIMITED_ERROR, RateLimitSuiteConfig, requires_rate_limits
-from tests.rate_limits.rl_errors import rest_reject
+from tests.rate_limits.rl_errors import assert_msg_rate_close_reason, msg_rate_retry_after_s, rest_reject
 
 logger = logging.getLogger("reya.rate_limits")
 
 pytestmark = [pytest.mark.rate_limits, requires_rate_limits]
-
-#: The reason string the relayer pairs with the 4029 close. Pinned as a pattern
-#: rather than a literal because the hint value is deployment-dependent; the
-#: group is the advisory backoff a prompt reconnect waits out.
-CLOSE_REASON_PATTERN = re.compile(r"^MSG_RATE_EXCEEDED retry_after_ms=(\d+)$")
 
 #: Multiple of the configured burst to fire. Generous: the flood has to out-run
 #: a token bucket that is refilling underneath it.
@@ -115,12 +109,6 @@ async def _await_close(client: ReyaWsExecClient) -> int | None:
 def _flood_size(config: RateLimitSuiteConfig) -> int:
     """How many frames one flood fires at the per-connection inbound cap."""
     return max(2, config.ws_inbound_msg_burst * FLOOD_MULTIPLE)
-
-
-def _close_retry_after_s(reason: str | None) -> float | None:
-    """The advisory ``retry_after_ms`` carried in the 4029 reason, in seconds."""
-    match = CLOSE_REASON_PATTERN.match(reason) if reason else None
-    return int(match.group(1)) / 1000 if match else None
 
 
 async def _cod_over_ws(
@@ -200,11 +188,11 @@ async def test_ws_exec_msg_rate_flood_closes_4029_and_surfaces_indeterminate(
             "RL_TEST_WS_INBOUND_MSG_BURST if the deployment's WS_EXEC_INBOUND_MSG_RATE_BURST is larger"
         )
 
+        # The grammar is shared byte-for-byte with the market-data socket's shed
+        # (tests/rate_limits/test_md_ws_msg_rate_cap.py) — one helper, so the two
+        # surfaces cannot drift into two client branches.
         reason = client.last_close_reason
-        assert reason is not None and CLOSE_REASON_PATTERN.match(reason), (
-            f"the {WS_CLOSE_MSG_RATE_EXCEEDED} close must carry the backoff hint in its reason "
-            f"(expected {CLOSE_REASON_PATTERN.pattern}); got {reason!r}"
-        )
+        assert_msg_rate_close_reason(reason, rl_suite_config.timing.retry_after_max_s, "ws-exec 4029 close")
 
         assert indeterminate, (
             "every request in flight when the connection died must surface as an explicit "
@@ -284,7 +272,7 @@ async def test_ws_exec_4029_close_does_not_fire_cancel_on_disconnect(
 
         # Reconnecting sooner than the hint is simply closed again, so a prompt
         # reconnect waits exactly that long rather than guessing.
-        backoff_s = min(_close_retry_after_s(close_reason) or 0.0, rl_suite_config.timing.retry_after_max_s)
+        backoff_s = min(msg_rate_retry_after_s(close_reason) or 0.0, rl_suite_config.timing.retry_after_max_s)
         await asyncio.sleep(backoff_s + slack_s)
 
         async with ReyaWsExecClient(rest_client=rl_client, ws_url=rl_ws_exec_url) as reconnected:

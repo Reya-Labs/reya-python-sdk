@@ -66,6 +66,19 @@ def _env_int(name: str, default: int) -> int:
     return int(raw.strip())
 
 
+def _env_optional_int(name: str) -> int | None:
+    """An int knob with NO default: unset means "the suite cannot probe this".
+
+    Used where a wrong guess would be worse than no coverage — a flood sized
+    against an invented burst either never trips the cap or hammers a surface
+    the deployment never told us about.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    return int(raw.strip())
+
+
 def _env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
@@ -238,13 +251,28 @@ class RateLimitSuiteConfig:
     """Everything the suite reads from the environment, resolved once."""
 
     symbol: str
+    second_symbol: str | None
     trigger_symbol: str | None
     unknown_account_id: int
     ws_inbound_msg_burst: int
+    md_ws_inbound_msg_burst: int | None
     limits: StandardTierLimits
     timing: SuiteTiming
     eject_cmd: str | None
+    eject_only_cmd: str | None
     uneject_cmd: str | None
+
+    @property
+    def single_market_count_cap(self) -> int:
+        """The count cap reachable by resting orders on ONE market.
+
+        The §4.2 count cap has two granularities and the tighter one bites
+        first, so a test that fills a single market meets
+        ``min(account total, per market)`` — never the account total, unless the
+        deployment set them equal. Reaching the ACCOUNT total needs orders
+        spread across markets (see ``rl_actions.count_cap_markets``).
+        """
+        return min(self.limits.open_order_count_cap, self.limits.open_order_per_market_cap)
 
     def burst_attempt_bound(self) -> int:
         """Upper bound on create attempts before we declare "no reject seen".
@@ -272,7 +300,10 @@ def load_suite_config() -> RateLimitSuiteConfig:
         bulk_cancel_burst=_env_int("RL_TEST_STANDARD_BULK_CANCEL_BURST", 5),
         cod_control_per_min=_env_int("RL_TEST_COD_CONTROL_PER_MIN", 100),
         cod_control_burst=_env_int("RL_TEST_COD_CONTROL_BURST", 10),
-        open_order_count_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP", 10),
+        # 8, mirroring the Localnet chart: strictly below 2 markets x the
+        # per-market cap below, so an account-total probe can hold a market under
+        # its own cap. A fallback of 10 would be exactly the unattributable case.
+        open_order_count_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP", 8),
         open_order_per_market_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_PER_MARKET_CAP", 5),
         open_notional_cap=_env_decimal("RL_TEST_STANDARD_OPEN_NOTIONAL_CAP", "5000"),
     )
@@ -295,14 +326,26 @@ def load_suite_config() -> RateLimitSuiteConfig:
 
     return RateLimitSuiteConfig(
         symbol=_env_str("RL_TEST_SYMBOL", "WETHRUSD"),
+        # A SECOND spot market, needed only where a test must reach the ACCOUNT
+        # count cap: the per-market cap stops a single-market fill first. No
+        # default — an invented symbol would skip on resolution anyway.
+        second_symbol=os.environ.get("RL_TEST_SECOND_SYMBOL") or None,
         # Optional and deliberately without a default: SL/TP is perp-only while
         # the rest of the suite is spot-only, so the eject test can only prove
         # trigger RETENTION where the wiring points it at a perp market.
         trigger_symbol=os.environ.get("RL_TEST_TRIGGER_SYMBOL") or None,
         unknown_account_id=_env_int("RL_TEST_UNKNOWN_ACCOUNT_ID", 999_999_999),
         ws_inbound_msg_burst=_env_int("RL_TEST_WS_INBOUND_MSG_BURST", 100),
+        # The READ-side (market-data socket) twin of the knob above, with its
+        # own numbers. No default on purpose: the read surface is flooded, and
+        # a burst guessed from the order-entry side would either never trip the
+        # cap or hammer a socket whose sizing the deployment never published.
+        md_ws_inbound_msg_burst=_env_optional_int("RL_TEST_MD_WS_INBOUND_MSG_BURST"),
         limits=limits,
         timing=timing,
         eject_cmd=os.environ.get("RL_TEST_EJECT_CMD") or None,
+        # Ejects WITHOUT removing the rl_whitelist row, so the edge gate still
+        # admits the request and only the ME's admission check can refuse it.
+        eject_only_cmd=os.environ.get("RL_TEST_EJECT_ONLY_CMD") or None,
         uneject_cmd=os.environ.get("RL_TEST_UNEJECT_CMD") or None,
     )

@@ -37,10 +37,13 @@ from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderPar
 from tests.rate_limits.rl_actions import (
     RlMarket,
     arm_protective_stop,
+    count_cap_markets,
     create_resting_order,
     ensure_flat,
+    flatten_markets,
     open_order_ids,
     place_paced,
+    place_to_account_count_cap,
     quantize_down,
     resolve_perp_market,
     resting_order,
@@ -75,57 +78,114 @@ REQUIRED_BALANCE_MULTIPLE = Decimal("1.5")
 async def test_open_order_count_cap(
     rl_client: ReyaTradingClient,
     rl_market: RlMarket,
+    rl_second_market: RlMarket | None,
     rl_suite_config: RateLimitSuiteConfig,
 ) -> None:
-    """Fill the book to the count cap → next create is 429 COUNT_EXCEEDED."""
+    """Fill the book to the ACCOUNT count cap → next create is 429 COUNT_EXCEEDED.
+
+    The fill is spread so the probe market keeps PER-MARKET headroom while the
+    account sits at its total: both granularities answer with the same error
+    code, so a probe fired at a market that is itself full proves nothing about
+    the account rule. The tighter rule is pinned separately by
+    ``test_per_market_open_order_count_cap``.
+    """
     cap = rl_suite_config.limits.open_order_count_cap
-    await ensure_flat(rl_client, rl_suite_config, rl_market.symbol)
+    per_market_cap = rl_suite_config.limits.open_order_per_market_cap
+    markets = count_cap_markets(rl_market, rl_second_market, rl_suite_config)
+    await flatten_markets(rl_client, rl_suite_config, markets)
 
-    placed = await place_paced(rl_client, rl_market, rl_suite_config, cap)
-    resting = await wait_for_open_order_count(
-        rl_client,
-        cap,
-        timeout_s=rl_suite_config.timing.settle_timeout_s,
-        symbol=rl_market.symbol,
-    )
-    logger.info("open-order count cap: %d resting (placed %d)", len(resting), len(placed))
+    try:
+        placed = await place_to_account_count_cap(rl_client, markets, rl_suite_config)
+        resting = await wait_for_open_order_count(
+            rl_client,
+            cap,
+            timeout_s=rl_suite_config.timing.settle_timeout_s,
+        )
+        # The attribution precondition, asserted rather than assumed: with the
+        # probe market below its own cap, only the account total can refuse the
+        # create below.
+        probe_resting = len(await open_order_ids(rl_client, rl_market.symbol))
+        assert probe_resting < per_market_cap, (
+            f"{rl_market.symbol} holds {probe_resting} of its per-market cap {per_market_cap}, so the per-market "
+            "rule would refuse the probe too and the reject could not be attributed to the account total"
+        )
+        logger.info(
+            "open-order count cap: %d resting across %d market(s); probe %s at %d/%d",
+            len(resting),
+            len(placed),
+            rl_market.symbol,
+            probe_resting,
+            per_market_cap,
+        )
 
-    await asyncio.sleep(rl_suite_config.timing.place_pace_s)
-    reject = await capture_rest_reject(
-        rl_client.create_limit_order(
-            LimitOrderParameters(
-                symbol=rl_market.symbol,
-                is_buy=True,
-                limit_px=wire(rl_market.resting_buy_price),
-                qty=wire(rl_market.min_qty),
-                time_in_force=TimeInForce.GTC,
+        await asyncio.sleep(rl_suite_config.timing.place_pace_s)
+        reject = await capture_rest_reject(
+            rl_client.create_limit_order(
+                LimitOrderParameters(
+                    symbol=rl_market.symbol,
+                    is_buy=True,
+                    limit_px=wire(rl_market.resting_buy_price),
+                    qty=wire(rl_market.min_qty),
+                    time_in_force=TimeInForce.GTC,
+                )
+            ),
+            "create at count cap",
+        )
+        logger.info("create at count cap: %s", reject.describe())
+        assert reject.code == OPEN_ORDER_COUNT_EXCEEDED_ERROR, (
+            f"expected {OPEN_ORDER_COUNT_EXCEEDED_ERROR} at the count cap; got {reject.describe()} — "
+            "if this is RATE_LIMITED_ERROR the pacing is too fast (raise RL_TEST_PLACE_PACE_S); "
+            "if the create was accepted, RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP is below the deployment's cap"
+        )
+        assert reject.status == HTTP_RATE_LIMITED, f"cap rejects map to HTTP 429; got {reject.describe()}"
+
+        # Free the slot on a market OTHER than the probe wherever the wiring has
+        # one: the probe market's per-market count is then unchanged across the
+        # reject → admit flip, so the ACCOUNT total is the only thing that
+        # relaxed. (With a single wired market the probe keeps per-market
+        # headroom on both sides of the flip, which carries the same
+        # attribution.)
+        free_symbol = next(
+            (market.symbol for market in reversed(markets[1:]) if placed.get(market.symbol)),
+            rl_market.symbol,
+        )
+        freed = placed[free_symbol][0]
+        await rl_client.cancel_order(
+            order_id=freed,
+            symbol=free_symbol,
+            account_id=rl_client.config.account_id,
+        )
+        await wait_for_open_order_count(
+            rl_client,
+            cap - 1,
+            timeout_s=rl_suite_config.timing.settle_timeout_s,
+        )
+        probe_after = len(await open_order_ids(rl_client, rl_market.symbol))
+        if free_symbol != rl_market.symbol:
+            assert probe_after == probe_resting, (
+                f"freeing a slot on {free_symbol} changed {rl_market.symbol}'s own count "
+                f"({probe_resting} → {probe_after}); the re-admission below would no longer isolate the account total"
             )
-        ),
-        "create at count cap",
-    )
-    logger.info("create at count cap: %s", reject.describe())
-    assert reject.code == OPEN_ORDER_COUNT_EXCEEDED_ERROR, (
-        f"expected {OPEN_ORDER_COUNT_EXCEEDED_ERROR} at the count cap; got {reject.describe()} — "
-        "if this is RATE_LIMITED_ERROR the pacing is too fast (raise RL_TEST_PLACE_PACE_S); "
-        "if the create was accepted, RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP is below the deployment's cap"
-    )
-    assert reject.status == HTTP_RATE_LIMITED, f"cap rejects map to HTTP 429; got {reject.describe()}"
+        assert probe_after < per_market_cap, (
+            f"{rl_market.symbol} is at its per-market cap ({per_market_cap}) after the cancel, so the re-admission "
+            "below would be per-market headroom appearing rather than the account total relaxing"
+        )
 
-    await rl_client.cancel_order(
-        order_id=resting[0],
-        symbol=rl_market.symbol,
-        account_id=rl_client.config.account_id,
-    )
-    await wait_for_open_order_count(
-        rl_client,
-        cap - 1,
-        timeout_s=rl_suite_config.timing.settle_timeout_s,
-        symbol=rl_market.symbol,
-    )
-
-    await asyncio.sleep(rl_suite_config.timing.place_pace_s)
-    order_id = await create_resting_order(rl_client, rl_market)
-    logger.info("create admitted after freeing one slot: orderId=%s", order_id)
+        await asyncio.sleep(rl_suite_config.timing.place_pace_s)
+        order_id = await create_resting_order(rl_client, rl_market)
+        logger.info(
+            "create admitted after freeing one slot on %s (account %d → %d, %s unchanged at %d/%d): orderId=%s",
+            free_symbol,
+            cap,
+            cap - 1,
+            rl_market.symbol,
+            probe_after,
+            per_market_cap,
+            order_id,
+        )
+    finally:
+        # The per-test isolation hook only flattens the primary market.
+        await flatten_markets(rl_client, rl_suite_config, markets)
 
 
 async def test_open_order_notional_cap_with_ioc_exemption(
@@ -283,48 +343,63 @@ async def test_open_order_notional_cap_is_tripped_by_a_create(
 async def test_ioc_is_exempt_from_the_open_order_count_cap(
     rl_client: ReyaTradingClient,
     rl_market: RlMarket,
+    rl_second_market: RlMarket | None,
     rl_suite_config: RateLimitSuiteConfig,
 ) -> None:
-    """At the COUNT cap, an IOC is still admitted.
+    """At the ACCOUNT COUNT cap, an IOC is still admitted.
 
     An IOC never rests, so it occupies no slot and admission returns before the
     count check. Without this carve-out a capped account could not take
     liquidity to close.
+
+    The fill is spread so the account sits at its TOTAL while the probe market
+    keeps per-market headroom — that is what makes the GTC reject below the
+    ACCOUNT rule rather than the per-market one. The exemption itself is from
+    the count check, so this does not rank the two granularities; it pins the
+    carve-out in the state a fully capped account is actually in.
     """
-    cap = rl_suite_config.limits.open_order_count_cap
-    await ensure_flat(rl_client, rl_suite_config, rl_market.symbol)
+    per_market_cap = rl_suite_config.limits.open_order_per_market_cap
+    markets = count_cap_markets(rl_market, rl_second_market, rl_suite_config)
+    await flatten_markets(rl_client, rl_suite_config, markets)
 
-    await place_paced(rl_client, rl_market, rl_suite_config, cap)
-    await wait_for_open_order_count(
-        rl_client,
-        cap,
-        timeout_s=rl_suite_config.timing.settle_timeout_s,
-        symbol=rl_market.symbol,
-    )
-
-    await asyncio.sleep(rl_suite_config.timing.place_pace_s)
-    reject = await capture_rest_reject(
-        rl_client.create_limit_order(resting_order(rl_market)),
-        "GTC at the count cap",
-    )
-    assert (
-        reject.code == OPEN_ORDER_COUNT_EXCEEDED_ERROR
-    ), f"the cap must be reached before the exemption means anything; got {reject.describe()}"
-
-    # Priced far from the touch so it crosses nothing: admission is the claim,
-    # not execution, which keeps this free of liquidity and settlement.
-    await asyncio.sleep(rl_suite_config.timing.place_pace_s)
-    ioc_response = await rl_client.create_limit_order(
-        LimitOrderParameters(
-            symbol=rl_market.symbol,
-            is_buy=True,
-            limit_px=wire(rl_market.resting_buy_price),
-            qty=wire(rl_market.min_qty),
-            time_in_force=TimeInForce.IOC,
+    try:
+        await place_to_account_count_cap(rl_client, markets, rl_suite_config)
+        await wait_for_open_order_count(
+            rl_client,
+            rl_suite_config.limits.open_order_count_cap,
+            timeout_s=rl_suite_config.timing.settle_timeout_s,
         )
-    )
-    logger.info("IOC exempt from the count cap: status=%s orderId=%s", ioc_response.status, ioc_response.order_id)
-    assert ioc_response.order_id is not None, "the engine assigns an orderId to every admitted order"
+        probe_resting = len(await open_order_ids(rl_client, rl_market.symbol))
+        assert probe_resting < per_market_cap, (
+            f"{rl_market.symbol} holds {probe_resting} of its per-market cap {per_market_cap}, so the GTC reject "
+            "below would be the per-market rule and the account total would go unproven"
+        )
+
+        await asyncio.sleep(rl_suite_config.timing.place_pace_s)
+        reject = await capture_rest_reject(
+            rl_client.create_limit_order(resting_order(rl_market)),
+            "GTC at the count cap",
+        )
+        assert (
+            reject.code == OPEN_ORDER_COUNT_EXCEEDED_ERROR
+        ), f"the cap must be reached before the exemption means anything; got {reject.describe()}"
+
+        # Priced far from the touch so it crosses nothing: admission is the claim,
+        # not execution, which keeps this free of liquidity and settlement.
+        await asyncio.sleep(rl_suite_config.timing.place_pace_s)
+        ioc_response = await rl_client.create_limit_order(
+            LimitOrderParameters(
+                symbol=rl_market.symbol,
+                is_buy=True,
+                limit_px=wire(rl_market.resting_buy_price),
+                qty=wire(rl_market.min_qty),
+                time_in_force=TimeInForce.IOC,
+            )
+        )
+        logger.info("IOC exempt from the count cap: status=%s orderId=%s", ioc_response.status, ioc_response.order_id)
+        assert ioc_response.order_id is not None, "the engine assigns an orderId to every admitted order"
+    finally:
+        await flatten_markets(rl_client, rl_suite_config, markets)
 
 
 async def test_armed_trigger_is_exempt_from_the_open_order_count_cap(
@@ -339,6 +414,11 @@ async def test_armed_trigger_is_exempt_from_the_open_order_count_cap(
     one-STOP_LOSS-and-one-TAKE_PROFIT-per-(account, market) rule, not by a
     second counter — losing this exemption would leave a capped account unable
     to protect a position it cannot close.
+
+    The wiring names ONE perp market, so this fills to the cap reachable on a
+    single market (``min(account total, per market)``). Either granularity
+    answers ``OPEN_ORDER_COUNT_EXCEEDED_ERROR`` and the exemption is from the
+    count check itself, so the tighter one is enough to make the arm meaningful.
     """
     symbol = rl_suite_config.trigger_symbol
     if symbol is None or rl_trigger_client is None:
@@ -347,7 +427,7 @@ async def test_armed_trigger_is_exempt_from_the_open_order_count_cap(
             f"{trigger_credentials_env_hint()}"
         )
 
-    cap = rl_suite_config.limits.open_order_count_cap
+    cap = rl_suite_config.single_market_count_cap
     market = await resolve_perp_market(rl_trigger_client, symbol)
 
     await ensure_flat(rl_trigger_client, rl_suite_config, market.symbol)

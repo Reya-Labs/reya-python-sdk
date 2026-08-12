@@ -26,9 +26,17 @@ from __future__ import annotations
 from typing import Any
 
 import json
+import re
 from dataclasses import dataclass
 
 from sdk.open_api.exceptions import ApiException
+
+#: The reason string that accompanies a ``4029`` inbound-message-rate close.
+#: Both WebSocket surfaces emit it byte-for-byte — the ws-exec relayer and the
+#: market-data socket — which is the point: one close code AND one reason
+#: grammar means a client needs a single branch rather than a per-surface case.
+#: The captured group is the advisory backoff a prompt reconnect waits out.
+MSG_RATE_CLOSE_REASON_PATTERN = re.compile(r"^MSG_RATE_EXCEEDED retry_after_ms=(\d+)$")
 
 
 def _header(headers: Any, name: str) -> str | None:
@@ -201,6 +209,33 @@ def ws_reject(frame: dict[str, Any], label: str) -> WsReject:
         message=str(message) if message is not None else None,
         retry_after_ms=retry_after_ms,
     )
+
+
+def msg_rate_retry_after_s(reason: str | None) -> float | None:
+    """The ``retry_after_ms`` carried in a 4029 close reason, in seconds.
+
+    ``None`` when the reason is absent or does not follow the grammar — the
+    AsyncAPI descriptions call the reason advisory and tell clients to key
+    recovery on the CODE and fall back to backoff-with-jitter, so an
+    unparseable reason must read as "no hint", never as 0.
+    """
+    match = MSG_RATE_CLOSE_REASON_PATTERN.match(reason) if reason else None
+    return int(match.group(1)) / 1000 if match else None
+
+
+def assert_msg_rate_close_reason(reason: str | None, max_s: float, label: str) -> float:
+    """Assert a 4029 close reason follows the shared grammar; return its hint.
+
+    The value is deployment-sized, so only the grammar and plausibility are
+    pinned — never the number.
+    """
+    seconds = msg_rate_retry_after_s(reason)
+    assert seconds is not None, (
+        f"[{label}] the 4029 close must carry the backoff hint in its reason "
+        f"(expected {MSG_RATE_CLOSE_REASON_PATTERN.pattern}); got {reason!r}"
+    )
+    assert 0 < seconds <= max_s, f"[{label}] implausible retry_after_ms in {reason!r} (expected 0 < x <= {max_s}s)"
+    return seconds
 
 
 def assert_no_retry_after(reject: RestReject, label: str) -> None:

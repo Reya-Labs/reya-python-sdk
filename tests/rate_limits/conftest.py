@@ -209,6 +209,26 @@ async def rl_market(  # pylint: disable=redefined-outer-name
     return market
 
 
+@pytest_asyncio.fixture(loop_scope="session", scope="session")
+async def rl_second_market(  # pylint: disable=redefined-outer-name
+    rl_client: ReyaTradingClient, rl_suite_config: rl_config.RateLimitSuiteConfig
+) -> RlMarket | None:
+    """A SECOND spot market (``RL_TEST_SECOND_SYMBOL``), or ``None`` when unset.
+
+    Only the tests that must reach the ACCOUNT-total count cap need it — a
+    single market stops at the tighter per-market cap — plus the CoD-fire leg,
+    which drains the bulk-cancel bucket on a market whose (empty) book the drain
+    is allowed to touch. Yields ``None`` rather than skipping so the modules
+    that use it can skip themselves with a reason naming the leg.
+    """
+    symbol = rl_suite_config.second_symbol
+    if symbol is None:
+        return None
+    market = await resolve_market(rl_client, symbol)
+    logger.info("rate-limit suite second market: %s", market.symbol)
+    return market
+
+
 @pytest.fixture(scope="session")
 def rl_ws_exec_url() -> str:
     """ws-exec relayer URL, shared with the existing ws-exec suite."""
@@ -219,22 +239,35 @@ def rl_ws_exec_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def rl_eject_hook(rl_suite_config: rl_config.RateLimitSuiteConfig):  # pylint: disable=redefined-outer-name
-    """A pluggable eject/un-eject hook driven by operator-supplied commands.
+def rl_md_ws_url() -> str:
+    """Market-data (read-side) WebSocket URL — deliberately with NO default.
+
+    The rest of the market-data suite falls back to ``wss://ws.reya.xyz/``; this
+    one must not. Its single user FLOODS the socket to trip the read-side
+    inbound cap, and a default would point that flood at production.
+    """
+    url = os.environ.get("REYA_WS_URL")
+    if not url:
+        pytest.skip("read-side message-rate coverage needs REYA_WS_URL (no default: the test floods the socket)")
+    return url
+
+
+class _EjectHook:
+    """Runs one operator-supplied eject / un-eject command pair for a wallet.
 
     ``rl_ejected_accounts`` lives in the off-chain Postgres, which this repo has
     no access to, so the eject step is delegated to command templates the
-    localnet harness provides:
-
-        RL_TEST_EJECT_CMD="<cmd with {wallet} and/or {account_id}>"
-        RL_TEST_UNEJECT_CMD="<cmd with {wallet} and/or {account_id}>"
-
-    Both must be set or the eject test skips.
+    localnet harness provides. Templates are formatted with ``{wallet}`` /
+    ``{account_id}``, then ``shlex.split`` and run WITHOUT a shell.
     """
-    if not (rl_suite_config.eject_cmd and rl_suite_config.uneject_cmd):
-        pytest.skip("eject coverage needs RL_TEST_EJECT_CMD and RL_TEST_UNEJECT_CMD (see tests/rate_limits/README.md)")
 
-    def run(template: str, *, wallet: str, account_id: int, label: str) -> None:
+    def __init__(self, *, eject_cmd: str, uneject_cmd: str, timeout_s: float, label: str) -> None:
+        self._eject_cmd = eject_cmd
+        self._uneject_cmd = uneject_cmd
+        self._timeout_s = timeout_s
+        self._label = label
+
+    def _run(self, template: str, *, wallet: str, account_id: int, label: str) -> None:
         command = template.format(wallet=wallet, account_id=account_id)
         logger.info("rate-limit %s hook: %s", label, command)
         result = subprocess.run(  # nosec B603 — argv from an operator-supplied template, never shell-interpolated
@@ -242,23 +275,71 @@ def rl_eject_hook(rl_suite_config: rl_config.RateLimitSuiteConfig):  # pylint: d
             check=False,
             capture_output=True,
             text=True,
-            timeout=rl_suite_config.timing.eject_timeout_s,
+            timeout=self._timeout_s,
         )
         if result.returncode != 0:
             raise AssertionError(
                 f"{label} hook failed (exit {result.returncode}): {result.stderr.strip() or result.stdout.strip()}"
             )
 
-    class _EjectHook:
-        """Runs the configured eject / un-eject commands for one wallet."""
+    def eject(self, *, wallet: str, account_id: int) -> None:
+        self._run(self._eject_cmd, wallet=wallet, account_id=account_id, label=self._label)
 
-        def eject(self, *, wallet: str, account_id: int) -> None:
-            run(str(rl_suite_config.eject_cmd), wallet=wallet, account_id=account_id, label="eject")
+    def uneject(self, *, wallet: str, account_id: int) -> None:
+        self._run(self._uneject_cmd, wallet=wallet, account_id=account_id, label=f"un-{self._label}")
 
-        def uneject(self, *, wallet: str, account_id: int) -> None:
-            run(str(rl_suite_config.uneject_cmd), wallet=wallet, account_id=account_id, label="un-eject")
 
-    return _EjectHook()
+@pytest.fixture(scope="session")
+def rl_eject_hook(  # pylint: disable=redefined-outer-name
+    rl_suite_config: rl_config.RateLimitSuiteConfig,
+) -> _EjectHook:
+    """The DEFAULT eject: one transaction that de-whitelists AND ejects.
+
+        RL_TEST_EJECT_CMD="<cmd with {wallet} and/or {account_id}>"
+        RL_TEST_UNEJECT_CMD="<cmd with {wallet} and/or {account_id}>"
+
+    Both must be set or the eject tests skip. Because the transaction also
+    deletes the ``rl_whitelist`` row, a refusal it produces may come from either
+    layer — see ``rl_eject_only_hook`` for the isolating variant.
+    """
+    if not (rl_suite_config.eject_cmd and rl_suite_config.uneject_cmd):
+        pytest.skip("eject coverage needs RL_TEST_EJECT_CMD and RL_TEST_UNEJECT_CMD (see tests/rate_limits/README.md)")
+
+    return _EjectHook(
+        eject_cmd=str(rl_suite_config.eject_cmd),
+        uneject_cmd=str(rl_suite_config.uneject_cmd),
+        timeout_s=rl_suite_config.timing.eject_timeout_s,
+        label="eject",
+    )
+
+
+@pytest.fixture(scope="session")
+def rl_eject_only_hook(  # pylint: disable=redefined-outer-name
+    rl_suite_config: rl_config.RateLimitSuiteConfig,
+) -> _EjectHook:
+    """Ejects WITHOUT de-whitelisting (``RL_TEST_EJECT_ONLY_CMD``).
+
+    The whitelist row survives, so the edge gate admits the request and the only
+    thing left that can refuse it is the matching engine's own ejected-account
+    admission check. That is what separates ``ACCOUNT_SUSPENDED_ERROR`` from
+    ``NOT_WHITELISTED_ERROR``: under the default hook either is legitimate and a
+    suite cannot tell which layer answered.
+
+    Un-ejecting is the same command as for the default hook — it deletes the
+    eject rows and (re-)asserts the whitelist row, which is a no-op restore here.
+    """
+    if not (rl_suite_config.eject_only_cmd and rl_suite_config.uneject_cmd):
+        pytest.skip(
+            "ME-verdict isolation needs RL_TEST_EJECT_ONLY_CMD and RL_TEST_UNEJECT_CMD "
+            "(see tests/rate_limits/README.md)"
+        )
+
+    return _EjectHook(
+        eject_cmd=str(rl_suite_config.eject_only_cmd),
+        uneject_cmd=str(rl_suite_config.uneject_cmd),
+        timeout_s=rl_suite_config.timing.eject_timeout_s,
+        label="eject-only",
+    )
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="function", autouse=True)

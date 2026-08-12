@@ -140,8 +140,14 @@ async def test_ws_exec_count_cap_envelope(
     ``retryAfterMs`` must be ABSENT: the proto sets it only alongside
     ``RATE_LIMITED``, and rightly so — waiting does not clear a count cap,
     cancelling does. A hint here would advertise a backoff that resolves nothing.
+
+    Filled on ONE market, to the cap reachable there
+    (``min(account total, per market)``): what this module asserts is the
+    ENVELOPE the relayer wraps a cap verdict in, which is identical for both
+    granularities. Which granularity fires is pinned on REST, in
+    ``test_open_order_caps``.
     """
-    cap = rl_suite_config.limits.open_order_count_cap
+    cap = rl_suite_config.single_market_count_cap
     await ensure_flat(rl_client, rl_suite_config, rl_market.symbol)
 
     await place_paced(rl_client, rl_market, rl_suite_config, cap)

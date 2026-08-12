@@ -64,7 +64,14 @@ from tests.rate_limits.rl_config import (
     OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
     RATE_LIMITED_ERROR,
 )
-from tests.rate_limits.rl_errors import assert_no_retry_after, assert_retry_after_plausible, rest_reject, ws_reject
+from tests.rate_limits.rl_errors import (
+    assert_msg_rate_close_reason,
+    assert_no_retry_after,
+    assert_retry_after_plausible,
+    msg_rate_retry_after_s,
+    rest_reject,
+    ws_reject,
+)
 
 pytestmark = [pytest.mark.offline, pytest.mark.rate_limits]
 
@@ -381,6 +388,36 @@ def test_close_frame_payload_yields_the_4029_code_and_reason() -> None:
     # RFC 6455 allows an empty body and a code-only body.
     assert _parse_close_payload(b"") == (None, None)
     assert _parse_close_payload(struct.pack("!H", 1000)) == (1000, None)
+
+
+def test_the_4029_close_reason_grammar_is_shared_and_not_vacuous() -> None:
+    """One reason grammar across BOTH WebSocket surfaces, and it rejects near-misses.
+
+    The ws-exec relayer and the market-data socket emit the same string
+    byte-for-byte, which is what lets a client key recovery on one branch. Both
+    live floods assert it through the same helper, so the only thing that can
+    make those assertions vacuous is a parser that accepts anything — pinned
+    here, with the other close reasons a market-data client actually sees
+    (``1013`` slow consumer, ``1012`` feed resync) as the near-misses.
+    """
+    assert assert_msg_rate_close_reason("MSG_RATE_EXCEEDED retry_after_ms=1500", 60.0, "offline 4029") == 1.5
+
+    for near_miss in (
+        None,
+        "",
+        "MSG_RATE_EXCEEDED",
+        "MSG_RATE_EXCEEDED retry_after_ms=",
+        "MSG_RATE_EXCEEDED retry_after_ms=abc",
+        "msg_rate_exceeded retry_after_ms=1000",
+        "slow consumer — resubscribe for fresh snapshot",
+        "feed resync — resubscribe for fresh snapshot",
+    ):
+        assert msg_rate_retry_after_s(near_miss) is None, f"{near_miss!r} must not parse as a rate-shed hint"
+        with pytest.raises(AssertionError, match="must carry the backoff hint"):
+            assert_msg_rate_close_reason(near_miss, 60.0, "offline 4029 near-miss")
+
+    with pytest.raises(AssertionError, match="implausible retry_after_ms"):
+        assert_msg_rate_close_reason("MSG_RATE_EXCEEDED retry_after_ms=600000", 60.0, "offline 4029 implausible")
 
 
 class _StubWebSocket:

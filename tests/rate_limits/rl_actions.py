@@ -13,13 +13,14 @@ from typing import Callable
 
 import asyncio
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
 import pytest
 
 from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.cancel_all_after_response import CancelAllAfterResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
@@ -53,6 +54,12 @@ _ORACLE_ASSET_ALIASES = {"WETH": "ETH", "WBTC": "BTC"}
 #: ``test_eject_flow``): ejecting an account does not close its positions, so
 #: taking its stops away would leave it unprotected.
 TRIGGER_ORDER_TYPES = (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
+
+#: Bounded retry for cod-control ops, the convention the CoD suites already
+#: follow: the bucket is flat across tiers (~100/min, burst 10), so a
+#: probe-heavy run can reach a timer op with it spent.
+COD_RETRY_ATTEMPTS = 6
+COD_RETRY_FALLBACK_S = 1.0
 
 
 @dataclass(frozen=True)
@@ -214,6 +221,148 @@ async def place_paced(
                 )
             raise
     return order_ids
+
+
+def count_cap_markets(
+    primary: RlMarket,
+    second: RlMarket | None,
+    config: RateLimitSuiteConfig,
+) -> list[RlMarket]:
+    """The markets a test must spread across to probe the ACCOUNT count cap.
+
+    ``primary`` is the PROBE market — the one the caller's rejected create
+    targets. Attributing that reject to the account total requires the probe
+    market to be strictly BELOW its per-market cap while the account sits AT
+    its own, which needs ``per_market x len(markets) > account``. One market
+    can do that only when the per-market cap is strictly larger than the
+    account total; at equality (or below) a second market is required, and
+    without one the honest answer is to skip rather than assert the other rule
+    under this rule's name.
+    """
+    per_market = config.limits.open_order_per_market_cap
+    account = config.limits.open_order_count_cap
+    if per_market > account:
+        return [primary]
+    if second is None:
+        pytest.skip(
+            f"an attributable account count cap probe ({account}) needs a second market: one market holds at "
+            f"most the per-market cap ({per_market}), so the probe market would sit AT its own cap and the "
+            "reject could not be told from the per-market rule. Set RL_TEST_SECOND_SYMBOL to another spot market"
+        )
+    return [primary, second]
+
+
+async def flatten_markets(
+    client: ReyaTradingClient,
+    config: RateLimitSuiteConfig,
+    markets: Sequence[RlMarket],
+) -> None:
+    """``ensure_flat`` over several markets (the per-test isolation hook only
+    covers the suite's primary market, by design)."""
+    for market in markets:
+        await ensure_flat(client, config, market.symbol)
+
+
+async def place_to_account_count_cap(
+    client: ReyaTradingClient,
+    markets: Sequence[RlMarket],
+    config: RateLimitSuiteConfig,
+) -> dict[str, list[str]]:
+    """Rest exactly ``open_order_count_cap`` orders, keeping the PROBE market
+    (``markets[0]``) strictly below its per-market cap.
+
+    The account total is only observable through a market that still has
+    per-market headroom: a create fired at a market sitting AT its own cap earns
+    the same ``OPEN_ORDER_COUNT_EXCEEDED_ERROR`` from either granularity, and the
+    caller could not say which rule answered. So the NON-probe markets absorb
+    the fill first, up to their caps, and the probe market takes only the
+    remainder — which is below the per-market cap exactly when
+    ``per_market_cap * len(markets) > account_cap``. Returns the order ids keyed
+    by symbol, probe market first.
+    """
+    account_cap = config.limits.open_order_count_cap
+    per_market_cap = config.limits.open_order_per_market_cap
+    capacity = per_market_cap * len(markets)
+    if capacity <= account_cap:
+        pytest.skip(
+            f"an attributable account-total probe needs market capacity ABOVE the account cap: "
+            f"{len(markets)} market(s) x per-market cap {per_market_cap} = {capacity}, account cap {account_cap}. "
+            "At or below equality every market ends AT its per-market cap, so the reject cannot be attributed to "
+            "the account total; wire another market (RL_TEST_SECOND_SYMBOL), or deploy MAX_OPEN_ORDERS below "
+            "markets x MAX_OPEN_ORDERS_PER_MARKET"
+        )
+
+    # The ACCOUNT cap counts every market, so a leftover book anywhere else
+    # makes the fill below land short of the cap and the next create ADMITTED.
+    # Caught here, with the symbols named, rather than as "openOrders never
+    # reached N" thirty seconds later.
+    stray = [order.order_id for order in await open_orders(client) if order.symbol not in {m.symbol for m in markets}]
+    if stray:
+        pytest.fail(
+            f"account {client.config.account_id} holds {len(stray)} resting order(s) outside "
+            f"{[market.symbol for market in markets]}: {stray}. The account-total cap counts them, so this fill "
+            "cannot reach it — flatten the account (a crashed run, or an example script left running) and retry",
+            pytrace=False,
+        )
+
+    # Non-probe markets absorb as much as their own caps allow; whatever is left
+    # rests on the probe market, which therefore keeps the widest per-market
+    # headroom the wiring can give it.
+    others = list(markets[1:])
+    probe_chunk = max(0, account_cap - per_market_cap * len(others))
+    plan: list[tuple[RlMarket, int]] = [(markets[0], probe_chunk)]
+    remaining = account_cap - probe_chunk
+    for market in others:
+        chunk = min(remaining, per_market_cap)
+        plan.append((market, chunk))
+        remaining -= chunk
+
+    placed: dict[str, list[str]] = {}
+    for market, chunk in plan:
+        placed[market.symbol] = await place_paced(client, market, config, chunk)
+    logger.info(
+        "filled the account count cap %d across %s; probe market %s at %d/%d (headroom %d)",
+        account_cap,
+        {symbol: len(ids) for symbol, ids in placed.items()},
+        markets[0].symbol,
+        probe_chunk,
+        per_market_cap,
+        per_market_cap - probe_chunk,
+    )
+    return placed
+
+
+async def cancel_all_after_paced(
+    client: ReyaTradingClient,
+    config: RateLimitSuiteConfig,
+    *,
+    timeout_ms: int,
+    account_id: int | None,
+    label: str,
+) -> CancelAllAfterResponse:
+    """``cancelAllAfter`` over REST, retried on the cod-control bucket's hint.
+
+    The cod-control budget is flat across tiers and the suite's own probes spend
+    it, so a timer op issued right after a bucket test can legitimately be
+    refused. A rate-limited reject burns no nonce, so re-sending the same op is
+    safe — this waits out the advertised hint rather than treating a throttle as
+    a failed arm.
+    """
+    last: RestReject | None = None
+    for _ in range(COD_RETRY_ATTEMPTS):
+        try:
+            return await client.cancel_all_after(timeout_ms=timeout_ms, account_id=account_id)
+        except ApiException as exc:
+            last = rest_reject(exc)
+            if last.code != RATE_LIMITED_ERROR:
+                raise
+            backoff = min(last.retry_after_s or COD_RETRY_FALLBACK_S, config.timing.retry_after_max_s)
+            logger.info("[%s] cod-control rate limited; retrying in %.1fs", label, backoff)
+            await asyncio.sleep(backoff + config.timing.retry_after_slack_s)
+    raise AssertionError(
+        f"[{label}] cancelAllAfter stayed rate limited across {COD_RETRY_ATTEMPTS} attempts: "
+        f"{last.describe() if last else '<none>'}"
+    )
 
 
 @dataclass(frozen=True)

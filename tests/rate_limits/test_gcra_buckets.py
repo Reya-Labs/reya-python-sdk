@@ -31,6 +31,7 @@ import logging
 
 import pytest
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import ModifyOrderParameters
@@ -39,9 +40,12 @@ from tests.rate_limits.rl_actions import (
     assert_rate_limited,
     burst_until_code,
     burst_until_rate_limited,
+    cancel_all_after_paced,
     create_resting_order,
     ensure_flat,
+    flatten_markets,
     open_order_ids,
+    wait_for_open_order_count,
     wire,
 )
 from tests.rate_limits.rl_config import RATE_LIMITED_ERROR, RateLimitSuiteConfig, requires_rate_limits
@@ -59,6 +63,17 @@ ABSENT_ORDER_ID = 1
 #: The shortest countdown the wire contract accepts.
 COD_ARM_TIMEOUT_MS = 5000
 COD_DISARM_TIMEOUT_MS = 0
+
+#: How much of the countdown must remain after the drain finishes. Inside it a
+#: fire would land mid-drain, and "the book emptied" would no longer be evidence
+#: about a drained bucket.
+COD_DRAIN_MARGIN_S = 1.0
+
+#: Extra budget for a fire's book effect to reach the REST openOrders view:
+#: the ME scans countdowns on a ~500ms tick and the view trails it.
+#: ``tests/engine/test_cod_lifecycle.py`` sizes the same margin at 5s after a
+#: loaded WSL2 runner measured the lag at ~7.8s on a 5s countdown.
+COD_FIRE_MARGIN_S = 5.0
 
 
 async def test_place_burst_is_rate_limited_while_cancels_still_flow(
@@ -233,6 +248,131 @@ async def test_bulk_cancel_bucket_is_bounded(
     )
     assert_rate_limited(outcome.reject, "bulk-cancel burst")
     assert_retry_after_plausible(outcome.reject, rl_suite_config.timing.retry_after_max_s, "bulk-cancel burst")
+
+
+@pytest.mark.cod
+async def test_a_drained_bulk_cancel_bucket_never_blocks_the_cod_fire(
+    rl_client: ReyaTradingClient,
+    rl_market: RlMarket,
+    rl_second_market: RlMarket | None,
+    rl_suite_config: RateLimitSuiteConfig,
+) -> None:
+    """Drain bulk-cancel, then let an armed countdown fire: the book still empties.
+
+    A CoD fire is the same O(M) mass-cancel an explicit ``cancelAll`` is, and
+    the two share the tightest Standard bucket — but only one of them is a
+    client op. The fire is the system de-risking an account that has stopped
+    talking to it, so it must never be refused: a rate-limited fire is a
+    dead-man's switch that silently did not pull, which is worse than having no
+    switch at all, because the client believed it had one.
+
+    The drain runs on the SECOND market on purpose. Draining on the suite's own
+    market would mass-cancel the very order the fire is supposed to take, and
+    draining BEFORE the order was placed would leave the countdown running while
+    the bucket refilled — at 10/min a token is back within seconds, so the fire
+    could then be admitted on budget rather than on exemption. A mass-cancel of
+    an empty foreign book debits the same per-ACCOUNT bucket while touching
+    nothing.
+    """
+    if rl_second_market is None:
+        pytest.skip(
+            "the CoD-fire leg drains the bulk-cancel bucket on a market whose book it may empty; "
+            "set RL_TEST_SECOND_SYMBOL to another spot market"
+        )
+
+    # Rebound with a non-optional type so the drain closure below stays typed.
+    second_market: RlMarket = rl_second_market
+    account_id = rl_client.config.account_id
+    markets = [rl_market, second_market]
+    await flatten_markets(rl_client, rl_suite_config, markets)
+
+    order_id = await create_resting_order(rl_client, rl_market)
+    await wait_for_open_order_count(
+        rl_client,
+        1,
+        timeout_s=rl_suite_config.timing.settle_timeout_s,
+        symbol=rl_market.symbol,
+    )
+
+    countdown_armed = False
+    try:
+        armed = await cancel_all_after_paced(
+            rl_client,
+            rl_suite_config,
+            timeout_ms=COD_ARM_TIMEOUT_MS,
+            account_id=account_id,
+            label="cod fire arm",
+        )
+        countdown_armed = True
+        armed_at = asyncio.get_running_loop().time()
+        assert armed.trigger_at is not None, f"an armed countdown must echo triggerAt: {armed}"
+
+        async def mass_cancel(_attempt: int) -> object:
+            return await rl_client.mass_cancel(symbol=second_market.symbol, account_id=account_id)
+
+        outcome = await burst_until_code(
+            mass_cancel,
+            expected_code=RATE_LIMITED_ERROR,
+            attempts=rl_suite_config.bucket_attempt_bound(
+                rl_suite_config.limits.bulk_cancel_per_min, rl_suite_config.limits.bulk_cancel_burst
+            ),
+            label="bulk-cancel drain before the fire",
+        )
+        assert_rate_limited(outcome.reject, "bulk-cancel drain before the fire")
+
+        # The drain has to finish inside the countdown, or the fire lands
+        # mid-drain and "the book emptied" says nothing about a drained bucket.
+        # Refuse to assert rather than report the overrun as a CoD failure.
+        drain_s = asyncio.get_running_loop().time() - armed_at
+        if drain_s > COD_ARM_TIMEOUT_MS / 1000 - COD_DRAIN_MARGIN_S:
+            pytest.fail(
+                f"draining the bulk-cancel bucket took {drain_s:.1f}s of the {COD_ARM_TIMEOUT_MS / 1000:.0f}s "
+                f"countdown ({outcome.accepted} mass-cancels accepted), leaving under {COD_DRAIN_MARGIN_S:.0f}s of "
+                "margin: the fire would land mid-drain. Lower the deployment's bulk-cancel budget "
+                "(RL_TEST_STANDARD_BULK_CANCEL_PER_MIN / _BURST describe it) — the countdown is already at the "
+                "5000ms wire minimum, and a longer one would only let the bucket refill",
+                pytrace=False,
+            )
+
+        surviving = await open_order_ids(rl_client, rl_market.symbol)
+        assert order_id in surviving, (
+            f"the drain must leave the sacrificial book alone — it mass-cancels {second_market.symbol} only — "
+            f"otherwise an empty book proves nothing about the fire (open now: {surviving})"
+        )
+
+        try:
+            await wait_for_open_order_count(
+                rl_client,
+                0,
+                timeout_s=COD_ARM_TIMEOUT_MS / 1000 + COD_FIRE_MARGIN_S,
+                symbol=rl_market.symbol,
+            )
+        except AssertionError as exc:
+            pytest.fail(
+                f"the countdown did not empty the book with the bulk-cancel bucket drained "
+                f"({outcome.reject.describe()}): the fire is being rate limited like a client mass-cancel, "
+                f"which turns the dead-man's switch off exactly when it is needed — {exc}",
+                pytrace=False,
+            )
+        countdown_armed = False
+        logger.info("cod fire emptied the book on a drained bulk-cancel bucket (order %s gone)", order_id)
+    finally:
+        if countdown_armed:
+            # Best effort: by now the 5s countdown has almost certainly expired
+            # on its own, which makes this a NO-OP disarm — and an unarmed
+            # disarm is deliberately refusable (see the cod-control test below),
+            # so a hard failure here would mask whatever actually went wrong.
+            try:
+                await cancel_all_after_paced(
+                    rl_client,
+                    rl_suite_config,
+                    timeout_ms=COD_DISARM_TIMEOUT_MS,
+                    account_id=account_id,
+                    label="cod fire cleanup disarm",
+                )
+            except (AssertionError, ApiException, OSError, RuntimeError) as exc:
+                logger.warning("cleanup disarm did not land (%s: %s)", type(exc).__name__, exc)
+        await flatten_markets(rl_client, rl_suite_config, markets)
 
 
 async def test_cod_control_bucket_bounds_no_op_disarms_but_never_a_real_one(

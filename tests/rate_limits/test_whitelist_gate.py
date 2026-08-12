@@ -25,12 +25,14 @@ import logging
 import pytest
 import pytest_asyncio
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import ModifyOrderParameters
 from tests.rate_limits.rl_actions import (
     RlMarket,
     assert_not_whitelist_gated,
+    cancel_all_after_paced,
     resolve_market,
     resting_order,
     wire,
@@ -58,6 +60,11 @@ ABSENT_ORDER_ID = 1
 #: unarmed account, so the probe can never leave an armed countdown behind that
 #: would mass-cancel a later test's orders.
 COD_DISARM_TIMEOUT_MS = 0
+
+#: The shortest countdown the wire contract accepts, used by the REAL-arm leg.
+#: Short on purpose: if an assertion below blows up before the disarm, the
+#: countdown expires on its own within seconds.
+COD_ARM_TIMEOUT_MS = 5000
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="module")
@@ -185,6 +192,94 @@ async def test_cancel_all_after_is_not_gated(rl_non_whitelisted_client: ReyaTrad
         "non-whitelisted cancelAllAfter (disarm)",
     )
     logger.info("cancelAllAfter not gated (outcome: %s)", reject.describe() if reject else "accepted")
+
+
+async def test_a_real_cancel_all_after_arm_is_not_gated(
+    rl_non_whitelisted_client: ReyaTradingClient,
+    gate_market: RlMarket,
+    rl_suite_config: RateLimitSuiteConfig,
+) -> None:
+    """A REAL arm — non-zero ``timeoutMs`` — from a de-whitelisted wallet is admitted.
+
+    The test above probes cancelAllAfter with ``timeoutMs=0``, which a
+    deployment could serve from a disarm-shaped shortcut without ever consulting
+    the gate; that would leave the published rule untested. The rule is explicit
+    (``openapi-trading-v2.yaml``, Order Entry): *"Mere removal from the allowlist
+    does not gate it: a removed wallet whose account is not suspended may still
+    arm, refresh and disarm."* Removal is graceful offboarding, so the wallet's
+    dead-man's switch must keep working over its still-live resting orders — the
+    switch going stale is exactly how offboarding would turn into a trap.
+
+    Non-vacuity is asserted in the middle of the flow: the same wallet's create
+    must still come back ``NOT_WHITELISTED_ERROR``, so the arm's admission is the
+    carve-out and not a whitelisted wallet mis-wired into this fixture.
+
+    What the FIRE does to a book is pinned on the Standard account instead
+    (``test_gcra_buckets.test_a_drained_bulk_cancel_bucket_never_blocks_the_cod_fire``):
+    a de-whitelisted account can never build a book to sacrifice, because
+    creating is the one thing the gate refuses.
+    """
+    account_id = rl_non_whitelisted_client.config.account_id
+    # Paced on the cod-control hint: this leg issues three timer ops, and a
+    # THROTTLED arm is not a gated one — collapsing the two would report a
+    # rate-limit as a gate verdict.
+    armed = await cancel_all_after_paced(
+        rl_non_whitelisted_client,
+        rl_suite_config,
+        timeout_ms=COD_ARM_TIMEOUT_MS,
+        account_id=account_id,
+        label="de-whitelisted real arm",
+    )
+    countdown_armed = True
+    try:
+        logger.info("de-whitelisted real arm accepted: %s", armed)
+        assert armed.timeout_ms == COD_ARM_TIMEOUT_MS, f"the arm must echo timeoutMs={COD_ARM_TIMEOUT_MS}: {armed}"
+        armed_trigger_at = armed.trigger_at
+        assert armed_trigger_at is not None, f"an armed countdown must echo triggerAt: {armed}"
+
+        gate_reject = await capture_rest_reject(
+            rl_non_whitelisted_client.create_limit_order(resting_order(gate_market)),
+            "de-whitelisted create during a live countdown",
+        )
+        _assert_gate_reject(gate_reject, "de-whitelisted create during a live countdown")
+
+        # A refresh is the op a live client actually repeats; it must push the
+        # deadline out rather than be quietly ignored for a de-listed wallet.
+        refreshed = await cancel_all_after_paced(
+            rl_non_whitelisted_client,
+            rl_suite_config,
+            timeout_ms=COD_ARM_TIMEOUT_MS,
+            account_id=account_id,
+            label="de-whitelisted refresh",
+        )
+        refreshed_trigger_at = refreshed.trigger_at
+        assert refreshed_trigger_at is not None, f"a refresh must echo the new triggerAt: {refreshed}"
+        assert refreshed_trigger_at > armed_trigger_at, (
+            "the refresh must push the deadline out rather than echo the armed one; "
+            f"armed triggerAt={armed_trigger_at}, refreshed triggerAt={refreshed_trigger_at}"
+        )
+
+        disarmed = await cancel_all_after_paced(
+            rl_non_whitelisted_client,
+            rl_suite_config,
+            timeout_ms=COD_DISARM_TIMEOUT_MS,
+            account_id=account_id,
+            label="de-whitelisted disarm",
+        )
+        countdown_armed = False
+        assert disarmed.timeout_ms == COD_DISARM_TIMEOUT_MS, f"disarm must echo timeoutMs=0: {disarmed}"
+        assert disarmed.trigger_at is None, f"a disarmed countdown must not echo a triggerAt: {disarmed}"
+        logger.info("de-whitelisted wallet armed, refreshed and disarmed its dead-man's switch")
+    finally:
+        if countdown_armed:
+            # Cleanup only: the countdown is seconds long and this account has no
+            # book, so a failure here must never mask the assertion that failed.
+            try:
+                await rl_non_whitelisted_client.cancel_all_after(
+                    timeout_ms=COD_DISARM_TIMEOUT_MS, account_id=account_id
+                )
+            except (ApiException, OSError, RuntimeError) as exc:
+                logger.warning("could not disarm the de-whitelisted probe countdown (%s: %s)", type(exc).__name__, exc)
 
 
 # ---- Reads -----------------------------------------------------------------
