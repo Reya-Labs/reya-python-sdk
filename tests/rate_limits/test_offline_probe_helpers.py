@@ -250,12 +250,19 @@ class _ScriptedSocket:
     Entries are ``(opcode, frame)`` tuples to return or exceptions to raise, so
     a script can interleave recv timeouts with frames the way an idle socket
     does.
+
+    ``write_error`` is what a socket the server is tearing down does to the
+    answering writes the read side owes (the close echo): the flood's whole
+    point is that those writes fail, and they must never cost the probe a frame
+    it already holds.
     """
 
-    def __init__(self, script: list[Any], accepts: int = 10_000) -> None:
+    def __init__(self, script: list[Any], accepts: int = 10_000, write_error: BaseException | None = None) -> None:
         self._script = list(script)
         self._accepts = accepts
+        self._write_error = write_error
         self.sent = 0
+        self.echoed_close = 0
 
     def settimeout(self, _timeout: float) -> None:
         pass
@@ -265,6 +272,10 @@ class _ScriptedSocket:
             raise WebSocketConnectionClosedException("stub hung up")
         self.sent += 1
 
+    def recv_frame(self) -> Any:
+        opcode, frame = self.recv_data_frame()
+        return SimpleNamespace(opcode=opcode, data=frame.data, fin=getattr(frame, "fin", 1))
+
     def recv_data_frame(self, **_kwargs: Any) -> tuple[int, Any]:
         if not self._script:
             raise WebSocketConnectionClosedException("stub drained")
@@ -273,9 +284,16 @@ class _ScriptedSocket:
             raise step
         return cast(tuple[int, Any], step)
 
+    def send_close(self) -> None:
+        self.echoed_close += 1
+        if self._write_error is not None:
+            raise self._write_error
 
-def _socket(script: list[Any], accepts: int = 10_000) -> tuple[_ScriptedSocket, WebSocket]:
-    scripted = _ScriptedSocket(script, accepts=accepts)
+
+def _socket(
+    script: list[Any], accepts: int = 10_000, write_error: BaseException | None = None
+) -> tuple[_ScriptedSocket, WebSocket]:
+    scripted = _ScriptedSocket(script, accepts=accepts, write_error=write_error)
     return scripted, cast(WebSocket, scripted)
 
 
@@ -300,6 +318,24 @@ def test_the_close_frame_is_read_at_the_frame_layer() -> None:
         ]
     )
     assert await_close(ws, timeout_s=5.0) == (WS_CLOSE_MSG_RATE_EXCEEDED, _CLOSE_REASON)
+
+
+def test_the_close_code_survives_an_echo_the_dead_socket_refuses() -> None:
+    """The shed's timing: the socket is gone before the probe can answer the close.
+
+    Reading through ``recv_data_frame`` echoed the close INSIDE the read, so
+    that write's ``OSError`` came back as a transport death and the 4029 —
+    already received in full — was reported as ``(None, None)``. Then the
+    docstring above would be lying: no code would no longer mean no close frame.
+    """
+    body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + _CLOSE_REASON.encode("utf-8")
+    scripted, ws = _socket(
+        [(ABNF.OPCODE_CLOSE, SimpleNamespace(data=body))],
+        write_error=OSError("Broken pipe"),
+    )
+
+    assert await_close(ws, timeout_s=5.0) == (WS_CLOSE_MSG_RATE_EXCEEDED, _CLOSE_REASON)
+    assert scripted.echoed_close == 1, "the echo is still attempted — just after the code is read off the frame"
 
 
 def test_a_death_without_a_close_frame_reports_no_code() -> None:

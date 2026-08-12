@@ -25,11 +25,12 @@ from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name
     WebSocketTimeoutException,
 )
 
-# The ws-exec client's close-payload parser, reused deliberately: one
+# The ws-exec client's frame-layer helpers, reused deliberately: one
 # implementation means the two surfaces cannot disagree about what a close
-# frame said. It is private because no SDK caller needs it — a test harness
-# reading frames by hand does.
-from sdk.reya_ws_exec.client import _parse_close_payload
+# frame said, or about when the answering write happens relative to reading it.
+# They are private because no SDK caller needs them — a test harness reading
+# frames by hand does.
+from sdk.reya_ws_exec.client import _echo_close, _parse_close_payload, _pong
 
 #: FLOOR under each frame read's socket timeout, mirroring ``ws_exec_harness``.
 #: A read is given the whole REMAINING budget, never less than this: once the
@@ -66,18 +67,31 @@ def await_close(ws: WebSocket, timeout_s: float) -> tuple[int | None, str | None
     ``(None, None)`` means the budget ran out or the transport died without a
     close frame — never a fabricated code, so a caller's assertion fails loudly
     instead of comparing against a default.
+
+    Reads RAW frames for the reason the ws-exec client does (see
+    :meth:`ReyaWsExecClient._reader_loop`): ``recv_data_frame`` echoes the close
+    BEFORE returning it, and against a socket the server is tearing down that
+    write raises — turning a 4029 that had already arrived into the transport
+    death this function reports as ``(None, None)``. The code is read off the
+    frame first; only then is anything written back.
     """
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         ws.settimeout(max(_POLL_TIMEOUT_S, deadline - time.time()))
         try:
-            opcode, frame = ws.recv_data_frame(control_frame=True)
+            frame = ws.recv_frame()
         except WebSocketTimeoutException:
             continue
         except (WebSocketException, OSError):
             return None, None
-        if opcode == ABNF.OPCODE_CLOSE:
-            return _parse_close_payload(frame.data)
+        if not frame:
+            continue
+        if frame.opcode == ABNF.OPCODE_CLOSE:
+            code, reason = _parse_close_payload(frame.data)
+            _echo_close(ws)
+            return code, reason
+        if frame.opcode == ABNF.OPCODE_PING:
+            _pong(ws, frame.data)
     return None, None
 
 

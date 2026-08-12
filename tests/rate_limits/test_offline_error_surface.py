@@ -425,21 +425,40 @@ class _StubWebSocket:
 
     An entry is either an ``(opcode, frame)`` tuple to return or an exception
     instance to raise, so a script can interleave recv timeouts with frames.
+
+    ``write_error`` is what a socket the server is tearing down does to the
+    reader's answering writes — the close echo and the pong. It is the whole
+    point of the two regression tests below: those writes must never be able to
+    cost the reader a frame it already has.
     """
 
-    def __init__(self, script: list[Any]) -> None:
+    def __init__(self, script: list[Any], write_error: BaseException | None = None) -> None:
         self._script = list(script)
+        self._write_error = write_error
+        self.echoed_close = 0
+        self.pongs: list[bytes] = []
 
     def settimeout(self, _timeout: float) -> None:
         pass
 
-    def recv_data_frame(self, **_kwargs: Any) -> tuple[int, Any]:
+    def recv_frame(self) -> Any:
         if not self._script:
             raise WebSocketConnectionClosedException("stub drained")
         step = self._script.pop(0)
         if isinstance(step, BaseException):
             raise step
-        return cast(tuple[int, Any], step)
+        opcode, frame = cast(tuple[int, Any], step)
+        return SimpleNamespace(opcode=opcode, data=frame.data, fin=getattr(frame, "fin", 1))
+
+    def send_close(self) -> None:
+        self.echoed_close += 1
+        if self._write_error is not None:
+            raise self._write_error
+
+    def pong(self, payload: bytes) -> None:
+        self.pongs.append(payload)
+        if self._write_error is not None:
+            raise self._write_error
 
 
 async def test_reader_loop_fails_in_flight_requests_on_a_4029_close() -> None:
@@ -466,6 +485,95 @@ async def test_reader_loop_fails_in_flight_requests_on_a_4029_close() -> None:
     assert excinfo.value.request_id == "req-1"
     assert client.last_close_code == WS_CLOSE_MSG_RATE_EXCEEDED
     assert client.last_close_reason == "MSG_RATE_EXCEEDED retry_after_ms=1000"
+
+
+async def test_a_close_whose_echo_fails_still_yields_its_code() -> None:
+    """The code is recorded BEFORE the echo, so a dead-socket write cannot eat it.
+
+    This is the shed's real timing: ws-exec tears the socket down within
+    milliseconds of closing, so by the time the reader answers the close that
+    write raises. Reading through ``recv_data_frame`` put the echo INSIDE the
+    read — its ``OSError`` surfaced as an abrupt transport failure, and a 4029
+    that had been received in full was recorded as ``None`` on roughly half of
+    live runs, making the rate kill indistinguishable from an idle socket.
+    """
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    close_body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + b"MSG_RATE_EXCEEDED retry_after_ms=1000"
+    stub = _StubWebSocket(
+        [(ABNF.OPCODE_CLOSE, SimpleNamespace(data=close_body))],
+        write_error=OSError("Broken pipe"),
+    )
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(Any, stub)
+    future = client._register("req-4")
+
+    await asyncio.to_thread(client._reader_loop)
+
+    assert stub.echoed_close == 1, "the echo is still attempted — just after the code is safely recorded"
+    assert client.last_close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+    assert client.last_close_reason == "MSG_RATE_EXCEEDED retry_after_ms=1000"
+    with pytest.raises(WsExecConnectionClosedError) as excinfo:
+        await asyncio.wait_for(future, timeout=5.0)
+    assert excinfo.value.close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+
+
+async def test_a_failed_pong_never_discards_the_frames_behind_it() -> None:
+    """A ping the reader cannot answer must not end the read.
+
+    The same hazard as the close echo, one frame earlier: ``recv_data_frame``
+    pongs inside the read, so a pong raising on a dying socket would take the
+    reply behind it — and the close code behind that — down with it.
+    """
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    close_body = struct.pack("!H", WS_CLOSE_MSG_RATE_EXCEEDED) + b"MSG_RATE_EXCEEDED retry_after_ms=1000"
+    reply = json.dumps({"type": "pong", "id": "req-5"}).encode("utf-8")
+    stub = _StubWebSocket(
+        [
+            (ABNF.OPCODE_PING, SimpleNamespace(data=b"keepalive")),
+            (ABNF.OPCODE_TEXT, SimpleNamespace(data=reply)),
+            (ABNF.OPCODE_CLOSE, SimpleNamespace(data=close_body)),
+        ],
+        write_error=OSError("Broken pipe"),
+    )
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(Any, stub)
+    future = client._register("req-5")
+
+    await asyncio.to_thread(client._reader_loop)
+
+    assert stub.pongs == [b"keepalive"], "the ping is still answered, best effort"
+    assert await asyncio.wait_for(future, timeout=5.0) == {"type": "pong", "id": "req-5"}
+    assert client.last_close_code == WS_CLOSE_MSG_RATE_EXCEEDED
+
+
+async def test_a_fragmented_reply_is_reassembled_before_it_is_parsed() -> None:
+    """Reading raw frames means owning reassembly; half a JSON reply parses as none.
+
+    ws-exec answers in single unfragmented frames today, so this is the
+    defensive half of the frame-layer read: were a reply ever split, dropping
+    the fragments would look exactly like a server that never answered.
+    """
+    client = ReyaWsExecClient(rest_client=cast(Any, None), ws_url="wss://invalid.example")
+    reply = json.dumps({"type": "pong", "id": "req-6"}).encode("utf-8")
+    head, tail = reply[:9], reply[9:]
+    # pylint: disable=protected-access
+    client._loop = asyncio.get_running_loop()
+    client._ws = cast(
+        Any,
+        _StubWebSocket(
+            [
+                (ABNF.OPCODE_TEXT, SimpleNamespace(data=head, fin=0)),
+                (ABNF.OPCODE_CONT, SimpleNamespace(data=tail, fin=1)),
+            ]
+        ),
+    )
+    future = client._register("req-6")
+
+    await asyncio.to_thread(client._reader_loop)
+
+    assert await asyncio.wait_for(future, timeout=5.0) == {"type": "pong", "id": "req-6"}
 
 
 async def test_sends_are_refused_once_the_connection_is_known_dead() -> None:

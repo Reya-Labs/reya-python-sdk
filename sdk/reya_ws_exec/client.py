@@ -58,6 +58,9 @@ WS_CLOSE_MSG_RATE_EXCEEDED = 4029
 _ENVELOPE_ID_LEN = 12
 _READER_RECV_TIMEOUT_S = 1.0
 
+#: RFC 6455 §5.5 caps a control frame's payload at 125 bytes.
+_MAX_CONTROL_PAYLOAD_LEN = 125
+
 
 class WsExecOperationError(RuntimeError):
     """Raised when the server returns a per-operation error (``ok: false``).
@@ -140,6 +143,68 @@ def _parse_close_payload(payload: Any) -> tuple[Optional[int], Optional[str]]:
     code = int.from_bytes(payload[:2], "big")
     reason = bytes(payload[2:]).decode("utf-8", errors="replace") or None
     return code, reason
+
+
+def _echo_close(ws: WebSocket) -> None:
+    """Echo a received close frame, best effort.
+
+    Only ever called AFTER the close code has been read off the frame and
+    recorded. The relayer tears the socket down within milliseconds of a rate
+    shed, so this write routinely raises on an already-dead socket — and the
+    library's own ``recv_data_frame`` ran exactly this echo BEFORE handing the
+    frame back, which is how a fully received
+    :data:`WS_CLOSE_MSG_RATE_EXCEEDED` could be lost and reported as a codeless
+    transport death. Capture first, then echo: the write is then free to fail.
+    """
+    try:
+        ws.send_close()
+    except (OSError, WebSocketException):
+        logger.debug("ws-exec close echo failed; the close code is already recorded", exc_info=True)
+
+
+def _pong(ws: WebSocket, payload: bytes) -> None:
+    """Answer a protocol-level ping, best effort.
+
+    Wrapped for the same reason as :func:`_echo_close`: a pong that cannot be
+    written must not take the reader down with it, because the frames already
+    received — a close code above all — are what the caller is waiting for.
+    """
+    if len(payload) > _MAX_CONTROL_PAYLOAD_LEN:
+        # An over-long ping is the peer's protocol error; the library refuses to
+        # send an over-long pong. Skipping the answer keeps the connection's
+        # remaining frames readable instead of raising in the reader.
+        logger.debug("ws-exec skipped pong for an over-long ping (%d bytes)", len(payload))
+        return
+    try:
+        ws.pong(payload)
+    except (OSError, WebSocketException):
+        logger.debug("ws-exec pong failed", exc_info=True)
+
+
+def _reassemble(frame: Any, buffered: Optional[bytearray]) -> tuple[Optional[bytes], Optional[bytearray]]:
+    """Fold one data frame into the message under assembly.
+
+    Returns ``(payload, buffered)``; ``payload`` is non-``None`` only once a FIN
+    frame completes a message. ws-exec answers in single unfragmented frames, so
+    the second branch is the whole live path — the rest exists because reading
+    raw frames means the library's own reassembler no longer runs, and a client
+    that silently dropped a fragmented reply would look like a server that never
+    answered.
+    """
+    if buffered is None and frame.opcode == ABNF.OPCODE_CONT:
+        # A continuation with nothing to continue: half a message is worse than none.
+        return None, None
+    if buffered is None and frame.fin:
+        return frame.data, None
+    if frame.opcode != ABNF.OPCODE_CONT:
+        # A fresh data frame while a fragment is pending is illegal; the newer
+        # message supersedes the fragment rather than being concatenated onto it.
+        buffered = None
+    accumulated = bytearray() if buffered is None else buffered
+    accumulated += frame.data
+    if not frame.fin:
+        return None, accumulated
+    return bytes(accumulated), None
 
 
 class ReyaWsExecClient:
@@ -487,19 +552,31 @@ class ReyaWsExecClient:
         existed (server-pushed notifications, which ws-exec does not
         currently emit outside ping/pong).
 
-        Reads at the FRAME layer rather than through ``WebSocket.recv``:
-        ``recv`` collapses a close frame into an empty string, which is
-        indistinguishable from an empty text frame and throws away the status
-        code. The relayer's per-connection message-rate cap is expressed
-        purely as a close code (:data:`WS_CLOSE_MSG_RATE_EXCEEDED`), so it has
-        to be read off the frame.
+        Reads RAW frames (``recv_frame``) rather than through
+        ``WebSocket.recv`` or ``WebSocket.recv_data_frame``. ``recv`` collapses
+        a close frame into an empty string, which is indistinguishable from an
+        empty text frame and throws away the status code. The relayer's
+        per-connection message-rate cap is expressed purely as a close code
+        (:data:`WS_CLOSE_MSG_RATE_EXCEEDED`), so it has to be read off the
+        frame.
+
+        ``recv_data_frame`` keeps the code but answers control frames as a side
+        effect of the read — it echoes the close (and pongs a ping) BEFORE
+        returning the frame. Against a socket the relayer is tearing down
+        milliseconds after the shed, that write raises, and the exception
+        surfaced from the read as an abrupt transport failure: the 4029 was
+        fully received and then discarded, leaving :attr:`last_close_code`
+        intermittently ``None``. Owning the control-frame handling here is what
+        makes the capture unconditional — a received close ALWAYS yields its
+        real code, whatever the echo afterwards does.
         """
         assert self._ws is not None
         ws = self._ws
         ws.settimeout(_READER_RECV_TIMEOUT_S)
+        buffered: Optional[bytearray] = None
         while not self._reader_stop.is_set():
             try:
-                opcode, frame = ws.recv_data_frame(control_frame=True)
+                frame = ws.recv_frame()
             except WebSocketTimeoutException:
                 continue
             except (OSError, WebSocketException):
@@ -510,16 +587,24 @@ class ReyaWsExecClient:
                 self._record_close(None, None)
                 self._fail_pending_indeterminate(None, None)
                 return
+            if not frame:
+                continue
+            opcode = frame.opcode
             if opcode == ABNF.OPCODE_CLOSE:
+                # Parse and record BEFORE the echo — see the note above.
                 code, reason = _parse_close_payload(frame.data)
                 self._record_close(code, reason)
+                _echo_close(ws)
                 logger.info("ws-exec closed by server: code=%s reason=%r", code, reason)
                 if not self._reader_stop.is_set():
                     self._fail_pending_indeterminate(code, reason)
                 return
-            if opcode not in (ABNF.OPCODE_TEXT, ABNF.OPCODE_BINARY):
+            if opcode == ABNF.OPCODE_PING:
+                _pong(ws, frame.data)
                 continue
-            raw = frame.data
+            if opcode not in (ABNF.OPCODE_TEXT, ABNF.OPCODE_BINARY, ABNF.OPCODE_CONT):
+                continue
+            raw, buffered = _reassemble(frame, buffered)
             if not raw:
                 continue
             try:
