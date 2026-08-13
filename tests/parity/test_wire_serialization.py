@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import time
 from decimal import Decimal
 
 import pytest
@@ -33,6 +32,7 @@ from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
+from tests.helpers.offline_clock import OFFLINE_CLOCK_S
 
 pytestmark = pytest.mark.offline
 
@@ -123,7 +123,7 @@ def test_limit_payload_decouples_deadline_from_expires_after(client: ReyaTrading
     """GTC limit: ``expiresAfter`` is omitted from JSON and ``deadline`` is a
     short, independent unix-seconds window — not the old far-future
     ``deadline == expiresAfter`` lifetime stopgap."""
-    before = int(time.time())
+    before = OFFLINE_CLOCK_S
     payload, _ = client.build_create_limit_order_payload(
         LimitOrderParameters(
             symbol=PERP_SYMBOL,
@@ -191,7 +191,7 @@ def test_gtt_accepted_and_signs_expires_after(client: ReyaTradingClient) -> None
     and the non-zero ``expiresAfter`` (strictly after the deadline) travels onto
     the wire — no longer rejected at entry now that the off-chain digest + ME
     rest/reap GTT end-to-end."""
-    deadline = int(time.time()) + 60
+    deadline = OFFLINE_CLOCK_S + 60
     expires_after = deadline + 600
     payload, _nonce = client.build_create_limit_order_payload(
         LimitOrderParameters(
@@ -226,7 +226,7 @@ def test_gtt_without_expiry_rejected(client: ReyaTradingClient) -> None:
 def test_gtt_expiry_not_after_deadline_rejected(client: ReyaTradingClient) -> None:
     """A GTT whose ``expiresAfter`` is not strictly after the deadline would
     expire within (or before) its own entry window — rejected at entry."""
-    deadline = int(time.time()) + 600
+    deadline = OFFLINE_CLOCK_S + 600
     with pytest.raises(ValueError, match="GTT expires_after must be greater than deadline"):
         client.build_create_limit_order_payload(
             LimitOrderParameters(
@@ -252,7 +252,7 @@ def test_gtc_with_expiry_rejected(client: ReyaTradingClient) -> None:
                 limit_px="3000",
                 qty="0.01",
                 time_in_force=TimeInForce.GTC,
-                expires_after=int(time.time()) + 600,
+                expires_after=OFFLINE_CLOCK_S + 600,
             )
         )
 

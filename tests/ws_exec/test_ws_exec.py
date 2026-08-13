@@ -1,8 +1,9 @@
 """ws-exec end-to-end tests (live, devnet-gated).
 
-Exercises every supported operation and variant of the ws-exec WebSocket
-order-entry service, plus the highest-signal error modes, against a live
-deployment. These are *integration* tests: missing `REYA_WS_EXEC_URL`, account
+Exercises common create/cancel flows and the highest-signal error modes of the
+ws-exec WebSocket order-entry service against a live deployment. Modify,
+cancelAllAfter, GTT, and post-only behavior live in dedicated `tests/engine/`
+suites. These are *integration* tests: missing `REYA_WS_EXEC_URL`, account
 credentials, or market definitions fail by default so WS exec coverage cannot
 silently disappear. Point `REYA_WS_EXEC_URL` at the target relayer, e.g.
 `REYA_WS_EXEC_URL=wss://ws-exec-devnet.reya-cronos.network`.
@@ -14,9 +15,9 @@ Happy paths (11) — all driven via :class:`ReyaWsExecClient`:
     3. Spot createOrder + cancelOrder by clientOrderId
     4. Spot cancelAll, symbol-scoped (opens N orders, mass-cancels them)
     5. Spot cancelAll, account-wide (no symbol scope)
-    6. Perp createOrder (LIMIT GTC conditional, rests) + cancel
-    7. Perp createOrder (TP) + cancel
-    8. Perp createOrder (SL) + cancel
+    6. Perp createOrder (LIMIT GTC, rests) + cancel
+    7. Perp createOrder (TP) + cancel (staged; deployment-gated skip)
+    8. Perp createOrder (SL) + cancel (staged; deployment-gated skip)
     9/10. Perp IOC increase + reduce-only close (paired and settlement-gated so
           the close is not submitted against stale pre-open chain state).
 
@@ -27,7 +28,7 @@ in-flight dispatch map:
     E2. MALFORMED_JSON               (framing) -- non-JSON frame
     E3. UNKNOWN_TYPE                 (framing) -- `type: "foobar"`
     E4. INVALID_NONCE_ERROR          (per-op) -- reused nonce
-    E5. ORDER_DEADLINE_PASSED_ERROR  (per-op) -- past expiresAfter
+    E5. ORDER_DEADLINE_PASSED_ERROR  (per-op) -- past signature deadline
     E6. UNAUTHORIZED_SIGNATURE_ERROR (per-op) -- signer/signerWallet mismatch
 
 E5/E6 build their payloads via the unified `build_create_limit_order_payload`
@@ -35,8 +36,8 @@ E5/E6 build their payloads via the unified `build_create_limit_order_payload`
 `encode_inputs_limit_order` signing surface was removed in the 2.3.x unified
 migration.
 
-Requires the configured chain's ws-exec relayer EOA funded with native gas
-(perp IOC flows settle on-chain via OrdersGateway::execute).
+Requires the configured deployment's ws-exec relayer to be funded for any
+server-side settlement transactions.
 """
 
 from __future__ import annotations
@@ -95,16 +96,15 @@ PERP_SYMBOL = "ETHRUSDPERP"
 SPOT_LIMIT_PX = "1"
 
 # Perp IOC has different semantics: it crosses resting order-book liquidity,
-# then settles on-chain. The
-# on-chain `Prices.sol::checkPriceLimit` reverts with `UnacceptableOrderPrice`
-# if the executed price exceeds the limit (for a buy) or falls below it (for a
-# sell). A $1 buy would never fill. A $40k buy accepts any realistic resting
-# ask inside the matching engine's market-price guard, opening a min-size long
-# position (qty = market.min_qty = 0.01 ETH).
+# then settles on-chain. The on-chain `Prices.sol::checkPriceLimit` reverts
+# with `UnacceptableOrderPrice` if the executed price exceeds the limit (for a
+# buy) or falls below it (for a sell). A $1 buy would never fill. A $40k buy
+# accepts any realistic resting ask inside the matching engine's market-price
+# guard, opening a min-size long position (qty = market.min_qty = 0.01 ETH).
 PERP_BUY_LIMIT_PX = "40000"
 
-# Perp LIMIT GTC conditional order -- limit price far below the current mark
-# so the conditional rests in OrdersGateway indefinitely (we cancel it next).
+# Perp LIMIT GTC -- limit price far below the current mark so the order rests
+# in the matching engine until we cancel it.
 PERP_GTC_LIMIT_PX = "100"
 
 # Perp IOC sell limit -- $1 means "accept any price >= $1". It crosses a
@@ -251,7 +251,7 @@ async def flow_perp_create_limit_gtc_and_cancel(
     client: ReyaWsExecClient,
     qty: Decimal,
 ) -> None:
-    """Create a perp LIMIT GTC conditional order, then cancel it."""
+    """Create a resting perp LIMIT GTC order, then cancel it."""
     resp = await client.create_limit_order(
         LimitOrderParameters(
             symbol=PERP_SYMBOL,
@@ -473,13 +473,14 @@ async def flow_err_invalid_nonce(
 
 
 def flow_err_order_deadline_passed(ws_url: str, rest_client: ReyaTradingClient, qty: Decimal) -> None:
-    """Submit a createOrder with `expiresAfter`/`deadline` in the past. The
+    """Submit a createOrder with its signature `deadline` in the past. The
     validator chain catches it as ORDER_DEADLINE_PASSED_ERROR or
     INPUT_VALIDATION_ERROR.
 
     Built via the unified `build_create_limit_order_payload` with an explicit
-    past `deadline` (which the builder also mirrors into `expiresAfter`), so
-    the payload is correctly signed but dead-on-arrival."""
+    past `deadline`. Because this is GTC, `expiresAfter` remains omitted: entry
+    validity and order lifetime are independent. The payload is correctly
+    signed but dead-on-arrival."""
     payload, _nonce = rest_client.build_create_limit_order_payload(
         LimitOrderParameters(
             symbol=SPOT_SYMBOL,
@@ -908,7 +909,7 @@ _SLTP_FACADE_SKIP = pytest.mark.skip(
 
 
 async def test_perp_limit_gtc_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
-    """Flow 6: perp LIMIT GTC conditional rests, then cancel."""
+    """Flow 6: perp LIMIT GTC rests, then cancel."""
     await flow_perp_create_limit_gtc_and_cancel(perp_ws, qty=harness.perp_qty)
 
 
@@ -1018,7 +1019,7 @@ async def test_err_invalid_nonce(harness):  # pylint: disable=redefined-outer-na
 
 
 async def test_err_order_deadline_passed(harness):  # pylint: disable=redefined-outer-name
-    """E5: past expiresAfter/deadline -> ORDER_DEADLINE_PASSED_ERROR / INPUT_VALIDATION_ERROR."""
+    """E5: past signature deadline -> ORDER_DEADLINE_PASSED_ERROR / INPUT_VALIDATION_ERROR."""
     flow_err_order_deadline_passed(harness.ws_url, harness.spot_rest, qty=harness.spot_qty)
 
 

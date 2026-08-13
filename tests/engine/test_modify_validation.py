@@ -526,12 +526,19 @@ async def test_immutable_mismatch_fields_raw(
         with pytest.raises(ApiException) as exc_info:
             await maker.client.orders.modify_order(request)
         error_msg = str(exc_info.value)
+        if market_type == "spot" and field_label == "reduceOnly":
+            # Reachability: reduce-only is unsupported on a spot market at all,
+            # and that check precedes the immutable-match, so this input can
+            # never reach MODIFY_IMMUTABLE_MISMATCH. Assert the reject it can
+            # actually reach — the modify is still refused and, below, the
+            # resting order is still proved untouched.
+            expected_reject = "not supported on spot market"
+        else:
+            expected_reject = "INPUT_VALIDATION_ERROR"
         assert (
-            "INPUT_VALIDATION_ERROR" in error_msg
-        ), f"[{market_type}][{field_label}] expected INPUT_VALIDATION_ERROR (immutable mismatch), got: {error_msg[:200]}"
-        logger.info(
-            f"[{market_type}] ✅ [{field_label}] restated-immutable mismatch rejected with INPUT_VALIDATION_ERROR"
-        )
+            expected_reject in error_msg
+        ), f"[{market_type}][{field_label}] expected {expected_reject!r}, got: {error_msg[:200]}"
+        logger.info(f"[{market_type}] ✅ [{field_label}] restated-immutable mismatch rejected ({expected_reject})")
 
         untouched = await maker.data.open_order(order.order_id)
         assert untouched is not None, f"[{field_label}] rejected modify must leave the order resting"

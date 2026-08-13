@@ -116,6 +116,15 @@ async def _taker_ioc(
     )
 
 
+async def _wait_settled(taker: ReyaTester, baseline: Decimal, expected_delta: Decimal) -> None:
+    """Block until the taker's opening fill is visible as settled position state.
+
+    A reduce-only order is sized by the engine against the settled position; a
+    fill the engine has acked but not yet settled on chain is not reducible.
+    """
+    await taker.check.position_delta(symbol=PERP_SYMBOL, baseline=baseline, expected_delta=expected_delta)
+
+
 def _skip_unless_baseline_long_or_flat(baseline: Decimal) -> None:
     """Guard for choreographies whose reduce-only SELL leg assumes the taker
     is net long after the opening buys — impossible from a short baseline."""
@@ -177,6 +186,7 @@ async def test_position_increase_long(perp_maker_tester: ReyaTester, perp_taker_
     # First leg
     await _rest_maker_sell(perp_maker_tester, market_price)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=True)
+    await _wait_settled(perp_taker_tester, baseline, PERP_DELTA)
 
     # Second leg (more maker liquidity, then more taker IOC)
     await _rest_maker_sell(perp_maker_tester, market_price)
@@ -199,6 +209,7 @@ async def test_position_increase_short(perp_maker_tester: ReyaTester, perp_taker
 
     await _rest_maker_buy(perp_maker_tester, market_price)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=False)
+    await _wait_settled(perp_taker_tester, baseline, -PERP_DELTA)
 
     await _rest_maker_buy(perp_maker_tester, market_price)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=False)
@@ -221,18 +232,16 @@ async def test_position_partial_close_long(perp_maker_tester: ReyaTester, perp_t
     initial_qty = "0.02"
     close_qty = "0.01"
 
-    # Open +0.02. The intermediate assertion is load-bearing, not decorative:
-    # reduce-only is now a pre-trade check at order entry, so the close leg is
-    # rejected with REDUCE_ONLY_CONDITION_NOT_MET_ERROR unless the opening fill
-    # is already visible as position state.
+    # Open +0.02
     await _rest_maker_sell(perp_maker_tester, market_price, qty=initial_qty)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=True, qty=initial_qty)
 
-    await perp_taker_tester.check.position_delta(
-        symbol=PERP_SYMBOL,
-        baseline=baseline,
-        expected_delta=Decimal(initial_qty),
-    )
+    # The reduce-only gate sizes against the SETTLED position (in-flight
+    # increases are assumed to bust), so the opening fill must have settled
+    # before a reduce-only close has anything to reduce. A FILLED ack alone is
+    # not settlement — closing on the ack is refused with
+    # `reduce-only order has nothing to reduce`.
+    await _wait_settled(perp_taker_tester, baseline, Decimal(initial_qty))
 
     # Partial close 0.01
     await _rest_maker_buy(perp_maker_tester, market_price, qty=close_qty)
@@ -256,16 +265,12 @@ async def test_position_partial_close_short(perp_maker_tester: ReyaTester, perp_
     initial_qty = "0.02"
     close_qty = "0.01"
 
-    # See test_position_partial_close_long: the intermediate assertion gates the
-    # reduce-only close leg on the opening fill being visible as position state.
     await _rest_maker_buy(perp_maker_tester, market_price, qty=initial_qty)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=False, qty=initial_qty)
 
-    await perp_taker_tester.check.position_delta(
-        symbol=PERP_SYMBOL,
-        baseline=baseline,
-        expected_delta=-Decimal(initial_qty),
-    )
+    # See test_position_partial_close_long: reduce-only sizes against settled
+    # base, so the opening fill must settle before the close is reducible.
+    await _wait_settled(perp_taker_tester, baseline, -Decimal(initial_qty))
 
     await _rest_maker_sell(perp_maker_tester, market_price, qty=close_qty)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=True, qty=close_qty, reduce_only=True)

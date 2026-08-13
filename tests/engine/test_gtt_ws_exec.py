@@ -33,6 +33,12 @@ from sdk.open_api.models.order import Order
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
+from tests.helpers.gtt_timing import (
+    GTT_REAP_DEADLINE_OFFSET_S,
+    GTT_REAP_DETECT_BOUND_S,
+    GTT_REAP_EXPIRY_OFFSET_S,
+    GTT_REAP_PRE_EXPIRY_MARGIN_S,
+)
 from tests.helpers.ws_exec_market import WsExecMarket
 
 pytestmark = [pytest.mark.e2e, pytest.mark.gtt]
@@ -44,10 +50,6 @@ GTT_LIFETIME_S = 300
 # Bounded-reap timing — mirrors tests/engine/test_gtt_lifecycle.py. GTT expiry is
 # wall-clock (the ME reaper scans every ~500ms), so these are REAL waits; the
 # margins absorb ME<->test clock skew and devnet Redis->indexer->openOrders lag.
-GTT_REAP_DEADLINE_OFFSET_S = 20
-GTT_REAP_EXPIRY_OFFSET_S = 55
-GTT_REAP_PRE_EXPIRY_MARGIN_S = 15
-GTT_REAP_DETECT_BOUND_S = 40
 
 
 async def _wait_for_open_order(rest: ReyaTradingClient, order_id: str, timeout_s: float = 10.0) -> Order:
