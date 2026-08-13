@@ -221,9 +221,18 @@ async def test_position_partial_close_long(perp_maker_tester: ReyaTester, perp_t
     initial_qty = "0.02"
     close_qty = "0.01"
 
-    # Open +0.02
+    # Open +0.02. The intermediate assertion is load-bearing, not decorative:
+    # reduce-only is now a pre-trade check at order entry, so the close leg is
+    # rejected with REDUCE_ONLY_CONDITION_NOT_MET_ERROR unless the opening fill
+    # is already visible as position state.
     await _rest_maker_sell(perp_maker_tester, market_price, qty=initial_qty)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=True, qty=initial_qty)
+
+    await perp_taker_tester.check.position_delta(
+        symbol=PERP_SYMBOL,
+        baseline=baseline,
+        expected_delta=Decimal(initial_qty),
+    )
 
     # Partial close 0.01
     await _rest_maker_buy(perp_maker_tester, market_price, qty=close_qty)
@@ -247,8 +256,16 @@ async def test_position_partial_close_short(perp_maker_tester: ReyaTester, perp_
     initial_qty = "0.02"
     close_qty = "0.01"
 
+    # See test_position_partial_close_long: the intermediate assertion gates the
+    # reduce-only close leg on the opening fill being visible as position state.
     await _rest_maker_buy(perp_maker_tester, market_price, qty=initial_qty)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=False, qty=initial_qty)
+
+    await perp_taker_tester.check.position_delta(
+        symbol=PERP_SYMBOL,
+        baseline=baseline,
+        expected_delta=-Decimal(initial_qty),
+    )
 
     await _rest_maker_sell(perp_maker_tester, market_price, qty=close_qty)
     await _taker_ioc(perp_taker_tester, market_price, is_buy=True, qty=close_qty, reduce_only=True)

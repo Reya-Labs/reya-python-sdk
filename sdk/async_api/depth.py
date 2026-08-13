@@ -5,7 +5,7 @@ from sdk.async_api.depth_type import DepthType
 from sdk.async_api.level import Level
 class Depth(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
-  type: DepthType = Field(description='''Depth message type (SNAPSHOT = full book, UPDATE = single level change)''')
+  type: DepthType = Field(description='''Depth message type. SNAPSHOT = the complete aggregated book delivered on subscribe. UPDATE = a diff carrying only the price levels that changed since the previous frame (one UPDATE may include multiple levels across both bids and asks); each level's qty is the absolute new total at that price and qty 0 removes the level. Apply UPDATE frames in order to the SNAPSHOT to maintain the book.''')
   bids: List[Level] = Field(description='''Bid side levels aggregated by price, sorted descending by price''')
   asks: List[Level] = Field(description='''Ask side levels aggregated by price, sorted ascending by price''')
   updated_at: int = Field(alias='''updatedAt''')
