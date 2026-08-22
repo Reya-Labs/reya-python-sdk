@@ -566,6 +566,8 @@ def offline_client() -> ReyaTradingClient:
     )
     client = ReyaTradingClient(config)
     client._symbol_to_market_id = {"ETHRUSDPERP": 1}  # pylint: disable=protected-access
+    client._symbol_to_tick_size = {"ETHRUSDPERP": "0.001"}  # pylint: disable=protected-access
+    client._symbol_to_trigger_band = {"ETHRUSDPERP": "0.05"}  # pylint: disable=protected-access
     client._initialized = True  # pylint: disable=protected-access
     return client
 
@@ -719,6 +721,7 @@ def test_trigger_create_builder_signs_order_type(offline_client: ReyaTradingClie
             trigger_px=str(TRIGGER_TRIGGER_PX),
             trigger_type=OrderType.STOP_LOSS,
             limit_px=str(TRIGGER_LIMIT_PX),
+            time_in_force=TimeInForce.GTC,
             client_order_id=TRIGGER_CLIENT_ORDER_ID,
             deadline=TRIGGER_DEADLINE,
         )

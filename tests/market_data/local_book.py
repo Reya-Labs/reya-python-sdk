@@ -12,7 +12,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from sdk.async_api.depth import Depth as AsyncDepth
-from sdk.open_api.models.depth import Depth as RestDepth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot as RestDepthSnapshot
 
 # A price/qty level normalised to Decimals for exact set comparison.
 Levels = dict[Decimal, Decimal]
@@ -68,7 +68,7 @@ def rest_levels(levels) -> list[tuple[Decimal, Decimal]]:
     return out
 
 
-def depth_sides(depth: RestDepth | AsyncDepth) -> tuple[list, list]:
+def depth_sides(depth: RestDepthSnapshot | AsyncDepth) -> tuple[list, list]:
     """Return (bids, asks) as sorted Decimal tuples: bids descending, asks ascending."""
     bids = sorted(rest_levels(depth.bids), key=lambda kv: kv[0], reverse=True)
     asks = sorted(rest_levels(depth.asks), key=lambda kv: kv[0])

@@ -38,10 +38,10 @@ def trigger_order_params_to_order(params: TriggerOrderParameters, account_id: in
         qty=None,  # Trigger orders don't have qty until execution
         execQty="0",
         side=Side.B if params.is_buy else Side.A,
-        limitPx=params.trigger_px,
+        limitPx=params.limit_px,
         orderType=params.trigger_type,
         triggerPx=params.trigger_px,
-        timeInForce=None,
+        timeInForce=params.time_in_force,
         reduceOnly=False,
         status=OrderStatus.OPEN,
         createdAt=0,

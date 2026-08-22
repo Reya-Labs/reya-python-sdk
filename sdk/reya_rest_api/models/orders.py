@@ -49,6 +49,10 @@ class ModifyOrderParameters:
     TAKE_PROFIT modify: a trigger modify signs the ±int256.max full-position
     sentinel (sign from `is_buy`; protect the whole position) and omits `qty`
     from the wire, exactly like a trigger create.
+
+    On a trigger modify only `limit_px` and `trigger_px` move; `time_in_force`
+    and `expires_after` are restated immutables, so changing the fired child's
+    TIF or the shared expiry means cancelling the trigger and creating a new one.
     """
 
     symbol: str
@@ -78,17 +82,24 @@ class TriggerOrderParameters:
     is retained only so older callers receive a targeted client-side error
     instead of a server 400.
 
-    `limit_px` is the worst-acceptable execution price after the trigger fires;
-    if omitted the client signs a sentinel — a very high value for buys, a very
-    low non-zero value for sells — so the order executes at any price available
-    after the trigger.
+    `limit_px` is the worst-acceptable execution price of the child the trigger
+    fires into — not a pad on `trigger_px`. It is REQUIRED: the venue enforces a
+    per-market band, `|limit_px - trigger_px| <= trigger_px *
+    triggerLimitBandFraction`, so there is no price that "always executes".
+
+    `time_in_force` is what the stop BECOMES when it fires: the fired child rests
+    as GTC, rests-with-expiry as GTT, or takes-or-cancels as IOC. GTT requires a
+    future `expires_after` — one deadline covering both the armed trigger's
+    lifetime and the fired child's settlement — while GTC and IOC must omit it.
     """
 
     symbol: str
     is_buy: bool
     trigger_px: str
     trigger_type: OrderType
-    limit_px: Optional[str] = None
+    limit_px: str
+    time_in_force: TimeInForce
+    expires_after: Optional[int] = None
     qty: Optional[str] = None
     reduce_only: Optional[bool] = None
     client_order_id: Optional[int] = None

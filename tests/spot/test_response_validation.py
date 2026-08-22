@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 from sdk.open_api.models import OrderStatus
-from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot
 from sdk.open_api.models.level import Level
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.spot_execution import SpotExecution
@@ -554,10 +554,10 @@ async def test_depth_response_structure(spot_config: SpotTestConfig, spot_tester
     logger.info("=" * 80)
 
     # Fetch depth via REST
-    depth: Depth = await spot_tester.data.market_depth(spot_config.symbol)
+    depth: DepthSnapshot = await spot_tester.data.market_depth(spot_config.symbol)
 
     # Validate type
-    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    assert isinstance(depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(depth)}"
 
     # Validate required fields
     assert hasattr(depth, "symbol"), "Depth should have 'symbol' field"
@@ -614,7 +614,7 @@ async def test_depth_level_structure(spot_config: SpotTestConfig, spot_tester: R
     await asyncio.sleep(0.1)
 
     # Fetch depth
-    depth: Depth = await spot_tester.data.market_depth(spot_config.symbol)
+    depth: DepthSnapshot = await spot_tester.data.market_depth(spot_config.symbol)
 
     # Validate bid levels
     if len(depth.bids) > 0:
@@ -657,7 +657,7 @@ async def test_depth_price_sorting(spot_config: SpotTestConfig, spot_tester: Rey
     logger.info("=" * 80)
 
     # Fetch depth
-    depth: Depth = await spot_tester.data.market_depth(spot_config.symbol)
+    depth: DepthSnapshot = await spot_tester.data.market_depth(spot_config.symbol)
 
     # Validate bid sorting (descending)
     if len(depth.bids) >= 2:
@@ -723,7 +723,7 @@ async def test_depth_quantity_aggregation(spot_config: SpotTestConfig, spot_test
     await asyncio.sleep(0.1)
 
     # Fetch depth
-    depth: Depth = await spot_tester.data.market_depth(spot_config.symbol)
+    depth: DepthSnapshot = await spot_tester.data.market_depth(spot_config.symbol)
 
     # Find the level at our price
     our_level = None

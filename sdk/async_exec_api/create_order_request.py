@@ -11,7 +11,7 @@ class CreateOrderRequest(BaseModel):
   limit_px: str = Field(alias='''limitPx''')
   qty: Optional[str] = Field(default=None)
   order_type: OrderType = Field(description='''Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.''', alias='''orderType''')
-  time_in_force: Optional[TimeInForce] = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', default=None, alias='''timeInForce''')
+  time_in_force: TimeInForce = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', alias='''timeInForce''')
   trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
   reduce_only: Optional[bool] = Field(description='''Reduce-only intent. Required only for perp IOC orders. Omit this field for every other order class: perp GTC/GTT, STOP_LOSS/TAKE_PROFIT, and all spot orders. Sending the field, including `false`, for those order classes is rejected with `INPUT_VALIDATION_ERROR`. Omitted values map to `false` in the signed on-chain `OrderDetails.reduceOnly` field.''', default=None, alias='''reduceOnly''')
   post_only: Optional[bool] = Field(description='''Post-only (maker-only) intent: the order must rest and never cross as a taker. Valid on GTC/GTT; rejected on IOC. An order that would cross at insertion is rejected with `POST_ONLY_WOULD_CROSS_ERROR`. Maps to on-chain `OrderDetails.postOnly`.''', default=None, alias='''postOnly''')

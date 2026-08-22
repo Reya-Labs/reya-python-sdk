@@ -17,25 +17,26 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Any, ClassVar, Dict, List
+from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class ExecutionBustReasonSignerNonceAlreadyUsed(BaseModel):
+class DepthBase(BaseModel):
     """
-    ExecutionBustReasonSignerNonceAlreadyUsed
+    DepthBase
     """ # noqa: E501
-    reason_name: StrictStr = Field(alias="reasonName")
-    signer: StrictStr = Field(description="Signer address that already used the nonce.")
-    nonce: StrictStr = Field(description="Signer nonce that was already consumed. Kept as a string because contract nonces are uint256.")
-    __properties: ClassVar[List[str]] = ["reasonName", "signer", "nonce"]
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
+    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")
+    additional_properties: Dict[str, Any] = {}
+    __properties: ClassVar[List[str]] = ["symbol", "updatedAt"]
 
-    @field_validator('reason_name')
-    def reason_name_validate_enum(cls, value):
-        """Validates the enum"""
-        if value not in set(['SignerNonceAlreadyUsed']):
-            raise ValueError("must be one of enum values ('SignerNonceAlreadyUsed')")
+    @field_validator('symbol')
+    def symbol_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if not re.match(r"^[A-Za-z0-9]+$", value):
+            raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
         return value
 
     model_config = ConfigDict(
@@ -56,7 +57,7 @@ class ExecutionBustReasonSignerNonceAlreadyUsed(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of ExecutionBustReasonSignerNonceAlreadyUsed from a JSON string"""
+        """Create an instance of DepthBase from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -68,8 +69,10 @@ class ExecutionBustReasonSignerNonceAlreadyUsed(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
+            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -77,11 +80,16 @@ class ExecutionBustReasonSignerNonceAlreadyUsed(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of ExecutionBustReasonSignerNonceAlreadyUsed from a dict"""
+        """Create an instance of DepthBase from a dict"""
         if obj is None:
             return None
 
@@ -89,10 +97,14 @@ class ExecutionBustReasonSignerNonceAlreadyUsed(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "reasonName": obj.get("reasonName"),
-            "signer": obj.get("signer"),
-            "nonce": obj.get("nonce")
+            "symbol": obj.get("symbol"),
+            "updatedAt": obj.get("updatedAt")
         })
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 

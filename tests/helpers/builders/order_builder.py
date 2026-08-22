@@ -306,6 +306,8 @@ class TriggerOrderBuilder:
     _trigger_px: str = "4000.0"
     _limit_px: str = "4000.0"
     _trigger_type: OrderType = field(default_factory=lambda: OrderType.TAKE_PROFIT)
+    _time_in_force: TimeInForce = field(default_factory=lambda: TimeInForce.GTC)
+    _expires_after: int | None = None
     _reduce_only: bool | None = None
     _client_order_id: int | None = None
 
@@ -349,6 +351,24 @@ class TriggerOrderBuilder:
         self._limit_px = price
         return self
 
+    def time_in_force(self, time_in_force: TimeInForce) -> TriggerOrderBuilder:
+        """Set what the stop becomes when it fires (GTC, GTT or IOC)."""
+        self._time_in_force = time_in_force
+        return self
+
+    def gtc(self) -> TriggerOrderBuilder:
+        """Fire into a resting GTC child."""
+        return self.time_in_force(TimeInForce.GTC)
+
+    def ioc(self) -> TriggerOrderBuilder:
+        """Fire into a take-or-cancel IOC child."""
+        return self.time_in_force(TimeInForce.IOC)
+
+    def gtt(self, expires_after: int) -> TriggerOrderBuilder:
+        """Fire into a GTT child; `expires_after` covers both phases."""
+        self._expires_after = expires_after
+        return self.time_in_force(TimeInForce.GTT)
+
     def take_profit(self) -> TriggerOrderBuilder:
         """Set trigger type to Take Profit."""
         self._trigger_type = OrderType.TAKE_PROFIT
@@ -386,6 +406,8 @@ class TriggerOrderBuilder:
             trigger_px=self._trigger_px,
             limit_px=self._limit_px,
             trigger_type=self._trigger_type,
+            time_in_force=self._time_in_force,
+            expires_after=self._expires_after,
             reduce_only=self._reduce_only,
             client_order_id=self._client_order_id,
         )
@@ -400,6 +422,8 @@ class TriggerOrderBuilder:
             "_trigger_px",
             "_limit_px",
             "_trigger_type",
+            "_time_in_force",
+            "_expires_after",
             "_reduce_only",
             "_client_order_id",
         ]:

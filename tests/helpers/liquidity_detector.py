@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 if TYPE_CHECKING:
-    from sdk.open_api.models.depth import Depth
+    from sdk.open_api.models.depth_snapshot import DepthSnapshot
     from sdk.open_api.models.level import Level
     from tests.helpers.reya_tester.data import DataOperations
 
@@ -115,7 +115,7 @@ class LiquidityDetector:
         Returns:
             OrderBookState with analyzed liquidity information.
         """
-        depth: Optional["Depth"] = await data_ops.market_depth(symbol)
+        depth: Optional["DepthSnapshot"] = await data_ops.market_depth(symbol)
 
         bids = self._analyze_side(
             levels=depth.bids if depth else [],

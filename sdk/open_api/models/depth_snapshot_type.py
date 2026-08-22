@@ -18,21 +18,19 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class OrderType(str, Enum):
+class DepthSnapshotType(str, Enum):
     """
-    Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.
+    Literal discriminator for a bounded depth snapshot.
     """
 
     """
     allowed enum values
     """
-    LIMIT = 'LIMIT'
-    STOP_LOSS = 'STOP_LOSS'
-    TAKE_PROFIT = 'TAKE_PROFIT'
+    SNAPSHOT = 'SNAPSHOT'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of OrderType from a JSON string"""
+        """Create an instance of DepthSnapshotType from a JSON string"""
         return cls(json.loads(json_str))
 
 

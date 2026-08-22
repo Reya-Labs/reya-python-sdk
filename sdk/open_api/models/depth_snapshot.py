@@ -20,41 +20,28 @@ import json
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
-from sdk.open_api.models.tier_type import TierType
+from sdk.open_api.models.depth_snapshot_type import DepthSnapshotType
+from sdk.open_api.models.level import Level
 from typing import Optional, Set
 from typing_extensions import Self
 
-class FeeTierParameters(BaseModel):
+class DepthSnapshot(BaseModel):
     """
-    FeeTierParameters
+    A bounded depth snapshot. Each side contains at most the 1,000 best price levels.
     """ # noqa: E501
-    tier_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="tierId")
-    taker_fee: Annotated[str, Field(strict=True)] = Field(alias="takerFee")
-    maker_fee: Annotated[str, Field(strict=True)] = Field(alias="makerFee")
-    volume30d: Annotated[str, Field(strict=True)]
-    tier_type: TierType = Field(alias="tierType")
+    symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
+    updated_at: Annotated[int, Field(strict=True, ge=0)] = Field(alias="updatedAt")
+    type: DepthSnapshotType
+    bids: Annotated[List[Level], Field(max_length=1000)] = Field(description="At most the 1,000 highest bid levels, aggregated by price and sorted descending")
+    asks: Annotated[List[Level], Field(max_length=1000)] = Field(description="At most the 1,000 lowest ask levels, aggregated by price and sorted ascending")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["tierId", "takerFee", "makerFee", "volume30d", "tierType"]
+    __properties: ClassVar[List[str]] = ["symbol", "updatedAt", "type", "bids", "asks"]
 
-    @field_validator('taker_fee')
-    def taker_fee_validate_regular_expression(cls, value):
+    @field_validator('symbol')
+    def symbol_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('maker_fee')
-    def maker_fee_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('volume30d')
-    def volume30d_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
+        if not re.match(r"^[A-Za-z0-9]+$", value):
+            raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
         return value
 
     model_config = ConfigDict(
@@ -75,7 +62,7 @@ class FeeTierParameters(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of FeeTierParameters from a JSON string"""
+        """Create an instance of DepthSnapshot from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -98,6 +85,20 @@ class FeeTierParameters(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of each item in bids (list)
+        _items = []
+        if self.bids:
+            for _item_bids in self.bids:
+                if _item_bids:
+                    _items.append(_item_bids.to_dict())
+            _dict['bids'] = _items
+        # override the default output from pydantic by calling `to_dict()` of each item in asks (list)
+        _items = []
+        if self.asks:
+            for _item_asks in self.asks:
+                if _item_asks:
+                    _items.append(_item_asks.to_dict())
+            _dict['asks'] = _items
         # puts key-value pairs in additional_properties in the top level
         if self.additional_properties is not None:
             for _key, _value in self.additional_properties.items():
@@ -107,7 +108,7 @@ class FeeTierParameters(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of FeeTierParameters from a dict"""
+        """Create an instance of DepthSnapshot from a dict"""
         if obj is None:
             return None
 
@@ -115,11 +116,11 @@ class FeeTierParameters(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "tierId": obj.get("tierId"),
-            "takerFee": obj.get("takerFee"),
-            "makerFee": obj.get("makerFee"),
-            "volume30d": obj.get("volume30d"),
-            "tierType": obj.get("tierType")
+            "symbol": obj.get("symbol"),
+            "updatedAt": obj.get("updatedAt"),
+            "type": obj.get("type"),
+            "bids": [Level.from_dict(_item) for _item in obj["bids"]] if obj.get("bids") is not None else None,
+            "asks": [Level.from_dict(_item) for _item in obj["asks"]] if obj.get("asks") is not None else None
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

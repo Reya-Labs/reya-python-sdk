@@ -21,11 +21,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ModifyOrderParameters(...)` call that was valid in 3.0.14 still binds
   unchanged; the default keeps LIMIT modifies byte-identical, and the trigger
   create/cancel wire contract is unchanged (omit `qty`; the signed quantity is
-  the ±int256.max full-position sentinel, sign from `is_buy`). The buy-side
-  `limit_px` sentinel is now the largest tick-aligned price under the ME's
-  MAX_PRICE (the old 1e20 sentinel fails off-chain price validation). The live trigger create/modify/cancel e2e tests
-  are staged (skipped) until the SL/TP backbone matching engine is deployed to
-  devnet1.
+  the ±int256.max full-position sentinel, sign from `is_buy`). The live trigger
+  create/modify/cancel e2e tests are staged (skipped) until the SL/TP backbone
+  matching engine is deployed to devnet1.
+- Trigger limit-band awareness: `ReyaTradingClient` reads each perp market's
+  `triggerLimitBandFraction` at `start()` and refuses an inadmissible trigger
+  before a nonce is claimed. The field's three states are distinct — a positive
+  fraction enforces `|limit_px - trigger_px| <= trigger_px * fraction` with the
+  outermost legal price rounded INWARD to the market's tick, `"0"` disables the
+  band and admits any positive `limit_px`, and an ABSENT fraction means the
+  market accepts no triggers at all. An absent fraction is NOT read as `"0"`.
+  Enforced on both create and modify, mirroring `TRIGGER_LIMIT_OUTSIDE_BAND_ERROR`.
 - `sdk.reya_ws_exec.ReyaWsExecClient`: high-level client for the new ws-exec
   WebSocket order-entry service. Mirrors `ReyaTradingClient`'s order surface
   (`create_limit_order`, `create_trigger_order`, `cancel_order`, `mass_cancel`)
@@ -36,6 +42,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values and caps the future-distance at 24h before signing.
 
 ### Changed
+- **BREAKING: `TriggerOrderParameters` now REQUIRES `limit_px` and
+  `time_in_force`.** `limit_px` is the worst-acceptable execution price of the
+  child the trigger fires into; the client no longer synthesizes one when it is
+  omitted (the old direction-aware sentinel — one tick for sells, the largest
+  tick-aligned price under the ME's MAX_PRICE for buys — is gone, because under
+  a per-market trigger limit band there is no price that always executes).
+  `time_in_force` chooses what the stop BECOMES when it fires (`GTC`/`GTT`/`IOC`)
+  and flows into both the EIP-712 digest and the `timeInForce` wire key, which
+  the backend now requires on every create. A `GTT` trigger must carry a future
+  `expires_after` — one deadline covering both the armed trigger's lifetime and
+  the fired child's on-chain settlement, so the settlement-headroom rule applies
+  to it — while `GTC` and `IOC` triggers must omit it. Migration: pass the two
+  new fields explicitly; a call that omitted them raises `TypeError` rather than
+  signing a price you did not choose.
+- Trigger modifies no longer require `GTC`. `time_in_force` and `expires_after`
+  are restate-immutable on an armed trigger: restating the armed values is
+  admitted, and a change that lands on an impossible shape is refused
+  client-side with a message pointing at cancel-and-recreate.
 - The ws-exec quickstart now defaults to the current devnet endpoint, exposes
   offline-testable URL/order builders, and links to the actual pytest live
   suite instead of the removed `tests/ws_exec/mvp.py` harness.
