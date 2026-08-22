@@ -1,4 +1,4 @@
 from enum import Enum
 
-class AnonymousSchema134(Enum): 
+class AnonymousSchema145(Enum): 
   ACCOUNT_INSOLVENT = "AccountInsolvent"

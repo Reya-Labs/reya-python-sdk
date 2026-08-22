@@ -88,15 +88,6 @@ CANCEL_REASONS = {
     "PROTECTIVE_SELF_TRADE_SWEEP",
 }
 
-# sdk/async_api still generates from the pinned spec: regenerating it at the
-# SL/TP pin replaces Depth with DepthSnapshot/DepthUpdate and needs the
-# PRO-942 depth-split adaptation across the WS call sites first. Regenerate
-# async_api and drop this marker once that lands.
-_ASYNC_API_REGEN_BLOCKED = (
-    "sdk/async_api regen is blocked on the PRO-942 depth-split SDK adaptation "
-    "(DepthSnapshot/DepthUpdate replace Depth; 4 test modules import sdk.async_api.depth)"
-)
-
 EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
 
 
@@ -188,7 +179,6 @@ def test_cancel_reason_enums_share_specs_values() -> None:
     assert CANCEL_REASONS == {reason.value for reason in WsExecCancelReason}
 
 
-@pytest.mark.xfail(reason=_ASYNC_API_REGEN_BLOCKED, strict=False)
 def test_ws_info_cancel_reason_enum_shares_specs_values() -> None:
     assert CANCEL_REASONS == {reason.value for reason in WsInfoCancelReason}
 

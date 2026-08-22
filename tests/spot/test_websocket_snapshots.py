@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 
-from sdk.async_api.depth import Depth
+from sdk.async_api.depth_snapshot import DepthSnapshot
 from sdk.async_api.level import Level
 from sdk.open_api.models import OrderStatus
 from tests.helpers import ReyaTester
@@ -36,11 +36,11 @@ async def _wait_for_depth_levels(
     bid_prices: Sequence[Decimal | float] = (),
     ask_prices: Sequence[Decimal | float] = (),
     timeout: float = 5.0,
-) -> Depth:
+) -> DepthSnapshot:
     expected_bids = {Decimal(str(price)) for price in bid_prices}
     expected_asks = {Decimal(str(price)) for price in ask_prices}
     deadline = asyncio.get_running_loop().time() + timeout
-    last_depth: Depth | None = None
+    last_depth: DepthSnapshot | None = None
 
     while asyncio.get_running_loop().time() < deadline:
         last_depth = tester.ws.last_depth.get(symbol)
@@ -116,7 +116,7 @@ async def test_spot_depth_ws_initial_snapshot(spot_config: SpotTestConfig, spot_
         spot_config.symbol,
         bid_prices=prices,
     )
-    assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
+    assert isinstance(depth_snapshot, DepthSnapshot), f"Expected DepthSnapshot type, got {type(depth_snapshot)}"
 
     bids = depth_snapshot.bids
     logger.info(f"Depth snapshot received: {len(bids)} bids")
@@ -211,7 +211,7 @@ async def test_spot_depth_ws_snapshot_with_asks(
         bid_prices=(bid_price,),
         ask_prices=(ask_price,),
     )
-    assert isinstance(depth_snapshot, Depth), f"Expected Depth type, got {type(depth_snapshot)}"
+    assert isinstance(depth_snapshot, DepthSnapshot), f"Expected DepthSnapshot type, got {type(depth_snapshot)}"
 
     bids = depth_snapshot.bids
     asks = depth_snapshot.asks
@@ -296,7 +296,7 @@ async def test_spot_depth_ws_incremental_after_snapshot(spot_config: SpotTestCon
     # Step 3: Verify incremental update contains new order
     updated_depth = spot_tester.ws.last_depth.get(spot_config.symbol)
     assert updated_depth is not None, "Should have received depth update"
-    assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
+    assert isinstance(updated_depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(updated_depth)}"
 
     bids = updated_depth.bids
     order_found = any(abs(float(b.px) - order_price) < 0.01 for b in bids)

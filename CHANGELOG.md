@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Read-side WebSocket models regenerated from specs 3.1.0: `Order.triggered` —
+  the armed-vs-fired discriminator, since both states surface as `OPEN` — and
+  the five SL/TP firing `CancelReason` members `OCO_SIBLING_FIRED`,
+  `POSITION_CLOSED`, `BAND_VIOLATION`, `RISK_REJECTED` and
+  `PROTECTIVE_SELF_TRADE_SWEEP`. Until now `ReyaSocket` raised
+  `WebSocketDataError` out of `on_message` on the first frame carrying any of
+  them — which is every fired stop, because `OCO_SIBLING_FIRED` publishes on
+  every fire.
 - Typed read-side WebSocket account discovery via
   `socket.wallet.accounts(address)`, generated from the canonical
   `/v2/wallet/{address}/accounts` AsyncAPI channel.
@@ -42,6 +50,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values and caps the future-distance at 24h before signing.
 
 ### Changed
+- **BREAKING (generated read-side models): `sdk.async_api.depth.Depth` is
+  replaced by `sdk.async_api.depth_snapshot.DepthSnapshot` and
+  `sdk.async_api.depth_update.DepthUpdate`.** The subscribe frame carries a
+  bounded `DepthSnapshot` (at most 100 levels per side on the WebSocket) and
+  every `channel_data` frame carries a `DepthUpdate` describing the transition
+  from one bounded view to the next; `MarketDepthUpdatePayload.data` is now
+  typed `DepthUpdate`. Field names and their semantics are unchanged, so
+  migration is the import and the type name. The REST `sdk.open_api` `Depth`
+  model is unaffected.
+- `ReyaTradingClient` re-reads market definitions on a 60s TTL before signing a
+  `STOP_LOSS`/`TAKE_PROFIT` create or reprice, matching the API's own cache
+  window. `triggerLimitBandFraction` and the tick it rounds to are operationally
+  tunable, so a long-lived client no longer enforces the band that was live at
+  `start()`. LIMIT orders are bound by neither and never pay for the re-fetch.
 - **BREAKING: `TriggerOrderParameters` now REQUIRES `limit_px` and
   `time_in_force`.** `limit_px` is the worst-acceptable execution price of the
   child the trigger fires into; the client no longer synthesizes one when it is
@@ -94,6 +116,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the spec repo.
 
 ### Fixed
+- Trigger admission lost its price ceiling when the `limit_px` sentinel was
+  deleted: under a market publishing `triggerLimitBandFraction: "0"` the client
+  accepted any positive price at all. The matching engine's MAX_PRICE
+  (562949.953421312) is enforced again, independently of the band — `"0"`
+  switches off the band, not the ceiling.
+- A `STOP_LOSS`/`TAKE_PROFIT` on a spot symbol reported a missing
+  `triggerLimitBandFraction` and told the caller to wait for the market to
+  publish one. Spot markets arm no triggers at all, so the refusal now says so.
+- The per-wallet nonce was claimed before the last few refusals on the create
+  and modify paths, so a rejected order still advanced the counter. An
+  unmapped `time_in_force` / `order_type` now raises a named `ValueError`
+  instead of a bare `KeyError`, and every refusal on all three builders
+  precedes the nonce.
+- `build_create_limit_order_payload` and `build_modify_order_payload` refuse an
+  `IOC` order carrying `expires_after`. IOC never rests, so the server rejected
+  it after the nonce was already spent; the trigger path already covered all
+  three time-in-force arms.
 - `examples/rest_api/spot/test_rate_limit.py` was matching pytest's default
   test-collection pattern and would have been picked up by `pytest`, running
   8 verification tests against a live API per run. Renamed to

@@ -1,4 +1,4 @@
 from enum import Enum
 
-class AnonymousSchema114(Enum): 
+class AnonymousSchema125(Enum): 
   FEATURE_UNAVAILABLE = "FeatureUnavailable"

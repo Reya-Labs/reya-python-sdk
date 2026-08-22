@@ -6,7 +6,7 @@ The order entry surface is unified across spot and perp markets — all orders
 flow through the same `Order` EIP-712 envelope and matching-engine pipeline.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 import logging
 import threading
@@ -63,6 +63,16 @@ from .models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerO
 # window).
 DEFAULT_DEADLINE_S = 60  # signature-validity window (entry only), all order types.
 PERPETUAL_LIFETIME = 0  # signed no-expiry encoding (GTC rests; IOC moot).
+
+# The ME's MAX_PRICE (2^49 in E9 fixed point ≈ 562,949.95): the binding price
+# ceiling across the stack, independent of any per-market band. A market that
+# publishes triggerLimitBandFraction "0" switches the band off, not the ceiling.
+_ME_MAX_PRICE = Decimal(1 << 49) / Decimal(10**9)
+
+# The trigger limit band is operationally tunable and the API serves it from a
+# 60s cache, so a long-lived client re-reads market definitions on the same
+# bound rather than enforcing the band that was live at process start.
+_MARKET_DEFINITIONS_TTL_S = 60.0
 
 # cancelAllAfter (dead-man's-switch) countdown bounds. `timeoutMs` must be 0
 # (disarm) or within [min, max]; each call replaces the running countdown.
@@ -140,6 +150,22 @@ def _require_trigger_expiry_coupling(
         raise ValueError(f"{time_in_force.value} trigger orders must omit expires_after." + remedy)
 
 
+def _require_limit_expiry_coupling(time_in_force: TimeInForce, expires_after: int, deadline: int) -> None:
+    """Enforce the TIF <-> `expiresAfter` coupling for a LIMIT order.
+
+    Only GTT carries a lifetime. GTC rests until it is filled or cancelled and
+    IOC never rests at all, so the off-chain validator refuses an `expiresAfter`
+    on either — refuse it here instead of burning a nonce on it.
+    """
+    if time_in_force == TimeInForce.GTT:
+        if expires_after == PERPETUAL_LIFETIME:
+            raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
+        if expires_after <= deadline:
+            raise ValueError("GTT expires_after must be greater than deadline")
+    elif expires_after != PERPETUAL_LIFETIME:
+        raise ValueError(f"{time_in_force.value} orders must omit expires_after")
+
+
 def _floor_to_tick(price: Decimal, tick: Decimal) -> Decimal:
     return (price / tick).to_integral_value(rounding=ROUND_FLOOR) * tick
 
@@ -178,6 +204,29 @@ _TIME_IN_FORCE_TO_INT: dict[TimeInForce, TimeInForceInt] = {
 }
 
 
+def _order_type_int(order_type: Any) -> OrderTypeInt:
+    """Resolve the signed uint8 for an order type, refusing anything unmapped.
+
+    Resolved BEFORE a nonce is claimed: a bare `KeyError` out of the signing
+    step would leave the per-wallet counter advanced for an order that was
+    never signed.
+    """
+    try:
+        return _ORDER_TYPE_TO_INT[order_type]
+    except (KeyError, TypeError):
+        raise ValueError(f"Unsupported order_type: {order_type!r}. Expected one of {[t.value for t in OrderType]}")
+
+
+def _time_in_force_int(time_in_force: Any) -> TimeInForceInt:
+    """Resolve the signed uint8 for a time in force, refusing anything unmapped."""
+    try:
+        return _TIME_IN_FORCE_TO_INT[time_in_force]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"Unsupported time_in_force: {time_in_force!r}. Expected one of {[t.value for t in TimeInForce]}"
+        )
+
+
 class ResourceManager:
     """Manages all API resources."""
 
@@ -212,6 +261,7 @@ class ReyaTradingClient:
         # trigger when the band is unpublished, so the two must not collapse.
         self._symbol_to_trigger_band: dict[str, str] = {}
         self._initialized = False
+        self._market_definitions_loaded_at: Optional[float] = None
 
         self.logger = logging.getLogger("reya_trading.client")
         self._config = config if config is not None else get_config()
@@ -248,8 +298,27 @@ class ReyaTradingClient:
         spot_count = len(spot_market_definitions)
 
         self._initialized = True
+        self._market_definitions_loaded_at = time.monotonic()
         total_markets = perp_count + spot_count
         self.logger.info(f"Loaded {total_markets} market definitions ({perp_count} perp, {spot_count} spot)")
+
+    async def refresh_trigger_market_state(self, order_type: OrderType) -> None:
+        """Re-read market definitions before signing against a per-market trigger
+        rule, once the cached copy has aged past the TTL.
+
+        `triggerLimitBandFraction` and the tick it rounds to are operationally
+        tunable, so a client that read them once at `start()` would enforce the
+        band that was live at process start and sign a `limitPx` the venue now
+        refuses. No-op for LIMIT orders, which are bound by neither.
+        """
+        if order_type not in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT):
+            return
+        if not self._initialized:
+            return
+        loaded_at = self._market_definitions_loaded_at
+        if loaded_at is not None and time.monotonic() - loaded_at < _MARKET_DEFINITIONS_TTL_S:
+            return
+        await self._load_market_definitions()
 
     def _get_next_nonce(self) -> int:
         """Generate a strictly-increasing per-wallet nonce.
@@ -302,12 +371,21 @@ class ReyaTradingClient:
         The fraction's presence is itself part of the rule: ``"0"`` disables the
         band and admits any positive limit, while an ABSENT fraction means the
         market has no band configured and the venue arms no trigger on it at all.
+        The engine's MAX_PRICE ceiling is independent of all three: ``"0"``
+        switches off the band, not the ceiling.
         """
         if limit_px <= 0:
             raise ValueError(f"limit_px must be a positive price (got {limit_px})")
+        if limit_px > _ME_MAX_PRICE:
+            raise ValueError(
+                f"limit_px {limit_px} exceeds the matching engine's maximum price "
+                f"{format(_ME_MAX_PRICE.normalize(), 'f')}"
+            )
 
         if not self._initialized:
             raise ValueError("Client not initialized. Call start() first.")
+        if self.get_market_id_from_symbol(symbol) >= _SPOT_MARKET_ID_OFFSET:
+            raise ValueError(f"STOP_LOSS / TAKE_PROFIT orders are perp-only; '{symbol}' is a spot market.")
         fraction_str = self._symbol_to_trigger_band.get(symbol)
         if fraction_str is None:
             raise ValueError(
@@ -432,20 +510,11 @@ class ReyaTradingClient:
 
         # TIF <-> expiresAfter coupling (mirrors the off-chain validator + the ME):
         # GTC never expires; GTT always expires strictly after the deadline.
-        # IOC never rests, so its lifetime is moot. Fail fast before signing.
+        # IOC never rests, so a lifetime on one is refused too. Fail fast before signing.
         _reject_zero_deadline(deadline)
-        if params.time_in_force == TimeInForce.GTT:
-            if expires_after == 0:
-                raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
-            if expires_after <= deadline:
-                raise ValueError("GTT expires_after must be greater than deadline")
-        elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
-            raise ValueError("GTC orders must omit expires_after")
+        _require_limit_expiry_coupling(params.time_in_force, expires_after, deadline)
         _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, now_s)
-
-        # Every rejection above is unconditional, so the nonce is claimed only
-        # once the request is known to be admissible.
-        nonce = self._get_next_nonce()
+        time_in_force_int = _time_in_force_int(params.time_in_force)
 
         # `reduceOnly` is accepted by the server ONLY on perp IOC orders; it must
         # be ABSENT on spot ("not supported for spot markets") and perp GTC
@@ -470,6 +539,10 @@ class ReyaTradingClient:
                 "post_only is not supported on IOC orders (IOC is taker-only; post_only requires the order to rest)"
             )
 
+        # Every rejection above is unconditional, so the nonce is claimed only
+        # once the request is known to be admissible.
+        nonce = self._get_next_nonce()
+
         signature = self._signature_generator.sign_order(
             account_id=self.config.account_id,
             market_id=market_id,
@@ -479,7 +552,7 @@ class ReyaTradingClient:
             qty=Decimal(params.qty),
             limit_price=Decimal(params.limit_px),
             trigger_price=Decimal(0),
-            time_in_force=int(_TIME_IN_FORCE_TO_INT[params.time_in_force]),
+            time_in_force=int(time_in_force_int),
             client_order_id=client_order_id,
             reduce_only=reduce_only,
             expires_after=expires_after,
@@ -578,7 +651,8 @@ class ReyaTradingClient:
         trigger_price = Decimal(params.trigger_px)
         self._require_trigger_limit_in_band(params.symbol, trigger_price, limit_price)
 
-        order_type_int = _ORDER_TYPE_TO_INT[params.trigger_type]
+        order_type_int = _order_type_int(params.trigger_type)
+        time_in_force_int = _time_in_force_int(params.time_in_force)
 
         # Every rejection above is unconditional, so the nonce is claimed only
         # once the request is known to be admissible.
@@ -593,7 +667,7 @@ class ReyaTradingClient:
             qty=Decimal(0),
             limit_price=limit_price,
             trigger_price=trigger_price,
-            time_in_force=int(_TIME_IN_FORCE_TO_INT[params.time_in_force]),
+            time_in_force=int(time_in_force_int),
             client_order_id=client_order_id,
             reduce_only=False,
             expires_after=expires_after,
@@ -635,6 +709,7 @@ class ReyaTradingClient:
         cancels. The signer derives the direction-aware full-position sentinel;
         callers omit `qty`. Spot triggers are not supported by the API.
         """
+        await self.refresh_trigger_market_state(params.trigger_type)
         payload, _nonce = self.build_create_trigger_order_payload(params)
         return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
 
@@ -858,6 +933,7 @@ class ReyaTradingClient:
         Both groups go into the fresh EIP-712 signature over the full
         post-modify state.
         """
+        await self.refresh_trigger_market_state(params.order_type)
         payload, _nonce = self.build_modify_order_payload(params)
         return await self.orders.modify_order(ModifyOrderRequest(**payload))
 
@@ -883,11 +959,14 @@ class ReyaTradingClient:
         now_s = int(time.time())
         deadline = params.deadline if params.deadline is not None else now_s + DEFAULT_DEADLINE_S
         _reject_zero_deadline(deadline)
+        order_type_int = _order_type_int(params.order_type)
+        time_in_force_int = _time_in_force_int(params.time_in_force)
         is_trigger = params.order_type in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT)
 
         # TIF <-> expiresAfter coupling, checked against the RESTING order's
         # immutable TIF (a modify cannot change TIF — the caller passes the
-        # resting order's TIF). GTC omits expiry; GTT must expire after deadline.
+        # resting order's TIF). GTC and IOC omit expiry; GTT must expire after
+        # the deadline.
         expires_after = params.expires_after or 0
         if is_trigger:
             # A trigger create is never post-only, so a modify restating one is
@@ -895,13 +974,8 @@ class ReyaTradingClient:
             if params.post_only:
                 raise ValueError("post_only on TP/SL trigger orders is not supported")
             _require_trigger_expiry_coupling(params.time_in_force, expires_after, deadline, on_modify=True)
-        elif params.time_in_force == TimeInForce.GTT:
-            if expires_after == 0:
-                raise ValueError("GTT orders require a non-zero expires_after greater than deadline")
-            if expires_after <= deadline:
-                raise ValueError("GTT expires_after must be greater than deadline")
-        elif params.time_in_force == TimeInForce.GTC and expires_after != 0:
-            raise ValueError("GTC orders must omit expires_after")
+        else:
+            _require_limit_expiry_coupling(params.time_in_force, expires_after, deadline)
         _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, now_s)
 
         # Single-field PRO-438 contract: client_order_id is both the lookup key
@@ -950,12 +1024,12 @@ class ReyaTradingClient:
             account_id=self.config.account_id,
             market_id=market_id,
             exchange_id=self.config.dex_id,
-            order_type=int(_ORDER_TYPE_TO_INT[params.order_type]),
+            order_type=int(order_type_int),
             is_buy=params.is_buy,
             qty=signed_qty,
             limit_price=Decimal(params.limit_px),
             trigger_price=trigger_price,
-            time_in_force=int(TimeInForceInt[params.time_in_force.value]),
+            time_in_force=int(time_in_force_int),
             client_order_id=signed_client_order_id,
             reduce_only=params.reduce_only,
             expires_after=expires_after,

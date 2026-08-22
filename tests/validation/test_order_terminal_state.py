@@ -23,15 +23,6 @@ from tests.helpers.reya_tester.order_state import OrderTerminalStateError, cance
 
 pytestmark = pytest.mark.offline
 
-# sdk/async_api still generates from the pinned spec: regenerating it at the
-# SL/TP pin replaces Depth with DepthSnapshot/DepthUpdate and needs the
-# PRO-942 depth-split adaptation across the WS call sites first. Regenerate
-# async_api and drop this marker once that lands.
-_ASYNC_API_REGEN_BLOCKED = (
-    "sdk/async_api regen is blocked on the PRO-942 depth-split SDK adaptation "
-    "(DepthSnapshot/DepthUpdate replace Depth; 4 test modules import sdk.async_api.depth)"
-)
-
 
 class _OrderPayload:
     """Minimal stand-in carrying only the fields the waiter reads."""
@@ -130,7 +121,6 @@ def test_every_cancel_reason_survives_normalisation() -> None:
         assert reason == member.value
 
 
-@pytest.mark.xfail(reason=_ASYNC_API_REGEN_BLOCKED, strict=False)
 def test_read_side_and_rest_cancel_reason_enums_agree() -> None:
     """The waiter reads a websocket order while the tests name the REST members,
     so a reason present on one side and not the other is a silent drop."""

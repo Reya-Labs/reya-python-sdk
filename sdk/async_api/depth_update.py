@@ -1,14 +1,14 @@
 from __future__ import annotations
 from typing import Any, List, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-from sdk.async_api.depth_type import DepthType
+from sdk.async_api.depth_update_type import DepthUpdateType
 from sdk.async_api.level import Level
-class Depth(BaseModel): 
+class DepthUpdate(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
-  type: DepthType = Field(description='''Depth message type. SNAPSHOT = the complete aggregated book delivered on subscribe. UPDATE = a diff carrying only the price levels that changed since the previous frame (one UPDATE may include multiple levels across both bids and asks); each level's qty is the absolute new total at that price and qty 0 removes the level. Apply UPDATE frames in order to the SNAPSHOT to maintain the book.''')
-  bids: List[Level] = Field(description='''Bid side levels aggregated by price, sorted descending by price''')
-  asks: List[Level] = Field(description='''Ask side levels aggregated by price, sorted ascending by price''')
   updated_at: int = Field(alias='''updatedAt''')
+  type: DepthUpdateType = Field(description='''Literal discriminator for a bounded-view depth update.''')
+  bids: List[Level] = Field(description='''Changed bid levels in the bounded view, sorted descending by price''')
+  asks: List[Level] = Field(description='''Changed ask levels in the bounded view, sorted ascending by price''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -29,13 +29,13 @@ class Depth(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['symbol', 'type', 'bids', 'asks', 'updated_at', 'additional_properties']
+    known_object_properties = ['symbol', 'updated_at', 'type', 'bids', 'asks', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['symbol', 'type', 'bids', 'asks', 'updatedAt', 'additionalProperties']
+    known_json_properties = ['symbol', 'updatedAt', 'type', 'bids', 'asks', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
