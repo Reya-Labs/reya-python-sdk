@@ -201,7 +201,6 @@ class ReyaWsExecClient:
 
     async def create_trigger_order(self, params: TriggerOrderParameters) -> WsCreateOrderResponse:
         """Send a createOrder (TP/SL) request and await the response."""
-        await self._rest.refresh_trigger_market_state(params.trigger_type)
         payload, _nonce = self._rest.build_create_trigger_order_payload(params)
         req = WsCreateOrderRequest(**payload)
         envelope = await self._send_and_await("createOrder", req)
@@ -240,7 +239,6 @@ class ReyaWsExecClient:
     async def modify_order(self, params: ModifyOrderParameters) -> WsModifyOrderResponse:
         """Modify a resting order in place. Same arg semantics as
         :meth:`ReyaTradingClient.modify_order`."""
-        await self._rest.refresh_trigger_market_state(params.order_type)
         payload, _nonce = self._rest.build_modify_order_payload(params)
         req = WsModifyOrderRequest(**payload)
         envelope = await self._send_and_await("modifyOrder", req)

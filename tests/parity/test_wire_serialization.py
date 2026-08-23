@@ -39,7 +39,6 @@ SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162
 PERP_SYMBOL = "ETHRUSDPERP"
 SPOT_SYMBOL = "WETHRUSD"  # market_id >= _SPOT_MARKET_ID_OFFSET => spot namespace
-UNBANDED_PERP_SYMBOL = "BTCRUSDPERP"  # publishes triggerLimitBandFraction "0" — band disabled
 
 
 @pytest.fixture
@@ -61,10 +60,7 @@ def client() -> ReyaTradingClient:
     c._symbol_to_market_id = {
         PERP_SYMBOL: 1,
         SPOT_SYMBOL: _SPOT_MARKET_ID_OFFSET + 1,
-        UNBANDED_PERP_SYMBOL: 2,
     }
-    c._symbol_to_tick_size = {PERP_SYMBOL: "0.001", UNBANDED_PERP_SYMBOL: "0.001"}
-    c._symbol_to_trigger_band = {PERP_SYMBOL: "0.05", UNBANDED_PERP_SYMBOL: "0"}
     c._initialized = True
     return c
 
@@ -77,9 +73,10 @@ def test_trigger_create_never_synthesises_a_limit_price(is_buy: bool) -> None:
 
     The builder used to invent one — one tick for sells, the largest
     tick-aligned price under the ME's MAX_PRICE for buys — so a caller who
-    omitted it silently signed a limit price they never chose. There is no
-    "always executes" price under a per-market band, so the field is required
-    and the omission has to fail loudly at construction."""
+    omitted it silently signed a limit price they never chose. The venue admits
+    a fired child's limit price on its own rules, so there is no "always
+    executes" price to synthesize: the field is required and the omission has to
+    fail loudly at construction."""
     with pytest.raises(TypeError, match="limit_px"):
         # pylint: disable-next=no-value-for-parameter
         TriggerOrderParameters(  # type: ignore[call-arg]
@@ -97,7 +94,7 @@ def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClie
     FixedNumber parser rejects — this is exactly what format(..., "f") guards."""
     payload, _ = client.build_create_trigger_order_payload(
         TriggerOrderParameters(
-            symbol=UNBANDED_PERP_SYMBOL,
+            symbol=PERP_SYMBOL,
             is_buy=False,
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
@@ -116,7 +113,7 @@ TRIGGER_EXPIRES_AFTER = TRIGGER_DEADLINE + 600
 
 
 def _trigger_create_params(**overrides: Any) -> TriggerOrderParameters:
-    """A STOP_LOSS whose limit sits inside the fixture market's 0.05 band."""
+    """A STOP_LOSS on the fixture's perp market."""
     fields: dict[str, Any] = {
         "symbol": PERP_SYMBOL,
         "is_buy": False,
@@ -447,11 +444,7 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
 
 
 def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
-    """A valid trigger reprice restating the trigger-create immutables.
-
-    ``limit_px`` sits inside the fixture market's 0.05 band around
-    ``trigger_px``, so the reprice clears the same admission check a create does.
-    """
+    """A valid trigger reprice restating the trigger-create immutables."""
     fields: dict[str, Any] = {
         "order_type": OrderType.STOP_LOSS,
         "trigger_px": "1500",
@@ -740,7 +733,7 @@ def test_modify_params_positional_3_0_14_signature_still_binds(client: ReyaTradi
     trigger_params = ModifyOrderParameters(
         PERP_SYMBOL,  # symbol
         False,  # is_buy
-        "1450",  # limit_px (inside the 0.05 band around triggerPx 1500)
+        "1450",  # limit_px
         None,  # qty=None positionally → omit-qty trigger modify
         False,  # post_only
         0,  # expires_after (GTC omits expiry)

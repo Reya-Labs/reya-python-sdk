@@ -18,15 +18,14 @@ and asserts on the client-layer validation rules:
   signature (the entry rejections — postOnly+IOC, GTT — are pinned in
   tests/parity/test_wire_serialization.py).
 - trigger admission: the TIF↔``expiresAfter`` coupling on creates, the
-  restate-immutability of both on modifies, and the three states of the
-  per-market ``triggerLimitBandFraction``.
+  restate-immutability of both on modifies, and the ``(0, MAX_PRICE]`` domain
+  both trigger prices share with the engine.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-import time
 from decimal import Decimal
 
 import pytest
@@ -44,12 +43,7 @@ PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff8
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162
 PERP_SYMBOL = "ETHRUSDPERP"
-# The three states triggerLimitBandFraction can be in. Presence and value carry
-# different rules, and absence is NOT a fraction of "0".
-BANDED_SYMBOL = PERP_SYMBOL  # publishes "0.05"
-UNBANDED_SYMBOL = "BTCRUSDPERP"  # publishes "0" — band disabled, any positive limit
-NO_BAND_SYMBOL = "SOLRUSDPERP"  # publishes nothing — the venue arms no trigger at all
-SPOT_SYMBOL = "WETHRUSD"  # spot markets carry no band because they arm no triggers
+SPOT_SYMBOL = "WETHRUSD"  # spot markets arm no triggers
 
 PINNED_NONCE = 1700000000000005
 PINNED_DEADLINE = 1745000300
@@ -72,11 +66,7 @@ def client() -> ReyaTradingClient:
         dex_id_override=2,
     )
     c = ReyaTradingClient(config)
-    c._symbol_to_market_id = {PERP_SYMBOL: 1, UNBANDED_SYMBOL: 2, NO_BAND_SYMBOL: 3, SPOT_SYMBOL: 10_000_000_001}
-    c._symbol_to_tick_size = {PERP_SYMBOL: "0.001", UNBANDED_SYMBOL: "0.001", NO_BAND_SYMBOL: "0.001"}
-    # NO_BAND_SYMBOL is deliberately ABSENT here: start() only records a market
-    # that publishes a fraction, so absence is what the client actually sees.
-    c._symbol_to_trigger_band = {BANDED_SYMBOL: "0.05", UNBANDED_SYMBOL: "0"}
+    c._symbol_to_market_id = {PERP_SYMBOL: 1, SPOT_SYMBOL: 10_000_000_001}
     c._initialized = True
     return c
 
@@ -145,8 +135,7 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
 def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
     """A valid trigger reprice restating the armed trigger's immutables.
 
-    The armed trigger is GTC with no expiry, and ``limit_px`` sits inside the
-    fixture market's 0.05 band around ``trigger_px``.
+    The armed trigger is GTC with no expiry.
     """
     fields: dict[str, Any] = {
         "order_type": OrderType.STOP_LOSS,
@@ -523,14 +512,14 @@ def test_post_only_gtt_flows_and_is_signed(client: ReyaTradingClient) -> None:
 
 
 # ============================================================================
-# trigger creates: the TIF <-> expiresAfter coupling and the limit band
+# trigger creates: the TIF <-> expiresAfter coupling and the price domain
 # ============================================================================
 
 
 def _trigger_create_params(**overrides: Any) -> TriggerOrderParameters:
-    """A STOP_LOSS whose limit sits inside the banded market's 0.05 band."""
+    """A STOP_LOSS on the fixture's perp market."""
     fields: dict[str, Any] = {
-        "symbol": BANDED_SYMBOL,
+        "symbol": PERP_SYMBOL,
         "is_buy": False,
         "trigger_px": "1000",
         "limit_px": "990",
@@ -585,75 +574,37 @@ def test_trigger_create_error_messages_do_not_mention_cancel_and_recreate(client
 
 
 @pytest.mark.trigger
-@pytest.mark.parametrize("limit_px", ["1050", "950", "1000", "1049.999", "950.001"])
-def test_trigger_limit_inside_the_band_is_admitted(client: ReyaTradingClient, limit_px: str) -> None:
-    """`|limit_px - trigger_px| <= trigger_px * fraction`, inclusive at both
-    outermost tick-aligned bounds: 1000 * 0.05 = 50, so [950, 1050] on a
-    tick of 0.001."""
-    payload, _nonce = client.build_create_trigger_order_payload(_trigger_create_params(limit_px=limit_px))
-    assert payload["limitPx"] == limit_px
+def test_a_non_positive_limit_price_is_refused(client: ReyaTradingClient) -> None:
+    """Zero is not a price. The `(0, MAX_PRICE]` domain is what a client can
+    still check locally — the per-market band is engine-side and unpublished,
+    so an inadmissible limit comes back as TRIGGER_LIMIT_OUTSIDE_BAND_ERROR."""
+    with pytest.raises(ValueError, match="limit_px must be a positive price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(limit_px="0"))
 
 
 @pytest.mark.trigger
-@pytest.mark.parametrize("limit_px", ["1050.001", "949.999", "2000", "0.001"])
-def test_trigger_limit_outside_the_band_is_refused_before_signing(client: ReyaTradingClient, limit_px: str) -> None:
-    """A limit the venue would answer with TRIGGER_LIMIT_OUTSIDE_BAND_ERROR is
-    refused here instead, and the message carries the legal range and the
-    fraction so the caller can reprice without reading the spec."""
-    nonce_before = _last_nonce(client)
-    with pytest.raises(ValueError, match="outside") as excinfo:
-        client.build_create_trigger_order_payload(_trigger_create_params(limit_px=limit_px))
+def test_a_non_positive_trigger_price_is_refused(client: ReyaTradingClient) -> None:
+    """The same domain binds ``trigger_px`` — it is not exempt from the check."""
+    with pytest.raises(ValueError, match="trigger_px must be a positive price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(trigger_px="0"))
 
-    message = str(excinfo.value)
-    assert "[950, 1050]" in message, message
-    assert "0.05" in message, message
+
+@pytest.mark.trigger
+def test_a_limit_above_the_engine_ceiling_is_refused(client: ReyaTradingClient) -> None:
+    """MAX_PRICE is the client-checkable upper bound; without it a trigger would
+    be signed with no upper bound at all."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="limit_px .* exceeds the matching engine's maximum price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(limit_px="600000"))
     assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
 
 
 @pytest.mark.trigger
-def test_trigger_band_bounds_round_inward_to_the_tick(client: ReyaTradingClient) -> None:
-    """The outermost legal price is the last tick-aligned one at or INSIDE the
-    raw bound. Rounding the lower bound outward would admit a limit the venue
-    refuses, which is the whole point of checking client-side."""
-    client._symbol_to_tick_size[BANDED_SYMBOL] = "0.03"
-    # 1000 * 0.95 = 950 is not a multiple of 0.03, so the lower bound moves UP
-    # to 950.01. Truncating toward zero instead would report 949.98 and admit a
-    # limit price below the band.
-    with pytest.raises(ValueError, match=r"\[950\.01, 1050\]"):
-        client.build_create_trigger_order_payload(_trigger_create_params(limit_px="950.00"))
-
-    payload, _nonce = client.build_create_trigger_order_payload(_trigger_create_params(limit_px="950.01"))
-    assert payload["limitPx"] == "950.01"
-
-
-@pytest.mark.trigger
-@pytest.mark.parametrize("limit_px", ["0.000001", "1", "500000"])
-def test_zero_fraction_disables_the_band(client: ReyaTradingClient, limit_px: str) -> None:
-    """A published "0" is the band switched OFF: any price under the engine's
-    ceiling is admitted, however far from the trigger."""
-    payload, _nonce = client.build_create_trigger_order_payload(
-        _trigger_create_params(symbol=UNBANDED_SYMBOL, limit_px=limit_px)
-    )
-    assert payload["limitPx"] == limit_px
-
-
-@pytest.mark.trigger
-def test_a_non_positive_limit_price_is_refused_even_with_the_band_disabled(client: ReyaTradingClient) -> None:
-    """ "0" admits any POSITIVE limit; zero itself is not a price."""
-    with pytest.raises(ValueError, match="limit_px must be a positive price"):
-        client.build_create_trigger_order_payload(_trigger_create_params(symbol=UNBANDED_SYMBOL, limit_px="0"))
-
-
-@pytest.mark.trigger
-@pytest.mark.parametrize("symbol", [BANDED_SYMBOL, UNBANDED_SYMBOL], ids=["banded", "band-disabled"])
-def test_a_limit_above_the_engine_ceiling_is_refused_whatever_the_band(client: ReyaTradingClient, symbol: str) -> None:
-    """MAX_PRICE binds independently of the band: "0" switches off the band, not
-    the ceiling. Without this, a band-disabled market has no upper bound at all."""
+def test_a_trigger_above_the_engine_ceiling_is_refused(client: ReyaTradingClient) -> None:
+    """The ceiling binds ``trigger_px`` too, and refuses before a nonce is claimed."""
     nonce_before = _last_nonce(client)
-    with pytest.raises(ValueError, match="exceeds the matching engine's maximum price"):
-        client.build_create_trigger_order_payload(
-            _trigger_create_params(symbol=symbol, trigger_px="600000", limit_px="600000")
-        )
+    with pytest.raises(ValueError, match="trigger_px .* exceeds the matching engine's maximum price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(trigger_px="600000"))
     assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
 
 
@@ -661,43 +612,14 @@ def test_a_limit_above_the_engine_ceiling_is_refused_whatever_the_band(client: R
 def test_the_engine_ceiling_admits_its_own_boundary(client: ReyaTradingClient) -> None:
     """The ceiling is inclusive: MAX_PRICE itself (2^49 in E9) is a price."""
     max_price = "562949.953421312"
-    payload, _nonce = client.build_create_trigger_order_payload(
-        _trigger_create_params(symbol=UNBANDED_SYMBOL, limit_px=max_price)
-    )
+    payload, _nonce = client.build_create_trigger_order_payload(_trigger_create_params(limit_px=max_price))
     assert payload["limitPx"] == max_price
 
 
 @pytest.mark.trigger
-def test_an_absent_band_refuses_every_trigger(client: ReyaTradingClient) -> None:
-    """An ABSENT fraction is not a fraction of "0": the market has no band
-    configured, the venue arms no stop on it at all, and no limit price is
-    admissible. Reading absence as "0" would flip a fail-closed market into one
-    that accepts everything."""
-    with pytest.raises(ValueError, match="no triggerLimitBandFraction"):
-        client.build_create_trigger_order_payload(_trigger_create_params(symbol=NO_BAND_SYMBOL))
-
-
-@pytest.mark.trigger
-@pytest.mark.modify
-def test_an_absent_band_refuses_a_reprice_too(client: ReyaTradingClient) -> None:
-    """The venue re-checks the pair on modify, so the client does too."""
-    with pytest.raises(ValueError, match="no triggerLimitBandFraction"):
-        client.build_modify_order_payload(_trigger_modify_params(symbol=NO_BAND_SYMBOL))
-
-
-@pytest.mark.trigger
-@pytest.mark.modify
-def test_a_reprice_outside_the_band_is_refused(client: ReyaTradingClient) -> None:
-    """Moving the trigger without moving the limit can put the pair outside the
-    band even though neither value is new."""
-    with pytest.raises(ValueError, match="outside"):
-        client.build_modify_order_payload(_trigger_modify_params(trigger_px="3000"))
-
-
-@pytest.mark.trigger
 def test_a_spot_symbol_is_refused_as_perp_only(client: ReyaTradingClient) -> None:
-    """Spot markets publish no band because they arm no stops. Reporting an
-    absent fraction would tell the caller to wait for a band that never comes."""
+    """Spot markets arm no stops, so a spot symbol is refused before signing
+    instead of being sent for the venue to reject."""
     with pytest.raises(ValueError, match="perp-only"):
         client.build_create_trigger_order_payload(_trigger_create_params(symbol=SPOT_SYMBOL))
 
@@ -774,51 +696,3 @@ def test_an_ioc_modify_carrying_an_expiry_is_refused(client: ReyaTradingClient) 
         client.build_modify_order_payload(
             _modify_params(time_in_force=TimeInForce.IOC, expires_after=PINNED_DEADLINE + 600)
         )
-
-
-# ============================================================================
-# trigger market state: bounded freshness of the per-market band
-# ============================================================================
-
-
-@pytest.mark.trigger
-async def test_trigger_market_state_refetches_once_the_ttl_lapses(
-    client: ReyaTradingClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The band is operationally tunable and the API caches it for 60s, so a
-    long-lived client must not keep enforcing the one it read at start()."""
-    loads = 0
-
-    async def _record_load() -> None:
-        nonlocal loads
-        loads += 1
-        client._market_definitions_loaded_at = time.monotonic()
-
-    monkeypatch.setattr(client, "_load_market_definitions", _record_load)
-
-    client._market_definitions_loaded_at = time.monotonic()
-    await client.refresh_trigger_market_state(OrderType.STOP_LOSS)
-    assert loads == 0, "a fresh copy must not re-fetch"
-
-    client._market_definitions_loaded_at = time.monotonic() - 61
-    await client.refresh_trigger_market_state(OrderType.STOP_LOSS)
-    assert loads == 1, "a copy older than the TTL must re-fetch"
-
-    await client.refresh_trigger_market_state(OrderType.TAKE_PROFIT)
-    assert loads == 1, "the re-fetch resets the TTL"
-
-
-@pytest.mark.trigger
-async def test_trigger_market_state_never_refetches_for_a_limit_order(
-    client: ReyaTradingClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A LIMIT signs against neither the band nor its tick, so it must not pay
-    for a market-definition round-trip."""
-
-    async def _fail_load() -> None:
-        raise AssertionError("a LIMIT order must not re-fetch market definitions")
-
-    monkeypatch.setattr(client, "_load_market_definitions", _fail_load)
-    client._market_definitions_loaded_at = time.monotonic() - 3600
-
-    await client.refresh_trigger_market_state(OrderType.LIMIT)

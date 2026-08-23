@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Read-side WebSocket models regenerated from specs 3.1.0: `Order.triggered` —
   the armed-vs-fired discriminator, since both states surface as `OPEN` — and
-  the five SL/TP firing `CancelReason` members `OCO_SIBLING_FIRED`,
-  `POSITION_CLOSED`, `BAND_VIOLATION`, `RISK_REJECTED` and
+  the four SL/TP firing `CancelReason` members `OCO_SIBLING_FIRED`,
+  `POSITION_CLOSED`, `RISK_REJECTED` and
   `PROTECTIVE_SELF_TRADE_SWEEP`. Until now `ReyaSocket` raised
   `WebSocketDataError` out of `on_message` on the first frame carrying any of
   them — which is every fired stop, because `OCO_SIBLING_FIRED` publishes on

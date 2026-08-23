@@ -79,8 +79,7 @@ CANCEL_REASONS = {
     # The protective-stop reasons. RISK_REJECTED is the admission-time twin of
     # RISK_CANCELLED for a fired child nobody is waiting on; the rest describe a
     # stop's own lifecycle — its OCO sibling fired, its position closed under it,
-    # its limit price fell outside a re-configured band, or it swept the
-    # account's own resting liquidity out of the child's way.
+    # or it swept the account's own resting liquidity out of the child's way.
     "RISK_REJECTED",
     "OCO_SIBLING_FIRED",
     "POSITION_CLOSED",

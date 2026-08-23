@@ -566,8 +566,6 @@ def offline_client() -> ReyaTradingClient:
     )
     client = ReyaTradingClient(config)
     client._symbol_to_market_id = {"ETHRUSDPERP": 1}  # pylint: disable=protected-access
-    client._symbol_to_tick_size = {"ETHRUSDPERP": "0.001"}  # pylint: disable=protected-access
-    client._symbol_to_trigger_band = {"ETHRUSDPERP": "0.05"}  # pylint: disable=protected-access
     client._initialized = True  # pylint: disable=protected-access
     return client
 

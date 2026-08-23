@@ -65,14 +65,8 @@ DEFAULT_DEADLINE_S = 60  # signature-validity window (entry only), all order typ
 PERPETUAL_LIFETIME = 0  # signed no-expiry encoding (GTC rests; IOC moot).
 
 # The ME's MAX_PRICE (2^49 in E9 fixed point ≈ 562,949.95): the binding price
-# ceiling across the stack, independent of any per-market band. A market that
-# publishes triggerLimitBandFraction "0" switches the band off, not the ceiling.
+# ceiling across the stack, independent of any per-market band.
 _ME_MAX_PRICE = Decimal(1 << 49) / Decimal(10**9)
-
-# The trigger limit band is operationally tunable and the API serves it from a
-# 60s cache, so a long-lived client re-reads market definitions on the same
-# bound rather than enforcing the band that was live at process start.
-_MARKET_DEFINITIONS_TTL_S = 60.0
 
 # cancelAllAfter (dead-man's-switch) countdown bounds. `timeoutMs` must be 0
 # (disarm) or within [min, max]; each call replaces the running countdown.
@@ -254,14 +248,11 @@ class ReyaTradingClient:
         self._symbol_to_market_id: dict[str, int] = {}
         # Perp tick size (price spacing) per symbol, from MarketDefinition.
         # Perp-only: triggers aren't supported on spot.
-        self._symbol_to_tick_size: dict[str, str] = {}
         # Per-market trigger limit band, from MarketDefinition. A market that
         # publishes no fraction is ABSENT here rather than stored as "0": the
         # venue admits every positive limit price under "0" and refuses every
         # trigger when the band is unpublished, so the two must not collapse.
-        self._symbol_to_trigger_band: dict[str, str] = {}
         self._initialized = False
-        self._market_definitions_loaded_at: Optional[float] = None
 
         self.logger = logging.getLogger("reya_trading.client")
         self._config = config if config is not None else get_config()
@@ -286,48 +277,18 @@ class ReyaTradingClient:
         spot_market_definitions = await self.reference.get_spot_market_definitions()
 
         # Both fetches finish BEFORE anything is published, and the swap below
-        # contains no await. `refresh_trigger_market_state` calls this mid-session,
-        # so publishing the perp-only map and then awaiting the spot fetch would
-        # make every spot symbol unresolvable for the length of that await — and
-        # permanently if it raised, since the partial map would already be live.
+        # contains no await, so no caller can observe a perp-only symbol map.
         symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
-        symbol_to_tick_size = {market.symbol: market.tick_size for market in market_definitions}
-        symbol_to_trigger_band = {
-            market.symbol: market.trigger_limit_band_fraction
-            for market in market_definitions
-            if market.trigger_limit_band_fraction is not None
-        }
         for market in spot_market_definitions:
             symbol_to_market_id[market.symbol] = market.market_id
 
         self._symbol_to_market_id = symbol_to_market_id
-        self._symbol_to_tick_size = symbol_to_tick_size
-        self._symbol_to_trigger_band = symbol_to_trigger_band
         self._initialized = True
-        self._market_definitions_loaded_at = time.monotonic()
 
         perp_count = len(market_definitions)
         spot_count = len(spot_market_definitions)
         total_markets = perp_count + spot_count
         self.logger.info(f"Loaded {total_markets} market definitions ({perp_count} perp, {spot_count} spot)")
-
-    async def refresh_trigger_market_state(self, order_type: OrderType) -> None:
-        """Re-read market definitions before signing against a per-market trigger
-        rule, once the cached copy has aged past the TTL.
-
-        `triggerLimitBandFraction` and the tick it rounds to are operationally
-        tunable, so a client that read them once at `start()` would enforce the
-        band that was live at process start and sign a `limitPx` the venue now
-        refuses. No-op for LIMIT orders, which are bound by neither.
-        """
-        if order_type not in (OrderType.STOP_LOSS, OrderType.TAKE_PROFIT):
-            return
-        if not self._initialized:
-            return
-        loaded_at = self._market_definitions_loaded_at
-        if loaded_at is not None and time.monotonic() - loaded_at < _MARKET_DEFINITIONS_TTL_S:
-            return
-        await self._load_market_definitions()
 
     def _get_next_nonce(self) -> int:
         """Generate a strictly-increasing per-wallet nonce.
@@ -357,31 +318,16 @@ class ReyaTradingClient:
 
         return market_id
 
-    def _tick_size_for(self, symbol: str) -> str:
-        """Return the perp market's tick size (price spacing) for ``symbol``.
+    def _require_trigger_prices_valid(self, symbol: str, trigger_px: Decimal, limit_px: Decimal) -> None:
+        """Refuse a trigger the venue cannot admit on price domain alone.
 
-        Perp-only — triggers aren't supported on spot.
-        """
-        if not self._initialized:
-            raise ValueError("Client not initialized. Call start() first.")
-        tick_size = self._symbol_to_tick_size.get(symbol)
-        if tick_size is None:
-            raise ValueError(f"No tick size for perp symbol '{symbol}'. Trigger orders are perp-only.")
-        return tick_size
+        The per-market limit band is NOT mirrored here: it is a matching-engine
+        setting, it is not published on the API, and a client cannot compute it.
+        A `limit_px` the band does not admit comes back as
+        TRIGGER_LIMIT_OUTSIDE_BAND_ERROR from admission.
 
-    def _require_trigger_limit_in_band(self, symbol: str, trigger_px: Decimal, limit_px: Decimal) -> None:
-        """Mirror the venue's trigger limit-band admission rule, client-side.
-
-        Admission enforces ``|limit_px - trigger_px| <= trigger_px * fraction``
-        with the outermost legal price rounded INWARD to the market's tick, so a
-        limit outside the band is refused before a nonce is burned on an order
-        the venue answers with TRIGGER_LIMIT_OUTSIDE_BAND_ERROR.
-
-        The fraction's presence is itself part of the rule: ``"0"`` disables the
-        band and admits any positive limit, while an ABSENT fraction means the
-        market has no band configured and the venue arms no trigger on it at all.
-        The engine's MAX_PRICE ceiling is independent of all three: ``"0"``
-        switches off the band, not the ceiling.
+        What IS checkable locally is the `(0, MAX_PRICE]` domain both prices
+        share with the engine's `validate_place`, and the perp-only rule.
         """
         if limit_px <= 0:
             raise ValueError(f"limit_px must be a positive price (got {limit_px})")
@@ -390,11 +336,6 @@ class ReyaTradingClient:
                 f"limit_px {limit_px} exceeds the matching engine's maximum price "
                 f"{format(_ME_MAX_PRICE.normalize(), 'f')}"
             )
-        # `trigger_px` carries the same (0, MAX_PRICE] domain as `limit_px` — the
-        # engine's `validate_place` bounds both — and it is also the anchor the
-        # band below is computed against. Checking it here keeps a zero from
-        # producing a nonsense band message, and an over-ceiling value from
-        # passing every client-side rule only to burn a nonce at the venue.
         if trigger_px <= 0:
             raise ValueError(f"trigger_px must be a positive price (got {trigger_px})")
         if trigger_px > _ME_MAX_PRICE:
@@ -407,30 +348,6 @@ class ReyaTradingClient:
             raise ValueError("Client not initialized. Call start() first.")
         if self.get_market_id_from_symbol(symbol) >= _SPOT_MARKET_ID_OFFSET:
             raise ValueError(f"STOP_LOSS / TAKE_PROFIT orders are perp-only; '{symbol}' is a spot market.")
-        fraction_str = self._symbol_to_trigger_band.get(symbol)
-        if fraction_str is None:
-            raise ValueError(
-                f"Market '{symbol}' publishes no triggerLimitBandFraction, so the venue refuses every "
-                "STOP_LOSS / TAKE_PROFIT on it. An absent band is not a band of '0'; wait for the market "
-                "to publish one."
-            )
-
-        fraction = Decimal(fraction_str)
-        if fraction == 0:
-            return
-
-        tick = Decimal(self._tick_size_for(symbol))
-        highest = _floor_to_tick(trigger_px * (1 + fraction), tick)
-        lowest = _ceil_to_tick(trigger_px * (1 - fraction), tick)
-        if not lowest <= limit_px <= highest:
-            # Bound arithmetic leaves the exponent wherever the multiply and
-            # divide put it, so render a stable decimal rather than 1.05E+3.
-            raise ValueError(
-                f"limit_px {limit_px} is outside {symbol}'s trigger limit band "
-                f"[{format(lowest.normalize(), 'f')}, {format(highest.normalize(), 'f')}] "
-                f"around trigger_px {trigger_px} "
-                f"(triggerLimitBandFraction {fraction_str}, tick {tick})"
-            )
 
     @property
     def orders(self) -> OrderEntryApi:
@@ -670,7 +587,7 @@ class ReyaTradingClient:
 
         limit_price = Decimal(params.limit_px)
         trigger_price = Decimal(params.trigger_px)
-        self._require_trigger_limit_in_band(params.symbol, trigger_price, limit_price)
+        self._require_trigger_prices_valid(params.symbol, trigger_price, limit_price)
 
         order_type_int = _order_type_int(params.trigger_type)
         time_in_force_int = _time_in_force_int(params.time_in_force)
@@ -730,7 +647,6 @@ class ReyaTradingClient:
         cancels. The signer derives the direction-aware full-position sentinel;
         callers omit `qty`. Spot triggers are not supported by the API.
         """
-        await self.refresh_trigger_market_state(params.trigger_type)
         payload, _nonce = self.build_create_trigger_order_payload(params)
         return await self.orders.create_order(create_order_request=CreateOrderRequest(**payload))
 
@@ -954,7 +870,6 @@ class ReyaTradingClient:
         Both groups go into the fresh EIP-712 signature over the full
         post-modify state.
         """
-        await self.refresh_trigger_market_state(params.order_type)
         payload, _nonce = self.build_modify_order_payload(params)
         return await self.orders.modify_order(ModifyOrderRequest(**payload))
 
@@ -1032,7 +947,7 @@ class ReyaTradingClient:
             trigger_price = Decimal(params.trigger_px)
             # A reprice moves limitPx and/or triggerPx, so the venue re-checks
             # the post-modify pair against the band exactly as at creation.
-            self._require_trigger_limit_in_band(params.symbol, trigger_price, Decimal(params.limit_px))
+            self._require_trigger_prices_valid(params.symbol, trigger_price, Decimal(params.limit_px))
         else:
             if params.qty is None:
                 raise ValueError("qty is required when modifying a LIMIT order")

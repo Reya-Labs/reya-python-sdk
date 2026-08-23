@@ -51,7 +51,7 @@ def _trigger_params(
     """A trigger pinned at its own trigger price.
 
     ``limit_px == trigger_px`` is the only limit price inside every market's
-    band whatever ``triggerLimitBandFraction`` it publishes, so these tests stay
+    admission band whatever the venue configures it to, so these tests stay
     admissible without reading per-market configuration.
     """
     return TriggerOrderParameters(

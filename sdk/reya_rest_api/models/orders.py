@@ -84,8 +84,10 @@ class TriggerOrderParameters:
 
     `limit_px` is the worst-acceptable execution price of the child the trigger
     fires into — not a pad on `trigger_px`. It is REQUIRED: the venue enforces a
-    per-market band, `|limit_px - trigger_px| <= trigger_px *
-    triggerLimitBandFraction`, so there is no price that "always executes".
+    per-market band, `|limit_px - trigger_px| <= trigger_px * band`, so there is
+    no price that "always executes". The band is a matching-engine setting and
+    is not published, so a limit outside it comes back as
+    TRIGGER_LIMIT_OUTSIDE_BAND_ERROR rather than being caught locally.
 
     `time_in_force` is what the stop BECOMES when it fires: the fired child rests
     as GTC, rests-with-expiry as GTT, or takes-or-cancels as IOC. GTT requires a

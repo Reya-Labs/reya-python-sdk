@@ -202,8 +202,6 @@ def client() -> ReyaTradingClient:
         )
     )
     built._symbol_to_market_id = {_SYMBOL: 1}
-    built._symbol_to_tick_size = {_SYMBOL: "0.001"}
-    built._symbol_to_trigger_band = {_SYMBOL: "0.05"}
     built._initialized = True
     return built
 
