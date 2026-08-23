@@ -79,9 +79,7 @@ def _parse_order_change(order: dict[str, Any]) -> OrderChangeUpdatePayload:
 def test_firing_cancel_reasons_parse_off_the_wire(reason: str) -> None:
     """A subscriber watching its stops must receive the cancellation, not an
     exception out of `on_message`."""
-    message = _parse_order_change(
-        _order(status="CANCELLED", cancelReason=reason, cancelReasonMessage="stop cancelled")
-    )
+    message = _parse_order_change(_order(status="CANCELLED", cancelReason=reason, cancelReasonMessage="stop cancelled"))
 
     assert message.data[0].cancel_reason is CancelReason(reason)
     assert message.data[0].cancel_reason_message == "stop cancelled"
