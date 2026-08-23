@@ -283,22 +283,31 @@ class ReyaTradingClient:
     async def _load_market_definitions(self) -> None:
         """Load both perp and spot market definitions."""
         market_definitions: list[MarketDefinition] = await self.reference.get_perp_market_definitions()
-        self._symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
-        self._symbol_to_tick_size = {market.symbol: market.tick_size for market in market_definitions}
-        self._symbol_to_trigger_band = {
+        spot_market_definitions = await self.reference.get_spot_market_definitions()
+
+        # Both fetches finish BEFORE anything is published, and the swap below
+        # contains no await. `refresh_trigger_market_state` calls this mid-session,
+        # so publishing the perp-only map and then awaiting the spot fetch would
+        # make every spot symbol unresolvable for the length of that await — and
+        # permanently if it raised, since the partial map would already be live.
+        symbol_to_market_id = {market.symbol: market.market_id for market in market_definitions}
+        symbol_to_tick_size = {market.symbol: market.tick_size for market in market_definitions}
+        symbol_to_trigger_band = {
             market.symbol: market.trigger_limit_band_fraction
             for market in market_definitions
             if market.trigger_limit_band_fraction is not None
         }
-        perp_count = len(market_definitions)
-
-        spot_market_definitions = await self.reference.get_spot_market_definitions()
         for market in spot_market_definitions:
-            self._symbol_to_market_id[market.symbol] = market.market_id
-        spot_count = len(spot_market_definitions)
+            symbol_to_market_id[market.symbol] = market.market_id
 
+        self._symbol_to_market_id = symbol_to_market_id
+        self._symbol_to_tick_size = symbol_to_tick_size
+        self._symbol_to_trigger_band = symbol_to_trigger_band
         self._initialized = True
         self._market_definitions_loaded_at = time.monotonic()
+
+        perp_count = len(market_definitions)
+        spot_count = len(spot_market_definitions)
         total_markets = perp_count + spot_count
         self.logger.info(f"Loaded {total_markets} market definitions ({perp_count} perp, {spot_count} spot)")
 
@@ -379,6 +388,18 @@ class ReyaTradingClient:
         if limit_px > _ME_MAX_PRICE:
             raise ValueError(
                 f"limit_px {limit_px} exceeds the matching engine's maximum price "
+                f"{format(_ME_MAX_PRICE.normalize(), 'f')}"
+            )
+        # `trigger_px` carries the same (0, MAX_PRICE] domain as `limit_px` — the
+        # engine's `validate_place` bounds both — and it is also the anchor the
+        # band below is computed against. Checking it here keeps a zero from
+        # producing a nonsense band message, and an over-ceiling value from
+        # passing every client-side rule only to burn a nonce at the venue.
+        if trigger_px <= 0:
+            raise ValueError(f"trigger_px must be a positive price (got {trigger_px})")
+        if trigger_px > _ME_MAX_PRICE:
+            raise ValueError(
+                f"trigger_px {trigger_px} exceeds the matching engine's maximum price "
                 f"{format(_ME_MAX_PRICE.normalize(), 'f')}"
             )
 
@@ -969,10 +990,14 @@ class ReyaTradingClient:
         # the deadline.
         expires_after = params.expires_after or 0
         if is_trigger:
-            # A trigger create is never post-only, so a modify restating one is
-            # a signature the ME must reject.
+            # A trigger create is never post-only or reduce-only, so a modify
+            # restating either is a signature the ME must reject. Catching it
+            # here matters because the nonce is minted and burnt further down:
+            # sending it costs the caller a nonce for a guaranteed rejection.
             if params.post_only:
                 raise ValueError("post_only on TP/SL trigger orders is not supported")
+            if params.reduce_only:
+                raise ValueError("reduce_only on TP/SL trigger orders is not supported yet")
             _require_trigger_expiry_coupling(params.time_in_force, expires_after, deadline, on_modify=True)
         else:
             _require_limit_expiry_coupling(params.time_in_force, expires_after, deadline)

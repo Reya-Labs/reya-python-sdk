@@ -77,7 +77,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the fired child's on-chain settlement, so the settlement-headroom rule applies
   to it — while `GTC` and `IOC` triggers must omit it. Migration: pass the two
   new fields explicitly; a call that omitted them raises `TypeError` rather than
-  signing a price you did not choose.
+  signing a price you did not choose. Note that `time_in_force` is inserted
+  BEFORE `expires_after`, and this is a plain `@dataclass` (no runtime type
+  validation): a caller that passed `expires_after` POSITIONALLY binds it to
+  `time_in_force` silently instead of raising. Pass trigger parameters by
+  keyword.
 - Trigger modifies no longer require `GTC`. `time_in_force` and `expires_after`
   are restate-immutable on an armed trigger: restating the armed values is
   admitted, and a change that lands on an impossible shape is refused

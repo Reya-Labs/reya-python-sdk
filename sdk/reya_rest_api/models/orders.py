@@ -91,6 +91,15 @@ class TriggerOrderParameters:
     as GTC, rests-with-expiry as GTT, or takes-or-cancels as IOC. GTT requires a
     future `expires_after` — one deadline covering both the armed trigger's
     lifetime and the fired child's settlement — while GTC and IOC must omit it.
+
+    `is_buy` is the side the stop CLOSES with, not the side of the position it
+    protects — it is the sole input to the signed sentinel's sign, and the SDK
+    never reads your position, so it cannot catch an inverted value. Protecting a
+    LONG means selling to close (`is_buy=False`); protecting a SHORT means buying
+    to close (`is_buy=True`). Together with `trigger_type` it also fixes the
+    crossing direction (a trigger fires on a RISE exactly when `is_buy` and
+    "is a STOP_LOSS" agree), so an inverted `is_buy` arms a stop that fires the
+    wrong way AND closes the wrong way.
     """
 
     symbol: str
