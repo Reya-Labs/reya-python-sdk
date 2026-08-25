@@ -14,6 +14,7 @@ import asyncio
 import time
 from decimal import Decimal
 
+from tests.helpers.liquidity_detector import skip_if_order_would_cross
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.perp_execution import PerpExecution
@@ -84,11 +85,30 @@ async def rest_gtc(
     ``market_config.price(multiplier)`` on the config's symbol, wait for
     creation, return the fetched Order. Unifies the `rest_spot_gtc` /
     `rest_perp_gtc` split."""
+    # A maker order can only be MODIFIED, EXPIRED or CANCELLED if it actually
+    # RESTS. When someone else's liquidity (typically a market-making bot on
+    # the same env) sits inside the band, this order crosses it and fills
+    # instantly instead of resting -- and the caller then dies in
+    # `for_order_creation` with the opaque "Order X not created after 10
+    # seconds", which points at order creation rather than at the book.
+    #
+    # Guarded HERE rather than per-test: every caller needs the order to rest,
+    # so the precondition belongs with the helper. The perp suites already
+    # skip on this via the same detector; the modify and GTT batteries reach
+    # the book through this helper and failed instead of skipping.
+    px_gtc = str(market_config.price(price_multiplier))
+    await skip_if_order_would_cross(
+        market_config,
+        tester,
+        price=px_gtc,
+        is_buy=is_buy,
+        reason="rest_gtc needs the maker order to REST.",
+    )
     builder = (
         OrderBuilder()
         .symbol(market_config.symbol)
         .side(is_buy)
-        .price(str(market_config.price(price_multiplier)))
+        .price(px_gtc)
         .qty(qty if qty is not None else market_config.min_qty)
         .gtc()
     )
@@ -122,7 +142,25 @@ async def rest_gtt(
     (default client deadline is now+60s) for tests that must not expire mid-run.
     Pass an absolute ``price`` (e.g. the re-fetched current mark) for crossing
     tests where the stale session-config price would drift off the perp band."""
+    # A maker order can only be MODIFIED, EXPIRED or CANCELLED if it actually
+    # RESTS. When someone else's liquidity (typically a market-making bot on
+    # the same env) sits inside the band, this order crosses it and fills
+    # instantly instead of resting -- and the caller then dies in
+    # `for_order_creation` with the opaque "Order X not created after 10
+    # seconds", which points at order creation rather than at the book.
+    #
+    # Guarded HERE rather than per-test: every caller needs the order to rest,
+    # so the precondition belongs with the helper. The perp suites already
+    # skip on this via the same detector; the modify and GTT batteries reach
+    # the book through this helper and failed instead of skipping.
     px = price if price is not None else str(market_config.price(price_multiplier))
+    await skip_if_order_would_cross(
+        market_config,
+        tester,
+        price=px,
+        is_buy=is_buy,
+        reason="rest_gtt needs the maker order to REST.",
+    )
     builder = (
         OrderBuilder()
         .symbol(market_config.symbol)
