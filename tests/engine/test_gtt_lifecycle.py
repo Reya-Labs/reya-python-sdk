@@ -39,7 +39,7 @@ from tests.helpers.gtt_timing import (
 )
 from tests.helpers.liquidity_detector import skip_if_external_config_liquidity
 from tests.helpers.market_config import PerpTestConfig, SpotTestConfig
-from tests.helpers.order_lifecycle import rest_gtc, rest_gtt, wait_for_order_fields
+from tests.helpers.order_lifecycle import assert_resting_or_explain, rest_gtc, rest_gtt, wait_for_order_fields
 from tests.helpers.reya_tester import logger
 from tests.helpers.settlement import SettlementProbe
 
@@ -111,10 +111,12 @@ async def test_gtt_reaped_at_expiry(
     remaining = (expires_after - GTT_REAP_PRE_EXPIRY_MARGIN_S) - time.time()
     if remaining > 0:
         await asyncio.sleep(remaining)
-    early = await maker.data.open_order(order_id)
-    assert early is not None and early.status == OrderStatus.OPEN, (
-        f"[{market_type}] GTT was reaped BEFORE its expiresAfter "
-        f"(observed gone at ~{int(time.time())} < {expires_after})"
+    # Reports the cancel REASON when the order is gone: an early GTT_EXPIRED is
+    # the defect this test hunts, while a USER_CANCEL / MASS_CANCEL from another
+    # actor on this shared account means the precondition was removed and the
+    # behaviour simply cannot be observed.
+    await assert_resting_or_explain(
+        maker, order_id, label=f"[{market_type}]", expires_after=expires_after
     )
 
     # Upper bound: reaped within a finite window AFTER expiry — no explicit cancel.
@@ -173,11 +175,10 @@ async def test_gtc_survives_while_gtt_is_reaped(
         remaining = (expires_after - GTT_REAP_PRE_EXPIRY_MARGIN_S) - time.time()
         if remaining > 0:
             await asyncio.sleep(remaining)
-        gtt_pre = await maker.data.open_order(gtt_id)
+        await assert_resting_or_explain(
+            maker, gtt_id, label=f"[{market_type}]", expires_after=expires_after
+        )
         gtc_pre = await maker.data.open_order(gtc.order_id)
-        assert (
-            gtt_pre is not None and gtt_pre.status == OrderStatus.OPEN
-        ), f"[{market_type}] GTT must rest before expiry"
         assert gtc_pre is not None and gtc_pre.status == OrderStatus.OPEN, f"[{market_type}] GTC must rest"
 
         # The GTT is auto-reaped at its expiry (no explicit cancel)...

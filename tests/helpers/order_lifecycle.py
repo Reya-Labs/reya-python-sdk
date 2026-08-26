@@ -11,12 +11,15 @@ when the modify, post-only and orderbook suites all needed them."""
 from __future__ import annotations
 
 import asyncio
+
+import pytest
 import time
 from decimal import Decimal
 
 from tests.helpers.liquidity_detector import skip_if_order_would_cross
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from tests.helpers import ReyaTester
@@ -327,3 +330,56 @@ async def wait_for_ws_order_change(
         f"No WS orderChange with px={limit_px} qty={qty} for order {order_id} within {timeout_s}s; "
         f"last seen: {last_seen}"
     )
+
+async def assert_resting_or_explain(
+    tester,
+    order_id,
+    *,
+    label: str,
+    expires_after: int,
+) -> None:
+    """Assert an order is still resting, and when it is NOT, say WHY.
+
+    The naive form of this check -- ``assert order is not None`` -- reads any
+    disappearance as the reaper firing early, because that is the bug the
+    caller is hunting. On a shared environment that is usually wrong: the
+    order is far more often cancelled by somebody else's mass-cancel, a COD
+    deadline, or the risk engine. The cancel reason distinguishes them
+    unambiguously and is already on the WS order, so an assertion that omits
+    it turns a one-line answer into an investigation.
+
+    GTT_EXPIRED before ``expires_after`` is the real defect and FAILS loudly.
+    Every other reason means the environment removed the precondition rather
+    than the engine misbehaving, so the test SKIPS naming the reason -- same
+    philosophy as the liquidity guards above.
+    """
+    order = await tester.data.open_order(order_id)
+    if order is not None and order.status == OrderStatus.OPEN:
+        return
+
+    ws_order = tester.ws.orders.get(str(order_id))
+    reason = getattr(ws_order, "cancel_reason", None)
+    now = int(time.time())
+    early_by = expires_after - now
+
+    if reason is None:
+        pytest.fail(
+            f"{label} order {order_id} vanished {early_by}s before its expiry "
+            f"({now} < {expires_after}) and no cancel reason reached the WS "
+            f"client -- cannot tell an early reap from an external cancel."
+        )
+
+    if str(getattr(reason, "value", reason)).upper().endswith("GTT_EXPIRED"):
+        pytest.fail(
+            f"{label} GTT was reaped EARLY: cancelled GTT_EXPIRED at {now}, "
+            f"{early_by}s before its expiresAfter ({expires_after}). This is "
+            f"the matching engine reaping ahead of the deadline."
+        )
+
+    pytest.skip(
+        f"{label} order {order_id} was cancelled by "
+        f"{getattr(reason, 'value', reason)} {early_by}s before "
+        f"its expiry -- something outside this test removed it (shared "
+        f"environment), so the reap behaviour cannot be observed."
+    )
+
