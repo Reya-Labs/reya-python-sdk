@@ -17,6 +17,7 @@ from decimal import Decimal
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.depth import Depth
+from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.execution_bust import ExecutionBust as AsyncExecutionBust
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
@@ -58,6 +59,13 @@ class WebSocketState:
         self.perp_executions: EventStore[AsyncPerpExecution] = EventStore()
         self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
+
+        # Server-sent error frames. The harness previously dropped these on the
+        # floor: a channel could fail its snapshot for the whole session and no
+        # test would notice, because subscribe() is fire-and-forget and every
+        # assertion looks at the DATA stores. A wallet holding a collateral the
+        # backend cannot resolve produced exactly that silence.
+        self.errors: list[ErrorMessagePayload] = []
 
         # Keyed stores: direct lookup by key
         self.positions: EventStore[AsyncPosition] = EventStore(key_fn=lambda x: x.symbol)
@@ -217,6 +225,11 @@ class WebSocketState:
         Uses EventStore for unified state tracking.
         """
         logger.info(f"Received message: {type(message).__name__}")
+
+        if isinstance(message, ErrorMessagePayload):
+            logger.error(f"WS error frame: channel={getattr(message, 'channel', None)} {message.message}")
+            self.errors.append(message)
+            return
 
         # Handle subscribed messages with initial snapshots
         if isinstance(message, OrderChangesSubscribedPayload):
