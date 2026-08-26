@@ -25,6 +25,7 @@ from decimal import Decimal
 import pytest
 
 from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -191,8 +192,22 @@ async def test_gtc_survives_while_gtt_is_reaped(
         logger.info(f"[{market_type}] ✅ GTC survived past the GTT reap horizon (never auto-cleared)")
     finally:
         # Always clean up the resting GTC (the GTT is already reaped).
-        await maker.client.cancel_order(symbol=market_config.symbol, account_id=maker.account_id, order_id=gtc.order_id)
-        await maker.wait.for_order_state(gtc.order_id, OrderStatus.CANCELLED)
+        #
+        # Tolerant of the order already being gone. On a shared account it may
+        # have been cancelled by somebody else, and the body above may exit via
+        # pytest.skip for exactly that reason -- a raising cleanup would then
+        # REPLACE the skip with its own 400 and report the test as failed.
+        # That is not hypothetical: it is why this test failed every run while
+        # the skip was working correctly underneath.
+        try:
+            await maker.client.cancel_order(
+                symbol=market_config.symbol, account_id=maker.account_id, order_id=gtc.order_id
+            )
+            await maker.wait.for_order_state(gtc.order_id, OrderStatus.CANCELLED)
+        except ApiException as e:
+            if "not found" not in str(e).lower() and "missing order" not in str(e).lower():
+                raise
+            logger.info(f"[{market_type}] cleanup: GTC {gtc.order_id} already gone ({e})")
 
 
 @pytest.mark.asyncio
