@@ -161,10 +161,55 @@ def test_failed_subscribe_send_is_replayed_after_reconnect(monkeypatch: pytest.M
     assert channel not in socket._sent_subscriptions_this_connection
 
     monkeypatch.setattr(socket, "send", lambda payload: sent.append(json.loads(payload)))
-    socket._has_connected_once = True
     socket._handle_open(socket)
 
     assert sent == [{"type": "subscribe", "channel": channel, "batched": True}]
+
+
+def test_connect_rejects_a_second_connection_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    run_started = threading.Event()
+    allow_return = threading.Event()
+    socket = ReyaSocket(config=_config())
+
+    def run_forever(**_kwargs: Any) -> None:
+        run_started.set()
+        assert allow_return.wait(timeout=1)
+        socket._stop_event.set()
+
+    monkeypatch.setattr(socket, "run_forever", run_forever)
+
+    socket.connect()
+    assert run_started.wait(timeout=1)
+    with pytest.raises(RuntimeError, match="already running"):
+        socket.connect(blocking=True)
+
+    allow_return.set()
+    assert socket._thread is not None
+    socket._thread.join(timeout=1)
+    assert not socket._thread.is_alive()
+
+
+def test_open_without_a_message_does_not_reset_reconnect_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    run_count = 0
+    delays: list[float] = []
+    socket = ReyaSocket(config=_config(reconnect_attempts=3, reconnect_delay=2), on_open=lambda _ws: None)
+
+    def run_forever(**_kwargs: Any) -> None:
+        nonlocal run_count
+        run_count += 1
+        socket._handle_open(socket)
+
+    def record_wait(delay: float) -> bool:
+        delays.append(delay)
+        return False
+
+    monkeypatch.setattr(socket, "run_forever", run_forever)
+    monkeypatch.setattr(socket._stop_event, "wait", record_wait)
+
+    socket.connect(blocking=True)
+
+    assert run_count == 4
+    assert delays == [2, 4, 8]
 
 
 def test_reconnect_uses_bounded_exponential_backoff(

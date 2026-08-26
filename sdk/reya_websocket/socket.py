@@ -134,6 +134,8 @@ class ReyaSocket(WebSocketApp):
         # Initialize thread attribute
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._lifecycle_lock = threading.Lock()
+        self._is_running = False
 
         # Store user callbacks for wrapping
         self._user_on_message = on_message
@@ -150,8 +152,7 @@ class ReyaSocket(WebSocketApp):
         self._subscription_payloads: dict[str, str] = {}
         self._subscription_lock = threading.RLock()
         self._sent_subscriptions_this_connection: set[str] = set()
-        self._has_connected_once = False
-        self._opened_this_run = False
+        self._received_message_this_run = False
 
         super().__init__(
             url=url,
@@ -177,6 +178,7 @@ class ReyaSocket(WebSocketApp):
 
             # Parse into typed model (raises WebSocketDataError on failure)
             typed_message = self._parse_message(raw)
+            self._received_message_this_run = True
 
             # Call user callback or default with typed message
             if self._user_on_message is not None:
@@ -332,18 +334,13 @@ class ReyaSocket(WebSocketApp):
             self.send(json.dumps(message))
 
     def _handle_open(self, ws: WebSocket) -> None:
-        """Run the open callback and restore subscriptions after reconnecting."""
-        is_reconnect = self._has_connected_once
-        self._has_connected_once = True
-        self._opened_this_run = True
-
+        """Run the open callback and restore pending subscriptions."""
         try:
             # Preserve WebSocketApp's lifecycle semantics: user callbacks run
             # for both the initial connection and every subsequent reconnect.
             self._open_callback(ws)
         finally:
-            if is_reconnect:
-                self._restore_subscriptions()
+            self._restore_subscriptions()
 
     def _restore_subscriptions(self) -> None:
         """Replay subscriptions not already sent by the reconnect callback."""
@@ -381,30 +378,43 @@ class ReyaSocket(WebSocketApp):
             else:
                 sslopt = {"cert_reqs": ssl.CERT_NONE}
 
-        if self._thread is not None and self._thread.is_alive():
-            raise RuntimeError("WebSocket connection is already running")
+        thread = None
+        with self._lifecycle_lock:
+            if self._is_running:
+                raise RuntimeError("WebSocket connection is already running")
 
-        self._stop_event.clear()
+            self._is_running = True
+            self._stop_event.clear()
+            if not blocking:
+                thread = threading.Thread(target=self._run_connection, args=(sslopt,), daemon=True)
+                self._thread = thread
+
         logger.info(f"Connecting to {self.url}")
-
         if blocking:
-            # Run the WebSocket directly (blocking)
-            self._run_forever_with_reconnect(sslopt)
+            self._run_connection(sslopt)
         else:
-            # Run the WebSocket in a thread (non-blocking)
-            self._thread = threading.Thread(
-                target=self._run_forever_with_reconnect,
-                args=(sslopt,),
-            )
-            self._thread.daemon = True
-            self._thread.start()
+            try:
+                assert thread is not None
+                thread.start()
+            except BaseException:
+                with self._lifecycle_lock:
+                    self._is_running = False
+                raise
+
+    def _run_connection(self, sslopt) -> None:
+        """Own one blocking or background connection lifecycle."""
+        try:
+            self._run_forever_with_reconnect(sslopt)
+        finally:
+            with self._lifecycle_lock:
+                self._is_running = False
 
     def _run_forever_with_reconnect(self, sslopt) -> None:
         """Run the socket, reconnecting with bounded exponential backoff."""
         failed_attempts = 0
 
         while not self._stop_event.is_set():
-            self._opened_this_run = False
+            self._received_message_this_run = False
             with self._subscription_lock:
                 self._sent_subscriptions_this_connection.clear()
 
@@ -420,7 +430,7 @@ class ReyaSocket(WebSocketApp):
             if self._stop_event.is_set():
                 return
 
-            if self._opened_this_run:
+            if self._received_message_this_run:
                 failed_attempts = 0
 
             if failed_attempts >= self.config.reconnect_attempts:
