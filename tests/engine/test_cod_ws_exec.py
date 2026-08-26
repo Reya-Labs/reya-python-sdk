@@ -72,18 +72,27 @@ async def _wait_for_open_order(rest: ReyaTradingClient, order_id: str, timeout_s
     raise AssertionError(f"Order {order_id} not visible via REST within {timeout_s}s")
 
 
-async def _wait_until_no_open_orders(rest: ReyaTradingClient, timeout_s: float) -> None:
-    """Poll openOrders until the account has none — proves the fire emptied it."""
+async def _wait_until_orders_cancelled(rest: ReyaTradingClient, order_ids: list, timeout_s: float) -> None:
+    """Poll openOrders until the orders THIS test rested are gone.
+
+    Scoped to `order_ids` rather than "the account is empty": COD promises to
+    cancel what was resting when it fired, not that the account stays empty.
+    The devnet accounts are shared, so orders placed by anyone else after the
+    arm kept the global count above zero and failed this as if COD had not
+    fired. Mirrors _wait_until_orders_cancelled in test_cod_lifecycle.
+    """
+    wanted = {str(o) for o in order_ids}
     deadline = time.time() + timeout_s
-    remaining: list[Order] = []
+    remaining: set = set()
     while time.time() < deadline:
-        remaining = await rest.get_open_orders()
+        open_ids = {str(o.order_id) for o in await rest.get_open_orders()}
+        remaining = wanted & open_ids
         if not remaining:
             return
         await asyncio.sleep(0.5)
     raise AssertionError(
-        f"Account still has {len(remaining)} open order(s) {timeout_s}s after arming: "
-        f"{[o.order_id for o in remaining]}"
+        f"{len(remaining)} of this test's {len(wanted)} order(s) survived the COD fire "
+        f"after {timeout_s}s: {sorted(remaining)}"
     )
 
 
@@ -142,7 +151,7 @@ async def test_ws_exec_arm_fires_cancels_resting_order(ws_exec_market: WsExecMar
         assert armed.trigger_at is not None, f"[{m.market_type}] armed countdown must echo triggerAt: {armed}"
 
         # timeout + ME scan granularity + clock-skew margin.
-        await _wait_until_no_open_orders(m.rest, timeout_s=FIRE_TIMEOUT_MS / 1000 + FIRE_MARGIN_S)
+        await _wait_until_orders_cancelled(m.rest, [order_id], timeout_s=FIRE_TIMEOUT_MS / 1000 + FIRE_MARGIN_S)
         fired = True
         print(f"  [ws-exec {m.market_type}] COD fired: order {order_id} cancelled by the WS-armed countdown")
 
