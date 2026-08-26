@@ -11,12 +11,11 @@ when the modify, post-only and orderbook suites all needed them."""
 from __future__ import annotations
 
 import asyncio
-
-import pytest
 import time
 from decimal import Decimal
 
-from tests.helpers.liquidity_detector import skip_if_order_would_cross
+import pytest
+
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
@@ -24,6 +23,7 @@ from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
+from tests.helpers.liquidity_detector import skip_if_order_would_cross
 from tests.helpers.market_config import MarketTestConfig, SpotTestConfig
 
 
@@ -331,6 +331,7 @@ async def wait_for_ws_order_change(
         f"last seen: {last_seen}"
     )
 
+
 async def assert_resting_or_explain(
     tester,
     order_id,
@@ -382,4 +383,3 @@ async def assert_resting_or_explain(
         f"its expiry -- something outside this test removed it (shared "
         f"environment), so the reap behaviour cannot be observed."
     )
-

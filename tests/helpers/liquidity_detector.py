@@ -368,9 +368,7 @@ async def skip_if_external_liquidity(
     )
 
 
-async def skip_if_order_would_cross(
-    config, tester, *, price: Decimal | str | float, is_buy: bool, reason: str
-) -> None:
+async def skip_if_order_would_cross(config, tester, *, price: Decimal | str | float, is_buy: bool, reason: str) -> None:
     """Skip only when a resting order at THIS price on THIS side would cross
     external liquidity.
 

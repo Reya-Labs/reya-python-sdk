@@ -115,9 +115,7 @@ async def test_gtt_reaped_at_expiry(
     # the defect this test hunts, while a USER_CANCEL / MASS_CANCEL from another
     # actor on this shared account means the precondition was removed and the
     # behaviour simply cannot be observed.
-    await assert_resting_or_explain(
-        maker, order_id, label=f"[{market_type}]", expires_after=expires_after
-    )
+    await assert_resting_or_explain(maker, order_id, label=f"[{market_type}]", expires_after=expires_after)
 
     # Upper bound: reaped within a finite window AFTER expiry — no explicit cancel.
     await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=REAP_WAIT_TIMEOUT_S)
@@ -175,9 +173,7 @@ async def test_gtc_survives_while_gtt_is_reaped(
         remaining = (expires_after - GTT_REAP_PRE_EXPIRY_MARGIN_S) - time.time()
         if remaining > 0:
             await asyncio.sleep(remaining)
-        await assert_resting_or_explain(
-            maker, gtt_id, label=f"[{market_type}]", expires_after=expires_after
-        )
+        await assert_resting_or_explain(maker, gtt_id, label=f"[{market_type}]", expires_after=expires_after)
         gtc_pre = await maker.data.open_order(gtc.order_id)
         assert gtc_pre is not None and gtc_pre.status == OrderStatus.OPEN, f"[{market_type}] GTC must rest"
 
