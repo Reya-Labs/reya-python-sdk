@@ -383,3 +383,55 @@ async def assert_resting_or_explain(
         f"its expiry -- something outside this test removed it (shared "
         f"environment), so the reap behaviour cannot be observed."
     )
+
+
+async def assert_resting_or_explain_rest(
+    rest,
+    order_id,
+    *,
+    label: str,
+    expires_after: int,
+) -> None:
+    """REST-only twin of `assert_resting_or_explain`, for the ws-exec suites.
+
+    Those tests hold a raw ReyaTradingClient rather than a ReyaTester, so
+    there is no WS order store to read the cancel reason from. Order history
+    carries it, so fetch from there instead -- the point is the same: never
+    report "the reaper fired early" for an order somebody else cancelled.
+    """
+    open_ids = {str(o.order_id) for o in await rest.get_open_orders()}
+    if str(order_id) in open_ids:
+        return
+
+    reason = None
+    try:
+        history = await rest.get_order_history()
+        rows = getattr(history, "data", None) or history
+        for row in rows:
+            if str(getattr(row, "order_id", "")) == str(order_id):
+                reason = getattr(row, "cancel_reason", None)
+                break
+    except Exception:  # pylint: disable=broad-except
+        reason = None
+
+    now = int(time.time())
+    early_by = expires_after - now
+
+    if reason is None:
+        pytest.fail(
+            f"{label} order {order_id} left the book {early_by}s before its "
+            f"expiry ({now} < {expires_after}) and order history carried no "
+            f"cancel reason -- cannot tell an early reap from an external cancel."
+        )
+
+    if str(getattr(reason, "value", reason)).upper().endswith("GTT_EXPIRED"):
+        pytest.fail(
+            f"{label} GTT was reaped EARLY: cancelled GTT_EXPIRED at {now}, "
+            f"{early_by}s before its expiresAfter ({expires_after})."
+        )
+
+    pytest.skip(
+        f"{label} order {order_id} was cancelled by "
+        f"{getattr(reason, 'value', reason)} {early_by}s before its expiry -- "
+        f"something outside this test removed it (shared environment)."
+    )
