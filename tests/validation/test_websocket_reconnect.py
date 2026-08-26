@@ -145,6 +145,28 @@ def test_unsubscribed_channel_is_not_restored(monkeypatch: pytest.MonkeyPatch) -
     assert socket.active_subscriptions == set()
 
 
+def test_failed_subscribe_send_is_replayed_after_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[dict[str, Any]] = []
+    channel = "/v2/market/ETHRUSDPERP/perpExecutions"
+    socket = ReyaSocket(config=_config(), on_open=lambda _ws: None)
+
+    def fail_send(_payload: str) -> None:
+        raise OSError("connection unavailable")
+
+    monkeypatch.setattr(socket, "send", fail_send)
+    with pytest.raises(OSError, match="connection unavailable"):
+        socket.send_subscribe(channel, batched=True)
+
+    assert channel in socket.active_subscriptions
+    assert channel not in socket._sent_subscriptions_this_connection
+
+    monkeypatch.setattr(socket, "send", lambda payload: sent.append(json.loads(payload)))
+    socket._has_connected_once = True
+    socket._handle_open(socket)
+
+    assert sent == [{"type": "subscribe", "channel": channel, "batched": True}]
+
+
 def test_reconnect_uses_bounded_exponential_backoff(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -314,8 +314,8 @@ class ReyaSocket(WebSocketApp):
         with self._subscription_lock:
             self.active_subscriptions.add(channel)
             self._subscription_payloads[channel] = payload
-            self._sent_subscriptions_this_connection.add(channel)
             self.send(payload)
+            self._sent_subscriptions_this_connection.add(channel)
 
     def send_unsubscribe(self, channel: str, **kwargs) -> None:
         """Send an unsubscription message.
