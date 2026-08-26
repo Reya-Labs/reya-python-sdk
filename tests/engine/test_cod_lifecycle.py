@@ -80,18 +80,31 @@ def _assert_trigger_at_echo(response: CancelAllAfterResponse, timeout_ms: int, s
     )
 
 
-async def _wait_until_no_open_orders(tester: ReyaTester, timeout_s: float) -> None:
-    """Poll REST open orders until the account has none (bounded)."""
+async def _wait_until_orders_cancelled(tester: ReyaTester, order_ids: list, timeout_s: float) -> None:
+    """Poll REST until the orders THIS test rested are gone (bounded).
+
+    Deliberately scoped to `order_ids` rather than asserting the account has
+    zero open orders. What COD guarantees is that the orders resting when the
+    countdown fires get cancelled -- not that the account stays empty
+    afterwards. Those are the same claim only on an account nobody else
+    touches, and the devnet accounts are shared: measured on a failing run,
+    all 3 of the test's own orders WERE cancelled while 10-11 orders with
+    strictly newer snowflake ids (i.e. placed after the arm) kept the global
+    count above zero. The old assertion failed on somebody else's traffic and
+    read as a COD defect.
+    """
+    wanted = {str(o) for o in order_ids}
     deadline = time.time() + timeout_s
-    remaining: list = []
+    remaining: set = set()
     while time.time() < deadline:
-        remaining = await tester.client.get_open_orders()
+        open_ids = {str(o.order_id) for o in await tester.client.get_open_orders()}
+        remaining = wanted & open_ids
         if not remaining:
             return
         await asyncio.sleep(0.5)
     raise AssertionError(
-        f"Account {tester.account_id} still has {len(remaining)} open order(s) after {timeout_s}s: "
-        f"{[o.order_id for o in remaining]}"
+        f"Account {tester.account_id}: {len(remaining)} of this test's {len(wanted)} order(s) "
+        f"survived the COD fire after {timeout_s}s: {sorted(remaining)}"
     )
 
 
@@ -152,7 +165,7 @@ async def test_cod_fires_cancels_all_orders(
     await maker.arm_cod(timeout_ms=5_000)
 
     # timeout + scan granularity + clock-skew margin.
-    await _wait_until_no_open_orders(maker, timeout_s=5.0 + FIRE_MARGIN_S)
+    await _wait_until_orders_cancelled(maker, order_ids, timeout_s=5.0 + FIRE_MARGIN_S)
     logger.info(f"[{market_type}] ✅ COD fired: all orders cancelled")
 
     # The fire must also notify over WS: an orderChange with status CANCELLED
@@ -255,7 +268,7 @@ async def test_account_isolation(spot_config: SpotTestConfig, maker_tester: Reya
 
     try:
         await maker_tester.arm_cod(timeout_ms=5_000)
-        await _wait_until_no_open_orders(maker_tester, timeout_s=5.0 + FIRE_MARGIN_S)
+        await _wait_until_orders_cancelled(maker_tester, [maker_order_id], timeout_s=5.0 + FIRE_MARGIN_S)
         logger.info("✅ Account A's COD fired")
 
         assert await _order_is_open(taker_tester, taker_order_id), (
@@ -277,7 +290,7 @@ async def test_rearm_after_fire(spot_config: SpotTestConfig, spot_tester: ReyaTe
     await spot_tester.wait.for_order_creation(order_id)
 
     await spot_tester.arm_cod(timeout_ms=5_000)
-    await _wait_until_no_open_orders(spot_tester, timeout_s=5.0 + FIRE_MARGIN_S)
+    await _wait_until_orders_cancelled(spot_tester, [order_id], timeout_s=5.0 + FIRE_MARGIN_S)
     logger.info("✅ First COD fire completed")
 
     sent_at_ms = time.time() * 1000
