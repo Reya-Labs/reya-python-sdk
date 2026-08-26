@@ -212,6 +212,31 @@ def test_open_without_a_message_does_not_reset_reconnect_budget(monkeypatch: pyt
     assert delays == [2, 4, 8]
 
 
+def test_error_message_does_not_reset_reconnect_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    run_count = 0
+    delays: list[float] = []
+    socket = ReyaSocket(config=_config(reconnect_attempts=3, reconnect_delay=2), on_open=lambda _ws: None)
+    handle_message = socket._wrap_message_handler()
+
+    def run_forever(**_kwargs: Any) -> None:
+        nonlocal run_count
+        run_count += 1
+        socket._handle_open(socket)
+        handle_message(socket, json.dumps({"type": "error", "message": "subscription rejected"}))
+
+    def record_wait(delay: float) -> bool:
+        delays.append(delay)
+        return False
+
+    monkeypatch.setattr(socket, "run_forever", run_forever)
+    monkeypatch.setattr(socket._stop_event, "wait", record_wait)
+
+    socket.connect(blocking=True)
+
+    assert run_count == 4
+    assert delays == [2, 4, 8]
+
+
 def test_reconnect_uses_bounded_exponential_backoff(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

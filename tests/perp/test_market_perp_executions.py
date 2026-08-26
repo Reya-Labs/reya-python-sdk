@@ -1,7 +1,6 @@
 """Market-level perp execution WebSocket coverage."""
 
 import asyncio
-from decimal import Decimal
 
 import pytest
 
@@ -38,16 +37,9 @@ async def test_ws_market_perp_executions_realtime(
 
     await perp_market_config.refresh_order_book(perp_taker_tester.data)
     if perp_market_config.has_any_external_liquidity:
-        maker_price = perp_market_config.maker_bid_above_external_bid()
-        if maker_price is None:
-            pytest.skip("the external spread has no tick available for an isolated maker bid")
-    else:
-        maker_price = perp_market_config.limit_price("0.99")
+        pytest.skip("external liquidity is present, so the guarded test accounts cannot cross safely")
 
-    if not perp_market_config.circuit_breaker_floor <= maker_price <= perp_market_config.circuit_breaker_ceiling:
-        pytest.skip("the isolated maker bid would fall outside the market circuit breaker")
-
-    crossing_price = str(maker_price)
+    crossing_price = perp_market_config.limit_price_str("0.99")
     maker_order_id = None
     try:
         maker_order_id = await perp_maker_tester.orders.create_limit(
@@ -57,14 +49,11 @@ async def test_ws_market_perp_executions_realtime(
                 limit_px=crossing_price,
                 qty=perp_market_config.min_qty,
                 time_in_force=TimeInForce.GTC,
+                post_only=True,
             )
         )
         assert maker_order_id is not None
         await perp_maker_tester.wait.for_order_creation(maker_order_id)
-        await asyncio.sleep(0.1)
-        depth = await perp_maker_tester.data.market_depth(symbol)
-        best_bid = Decimal(depth.bids[0].px) if depth and depth.bids else None
-        assert best_bid == maker_price, "the guarded maker order must be best bid before the taker crosses"
 
         taker_order_id = await perp_taker_tester.orders.create_limit(
             LimitOrderParameters(

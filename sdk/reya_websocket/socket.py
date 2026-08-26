@@ -178,7 +178,8 @@ class ReyaSocket(WebSocketApp):
 
             # Parse into typed model (raises WebSocketDataError on failure)
             typed_message = self._parse_message(raw)
-            self._received_message_this_run = True
+            if not isinstance(typed_message, ErrorMessagePayload):
+                self._received_message_this_run = True
 
             # Call user callback or default with typed message
             if self._user_on_message is not None:
