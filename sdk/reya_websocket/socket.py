@@ -355,7 +355,12 @@ class ReyaSocket(WebSocketApp):
             if payloads:
                 logger.info(f"Restoring {len(payloads)} WebSocket subscription(s)")
 
-            for channel, payload in payloads:
+        for channel, payload in payloads:
+            with self._subscription_lock:
+                if self._subscription_payloads.get(channel) != payload:
+                    continue
+                if channel in self._sent_subscriptions_this_connection:
+                    continue
                 self.send(payload)
                 self._sent_subscriptions_this_connection.add(channel)
 

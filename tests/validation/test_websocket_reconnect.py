@@ -145,6 +145,34 @@ def test_unsubscribed_channel_is_not_restored(monkeypatch: pytest.MonkeyPatch) -
     assert socket.active_subscriptions == set()
 
 
+def test_restore_rechecks_subscription_intent_between_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+    first_channel = "/v2/perpMarkets/summary"
+    second_channel = "/v2/assetOraclePrices"
+    socket = ReyaSocket(config=_config(), on_open=lambda _ws: None)
+    first_payload = json.dumps({"type": "subscribe", "channel": first_channel})
+    second_payload = json.dumps({"type": "subscribe", "channel": second_channel})
+    socket.active_subscriptions.update((first_channel, second_channel))
+    socket._subscription_payloads.update({first_channel: first_payload, second_channel: second_payload})
+    sent: list[dict[str, Any]] = []
+
+    def send(payload: str) -> None:
+        message = json.loads(payload)
+        sent.append(message)
+        if message == {"type": "subscribe", "channel": first_channel}:
+            socket.send_unsubscribe(second_channel)
+
+    monkeypatch.setattr(socket, "send", send)
+
+    socket._restore_subscriptions()
+
+    assert sent == [
+        {"type": "subscribe", "channel": first_channel},
+        {"type": "unsubscribe", "channel": second_channel},
+    ]
+    assert second_channel not in socket.active_subscriptions
+    assert second_channel not in socket._sent_subscriptions_this_connection
+
+
 def test_failed_subscribe_send_is_replayed_after_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
     sent: list[dict[str, Any]] = []
     channel = "/v2/market/ETHRUSDPERP/perpExecutions"
