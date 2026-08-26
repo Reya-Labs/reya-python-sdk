@@ -353,7 +353,7 @@ class ReyaSocket(WebSocketApp):
             ]
 
             if payloads:
-                logger.info(f"Restoring {len(payloads)} WebSocket subscription(s)")
+                logger.info(f"Checking {len(payloads)} WebSocket subscription(s) for restoration")
 
         for channel, payload in payloads:
             with self._subscription_lock:
