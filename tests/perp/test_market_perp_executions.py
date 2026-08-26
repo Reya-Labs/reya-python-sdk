@@ -73,8 +73,7 @@ async def test_ws_market_perp_executions_realtime(
             store = perp_taker_tester.ws.market_perp_executions.get(symbol)
             if store is not None:
                 market_event = store.find_last(
-                    lambda event: event.sequence_number > baseline_sequence
-                    and event.taker_order_id == taker_order_id
+                    lambda event: event.sequence_number > baseline_sequence and event.taker_order_id == taker_order_id
                 )
             if market_event is not None:
                 break
