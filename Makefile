@@ -7,8 +7,8 @@ lockfile-update:	## Update poetry.lock
 lockfile-update-full:	## Fully regenerate poetry.lock
 	poetry lock -n --regenerate
 
-install:	## Install dependencies from poetry.lock
-	poetry install -n
+install:	## Install dependencies from poetry.lock, including the dev extra (pytest, linters)
+	poetry install -n --all-extras
 
 install-types:	## Find and install additional types for mypy
 	poetry run mypy --install-types --non-interactive ./
