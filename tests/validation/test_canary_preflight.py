@@ -296,3 +296,13 @@ def test_cli_preflight_writes_evidence(tmp_path: Path, capsys) -> None:
 
     assert output_path.exists()
     assert "No network requests or mutations were performed." in capsys.readouterr().out
+
+
+def test_cli_exposes_no_lifecycle_or_mutation_mode(tmp_path: Path) -> None:
+    profile_path = tmp_path / "devnet1.toml"
+    profile_path.write_text(_profile_toml(), encoding="utf-8")
+
+    with pytest.raises(SystemExit) as raised:
+        main(["--profile", str(profile_path), "--run-lifecycle"])
+
+    assert raised.value.code == 2

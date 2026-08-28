@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import asyncio
+import json
 from dataclasses import replace
 from decimal import Decimal
 
@@ -12,8 +13,10 @@ import pytest
 
 from scripts.canary_lifecycle import (
     LifecycleError,
+    OpenOrderUnverifiedError,
     OrderExpectation,
     OrderPlan,
+    build_lifecycle_evidence,
     derive_client_order_id,
     run_order_lifecycle,
 )
@@ -23,7 +26,6 @@ from scripts.canary_preflight import (
     CanaryPolicy,
     CanaryProfile,
 )
-
 
 pytestmark = pytest.mark.offline
 
@@ -38,11 +40,13 @@ class FakeLifecycleAdapter:
         fail_once: str | None = None,
         fail_always: str | None = None,
         hang_once: str | None = None,
+        unverified_open: bool = False,
     ) -> None:
         self.order_id = order_id
         self.fail_once = fail_once
         self.fail_always = fail_always
         self.hang_once = hang_once
+        self.unverified_open = unverified_open
         self.calls: list[str] = []
 
     async def _record(self, call: str) -> None:
@@ -59,6 +63,8 @@ class FakeLifecycleAdapter:
     async def place_post_only_gtc(self, plan: OrderPlan, client_order_id: int) -> str:
         del plan, client_order_id
         await self._record("place")
+        if self.unverified_open:
+            raise OpenOrderUnverifiedError(self.order_id, "synthetic invariant failure")
         return self.order_id
 
     async def modify_post_only_gtc(self, order_id: str, plan: OrderPlan, client_order_id: int) -> None:
@@ -187,7 +193,7 @@ async def test_plan_validation_fails_before_adapter_calls(
     with pytest.raises(LifecycleError, match=message):
         await run_order_lifecycle(profile, replace(plan, **override), adapter, run_id="run-invalid")
 
-    assert adapter.calls == []
+    assert not adapter.calls
 
 
 @pytest.mark.asyncio
@@ -197,7 +203,7 @@ async def test_invalid_timeout_fails_before_adapter_calls(profile: CanaryProfile
     with pytest.raises(LifecycleError, match="timeout must be finite"):
         await run_order_lifecycle(profile, plan, adapter, run_id="run-invalid-timeout", timeout_s=float("nan"))
 
-    assert adapter.calls == []
+    assert not adapter.calls
 
 
 @pytest.mark.asyncio
@@ -270,6 +276,26 @@ async def test_invalid_order_id_is_not_added_to_owned_cleanup_registry(
 
 
 @pytest.mark.asyncio
+async def test_unverified_open_response_is_registered_before_exact_cleanup(
+    profile: CanaryProfile,
+    plan: OrderPlan,
+) -> None:
+    adapter = FakeLifecycleAdapter(unverified_open=True)
+
+    with pytest.raises(LifecycleError) as raised:
+        await run_order_lifecycle(profile, plan, adapter, run_id="run-unverified-open")
+
+    assert [event.step for event in raised.value.events] == ["place.unverified"]
+    assert raised.value.cleanup_failures == ()
+    assert adapter.calls == [
+        "place",
+        "cancel:123456789",
+        "rest:CANCELLED:none:123456789",
+        "ws:CANCELLED:none:123456789",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_mainnet_requires_the_exact_mutation_acknowledgement(
     profile: CanaryProfile,
     plan: OrderPlan,
@@ -279,7 +305,7 @@ async def test_mainnet_requires_the_exact_mutation_acknowledgement(
 
     with pytest.raises(LifecycleError, match="profile did not pass mutation validation"):
         await run_order_lifecycle(mainnet, plan, adapter, run_id="mainnet-without-ack")
-    assert adapter.calls == []
+    assert not adapter.calls
 
     await run_order_lifecycle(
         mainnet,
@@ -289,3 +315,56 @@ async def test_mainnet_requires_the_exact_mutation_acknowledgement(
         mutation_acknowledgement=MAINNET_MUTATION_ACKNOWLEDGEMENT,
     )
     assert adapter.calls[0] == "place"
+
+
+@pytest.mark.asyncio
+async def test_success_evidence_is_credential_free_and_preserves_bounded_intent(
+    profile: CanaryProfile,
+    plan: OrderPlan,
+) -> None:
+    result = await run_order_lifecycle(profile, plan, FakeLifecycleAdapter(), run_id="evidence-success")
+
+    evidence = build_lifecycle_evidence(profile, plan, result=result)
+    encoded = json.dumps(evidence, sort_keys=True)
+
+    assert evidence["result"] == "pass"
+    assert evidence["run_id"] == "evidence-success"
+    assert evidence["order_plan"]["post_only"] is True
+    assert evidence["order_plan"]["quantity"] == "1"
+    assert evidence["owned_order_ids"] == ["123456789"]
+    assert "private_key" not in encoded.lower()
+    assert "signature" not in encoded.lower()
+    assert "rpc_url" not in encoded.lower()
+
+
+@pytest.mark.asyncio
+async def test_failure_evidence_records_sanitized_stage_and_cleanup_status(
+    profile: CanaryProfile,
+    plan: OrderPlan,
+) -> None:
+    adapter = FakeLifecycleAdapter(
+        fail_once="modify:123456789",
+        fail_always="cancel:123456789",
+    )
+    with pytest.raises(LifecycleError) as raised:
+        await run_order_lifecycle(profile, plan, adapter, run_id="evidence-failure")
+
+    evidence = build_lifecycle_evidence(
+        profile,
+        plan,
+        error=raised.value,
+        run_id="evidence-failure",
+    )
+
+    assert evidence["result"] == "fail"
+    assert evidence["failure"] == {
+        "stage": "modify",
+        "detail": "RuntimeError",
+        "cleanup_failures": ["123456789[cancel:RuntimeError]"],
+    }
+    assert "synthetic failure" not in json.dumps(evidence)
+
+
+def test_evidence_requires_exactly_one_outcome(profile: CanaryProfile, plan: OrderPlan) -> None:
+    with pytest.raises(ValueError, match="exactly one"):
+        build_lifecycle_evidence(profile, plan)

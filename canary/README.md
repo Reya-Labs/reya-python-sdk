@@ -44,19 +44,27 @@ because they contain run-specific account and wallet identifiers, though not sec
 ## Offline lifecycle engine
 
 `scripts/canary_lifecycle.py` defines the bounded place → REST/WS visibility → modify → cancel
-state machine behind an injectable adapter. It currently has no CLI or live SDK adapter, so it
-cannot submit an order. Offline tests prove these invariants:
+state machine. `scripts/canary_sdk_adapter.py` maps that state machine to the SDK's exact
+post-only GTC create, modify, single-order cancel, and open-orders models. The adapter is
+dependency-injected and is not constructed by the CLI, so the runner still cannot submit an order.
+Offline tests prove these invariants:
 
 - the profile, account, wallet, market, quantity, and both order notionals pass before adapter I/O;
 - the order intent is post-only GTC, and modify restates that complete intent;
 - REST and the wallet order-change stream must both prove initial, modified, and cancelled state;
 - every external operation has a timeout;
+- the REST client's chain, API URL, exchange, Orders Gateway, loaded market ID, owner wallet, and
+  account must match the validated profile and plan;
+- read WebSocket observations come only from the designated wallet channel, and a `FEED_RESET`
+  event cannot be mistaken for a user cancellation;
 - cleanup addresses only canonical order IDs returned to this run, never `close_all`, `cancelAll`,
   position flattening, or any pre-existing order; and
-- mainnet mutation still requires the exact acknowledgement constant in addition to the profile.
+- mainnet mutation still requires the exact acknowledgement constant in addition to the profile;
+  credential-free success and sanitized failure evidence are available for every lifecycle run.
 
 ## Next implementation slice
 
-Implement the narrow SDK adapter and credential-free lifecycle evidence. Keep it unreachable from
-the CLI until a local profile identifies the release, market, quantity/notional bounds, account,
-wallet, and the live read-only probes have passed.
+Add explicit runtime orchestration only after a local profile identifies the release, market,
+quantity/notional bounds, account, and wallet. That orchestration must construct the clients from
+machine-local configuration, require the read-only probes to pass in the same run, subscribe to the
+wallet order-change channel before entry, and retain a separate explicit mutation gate.

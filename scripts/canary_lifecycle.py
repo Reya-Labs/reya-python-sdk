@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar
 
 import asyncio
 import hashlib
 import math
 import re
 from collections.abc import Awaitable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from scripts.canary_preflight import CanaryProfile, PreflightError, validate_profile
-
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _ResultT = TypeVar("_ResultT")
@@ -62,6 +62,66 @@ class LifecycleResult:
     events: tuple[LifecycleEvent, ...]
 
 
+def build_lifecycle_evidence(
+    profile: CanaryProfile,
+    plan: OrderPlan,
+    *,
+    result: LifecycleResult | None = None,
+    error: LifecycleError | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a credential-free success or failure record for one lifecycle run."""
+    if (result is None) == (error is None):
+        raise ValueError("provide exactly one of result or error")
+    resolved_run_id: str | None
+    client_order_id: int | None
+    if result is not None:
+        resolved_run_id = result.run_id
+        events = result.events
+        order_ids = result.owned_order_ids
+        client_order_id = result.client_order_id
+    else:
+        assert error is not None
+        resolved_run_id = run_id
+        events = error.events
+        order_ids = tuple(dict.fromkeys(event.order_id for event in events))
+        client_order_id = derive_client_order_id(resolved_run_id) if resolved_run_id is not None else None
+    if resolved_run_id is None:
+        raise ValueError("run_id is required for failure evidence")
+    evidence: dict[str, Any] = {
+        "schema_version": 1,
+        "result": "pass" if result is not None else "fail",
+        "mode": "order-lifecycle",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "environment": profile.environment,
+        "release_manifest_id": profile.release_manifest_id,
+        "run_id": resolved_run_id,
+        "client_order_id": client_order_id,
+        "order_plan": {
+            "account_id": plan.account_id,
+            "wallet_address": plan.wallet_address,
+            "market_symbol": plan.market_symbol,
+            "market_id": plan.market_id,
+            "is_buy": plan.is_buy,
+            "quantity": str(plan.quantity),
+            "initial_limit_px": str(plan.initial_limit_px),
+            "modified_limit_px": str(plan.modified_limit_px),
+            "time_in_force": "GTC",
+            "post_only": True,
+            "reduce_only": False,
+        },
+        "owned_order_ids": list(order_ids),
+        "events": [asdict(event) for event in events],
+    }
+    if error is not None:
+        evidence["failure"] = {
+            "stage": error.stage,
+            "detail": error.detail,
+            "cleanup_failures": list(error.cleanup_failures),
+        }
+    return evidence
+
+
 class LifecycleError(RuntimeError):
     """Fail-closed lifecycle failure with bounded diagnostic evidence."""
 
@@ -78,6 +138,14 @@ class LifecycleError(RuntimeError):
         self.detail = detail
         self.events = events
         self.cleanup_failures = cleanup_failures
+
+
+class OpenOrderUnverifiedError(LifecycleError):
+    """An OPEN response returned an ID but failed another response invariant."""
+
+    def __init__(self, order_id: str, detail: str) -> None:
+        super().__init__("place", detail)
+        self.order_id = order_id
 
 
 class LifecycleAdapter(Protocol):
@@ -226,7 +294,7 @@ async def cleanup_owned_orders(
         for label, operation in steps:
             try:
                 await asyncio.wait_for(operation, timeout=timeout_s)
-            except Exception as error:  # cleanup is deliberately best-effort
+            except Exception as error:  # pylint: disable=broad-exception-caught
                 order_failures.append(f"{label}:{type(error).__name__}")
         if order_failures:
             failures.append(f"{order_id}[{','.join(order_failures)}]")
@@ -253,11 +321,17 @@ async def run_order_lifecycle(
     events: list[LifecycleEvent] = []
 
     try:
-        raw_order_id = await _invoke(
-            "place",
-            adapter.place_post_only_gtc(plan, client_order_id),
-            timeout_s,
-        )
+        try:
+            raw_order_id = await _invoke(
+                "place",
+                adapter.place_post_only_gtc(plan, client_order_id),
+                timeout_s,
+            )
+        except OpenOrderUnverifiedError as error:
+            if error.order_id.isdecimal() and int(error.order_id) > 0:
+                registry.add(error.order_id)
+                events.append(LifecycleEvent("place.unverified", error.order_id, "OPEN response invariant failed"))
+            raise
         order_id = str(raw_order_id)
         if not order_id.isdecimal() or int(order_id) <= 0:
             raise LifecycleError("place", "adapter returned an invalid canonical order ID")
