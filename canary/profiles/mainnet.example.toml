@@ -1,0 +1,22 @@
+# Copy to canary/profiles/local/mainnet.toml and fill the commander-approved values.
+# Never put private keys, mnemonics, or other credentials in a profile.
+name = "perp-ob-mainnet-cutover-canary"
+enabled = false
+environment = "mainnet"
+release_manifest_id = "REPLACE_WITH_PINNED_CANDIDATE_MANIFEST"
+
+[identity]
+chain_id = 1729
+api_url = "https://api.reya.xyz/v2"
+read_ws_url = "wss://ws.reya.xyz/"
+ws_exec_url = "wss://ws-exec.reya.xyz"
+orders_gateway = "0xfc8c96be87da63cecddbf54abfa7b13ee8044739"
+exchange_id = 2
+
+[canary]
+market_symbol = "REPLACE_WITH_DESIGNATED_MARKET"
+market_id = 0
+max_quantity = "0"
+max_notional = "0"
+allowed_account_ids = []
+allowed_wallet_addresses = []

@@ -1,0 +1,22 @@
+# Copy to canary/profiles/local/devnet1.toml and fill the run-specific values.
+# Never put private keys, mnemonics, or other credentials in a profile.
+name = "perp-ob-devnet1-cutover-canary"
+enabled = false
+environment = "devnet1"
+release_manifest_id = "REPLACE_WITH_PINNED_CANDIDATE_MANIFEST"
+
+[identity]
+chain_id = 89346162
+api_url = "https://api-devnet.reya-cronos.network/v2"
+read_ws_url = "wss://websocket-devnet.reya-cronos.network/"
+ws_exec_url = "wss://ws-exec-devnet.reya-cronos.network"
+orders_gateway = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"
+exchange_id = 1
+
+[canary]
+market_symbol = "REPLACE_WITH_DESIGNATED_MARKET"
+market_id = 0
+max_quantity = "0"
+max_notional = "0"
+allowed_account_ids = []
+allowed_wallet_addresses = []

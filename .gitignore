@@ -628,4 +628,7 @@ testing.py
 # End of https://www.gitignore.io/api/osx,python,pycharm,windows,visualstudio,visualstudiocode
 examples/config.json
 
+# Run-specific PRO-657 canary profiles (account/wallet identifiers; never secrets)
+canary/profiles/local/
+
 .claude/
