@@ -41,8 +41,22 @@ Orders Gateway, and connects to both WebSocket surfaces without sending a frame.
 Checked-in profiles are deliberately disabled and incomplete. Local profiles are ignored
 because they contain run-specific account and wallet identifiers, though not secrets.
 
+## Offline lifecycle engine
+
+`scripts/canary_lifecycle.py` defines the bounded place → REST/WS visibility → modify → cancel
+state machine behind an injectable adapter. It currently has no CLI or live SDK adapter, so it
+cannot submit an order. Offline tests prove these invariants:
+
+- the profile, account, wallet, market, quantity, and both order notionals pass before adapter I/O;
+- the order intent is post-only GTC, and modify restates that complete intent;
+- REST and the wallet order-change stream must both prove initial, modified, and cancelled state;
+- every external operation has a timeout;
+- cleanup addresses only canonical order IDs returned to this run, never `close_all`, `cancelAll`,
+  position flattening, or any pre-existing order; and
+- mainnet mutation still requires the exact acknowledgement constant in addition to the profile.
+
 ## Next implementation slice
 
-Add a run-scoped place → REST/WS visibility → modify → cancel scenario. The scenario must
-track and clean up only order IDs created by that run. It must not use the existing account-wide
-`close_all` or position-flatten fixtures.
+Implement the narrow SDK adapter and credential-free lifecycle evidence. Keep it unreachable from
+the CLI until a local profile identifies the release, market, quantity/notional bounds, account,
+wallet, and the live read-only probes have passed.
