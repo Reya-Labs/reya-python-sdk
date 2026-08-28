@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
+import asyncio
 import hashlib
 import json
+import os
 import re
+import ssl
 import subprocess  # nosec B404
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -14,6 +17,9 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import httpx
+from websocket import create_connection  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 try:
     import tomllib
@@ -24,8 +30,17 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10/3.11 compatibility
 MAINNET_MUTATION_ACKNOWLEDGEMENT = "PRO-657-MAINNET-MUTATION-APPROVED"
 
 _ADDRESS_PATTERN = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_ENV_VAR_PATTERN = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _SECRET_KEY_PARTS = ("private_key", "privatekey", "secret", "mnemonic")
-_PROFILE_FIELDS = {"name", "enabled", "environment", "release_manifest_id", "identity", "canary"}
+_PROFILE_FIELDS = {
+    "name",
+    "enabled",
+    "environment",
+    "release_manifest_id",
+    "rpc_url_env",
+    "identity",
+    "canary",
+}
 _IDENTITY_FIELDS = {"chain_id", "api_url", "read_ws_url", "ws_exec_url", "orders_gateway", "exchange_id"}
 _CANARY_FIELDS = {
     "market_symbol",
@@ -39,6 +54,10 @@ _CANARY_FIELDS = {
 
 class PreflightError(ValueError):
     """Raised when a canary profile is unsafe or incomplete."""
+
+
+class ProbeError(PreflightError):
+    """Raised when a read-only live target probe fails."""
 
 
 @dataclass(frozen=True)
@@ -74,7 +93,58 @@ class CanaryProfile:
     environment: str
     identity: EnvironmentIdentity
     release_manifest_id: str
+    rpc_url_env: str
     policy: CanaryPolicy
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """One successful read-only live target check."""
+
+    id: str
+    detail: str
+
+
+class ProbeTransport(Protocol):
+    """Injectable I/O boundary for read-only live probes."""
+
+    async def get_json(self, url: str, timeout_s: float) -> Any:
+        raise NotImplementedError
+
+    async def post_json(self, url: str, payload: Mapping[str, Any], timeout_s: float) -> Any:
+        raise NotImplementedError
+
+    async def websocket_handshake(self, url: str, timeout_s: float) -> None:
+        raise NotImplementedError
+
+
+class DefaultProbeTransport:
+    """Read-only HTTP and WebSocket transport used by the CLI."""
+
+    async def get_json(self, url: str, timeout_s: float) -> Any:
+        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
+            response = await client.get(url, headers={"Accept": "application/json"})
+            response.raise_for_status()
+            return response.json()
+
+    async def post_json(self, url: str, payload: Mapping[str, Any], timeout_s: float) -> Any:
+        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
+            response = await client.post(url, json=payload, headers={"Accept": "application/json"})
+            response.raise_for_status()
+            return response.json()
+
+    async def websocket_handshake(self, url: str, timeout_s: float) -> None:
+        websocket = None
+        try:
+            websocket = await asyncio.to_thread(
+                create_connection,
+                url,
+                timeout=timeout_s,
+                sslopt={"cert_reqs": ssl.CERT_REQUIRED},
+            )
+        finally:
+            if websocket is not None:
+                await asyncio.to_thread(websocket.close)
 
 
 SUPPORTED_ENVIRONMENTS: Mapping[str, EnvironmentIdentity] = {
@@ -205,6 +275,7 @@ def load_profile(path: Path) -> CanaryProfile:
         environment=_required_string(raw, "environment").lower(),
         identity=identity,
         release_manifest_id=_required_string(raw, "release_manifest_id"),
+        rpc_url_env=_required_string(raw, "rpc_url_env"),
         policy=policy,
     )
 
@@ -265,6 +336,8 @@ def validate_profile(
         errors.append("name must not be empty")
     if not profile.release_manifest_id or profile.release_manifest_id.startswith("REPLACE_"):
         errors.append("release_manifest_id must pin the exact candidate manifest")
+    if not _ENV_VAR_PATTERN.fullmatch(profile.rpc_url_env):
+        errors.append("rpc_url_env must be an uppercase environment variable name")
     if not profile.policy.market_symbol or profile.policy.market_symbol.startswith("REPLACE_"):
         errors.append("canary.market_symbol must name the designated market")
     if profile.policy.market_id <= 0:
@@ -302,6 +375,128 @@ def validate_profile(
         raise PreflightError("canary preflight failed:\n- " + "\n- ".join(errors))
 
 
+def resolve_rpc_url(profile: CanaryProfile, environ: Mapping[str, str] | None = None) -> str:
+    """Resolve the RPC URL from the explicitly named process environment variable."""
+    source = os.environ if environ is None else environ
+    value = source.get(profile.rpc_url_env, "").strip()
+    if not value:
+        raise ProbeError(f"{profile.rpc_url_env} is required for read-only RPC probes")
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ProbeError(f"{profile.rpc_url_env} must contain an absolute HTTP(S) URL")
+    return value
+
+
+def _market_rows(payload: Any) -> list[Mapping[str, Any]]:
+    if isinstance(payload, Mapping):
+        payload = payload.get("data")
+    if not isinstance(payload, list) or any(not isinstance(row, Mapping) for row in payload):
+        raise ProbeError("REST perpMarketDefinitions returned an unexpected payload shape")
+    return payload
+
+
+def _json_rpc_result(payload: Any, method: str) -> Any:
+    if not isinstance(payload, Mapping):
+        raise ProbeError(f"{method} returned an unexpected JSON-RPC payload")
+    if payload.get("error") is not None:
+        raise ProbeError(f"{method} returned a JSON-RPC error")
+    if "result" not in payload:
+        raise ProbeError(f"{method} response omitted result")
+    return payload["result"]
+
+
+async def run_live_probes(
+    profile: CanaryProfile,
+    *,
+    rpc_url: str,
+    transport: ProbeTransport | None = None,
+    timeout_s: float = 10.0,
+) -> tuple[ProbeResult, ...]:
+    """Run bounded read-only checks against every target surface."""
+    if timeout_s <= 0:
+        raise ProbeError("probe timeout must be greater than zero")
+    client = transport or DefaultProbeTransport()
+    results: list[ProbeResult] = []
+
+    definitions_url = f"{profile.identity.api_url.rstrip('/')}/perpMarketDefinitions"
+    try:
+        definitions_payload = await client.get_json(definitions_url, timeout_s)
+    except Exception as error:
+        raise ProbeError(f"REST market identity probe failed: {type(error).__name__}") from error
+    matching_markets = [
+        row for row in _market_rows(definitions_payload) if row.get("symbol") == profile.policy.market_symbol
+    ]
+    if len(matching_markets) != 1:
+        raise ProbeError(
+            f"REST market identity expected one {profile.policy.market_symbol} definition, got {len(matching_markets)}"
+        )
+    actual_market_id = matching_markets[0].get("marketId", matching_markets[0].get("market_id"))
+    if actual_market_id != profile.policy.market_id:
+        raise ProbeError(
+            f"REST market ID mismatch for {profile.policy.market_symbol}: "
+            f"expected {profile.policy.market_id}, got {actual_market_id}"
+        )
+    results.append(ProbeResult("rest.marketIdentity", f"{profile.policy.market_symbol} marketId={actual_market_id}"))
+
+    try:
+        chain_payload = await client.post_json(
+            rpc_url,
+            {"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []},
+            timeout_s,
+        )
+        chain_result = _json_rpc_result(chain_payload, "eth_chainId")
+        if not isinstance(chain_result, str):
+            raise ProbeError("eth_chainId result must be a hex string")
+        live_chain_id = int(chain_result, 16)
+    except ProbeError:
+        raise
+    except Exception as error:
+        raise ProbeError(
+            f"RPC chain identity probe via {profile.rpc_url_env} failed: {type(error).__name__}"
+        ) from error
+    if live_chain_id != profile.identity.chain_id:
+        raise ProbeError(f"RPC chain ID mismatch: expected {profile.identity.chain_id}, got {live_chain_id}")
+    results.append(ProbeResult("rpc.chainId", str(live_chain_id)))
+
+    try:
+        code_payload = await client.post_json(
+            rpc_url,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "eth_getCode",
+                "params": [profile.identity.orders_gateway, "latest"],
+            },
+            timeout_s,
+        )
+        code_result = _json_rpc_result(code_payload, "eth_getCode")
+    except ProbeError:
+        raise
+    except Exception as error:
+        raise ProbeError(f"Orders Gateway probe via {profile.rpc_url_env} failed: {type(error).__name__}") from error
+    if not isinstance(code_result, str) or not code_result.startswith("0x"):
+        raise ProbeError("eth_getCode result must be 0x-prefixed bytecode")
+    if code_result in {"0x", "0x0", "0x00"}:
+        raise ProbeError(f"Orders Gateway has no deployed bytecode at {profile.identity.orders_gateway}")
+    try:
+        bytecode_size = len(bytes.fromhex(code_result[2:]))
+    except ValueError as error:
+        raise ProbeError("eth_getCode returned malformed hex bytecode") from error
+    results.append(ProbeResult("rpc.ordersGatewayCode", f"{bytecode_size} bytes"))
+
+    for probe_id, url in (
+        ("ws.readHandshake", profile.identity.read_ws_url),
+        ("ws.execHandshake", profile.identity.ws_exec_url),
+    ):
+        try:
+            await client.websocket_handshake(url, timeout_s)
+        except Exception as error:
+            raise ProbeError(f"{probe_id} failed: {type(error).__name__}") from error
+        results.append(ProbeResult(probe_id, "connected and closed without sending a frame"))
+
+    return tuple(results)
+
+
 def _git_revision(repo_root: Path) -> str:
     try:
         result = subprocess.run(  # nosec B603 B607 -- fixed argv, no shell, repository cwd
@@ -316,7 +511,14 @@ def _git_revision(repo_root: Path) -> str:
     return result.stdout.strip()
 
 
-def build_evidence(profile: CanaryProfile, profile_path: Path, *, repo_root: Path) -> dict[str, Any]:
+def build_evidence(
+    profile: CanaryProfile,
+    profile_path: Path,
+    *,
+    repo_root: Path,
+    mode: str = "preflight-only",
+    probes: tuple[ProbeResult, ...] = (),
+) -> dict[str, Any]:
     """Build a credential-free, machine-readable preflight evidence record."""
     try:
         profile_sha256 = hashlib.sha256(profile_path.read_bytes()).hexdigest()
@@ -331,17 +533,19 @@ def build_evidence(profile: CanaryProfile, profile_path: Path, *, repo_root: Pat
     return {
         "schema_version": 1,
         "result": "pass",
-        "mode": "preflight-only",
+        "mode": mode,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "sdk_git_revision": _git_revision(repo_root),
         "profile": {
             "name": profile.name,
             "environment": profile.environment,
             "release_manifest_id": profile.release_manifest_id,
+            "rpc_url_env": profile.rpc_url_env,
             "sha256": profile_sha256,
         },
         "identity": identity,
         "canary": policy,
+        "probes": [asdict(probe) for probe in probes],
     }
 
 

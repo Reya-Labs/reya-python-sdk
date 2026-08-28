@@ -4,6 +4,8 @@ name = "perp-ob-mainnet-cutover-canary"
 enabled = false
 environment = "mainnet"
 release_manifest_id = "REPLACE_WITH_PINNED_CANDIDATE_MANIFEST"
+# The URL remains in the process environment so provider credentials are never stored here.
+rpc_url_env = "REYA_CANARY_RPC_URL"
 
 [identity]
 chain_id = 1729

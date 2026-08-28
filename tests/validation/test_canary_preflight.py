@@ -16,8 +16,12 @@ from scripts.canary_preflight import (
     CanaryProfile,
     EnvironmentIdentity,
     PreflightError,
+    ProbeError,
+    ProbeResult,
     build_evidence,
     load_profile,
+    resolve_rpc_url,
+    run_live_probes,
     validate_profile,
     write_evidence,
 )
@@ -36,6 +40,7 @@ def _profile(environment: str = "devnet1") -> CanaryProfile:
         environment=environment,
         identity=SUPPORTED_ENVIRONMENTS[environment],
         release_manifest_id="candidate-2026-08-28.1",
+        rpc_url_env="REYA_CANARY_RPC_URL",
         policy=CanaryPolicy(
             market_symbol="ETHRUSDPERP",
             market_id=1,
@@ -54,6 +59,7 @@ name = "test-{environment}"
 enabled = true
 environment = "{environment}"
 release_manifest_id = "candidate-2026-08-28.1"
+rpc_url_env = "REYA_CANARY_RPC_URL"
 {extra}
 [identity]
 chain_id = {identity.chain_id}
@@ -147,6 +153,87 @@ def test_mainnet_mutation_requires_exact_acknowledgement() -> None:
     )
 
 
+def test_rpc_url_is_resolved_only_from_explicit_env_name() -> None:
+    profile = _profile()
+
+    with pytest.raises(ProbeError, match="REYA_CANARY_RPC_URL is required"):
+        resolve_rpc_url(profile, {})
+
+    assert resolve_rpc_url(profile, {"REYA_CANARY_RPC_URL": "https://rpc.example/token"}) == (
+        "https://rpc.example/token"
+    )
+
+
+class _FakeProbeTransport:
+    def __init__(self) -> None:
+        self.chain_result = hex(SUPPORTED_ENVIRONMENTS["devnet1"].chain_id)
+        self.code_result = "0x6001600055"
+        self.market_id = 1
+        self.websocket_urls: list[str] = []
+
+    async def get_json(self, _url: str, _timeout_s: float):
+        return [{"symbol": "ETHRUSDPERP", "marketId": self.market_id}]
+
+    async def post_json(self, _url: str, payload, _timeout_s: float):
+        if payload["method"] == "eth_chainId":
+            return {"jsonrpc": "2.0", "id": payload["id"], "result": self.chain_result}
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": self.code_result}
+
+    async def websocket_handshake(self, url: str, _timeout_s: float) -> None:
+        self.websocket_urls.append(url)
+
+
+@pytest.mark.asyncio
+async def test_read_only_live_probes_cover_every_target_surface() -> None:
+    profile = _profile()
+    transport = _FakeProbeTransport()
+
+    results = await run_live_probes(
+        profile,
+        rpc_url="https://rpc.example/credential-not-recorded",
+        transport=transport,
+    )
+
+    assert [result.id for result in results] == [
+        "rest.marketIdentity",
+        "rpc.chainId",
+        "rpc.ordersGatewayCode",
+        "ws.readHandshake",
+        "ws.execHandshake",
+    ]
+    assert transport.websocket_urls == [profile.identity.read_ws_url, profile.identity.ws_exec_url]
+
+
+@pytest.mark.asyncio
+async def test_live_probe_rejects_wrong_chain_before_gateway_and_websockets() -> None:
+    profile = _profile()
+    transport = _FakeProbeTransport()
+    transport.chain_result = hex(profile.identity.chain_id + 1)
+
+    with pytest.raises(ProbeError, match="RPC chain ID mismatch"):
+        await run_live_probes(profile, rpc_url="https://rpc.example", transport=transport)
+
+    assert not transport.websocket_urls
+
+
+@pytest.mark.asyncio
+async def test_live_probe_rejects_missing_gateway_code() -> None:
+    transport = _FakeProbeTransport()
+    transport.code_result = "0x"
+
+    with pytest.raises(ProbeError, match="Orders Gateway has no deployed bytecode"):
+        await run_live_probes(_profile(), rpc_url="https://rpc.example", transport=transport)
+
+
+@pytest.mark.asyncio
+async def test_live_probe_rejects_wrong_market_id() -> None:
+    transport = _FakeProbeTransport()
+    transport.market_id = 999
+
+    with pytest.raises(ProbeError, match="REST market ID mismatch"):
+        await run_live_probes(_profile(), rpc_url="https://rpc.example", transport=transport)
+
+
 def test_profile_rejects_secret_fields(tmp_path: Path) -> None:
     profile_path = tmp_path / "unsafe.toml"
     profile_path.write_text(_profile_toml(extra='private_key = "do-not-store-this"\n'), encoding="utf-8")
@@ -180,14 +267,23 @@ def test_evidence_is_machine_readable_and_credential_free(tmp_path: Path) -> Non
     profile = load_profile(profile_path)
     output_path = tmp_path / "evidence" / "preflight.json"
 
-    evidence = build_evidence(profile, profile_path, repo_root=Path(__file__).resolve().parents[2])
+    probes = (ProbeResult("rpc.chainId", str(profile.identity.chain_id)),)
+    evidence = build_evidence(
+        profile,
+        profile_path,
+        repo_root=Path(__file__).resolve().parents[2],
+        mode="probe-live-read-only",
+        probes=probes,
+    )
     write_evidence(evidence, output_path)
 
     stored = json.loads(output_path.read_text(encoding="utf-8"))
     assert stored["result"] == "pass"
-    assert stored["mode"] == "preflight-only"
+    assert stored["mode"] == "probe-live-read-only"
     assert stored["profile"]["environment"] == "devnet1"
     assert stored["sdk_git_revision"]
+    assert stored["probes"] == [{"detail": str(profile.identity.chain_id), "id": "rpc.chainId"}]
+    assert "credential-not-recorded" not in output_path.read_text(encoding="utf-8")
     assert "private" not in output_path.read_text(encoding="utf-8").lower()
 
 
