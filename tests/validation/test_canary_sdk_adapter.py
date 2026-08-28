@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from types import SimpleNamespace
+
+from decimal import Decimal
 
 import pytest
 
+from scripts.canary_lifecycle import OpenOrderUnverifiedError, OrderExpectation, OrderPlan
+from scripts.canary_preflight import SUPPORTED_ENVIRONMENTS, CanaryPolicy, CanaryProfile
+from scripts.canary_sdk_adapter import SdkAdapterError, SdkLifecycleAdapter, ThreadSafeWsOrderStore
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
@@ -17,10 +21,6 @@ from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters
-from scripts.canary_lifecycle import OpenOrderUnverifiedError, OrderExpectation, OrderPlan
-from scripts.canary_preflight import SUPPORTED_ENVIRONMENTS, CanaryPolicy, CanaryProfile
-from scripts.canary_sdk_adapter import SdkAdapterError, SdkLifecycleAdapter, ThreadSafeWsOrderStore
-
 
 pytestmark = pytest.mark.offline
 

@@ -62,9 +62,17 @@ Offline tests prove these invariants:
 - mainnet mutation still requires the exact acknowledgement constant in addition to the profile;
   credential-free success and sanitized failure evidence are available for every lifecycle run.
 
-## Next implementation slice
+## Recovery checkpoint and next slice
 
-Add explicit runtime orchestration only after a local profile identifies the release, market,
-quantity/notional bounds, account, and wallet. That orchestration must construct the clients from
-machine-local configuration, require the read-only probes to pass in the same run, subscribe to the
-wallet order-change channel before entry, and retain a separate explicit mutation gate.
+`scripts/canary_recovery.py` also defines an injected operator checkpoint. It snapshots the public
+projection, pauses without owning any restart capability, then requires a fresh reconnect to prove
+contiguous unique event sequences, projection convergence, and no order or position delta from the
+baseline. Mainnet has a separate recovery-checkpoint acknowledgement. The CLI does not construct
+this adapter or expose the checkpoint.
+
+See `canary/ACCEPTANCE.md` for the ticket-to-code coverage map. The next implementation slice is
+the controlled maker/taker match with run-owned position accounting and the operator-side evidence
+contract for transaction receipts, canonical events/fills, database rows, and telemetry. Explicit
+runtime orchestration remains blocked on reviewed local release, market, quantity/notional,
+account, and wallet inputs. It must require read-only probes in the same run, subscribe to wallet
+streams before entry, and retain separate mutation gates.

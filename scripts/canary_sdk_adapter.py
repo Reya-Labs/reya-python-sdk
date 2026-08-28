@@ -10,6 +10,8 @@ import threading
 import time
 from decimal import Decimal, InvalidOperation
 
+from scripts.canary_lifecycle import OpenOrderUnverifiedError, OrderExpectation, OrderPlan
+from scripts.canary_preflight import CanaryProfile
 from sdk.async_api.cancel_reason import CancelReason as AsyncCancelReason
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
@@ -25,8 +27,6 @@ from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters
-from scripts.canary_lifecycle import OpenOrderUnverifiedError, OrderExpectation, OrderPlan
-from scripts.canary_preflight import CanaryProfile
 
 
 class SdkAdapterError(RuntimeError):
