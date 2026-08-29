@@ -10,7 +10,9 @@ cancel-identifier rules).
 
 Regression: ``str(Decimal("0.0000001"))`` is ``"1E-7"``, and the server's ethers
 ``FixedNumber`` parser rejects scientific notation with INVALID_ARGUMENT. The
-builder renders every price with ``format(value, "f")``.
+builder renders every price with ``format(value, "f")`` — all five emissions,
+pinned one by one below, because a rejection lands after the nonce and the
+signature.
 """
 
 from __future__ import annotations
@@ -125,6 +127,42 @@ def _trigger_create_params(**overrides: Any) -> TriggerOrderParameters:
     }
     fields.update(overrides)
     return TriggerOrderParameters(**fields)
+
+
+# What a caller doing Decimal arithmetic hands the builder: str(Decimal) is the
+# natural conversion and it emits scientific notation below 1e-6.
+SCI_NOTATION_PRICE = str(Decimal("0.0000001"))
+PLAIN_PRICE = "0.0000001"
+
+
+def test_the_sci_notation_fixture_is_the_shape_the_server_refuses() -> None:
+    """The premise of every case below: this really is what `str(Decimal)` emits."""
+    assert SCI_NOTATION_PRICE == "1E-7"
+
+
+@pytest.mark.trigger
+def test_trigger_create_renders_both_prices_as_plain_decimals(client: ReyaTradingClient) -> None:
+    """``triggerPx`` shares ``limitPx``'s rendering — it used to reach the wire
+    through a bare ``str()`` and arrive as ``"1E-7"``."""
+    payload, _ = client.build_create_trigger_order_payload(
+        _trigger_create_params(trigger_px=SCI_NOTATION_PRICE, limit_px=SCI_NOTATION_PRICE)
+    )
+    assert payload["limitPx"] == PLAIN_PRICE
+    assert payload["triggerPx"] == PLAIN_PRICE
+
+
+def test_limit_create_renders_limit_px_as_a_plain_decimal(client: ReyaTradingClient) -> None:
+    """The LIMIT create path emitted ``limit_px`` verbatim."""
+    payload, _ = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=SCI_NOTATION_PRICE,
+            qty="0.01",
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert payload["limitPx"] == PLAIN_PRICE
 
 
 @pytest.mark.trigger
@@ -456,6 +494,23 @@ def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
     }
     fields.update(overrides)
     return _modify_params(**fields)
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
+def test_modify_trigger_renders_both_prices_as_plain_decimals(client: ReyaTradingClient) -> None:
+    """Both modify price emissions used a bare ``str()``."""
+    payload, _ = client.build_modify_order_payload(
+        _trigger_modify_params(limit_px=SCI_NOTATION_PRICE, trigger_px=SCI_NOTATION_PRICE)
+    )
+    assert payload["limitPx"] == PLAIN_PRICE
+    assert payload["triggerPx"] == PLAIN_PRICE
+
+
+@pytest.mark.modify
+def test_modify_limit_renders_limit_px_as_a_plain_decimal(client: ReyaTradingClient) -> None:
+    payload, _ = client.build_modify_order_payload(_modify_params(limit_px=SCI_NOTATION_PRICE))
+    assert payload["limitPx"] == PLAIN_PRICE
 
 
 @pytest.mark.modify

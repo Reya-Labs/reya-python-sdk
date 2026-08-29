@@ -18,7 +18,7 @@ import re  # noqa: F401
 import json
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List
 from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
@@ -32,13 +32,12 @@ class MarketDefinition(BaseModel):
     min_order_qty: Annotated[str, Field(strict=True)] = Field(alias="minOrderQty")
     qty_step_size: Annotated[str, Field(strict=True)] = Field(alias="qtyStepSize")
     tick_size: Annotated[str, Field(strict=True)] = Field(alias="tickSize")
-    trigger_limit_band_fraction: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="triggerLimitBandFraction")
     liquidation_margin_parameter: Annotated[str, Field(strict=True)] = Field(alias="liquidationMarginParameter")
     initial_margin_parameter: Annotated[str, Field(strict=True)] = Field(alias="initialMarginParameter")
     max_leverage: Annotated[int, Field(strict=True, ge=0)] = Field(alias="maxLeverage")
     oi_cap: Annotated[str, Field(strict=True)] = Field(alias="oiCap")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "triggerLimitBandFraction", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
+    __properties: ClassVar[List[str]] = ["symbol", "marketId", "minOrderQty", "qtyStepSize", "tickSize", "liquidationMarginParameter", "initialMarginParameter", "maxLeverage", "oiCap"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
@@ -64,16 +63,6 @@ class MarketDefinition(BaseModel):
     @field_validator('tick_size')
     def tick_size_validate_regular_expression(cls, value):
         """Validates the regular expression"""
-        if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('trigger_limit_band_fraction')
-    def trigger_limit_band_fraction_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if value is None:
-            return value
-
         if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
             raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
@@ -162,7 +151,6 @@ class MarketDefinition(BaseModel):
             "minOrderQty": obj.get("minOrderQty"),
             "qtyStepSize": obj.get("qtyStepSize"),
             "tickSize": obj.get("tickSize"),
-            "triggerLimitBandFraction": obj.get("triggerLimitBandFraction"),
             "liquidationMarginParameter": obj.get("liquidationMarginParameter"),
             "initialMarginParameter": obj.get("initialMarginParameter"),
             "maxLeverage": obj.get("maxLeverage"),

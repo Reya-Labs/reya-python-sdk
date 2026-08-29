@@ -25,7 +25,7 @@ from typing_extensions import Self
 
 class CancelOrderRequest(BaseModel):
     """
-    CancelOrderRequest
+    Cancels a live order by `orderId`, or by a non-zero `clientOrderId` when `orderId` is absent. Spot, perp, and protective stops all route through the matching engine on the unified `marketId` namespace. For a `STOP_LOSS` / `TAKE_PROFIT`, cancellation is bound to the arming signer: the wallet that signs this cancel must be the exact wallet that armed the trigger, so a different signer holding trade permission on the same account cannot cancel it and is rejected with `UNAUTHORIZED_ACCOUNT_ERROR`. The same binding applies to a modify against an armed trigger.
     """ # noqa: E501
     order_id: Optional[StrictStr] = Field(default=None, description="Internal matching engine order ID to cancel. Provide `orderId`, or a non-zero `clientOrderId` when `orderId` is absent; JSON Schema validates target presence only and the server enforces the non-zero `clientOrderId` rule. If both are supplied the server treats `orderId` as the canonical identifier and `clientOrderId` is ignored. For spot markets, this is the order ID returned in the CreateOrderResponse.", alias="orderId")
     client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID for tracking and correlation, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero; JSON Schema validates presence only and the server enforces the non-zero rule. This is the same clientOrderId provided in CreateOrderRequest.", alias="clientOrderId")

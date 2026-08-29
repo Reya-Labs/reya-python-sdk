@@ -32,14 +32,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the ±int256.max full-position sentinel, sign from `is_buy`). The live trigger
   create/modify/cancel e2e tests are staged (skipped) until the SL/TP backbone
   matching engine is deployed to devnet1.
-- Trigger limit-band awareness: `ReyaTradingClient` reads each perp market's
-  `triggerLimitBandFraction` at `start()` and refuses an inadmissible trigger
-  before a nonce is claimed. The field's three states are distinct — a positive
-  fraction enforces `|limit_px - trigger_px| <= trigger_px * fraction` with the
-  outermost legal price rounded INWARD to the market's tick, `"0"` disables the
-  band and admits any positive `limit_px`, and an ABSENT fraction means the
-  market accepts no triggers at all. An absent fraction is NOT read as `"0"`.
-  Enforced on both create and modify, mirroring `TRIGGER_LIMIT_OUTSIDE_BAND_ERROR`.
+- Server-extended enums degrade instead of breaking: `CancelReason`,
+  `OrderStatus`, `RequestErrorCode`, `WsExecErrorCode`, `ExecutionType`,
+  `AccountType` and `TierType` gain an `UNKNOWN` member that a value this SDK
+  has never heard of resolves to. A matching engine that allocates a new
+  cancel reason no longer costs the read-side stream a silently dropped frame,
+  or a ws-exec caller an unparseable response to an order the server already
+  acted on. The order-entry vocabularies (`OrderType`, `TimeInForce`) are
+  deliberately excluded — a request the client cannot encode still fails loudly.
 - `sdk.reya_ws_exec.ReyaWsExecClient`: high-level client for the new ws-exec
   WebSocket order-entry service. Mirrors `ReyaTradingClient`'s order surface
   (`create_limit_order`, `create_trigger_order`, `cancel_order`, `mass_cancel`)
@@ -59,17 +59,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   typed `DepthUpdate`. Field names and their semantics are unchanged, so
   migration is the import and the type name. The REST `sdk.open_api` `Depth`
   model is unaffected.
-- `ReyaTradingClient` re-reads market definitions on a 60s TTL before signing a
-  `STOP_LOSS`/`TAKE_PROFIT` create or reprice, matching the API's own cache
-  window. `triggerLimitBandFraction` and the tick it rounds to are operationally
-  tunable, so a long-lived client no longer enforces the band that was live at
-  `start()`. LIMIT orders are bound by neither and never pay for the re-fetch.
+- A LIMIT modify now refuses `reduce_only=True` and a restated `IOC`
+  `time_in_force` client-side, matching the guards the trigger-modify path
+  already had. Neither shape can name a resting order — reduce-only is
+  perp-IOC-only and IOC never rests — so both were guaranteed server rejections
+  bought with a spent nonce.
 - **BREAKING: `TriggerOrderParameters` now REQUIRES `limit_px` and
   `time_in_force`.** `limit_px` is the worst-acceptable execution price of the
   child the trigger fires into; the client no longer synthesizes one when it is
   omitted (the old direction-aware sentinel — one tick for sells, the largest
-  tick-aligned price under the ME's MAX_PRICE for buys — is gone, because under
-  a per-market trigger limit band there is no price that always executes).
+  tick-aligned price under the ME's MAX_PRICE for buys — is gone: the venue
+  admits a fired child's limit price on its own rules, so there is no price
+  that always executes).
   `time_in_force` chooses what the stop BECOMES when it fires (`GTC`/`GTT`/`IOC`)
   and flows into both the EIP-712 digest and the `timeInForce` wire key, which
   the backend now requires on every create. A `GTT` trigger must carry a future
@@ -121,13 +122,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - Trigger admission lost its price ceiling when the `limit_px` sentinel was
-  deleted: under a market publishing `triggerLimitBandFraction: "0"` the client
-  accepted any positive price at all. The matching engine's MAX_PRICE
-  (562949.953421312) is enforced again, independently of the band — `"0"`
-  switches off the band, not the ceiling.
-- A `STOP_LOSS`/`TAKE_PROFIT` on a spot symbol reported a missing
-  `triggerLimitBandFraction` and told the caller to wait for the market to
-  publish one. Spot markets arm no triggers at all, so the refusal now says so.
+  deleted: the client accepted any positive price at all. Both `limit_px` and
+  `trigger_px` are checked against the matching engine's price domain again —
+  MIN_PRICE (0.000000001) through MAX_PRICE (562949.953421312), the same domain
+  the engine's own `validate_place` enforces. Below MIN_PRICE the E18 scaling in
+  the signer truncated the price to zero, so a sub-nano price used to be signed
+  as 0 before the wire string was refused. The per-market trigger limit band is
+  NOT mirrored client-side: it is a matching-engine setting, it is published
+  nowhere, and a `limit_px` outside it comes back as
+  `TRIGGER_LIMIT_OUTSIDE_BAND_ERROR`.
+- A `STOP_LOSS`/`TAKE_PROFIT` on a spot symbol was refused with a message about
+  market metadata. Spot markets arm no triggers at all, so the refusal now says
+  so.
+- A plain string where the SDK documents an enum (`time_in_force="GTC"`,
+  `trigger_type="STOP_LOSS"`) claimed the per-wallet nonce and then died on
+  `AttributeError: 'str' object has no attribute 'value'` while building the
+  wire payload — the order was never sent, but the counter had advanced.
+  `TimeInForce`/`OrderType` are now normalised in one place ahead of the nonce,
+  so the string form is accepted and produces the same payload as the enum,
+  and an unrecognised value raises the named `ValueError` with the nonce
+  untouched.
+- `is_buy` is now required to be a real `bool` on all three builders. A truthy
+  string such as `"false"` signed the buy-side sentinel while the ws-exec wire
+  coerced `isBuy: false`, which the venue could only report as a signature
+  mismatch.
+- Every price the builders emit is rendered with `format(value, "f")`. Only the
+  trigger-create `limitPx` was; `triggerPx`, the LIMIT-create `limitPx` and both
+  modify prices used `str()`, so a `Decimal("0.0000001")` reached the wire as
+  `"1E-7"` and the server's ethers `FixedNumber` parser rejected it with
+  `INVALID_ARGUMENT` — after the nonce and the signature.
+- Repricing a GTT order in its final minute is no longer refused for a deadline
+  the client chose itself. The DEFAULT `deadline` is clamped to just under an
+  `expires_after` nearer than 60s, so restating an armed trigger's
+  restate-immutable expiry — the only legal thing a reprice does with it — is
+  admitted. An explicitly passed `deadline` is unchanged.
+- `limit_px=None` raised a bare `TypeError` from `Decimal`, and a `None` or
+  unmapped `time_in_force` carrying an `expires_after` raised `AttributeError`
+  from the coupling message's own f-string, shadowing the intended
+  "Unsupported time_in_force" `ValueError`. Both now name the field.
 - The per-wallet nonce was claimed before the last few refusals on the create
   and modify paths, so a rejected order still advanced the counter. An
   unmapped `time_in_force` / `order_type` now raises a named `ValueError`

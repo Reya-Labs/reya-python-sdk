@@ -30,9 +30,16 @@ class OrderStatus(str, Enum):
     FILLED = 'FILLED'
     CANCELLED = 'CANCELLED'
 
+    UNKNOWN = 'UNKNOWN'
+
     @classmethod
     def from_json(cls, json_str: str) -> Self:
         """Create an instance of OrderStatus from a JSON string"""
         return cls(json.loads(json_str))
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        """Resolve a member added by the server since this SDK was generated."""
+        return cls.UNKNOWN
 
 

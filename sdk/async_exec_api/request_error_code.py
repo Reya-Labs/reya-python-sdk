@@ -37,3 +37,9 @@ class RequestErrorCode(Enum):
   TRIGGER_LIMIT_OUTSIDE_BAND_ERROR = "TRIGGER_LIMIT_OUTSIDE_BAND_ERROR"
   TRIGGER_ALREADY_EXISTS_ERROR = "TRIGGER_ALREADY_EXISTS_ERROR"
   ORDER_EXPIRES_TOO_SOON_ERROR = "ORDER_EXPIRES_TOO_SOON_ERROR"
+  UNKNOWN = "UNKNOWN"
+
+  @classmethod
+  def _missing_(cls, value: object) -> "RequestErrorCode":
+    """Resolve a member added by the server since this SDK was generated."""
+    return cls.UNKNOWN

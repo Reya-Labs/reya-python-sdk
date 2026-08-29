@@ -31,9 +31,16 @@ class ExecutionType(str, Enum):
     ADL = 'ADL'
     MARKET_CLOSE = 'MARKET_CLOSE'
 
+    UNKNOWN = 'UNKNOWN'
+
     @classmethod
     def from_json(cls, json_str: str) -> Self:
         """Create an instance of ExecutionType from a JSON string"""
         return cls(json.loads(json_str))
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        """Resolve a member added by the server since this SDK was generated."""
+        return cls.UNKNOWN
 
 

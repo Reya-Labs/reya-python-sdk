@@ -14,4 +14,9 @@ class CancelReason(Enum):
   RISK_REJECTED = "RISK_REJECTED"
   OCO_SIBLING_FIRED = "OCO_SIBLING_FIRED"
   POSITION_CLOSED = "POSITION_CLOSED"
-  BAND_VIOLATION = "BAND_VIOLATION"
+  UNKNOWN = "UNKNOWN"
+
+  @classmethod
+  def _missing_(cls, value: object) -> "CancelReason":
+    """Resolve a member added by the server since this SDK was generated."""
+    return cls.UNKNOWN
