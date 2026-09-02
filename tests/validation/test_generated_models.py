@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import inspect
+from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
@@ -850,6 +851,78 @@ def test_ws_info_perp_execution_accepts_omitted_maker_fields(execution_type: str
 
     serialized = execution.model_dump(mode="json", by_alias=True, exclude_none=True)
     assert not any(field.startswith("maker") for field in serialized)
+
+
+_FEE_V3_COMPONENT_FIELDS = ("protocolFeeCredit", "referrerFeeCredit", "takerRebateCredit", "poolFeeCredit")
+
+
+def _fee_v3_perp_execution_payload() -> dict[str, Any]:
+    """A Fee v3 ORDER_MATCH (PRO-853): takerFee is the exact sum of the four
+    settlement buckets and the legacy makerFee is absent."""
+    return {
+        "exchangeId": 2,
+        "symbol": "ETHRUSDPERP",
+        "takerAccountId": 12345,
+        "makerAccountId": 67890,
+        "takerOrderId": "490346525705109504",
+        "makerOrderId": "490346525705109505",
+        "qty": "1",
+        "side": "B",
+        "price": "2500",
+        "takerFee": "0.5",
+        "protocolFeeCredit": "0.3",
+        "referrerFeeCredit": "0.05",
+        "takerRebateCredit": "0.1",
+        "poolFeeCredit": "0.05",
+        "type": "ORDER_MATCH",
+        "timestamp": 1745000000,
+        "sequenceNumber": 99,
+        "fillId": "9001",
+    }
+
+
+def _assert_fee_v3_breakdown(serialized: dict[str, Any]) -> None:
+    assert all(field in serialized for field in _FEE_V3_COMPONENT_FIELDS)
+    assert Decimal(serialized["takerFee"]) == sum(Decimal(serialized[field]) for field in _FEE_V3_COMPONENT_FIELDS)
+    assert "makerFee" not in serialized
+
+
+def test_rest_perp_execution_exposes_fee_v3_breakdown() -> None:
+    execution = RestPerpExecution.from_dict(_fee_v3_perp_execution_payload())
+
+    assert execution is not None
+    assert execution.protocol_fee_credit == "0.3"
+    assert execution.referrer_fee_credit == "0.05"
+    assert execution.taker_rebate_credit == "0.1"
+    assert execution.pool_fee_credit == "0.05"
+    # Typed fields, not additional_properties spill-over from an old model.
+    assert not execution.additional_properties
+    _assert_fee_v3_breakdown(execution.to_dict())
+
+
+def test_ws_info_perp_execution_exposes_fee_v3_breakdown() -> None:
+    execution = WsInfoPerpExecution.model_validate(_fee_v3_perp_execution_payload())
+
+    assert execution.protocol_fee_credit == "0.3"
+    assert execution.referrer_fee_credit == "0.05"
+    assert execution.taker_rebate_credit == "0.1"
+    assert execution.pool_fee_credit == "0.05"
+    assert not execution.additional_properties
+    _assert_fee_v3_breakdown(execution.model_dump(mode="json", by_alias=True, exclude_none=True))
+
+
+@pytest.mark.parametrize("execution_type", ["ADL", "MARKET_CLOSE"])
+def test_perp_execution_models_leave_fee_v3_components_absent_when_omitted(execution_type: str) -> None:
+    """Pre-Fee v3 rows carry no components; the models must not synthesize them."""
+    payload = _makerless_perp_execution_payload(execution_type)
+
+    rest_execution = RestPerpExecution.from_dict(payload)
+    assert rest_execution is not None
+    assert not any(field in rest_execution.to_dict() for field in _FEE_V3_COMPONENT_FIELDS)
+
+    ws_execution = WsInfoPerpExecution.model_validate(payload)
+    serialized = ws_execution.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert not any(field in serialized for field in _FEE_V3_COMPONENT_FIELDS)
 
 
 def test_rest_execution_bust_uses_taker_field_names() -> None:
