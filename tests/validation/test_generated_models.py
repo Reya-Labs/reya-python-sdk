@@ -78,6 +78,13 @@ CANCEL_REASONS = {
     # an order refused at admission was never created and returns a RequestErrorCode
     # instead. See tests/validation/test_risk_reject_taxonomy.py.
     "RISK_CANCELLED",
+    # SL/TP firing contract (specs 3.1.0): a risk-refused trigger, an OCO sibling
+    # cancelled by its twin firing, a protective order swept by self-trade
+    # prevention, and a protective order cancelled because its position closed.
+    "RISK_REJECTED",
+    "OCO_SIBLING_FIRED",
+    "PROTECTIVE_SELF_TRADE_SWEEP",
+    "POSITION_CLOSED",
 }
 
 EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
@@ -180,6 +187,9 @@ def _base_create_request_payload() -> dict[str, Any]:
         "isBuy": True,
         "limitPx": "2500",
         "orderType": "STOP_LOSS",
+        # Required for every order class since specs 3.1.0; an IOC trigger
+        # must omit expiresAfter, which this payload does.
+        "timeInForce": "IOC",
         "triggerPx": "2400",
         "signature": "0x" + "11" * 65,
         "nonce": "1778601294999111",
@@ -304,7 +314,8 @@ def test_rest_create_order_request_accepts_trigger_without_qty() -> None:
     assert request.qty is None
     serialized = request.to_dict()
     assert "qty" not in serialized
-    assert "timeInForce" not in serialized
+    # timeInForce is required for every order class since specs 3.1.0.
+    assert serialized["timeInForce"] == "IOC"
 
 
 def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
@@ -313,7 +324,7 @@ def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
     assert request.qty is None
     serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
     assert "qty" not in serialized
-    assert "timeInForce" not in serialized
+    assert serialized["timeInForce"] == "IOC"
 
 
 def test_rest_modify_order_request_accepts_omitted_expires_after() -> None:

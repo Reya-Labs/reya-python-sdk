@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sdk.async_api.depth import Depth as AsyncDepth
+from sdk.async_api.depth_snapshot import DepthSnapshot
+from sdk.async_api.depth_update import DepthUpdate
 from sdk.open_api.models.depth import Depth as RestDepth
 
 # A price/qty level normalised to Decimals for exact set comparison.
@@ -26,13 +27,13 @@ class LocalBook:
         self.asks: Levels = {}
 
     @classmethod
-    def from_snapshot(cls, depth: AsyncDepth) -> LocalBook:
+    def from_snapshot(cls, depth: DepthSnapshot) -> LocalBook:
         book = cls()
         book._replace_side(book.bids, depth.bids)
         book._replace_side(book.asks, depth.asks)
         return book
 
-    def apply(self, depth: AsyncDepth) -> None:
+    def apply(self, depth: DepthUpdate) -> None:
         """Apply one depth update frame with absolute per-level semantics."""
         self._merge_side(self.bids, depth.bids)
         self._merge_side(self.asks, depth.asks)
@@ -68,7 +69,7 @@ def rest_levels(levels) -> list[tuple[Decimal, Decimal]]:
     return out
 
 
-def depth_sides(depth: RestDepth | AsyncDepth) -> tuple[list, list]:
+def depth_sides(depth: RestDepth | DepthSnapshot | DepthUpdate) -> tuple[list, list]:
     """Return (bids, asks) as sorted Decimal tuples: bids descending, asks ascending."""
     bids = sorted(rest_levels(depth.bids), key=lambda kv: kv[0], reverse=True)
     asks = sorted(rest_levels(depth.asks), key=lambda kv: kv[0])

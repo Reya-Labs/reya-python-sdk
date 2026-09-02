@@ -1,4 +1,4 @@
 from enum import Enum
 
-class AnonymousSchema141(Enum): 
+class AnonymousSchema152(Enum): 
   UNKNOWN_REASON = "UnknownReason"

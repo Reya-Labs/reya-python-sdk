@@ -1,4 +1,4 @@
 from enum import Enum
 
 class AnonymousSchema98(Enum): 
-  MARKET_ID_MISMATCH = "MarketIdMismatch"
+  REDUCE_ONLY_CONDITION_FAILED = "ReduceOnlyConditionFailed"

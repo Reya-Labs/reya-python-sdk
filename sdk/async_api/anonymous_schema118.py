@@ -1,4 +1,4 @@
 from enum import Enum
 
-class AnonymousSchema107(Enum): 
+class AnonymousSchema118(Enum): 
   INVALID_FILL_PRICE = "InvalidFillPrice"

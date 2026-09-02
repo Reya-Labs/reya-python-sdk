@@ -9,11 +9,15 @@ class PerpExecution(BaseModel):
   taker_account_id: int = Field(alias='''takerAccountId''')
   maker_account_id: Optional[int] = Field(default=None, alias='''makerAccountId''')
   taker_order_id: Optional[str] = Field(description='''Order ID for the taker. Absent for legacy V2 executions and omitted when not meaningful.''', default=None, alias='''takerOrderId''')
-  maker_order_id: Optional[str] = Field(description='''Order ID for the maker. Absent for legacy V2 executions and omitted when not meaningful.''', default=None, alias='''makerOrderId''')
+  maker_order_id: Optional[str] = Field(description='''Order ID for the maker. Absent for legacy V2, ADL, and MARKET_CLOSE executions and omitted when not meaningful.''', default=None, alias='''makerOrderId''')
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   price: str = Field()
   taker_fee: str = Field(alias='''takerFee''')
+  protocol_fee_credit: Optional[str] = Field(default=None, alias='''protocolFeeCredit''')
+  referrer_fee_credit: Optional[str] = Field(default=None, alias='''referrerFeeCredit''')
+  taker_rebate_credit: Optional[str] = Field(default=None, alias='''takerRebateCredit''')
+  pool_fee_credit: Optional[str] = Field(default=None, alias='''poolFeeCredit''')
   maker_fee: Optional[str] = Field(default=None, alias='''makerFee''')
   taker_opening_fee: Optional[str] = Field(default=None, alias='''takerOpeningFee''')
   maker_opening_fee: Optional[str] = Field(default=None, alias='''makerOpeningFee''')
@@ -47,13 +51,13 @@ class PerpExecution(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'taker_account_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'qty', 'side', 'price', 'taker_fee', 'maker_fee', 'taker_opening_fee', 'maker_opening_fee', 'type', 'timestamp', 'sequence_number', 'fill_id', 'taker_realized_pnl', 'maker_realized_pnl', 'taker_price_variation_pnl', 'maker_price_variation_pnl', 'taker_funding_pnl', 'maker_funding_pnl', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'taker_account_id', 'maker_account_id', 'taker_order_id', 'maker_order_id', 'qty', 'side', 'price', 'taker_fee', 'protocol_fee_credit', 'referrer_fee_credit', 'taker_rebate_credit', 'pool_fee_credit', 'maker_fee', 'taker_opening_fee', 'maker_opening_fee', 'type', 'timestamp', 'sequence_number', 'fill_id', 'taker_realized_pnl', 'maker_realized_pnl', 'taker_price_variation_pnl', 'maker_price_variation_pnl', 'taker_funding_pnl', 'maker_funding_pnl', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'takerAccountId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'qty', 'side', 'price', 'takerFee', 'makerFee', 'takerOpeningFee', 'makerOpeningFee', 'type', 'timestamp', 'sequenceNumber', 'fillId', 'takerRealizedPnl', 'makerRealizedPnl', 'takerPriceVariationPnl', 'makerPriceVariationPnl', 'takerFundingPnl', 'makerFundingPnl', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'takerAccountId', 'makerAccountId', 'takerOrderId', 'makerOrderId', 'qty', 'side', 'price', 'takerFee', 'protocolFeeCredit', 'referrerFeeCredit', 'takerRebateCredit', 'poolFeeCredit', 'makerFee', 'takerOpeningFee', 'makerOpeningFee', 'type', 'timestamp', 'sequenceNumber', 'fillId', 'takerRealizedPnl', 'makerRealizedPnl', 'takerPriceVariationPnl', 'makerPriceVariationPnl', 'takerFundingPnl', 'makerFundingPnl', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
