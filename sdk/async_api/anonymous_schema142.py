@@ -1,4 +1,4 @@
 from enum import Enum
 
-class AnonymousSchema131(Enum): 
+class AnonymousSchema142(Enum): 
   NEGATIVE_ACCOUNT_REAL_BALANCE = "NegativeAccountRealBalance"

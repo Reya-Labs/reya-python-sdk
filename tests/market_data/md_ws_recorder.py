@@ -26,7 +26,8 @@ import json
 import logging
 import threading
 
-from sdk.async_api.depth import Depth
+from sdk.async_api.depth_snapshot import DepthSnapshot
+from sdk.async_api.depth_update import DepthUpdate
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.order import Order as AsyncOrder
@@ -69,8 +70,8 @@ class MarketDataRecorder:
         self.order_change_frames: list[list[AsyncOrder]] = []
 
         # depth: the subscribe snapshot, then each live update frame (a Depth diff).
-        self.depth_snapshot: Depth | None = None
-        self.depth_frames: list[Depth] = []
+        self.depth_snapshot: DepthSnapshot | None = None
+        self.depth_frames: list[DepthUpdate] = []
 
         # Raw wire frames (pre-Pydantic) captured off the same reader thread via the
         # websocket-client ``on_data`` hook, which fires with the decoded text of every
@@ -120,7 +121,7 @@ class MarketDataRecorder:
                 self.order_changes_snapshot = message.contents
             elif isinstance(message, SubscribedMessagePayload):
                 if "depth" in message.channel and message.contents:
-                    self.depth_snapshot = Depth.model_validate(message.contents)
+                    self.depth_snapshot = DepthSnapshot.model_validate(message.contents)
             elif isinstance(message, OrderChangeUpdatePayload):
                 self.order_change_frames.append(list(message.data))
             elif isinstance(message, MarketDepthUpdatePayload):
@@ -162,7 +163,7 @@ class MarketDataRecorder:
         with self._lock:
             return [len(frame) for frame in self.order_change_frames]
 
-    def depth_updates(self) -> list[Depth]:
+    def depth_updates(self) -> list[DepthUpdate]:
         with self._lock:
             return list(self.depth_frames)
 
@@ -180,7 +181,7 @@ class MarketDataRecorder:
                 return []
             return list(self.order_changes_snapshot.data)
 
-    def depth_snapshot_copy(self) -> Depth | None:
+    def depth_snapshot_copy(self) -> DepthSnapshot | None:
         with self._lock:
             return self.depth_snapshot
 

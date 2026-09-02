@@ -16,7 +16,8 @@ from decimal import Decimal
 
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
-from sdk.async_api.depth import Depth
+from sdk.async_api.depth_snapshot import DepthSnapshot
+from sdk.async_api.depth_snapshot_type import DepthSnapshotType
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.execution_bust import ExecutionBust as AsyncExecutionBust
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
@@ -80,7 +81,7 @@ class WebSocketState:
         # Market-level stores (by symbol)
         self.market_perp_executions: dict[str, EventStore[AsyncPerpExecution]] = {}
         self.market_spot_executions: dict[str, EventStore[AsyncSpotExecution]] = {}
-        self.depth: dict[str, Depth] = {}
+        self.depth: dict[str, DepthSnapshot] = {}
 
     # =========================================================================
     # Backward compatibility properties
@@ -118,7 +119,7 @@ class WebSocketState:
             self.spot_executions.add(value)
 
     @property
-    def last_depth(self) -> dict[str, Depth]:
+    def last_depth(self) -> dict[str, DepthSnapshot]:
         """Backward compatibility: alias for depth."""
         return self.depth
 
@@ -292,7 +293,7 @@ class WebSocketState:
 
         # Handle initial snapshot for depth channel
         if "depth" in message.channel and message.contents:
-            depth_data = Depth.model_validate(message.contents)
+            depth_data = DepthSnapshot.model_validate(message.contents)
             self.depth[depth_data.symbol] = depth_data
             logger.info(
                 f"Stored depth snapshot for {depth_data.symbol}: {len(depth_data.bids)} bids, {len(depth_data.asks)} asks"
@@ -419,7 +420,14 @@ class WebSocketState:
         existing = self.depth.get(symbol)
 
         if existing is None:
-            self.depth[symbol] = new_depth
+            # No snapshot yet: seed the local book from the update's levels.
+            self.depth[symbol] = DepthSnapshot(
+                symbol=symbol,
+                type=DepthSnapshotType.SNAPSHOT,
+                bids=list(new_depth.bids),
+                asks=list(new_depth.asks),
+                updatedAt=new_depth.updated_at,
+            )
             return
 
         # Merge updates into existing depth
@@ -442,7 +450,7 @@ class WebSocketState:
         existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
         existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
 
-        self.depth[symbol] = Depth(
+        self.depth[symbol] = DepthSnapshot(
             symbol=symbol,
             type=existing.type,
             bids=existing_bids,

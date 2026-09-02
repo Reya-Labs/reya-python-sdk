@@ -14,10 +14,12 @@ from decimal import Decimal
 
 import pytest
 
+from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -43,6 +45,35 @@ pytestmark = [
         reason="orderHistory E2E requires configured live perp maker/taker accounts",
     ),
 ]
+
+
+_FEE_V3_COMPONENT_FIELDS = ("protocol_fee_credit", "referrer_fee_credit", "taker_rebate_credit", "pool_fee_credit")
+
+
+def _fee_v3_breakdown(execution: PerpExecution | AsyncPerpExecution) -> dict[str, Decimal]:
+    """The four public Fee v3 components as Decimals (PRO-853). A Fee v3 fill
+    exposes every one of them; the API never synthesizes a partial set."""
+    breakdown: dict[str, Decimal] = {}
+    for field in _FEE_V3_COMPONENT_FIELDS:
+        value = getattr(execution, field)
+        assert value is not None, f"Fee v3 execution must expose {field}"
+        breakdown[field] = Decimal(value)
+    return breakdown
+
+
+async def _wait_for_ws_perp_execution(
+    tester: ReyaTester,
+    sequence_number: int,
+    timeout_s: float = 15.0,
+) -> AsyncPerpExecution:
+    """The wallet `perpExecutions` WS event for one settled fill, by sequence number."""
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    while asyncio.get_running_loop().time() < deadline:
+        match = tester.ws.perp_executions.find_last(lambda e: e.sequence_number == sequence_number)
+        if match is not None:
+            return match
+        await asyncio.sleep(0.2)
+    raise AssertionError(f"No WS perp execution with sequenceNumber={sequence_number} within {timeout_s}s")
 
 
 async def _wait_for_history_order(
@@ -194,6 +225,20 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
         assert execution.fill_id == maker_history_order.first_fill_id
         assert execution.maker_fee is None, "fee-model-v3 executions must not project the legacy makerFee field"
 
+        # PRO-853: the public REST execution decomposes takerFee into its four
+        # settlement buckets, and takerFee is exactly their sum.
+        rest_breakdown = _fee_v3_breakdown(execution)
+        assert sum(rest_breakdown.values()) == Decimal(execution.taker_fee)
+
+        # The wallet WS event for the same fill must carry identical values.
+        ws_execution = await _wait_for_ws_perp_execution(taker, execution.sequence_number)
+        assert ws_execution.fill_id == execution.fill_id
+        assert ws_execution.taker_fee == execution.taker_fee
+        assert ws_execution.maker_fee is None
+        assert _fee_v3_breakdown(ws_execution) == rest_breakdown
+        for field in _FEE_V3_COMPONENT_FIELDS:
+            assert getattr(ws_execution, field) == getattr(execution, field), field
+
         if fee_v3_scenario is not None:
             assert execution.fill_id is not None
             indexed = wait_for_indexed_fee_v3_row(execution.fill_id)
@@ -217,6 +262,13 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
                 + indexed.pool_fee_credit
             )
             assert Decimal(execution.taker_fee) == Decimal(indexed.fee) / Decimal(RUSD_SCALE)
+            # The public breakdown mirrors the persisted buckets exactly.
+            assert rest_breakdown == {
+                "protocol_fee_credit": Decimal(indexed.protocol_fee_credit) / Decimal(RUSD_SCALE),
+                "referrer_fee_credit": Decimal(indexed.referrer_fee_credit) / Decimal(RUSD_SCALE),
+                "taker_rebate_credit": Decimal(indexed.taker_rebate_credit) / Decimal(RUSD_SCALE),
+                "pool_fee_credit": Decimal(indexed.pool_fee_credit) / Decimal(RUSD_SCALE),
+            }
             assert indexed.exchange_fee_credit is None
             assert indexed.maker_fee_credit is None
             assert indexed.maker_fee_debit is None

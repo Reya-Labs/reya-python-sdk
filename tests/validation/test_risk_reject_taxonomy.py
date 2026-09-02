@@ -4,7 +4,8 @@ Three layers are involved, and only the third is this repo's:
 
 1. The matching engine rejects with a numeric protobuf ``ErrorCode``. Two
    ranges are covered here: the pre-trade risk range 71-85 (81 retired and
-   reserved), and the trigger/near-expiry range 86-91.
+   reserved), and the trigger/near-expiry codes 86-91 (86 retired and
+   reserved) plus the 99-100 firing-contract additions.
 2. The API layer translates that number into the public ``RequestErrorCode``
    taxonomy string. That translation is the *only* place the numbers appear in
    production, and it lives off-chain in
@@ -64,13 +65,18 @@ ENGINE_REJECT_WIRE_CODES = [
     # spec folds them onto the same member; the free-text message distinguishes.
     (84, "TAKER_RECOVERY_NOT_RISK_REDUCING", "ACCOUNT_BELOW_INITIAL_MARGIN_ERROR"),
     (85, "TAKER_SETTLEMENT_RESERVE_FAILED", "ACCOUNT_BELOW_INITIAL_MARGIN_ERROR"),
-    # Trigger and near-expiry rejects, 86-91. The spec is explicit that these
-    # are not risk failures — they are admission rules on the request itself —
-    # but they are engine-emitted numbers that need a name just the same, and
-    # until specs 3.0.20 the reachable ones had nowhere to land.
-    (86, "TRIGGER_REQUIRES_GTC", "TRIGGER_REQUIRES_GTC_ERROR"),
+    # Trigger and near-expiry rejects, 86-91 plus the 99-100 firing-contract
+    # additions. The spec is explicit that these are not risk failures — they
+    # are admission rules on the request itself — but they are engine-emitted
+    # numbers that need a name just the same, and until specs 3.0.20 the
+    # reachable ones had nowhere to land. 86 (TRIGGER_REQUIRES_GTC) was retired
+    # by the SL/TP firing contract (specs 3.1.0): an armed trigger now carries
+    # the TIF its fired child inherits, so the GTC-only rule is gone and the
+    # wire code is reserved in the proto.
     (90, "TRIGGER_DUPLICATE_PROTECTION", "TRIGGER_ALREADY_EXISTS_ERROR"),
     (91, "ORDER_EXPIRES_TOO_SOON", "ORDER_EXPIRES_TOO_SOON_ERROR"),
+    (99, "TRIGGER_IOC_MUST_NOT_EXPIRE", "TRIGGER_IOC_MUST_NOT_EXPIRE_ERROR"),
+    (100, "TRIGGER_LIMIT_OUTSIDE_BAND", "TRIGGER_LIMIT_OUTSIDE_BAND_ERROR"),
 ]
 
 # The members specs 3.0.19 added for the risk taxonomy. Anything the engine
@@ -84,15 +90,21 @@ RISK_REJECT_REQUEST_ERROR_CODES = {
     "CROSSING_ORDERS_TEMPORARILY_UNAVAILABLE_ERROR",
 }
 
-# The members specs 3.0.20 added, one per reachable trigger/near-expiry reject.
+# The members specs 3.0.20 added, one per reachable trigger/near-expiry reject,
+# as amended by the 3.1.0 firing contract: TRIGGER_REQUIRES_GTC_ERROR dropped,
+# the IOC-expiry and limit-band admission rules added.
 TRIGGER_AND_EXPIRY_REQUEST_ERROR_CODES = {
-    "TRIGGER_REQUIRES_GTC_ERROR",
     "TRIGGER_ALREADY_EXISTS_ERROR",
     "ORDER_EXPIRES_TOO_SOON_ERROR",
+    "TRIGGER_IOC_MUST_NOT_EXPIRE_ERROR",
+    "TRIGGER_LIMIT_OUTSIDE_BAND_ERROR",
 }
 
 # Wire code 81 was retired and must not be reused; the engine pins this too.
 RETIRED_ENGINE_RISK_WIRE_CODE = 81
+# Wire code 86 (TRIGGER_REQUIRES_GTC) was retired by the firing contract and is
+# reserved in the proto so it is never reused.
+RETIRED_ENGINE_TRIGGER_WIRE_CODE = 86
 
 # 87 TRIGGER_PRICE_REQUIRED, 88 TRIGGER_QTY_NOT_ZERO and 89 TRIGGER_MARKET_NOT_PERP
 # are defined in the proto but cannot reach the engine: the API pre-validates a
@@ -150,12 +162,16 @@ def test_engine_risk_wire_codes_are_contiguous_apart_from_the_retired_one() -> N
 
 
 def test_trigger_and_expiry_wire_codes_cover_exactly_the_reachable_ones() -> None:
-    """87-89 are unreachable by construction; 86, 90 and 91 each need a member."""
+    """87-89 are unreachable by construction and 86 is retired; 90, 91, 99 and
+    100 each need a member."""
     covered = sorted({wire_code for wire_code, _, _ in ENGINE_REJECT_WIRE_CODES if wire_code > 85})
 
-    assert covered == [86, 90, 91]
+    assert covered == [90, 91, 99, 100]
+    assert RETIRED_ENGINE_TRIGGER_WIRE_CODE not in covered
     assert not ENGINE_TRIGGER_WIRE_CODES_WITHOUT_A_MEMBER & set(covered)
-    assert sorted(set(covered) | ENGINE_TRIGGER_WIRE_CODES_WITHOUT_A_MEMBER) == list(range(86, 92))
+    # The original 86-91 block is fully accounted for: retired, unreachable, or named.
+    original_block = {RETIRED_ENGINE_TRIGGER_WIRE_CODE} | ENGINE_TRIGGER_WIRE_CODES_WITHOUT_A_MEMBER
+    assert sorted(original_block | {code for code in covered if code <= 91}) == list(range(86, 92))
 
     mapped_names = {taxonomy_name for wire_code, _, taxonomy_name in ENGINE_REJECT_WIRE_CODES if wire_code > 85}
     assert mapped_names == TRIGGER_AND_EXPIRY_REQUEST_ERROR_CODES
