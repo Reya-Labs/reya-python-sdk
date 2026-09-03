@@ -27,8 +27,10 @@ import threading
 import uuid
 
 from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+    ABNF,
     WebSocket,
     WebSocketException,
+    WebSocketTimeoutException,
     create_connection,
 )
 
@@ -50,7 +52,14 @@ logger = logging.getLogger("reya.ws_exec")
 DEFAULT_RESPONSE_TIMEOUT_S = 15.0
 """Per-request deadline waiting for the server to reply on the WebSocket."""
 
+WS_CLOSE_MSG_RATE_EXCEEDED = 4029
+"""Close code the relayer uses when a connection exceeds its inbound message-rate cap."""
+
 _ENVELOPE_ID_LEN = 12
+_READER_RECV_TIMEOUT_S = 1.0
+
+#: RFC 6455 §5.5 caps a control frame's payload at 125 bytes.
+_MAX_CONTROL_PAYLOAD_LEN = 125
 
 
 class WsExecOperationError(RuntimeError):
@@ -60,11 +69,12 @@ class WsExecOperationError(RuntimeError):
     ``RequestErrorCode`` without re-parsing the message string.
     """
 
-    def __init__(self, code: str, message: str, request_id: str) -> None:
+    def __init__(self, code: str, message: str, request_id: str, retry_after_ms: Optional[int] = None) -> None:
         super().__init__(f"[{request_id}] {code}: {message}")
         self.code = code
         self.message = message
         self.request_id = request_id
+        self.retry_after_ms = retry_after_ms
 
 
 class WsExecProtocolError(RuntimeError):
@@ -76,6 +86,125 @@ class WsExecProtocolError(RuntimeError):
         self.code = code
         self.message = message
         self.request_id = request_id
+
+
+class WsExecConnectionClosedError(WsExecProtocolError):
+    """Raised on every in-flight request when the connection dies under it.
+
+    The outcome of those requests is **indeterminate**: the server may have
+    applied them before closing. Per the ws-exec AsyncAPI description the
+    caller must reconnect and reconcile against
+    ``GET /v2/wallet/{address}/openOrders`` rather than assume either outcome.
+
+    Subclasses :class:`WsExecProtocolError` so existing handlers keep working.
+    """
+
+    CODE = "CONNECTION_CLOSED"
+
+    def __init__(
+        self,
+        close_code: Optional[int],
+        close_reason: Optional[str],
+        request_id: Optional[str],
+    ) -> None:
+        super().__init__(
+            self.CODE,
+            (
+                f"connection closed (code={close_code}, reason={close_reason!r}) with the request in flight; "
+                "its outcome is indeterminate — reconnect and reconcile against GET /v2/wallet/{address}/openOrders"
+            ),
+            request_id,
+        )
+        self.close_code = close_code
+        self.close_reason = close_reason
+
+
+def _retry_after_ms(error: Any) -> Optional[int]:
+    """Read the optional backoff hint off a ws-exec error object."""
+    if not isinstance(error, dict):
+        return None
+    raw = error.get("retryAfterMs", error.get("retry_after_ms"))
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_close_payload(payload: Any) -> tuple[Optional[int], Optional[str]]:
+    """Split a close frame's body into ``(status_code, reason)``.
+
+    RFC 6455 allows an empty body (no code, no reason) and a 2-byte body (code
+    with no reason), so every field is optional.
+    """
+    if not isinstance(payload, (bytes, bytearray)) or len(payload) < 2:
+        return None, None
+    code = int.from_bytes(payload[:2], "big")
+    reason = bytes(payload[2:]).decode("utf-8", errors="replace") or None
+    return code, reason
+
+
+def _echo_close(ws: WebSocket) -> None:
+    """Echo a received close frame, best effort.
+
+    Only ever called AFTER the close code has been read off the frame and
+    recorded. The relayer tears the socket down within milliseconds of a rate
+    shed, so this write routinely raises on an already-dead socket — and the
+    library's own ``recv_data_frame`` ran exactly this echo BEFORE handing the
+    frame back, which is how a fully received
+    :data:`WS_CLOSE_MSG_RATE_EXCEEDED` could be lost and reported as a codeless
+    transport death. Capture first, then echo: the write is then free to fail.
+    """
+    try:
+        ws.send_close()
+    except (OSError, WebSocketException):
+        logger.debug("ws-exec close echo failed; the close code is already recorded", exc_info=True)
+
+
+def _pong(ws: WebSocket, payload: bytes) -> None:
+    """Answer a protocol-level ping, best effort.
+
+    Wrapped for the same reason as :func:`_echo_close`: a pong that cannot be
+    written must not take the reader down with it, because the frames already
+    received — a close code above all — are what the caller is waiting for.
+    """
+    if len(payload) > _MAX_CONTROL_PAYLOAD_LEN:
+        # An over-long ping is the peer's protocol error; the library refuses to
+        # send an over-long pong. Skipping the answer keeps the connection's
+        # remaining frames readable instead of raising in the reader.
+        logger.debug("ws-exec skipped pong for an over-long ping (%d bytes)", len(payload))
+        return
+    try:
+        ws.pong(payload)
+    except (OSError, WebSocketException):
+        logger.debug("ws-exec pong failed", exc_info=True)
+
+
+def _reassemble(frame: Any, buffered: Optional[bytearray]) -> tuple[Optional[bytes], Optional[bytearray]]:
+    """Fold one data frame into the message under assembly.
+
+    Returns ``(payload, buffered)``; ``payload`` is non-``None`` only once a FIN
+    frame completes a message. ws-exec answers in single unfragmented frames, so
+    the second branch is the whole live path — the rest exists because reading
+    raw frames means the library's own reassembler no longer runs, and a client
+    that silently dropped a fragmented reply would look like a server that never
+    answered.
+    """
+    if buffered is None and frame.opcode == ABNF.OPCODE_CONT:
+        # A continuation with nothing to continue: half a message is worse than none.
+        return None, None
+    if buffered is None and frame.fin:
+        return frame.data, None
+    if frame.opcode != ABNF.OPCODE_CONT:
+        # A fresh data frame while a fragment is pending is illegal; the newer
+        # message supersedes the fragment rather than being concatenated onto it.
+        buffered = None
+    accumulated = bytearray() if buffered is None else buffered
+    accumulated += frame.data
+    if not frame.fin:
+        return None, accumulated
+    return bytes(accumulated), None
 
 
 class ReyaWsExecClient:
@@ -115,12 +244,35 @@ class ReyaWsExecClient:
         self._pending: dict[str, asyncio.Future[dict]] = {}
         self._pending_lock = threading.Lock()
 
+        self._close_lock = threading.Lock()
+        self._connection_lost = threading.Event()
+        self._last_close_code: Optional[int] = None
+        self._last_close_reason: Optional[str] = None
+
     @property
     def rest_client(self) -> ReyaTradingClient:
         """The composed REST client. Public so callers can reach the shared
         signing / market-resolution / config surface without poking at
         a private attribute."""
         return self._rest
+
+    @property
+    def last_close_code(self) -> Optional[int]:
+        """Status code of the most recent close observed on this client.
+
+        ``None`` until a close frame arrives (an abrupt transport failure with
+        no close frame leaves it ``None`` too). Retained across reconnects so a
+        caller can branch on it *after* reconnecting — which is what the
+        :data:`WS_CLOSE_MSG_RATE_EXCEEDED` reconcile rule requires.
+        """
+        with self._close_lock:
+            return self._last_close_code
+
+    @property
+    def last_close_reason(self) -> Optional[str]:
+        """Reason string of the most recent close, if the server sent one."""
+        with self._close_lock:
+            return self._last_close_reason
 
     # ---- lifecycle -----------------------------------------------------
 
@@ -131,6 +283,10 @@ class ReyaWsExecClient:
         already have :meth:`ReyaTradingClient.start` run successfully so
         market definitions are loaded; otherwise symbol-to-market-id
         resolution will fail on the first order.
+
+        After a server-initiated close (see :attr:`last_close_code`) the
+        socket handle is still held, so reconnecting is :meth:`close` then
+        ``connect`` — not ``connect`` alone.
         """
         if self._ws is not None:
             return
@@ -146,6 +302,7 @@ class ReyaWsExecClient:
             sslopt=sslopt,
         )
         self._reader_stop.clear()
+        self._connection_lost.clear()
         self._reader_thread = threading.Thread(
             target=self._reader_loop,
             name="reya-ws-exec-reader",
@@ -271,23 +428,35 @@ class ReyaWsExecClient:
         handles transparently — this exercises the ws-exec application
         ping/pong path used as a liveness probe.
         """
+        self._require_live_connection(None)
         env_id = self._new_envelope_id()
         future = self._register(env_id)
-        self._send_raw_frame({"type": "ping", "id": env_id})
         try:
+            self._send_raw_frame({"type": "ping", "id": env_id})
             await asyncio.wait_for(future, timeout=self._response_timeout_s)
         finally:
             self._unregister(env_id)
 
     # ---- private: send / receive ---------------------------------------
 
+    def _require_live_connection(self, env_id: Optional[str]) -> None:
+        """Refuse to send once the connection is known dead.
+
+        Sends into a dead socket can be buffered and silently succeed, which
+        would leave the caller waiting out its own response deadline for a
+        server that is gone. Reconnect with :meth:`close` then :meth:`connect`.
+        """
+        if self._ws is None:
+            raise WsExecProtocolError("NOT_CONNECTED", "call connect() first", env_id)
+        if self._connection_lost.is_set():
+            raise WsExecConnectionClosedError(self.last_close_code, self.last_close_reason, env_id)
+
     async def _send_and_await(self, msg_type: str, request_model: Any) -> dict:
         """Send a typed request envelope and return the payload of the
         ok-response. Raises :class:`WsExecOperationError` on a per-op
         error, :class:`WsExecProtocolError` on a framing-layer error or
         timeout."""
-        if self._ws is None:
-            raise WsExecProtocolError("NOT_CONNECTED", "call connect() first", None)
+        self._require_live_connection(None)
 
         env_id = self._new_envelope_id()
         future = self._register(env_id)
@@ -337,6 +506,7 @@ class ReyaWsExecClient:
                 err.get("error", "UNKNOWN"),
                 err.get("message", "(no message)"),
                 env_id,
+                retry_after_ms=_retry_after_ms(err),
             )
         payload = envelope.get("payload")
         if not isinstance(payload, dict):
@@ -381,28 +551,101 @@ class ReyaWsExecClient:
         timed out (in which case the future was cancelled) or never
         existed (server-pushed notifications, which ws-exec does not
         currently emit outside ping/pong).
+
+        Reads RAW frames (``recv_frame``) rather than through
+        ``WebSocket.recv`` or ``WebSocket.recv_data_frame``. ``recv`` collapses
+        a close frame into an empty string, which is indistinguishable from an
+        empty text frame and throws away the status code. The relayer's
+        per-connection message-rate cap is expressed purely as a close code
+        (:data:`WS_CLOSE_MSG_RATE_EXCEEDED`), so it has to be read off the
+        frame.
+
+        ``recv_data_frame`` keeps the code but answers control frames as a side
+        effect of the read — it echoes the close (and pongs a ping) BEFORE
+        returning the frame. Against a socket the relayer is tearing down
+        milliseconds after the shed, that write raises, and the exception
+        surfaced from the read as an abrupt transport failure: the 4029 was
+        fully received and then discarded, leaving :attr:`last_close_code`
+        intermittently ``None``. Owning the control-frame handling here is what
+        makes the capture unconditional — a received close ALWAYS yields its
+        real code, whatever the echo afterwards does.
         """
         assert self._ws is not None
         ws = self._ws
-        ws.settimeout(1.0)
+        ws.settimeout(_READER_RECV_TIMEOUT_S)
+        buffered: Optional[bytearray] = None
         while not self._reader_stop.is_set():
             try:
-                raw = ws.recv()
-            except (OSError, WebSocketException, TimeoutError):
-                # Both the 1s recv timeout and a transport-level disconnect
-                # surface here; treat them uniformly and re-check the stop
-                # flag so close() can unblock the loop cleanly.
+                frame = ws.recv_frame()
+            except WebSocketTimeoutException:
+                continue
+            except (OSError, WebSocketException):
+                # The transport died without a close frame (reset, EOF mid-frame).
                 if self._reader_stop.is_set():
                     return
+                logger.info("ws-exec transport failed; failing in-flight requests", exc_info=True)
+                self._record_close(None, None)
+                self._fail_pending_indeterminate(None, None)
+                return
+            if not frame:
                 continue
+            opcode = frame.opcode
+            if opcode == ABNF.OPCODE_CLOSE:
+                # Parse and record BEFORE the echo — see the note above.
+                code, reason = _parse_close_payload(frame.data)
+                self._record_close(code, reason)
+                _echo_close(ws)
+                logger.info("ws-exec closed by server: code=%s reason=%r", code, reason)
+                if not self._reader_stop.is_set():
+                    self._fail_pending_indeterminate(code, reason)
+                return
+            if opcode == ABNF.OPCODE_PING:
+                _pong(ws, frame.data)
+                continue
+            if opcode not in (ABNF.OPCODE_TEXT, ABNF.OPCODE_BINARY, ABNF.OPCODE_CONT):
+                continue
+            raw, buffered = _reassemble(frame, buffered)
             if not raw:
                 continue
             try:
-                frame = json.loads(raw)
-            except json.JSONDecodeError:
+                parsed = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 logger.warning("ws-exec dropped non-JSON frame: %r", raw[:200])
                 continue
-            self._dispatch_frame(frame)
+            self._dispatch_frame(parsed)
+
+    def _record_close(self, code: Optional[int], reason: Optional[str]) -> None:
+        with self._close_lock:
+            self._last_close_code = code
+            self._last_close_reason = reason
+        self._connection_lost.set()
+
+    def _fail_pending_indeterminate(self, code: Optional[int], reason: Optional[str]) -> None:
+        """Fail every in-flight request with an explicit indeterminate-outcome error.
+
+        Without this a server-initiated close is invisible to awaiters: they
+        would hang to their own response deadline and then report a TIMEOUT,
+        which reads as "the server never answered" when the truth is "the
+        server may have applied the request and then hung up".
+        """
+        with self._pending_lock:
+            pending = list(self._pending.items())
+            self._pending.clear()
+        if not pending:
+            return
+        loop = self._loop
+        for req_id, future in pending:
+            error = WsExecConnectionClosedError(code, reason, req_id)
+            if loop is None:
+                if not future.done():
+                    future.set_exception(error)
+                continue
+            loop.call_soon_threadsafe(self._set_future_exception, future, error)
+
+    @staticmethod
+    def _set_future_exception(future: "asyncio.Future[dict]", error: BaseException) -> None:
+        if not future.done():
+            future.set_exception(error)
 
     def _dispatch_frame(self, frame: dict) -> None:
         frame_type = frame.get("type")
@@ -447,7 +690,9 @@ class ReyaWsExecClient:
 
 __all__ = [
     "DEFAULT_RESPONSE_TIMEOUT_S",
+    "WS_CLOSE_MSG_RATE_EXCEEDED",
     "ReyaWsExecClient",
+    "WsExecConnectionClosedError",
     "WsExecOperationError",
     "WsExecProtocolError",
 ]

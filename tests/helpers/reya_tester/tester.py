@@ -5,6 +5,7 @@ from typing import Optional
 import asyncio
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -23,6 +24,24 @@ from .websocket import WebSocketState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("reya.integration_tests")
+
+_RETRY_HINT_RE = re.compile(r"retry after (\d+) ms", re.IGNORECASE)
+
+
+def _rate_limit_retry_hint_ms(exc: Exception) -> int | None:
+    """Retry hint when ``exc`` is a RATE_LIMITED_ERROR reject, else None."""
+    code = getattr(exc, "code", None) or getattr(exc, "error", None)
+    body = getattr(exc, "body", None)
+    text = f"{code or ''} {body or ''} {exc}"
+    if "RATE_LIMITED_ERROR" not in text:
+        return None
+    hint = getattr(exc, "retry_after_ms", None)
+    if isinstance(hint, int) and hint > 0:
+        return hint
+    match = _RETRY_HINT_RE.search(text)
+    if match:
+        return int(match.group(1))
+    return 1_000
 
 
 class ReyaTester:
@@ -249,17 +268,36 @@ class ReyaTester:
         """Arm or refresh the account-wide cancel-all-after countdown
         (cancel-on-disconnect dead-man's-switch).
 
-        Thin wrapper over ``client.cancel_all_after``; ``timeout_ms`` must be
+        Wrapper over ``client.cancel_all_after``; ``timeout_ms`` must be
         within [5000, 60000] ms. Each call replaces the running countdown.
+        Retries on RATE_LIMITED_ERROR: the cod-control bucket is flat across
+        tiers (~100/min, burst 10), so probe-heavy suites can spend it and a
+        test must honour the retry hint rather than fail on pacing.
         """
-        return await self.client.cancel_all_after(timeout_ms=timeout_ms)
+        return await self._cod_call_with_retry(timeout_ms)
 
     async def disarm_cod(self) -> CancelAllAfterResponse:
         """Disarm the cancel-all-after countdown (``timeoutMs=0``).
 
-        Idempotent server-side: disarming an unarmed account is a no-op.
+        A disarm while a countdown is ARMED is never refused. An unarmed
+        disarm carrying a nonce draws the flat cod-control bucket and is
+        refusable with RATE_LIMITED_ERROR (the ME's no-op guard), so this
+        wrapper retries on the hint like ``arm_cod``.
         """
-        return await self.client.cancel_all_after(timeout_ms=0)
+        return await self._cod_call_with_retry(0)
+
+    async def _cod_call_with_retry(self, timeout_ms: int, *, attempts: int = 6) -> CancelAllAfterResponse:
+        last_exc: Exception | None = None
+        for _ in range(attempts):
+            try:
+                return await self.client.cancel_all_after(timeout_ms=timeout_ms)
+            except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001 - narrowed below
+                hint_ms = _rate_limit_retry_hint_ms(exc)
+                if hint_ms is None:
+                    raise
+                last_exc = exc
+                await asyncio.sleep((hint_ms + 100) / 1000)
+        raise last_exc  # type: ignore[misc]
 
     def get_next_nonce(self) -> int:
         """

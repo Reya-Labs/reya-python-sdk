@@ -1,4 +1,4 @@
-name: Lint
+name: Lint and offline tests
 on:
   push:
     branches:
@@ -48,3 +48,40 @@ jobs:
       - name: Lint
         run: |
           make pre-commit
+
+  offline-tests:
+    # The `-m offline` selection needs no .env, no deployment and no network. It
+    # is what keeps the regeneration-proofing in tests/rate_limits honest: those
+    # helpers exist to survive an SDK regeneration, which nothing would notice
+    # breaking if a human had to remember to run them.
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version: ['3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install poetry
+        run: make poetry-download
+
+      - name: Set up cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+          key: venv-offline-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install -n
+          poetry run pip install -e ".[dev]"
+
+      - name: Run the offline test selection
+        run: |
+          make test-offline
