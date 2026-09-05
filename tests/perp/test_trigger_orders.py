@@ -41,6 +41,29 @@ _IN_CROSS_SKIP = (
 _LOCALNET_CHAIN_ID = 31337
 
 
+def _trigger_params(
+    symbol: str,
+    is_buy: bool,
+    trigger_px: str,
+    trigger_type: OrderType,
+    time_in_force: TimeInForce = TimeInForce.IOC,
+) -> TriggerOrderParameters:
+    """A trigger pinned at its own trigger price.
+
+    ``limit_px == trigger_px`` is the only limit price inside every market's
+    admission band whatever the venue configures it to, so these tests stay
+    admissible without reading per-market configuration.
+    """
+    return TriggerOrderParameters(
+        symbol=symbol,
+        is_buy=is_buy,
+        trigger_px=trigger_px,
+        trigger_type=trigger_type,
+        limit_px=trigger_px,
+        time_in_force=time_in_force,
+    )
+
+
 def _require_exact_source_localnet(reya_tester: ReyaTester) -> None:
     if reya_tester.chain_id != _LOCALNET_CHAIN_ID:
         pytest.skip("requires exact-source Localnet SL/TP backbone")
@@ -171,7 +194,7 @@ async def test_success_tp_order_create_cancel(
     await reya_tester.check.no_open_orders()
 
     # SUBMIT TP
-    tp_params = TriggerOrderParameters(
+    tp_params = _trigger_params(
         symbol=symbol,
         is_buy=False,  # on long
         trigger_px=format_price(
@@ -231,7 +254,7 @@ async def test_success_sl_order_create_cancel(
     await reya_tester.check.no_open_orders()
 
     # SUBMIT SL
-    sl_params = TriggerOrderParameters(
+    sl_params = _trigger_params(
         symbol=symbol,
         is_buy=False,  # on long
         trigger_px=format_price(quantize_price(Decimal(market_price) * Decimal("0.9"), tick_size)),  # below entry
@@ -341,7 +364,7 @@ async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
             raise AssertionError(f"Position closed before placing TP (attempt {attempt})")
 
         async with reya_tester.perp_trade() as ctx:
-            tp_params = TriggerOrderParameters(
+            tp_params = _trigger_params(
                 symbol=symbol,
                 is_buy=True,
                 trigger_px=str(float(market_price) * 1.1),
@@ -421,7 +444,7 @@ async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
             raise AssertionError(f"Position closed before placing SL (attempt {attempt})")
 
         async with reya_tester.perp_trade() as ctx:
-            sl_params = TriggerOrderParameters(
+            sl_params = _trigger_params(
                 symbol=symbol,
                 is_buy=True,
                 trigger_px=str(float(market_price) * 0.9),
@@ -470,7 +493,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     await reya_tester.check.position_not_open(symbol)
 
     # SUBMIT SL
-    sl_params = TriggerOrderParameters(
+    sl_params = _trigger_params(
         symbol=symbol,
         is_buy=False,  # on short position
         trigger_px=str(float(market_price) * 0.9),  # in the money
@@ -487,7 +510,7 @@ async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
     await reya_tester.check_no_order_execution_since(last_sequence_before)
 
     # SUBMIT TP
-    tp_params = TriggerOrderParameters(
+    tp_params = _trigger_params(
         symbol=symbol,
         is_buy=False,  # on short position
         trigger_px=str(float(market_price) * 0.9),  # in the money
@@ -583,7 +606,7 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     )
 
     # Create SL order (not in-cross: below market for long)
-    sl_params = TriggerOrderParameters(
+    sl_params = _trigger_params(
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 0.95),
@@ -593,7 +616,7 @@ async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
     logger.info(f"Created SL order: {sl_response.order_id}")
 
     # Create TP order (not in-cross: above market for long)
-    tp_params = TriggerOrderParameters(
+    tp_params = _trigger_params(
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 1.05),
@@ -672,7 +695,7 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     )
 
     # Create SL order (not in-cross: below market for long)
-    sl_params = TriggerOrderParameters(
+    sl_params = _trigger_params(
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 0.95),
@@ -682,7 +705,7 @@ async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
     logger.info(f"Created SL order: {sl_response.order_id}")
 
     # Create TP order (not in-cross: above market for long)
-    tp_params = TriggerOrderParameters(
+    tp_params = _trigger_params(
         symbol=symbol,
         is_buy=False,
         trigger_px=str(float(market_price) * 1.05),
@@ -771,7 +794,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
 
         async with reya_tester.perp_trade() as ctx:
             # Create SL order (in cross - should trigger)
-            sl_params = TriggerOrderParameters(
+            sl_params = _trigger_params(
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 1.01),
@@ -781,7 +804,7 @@ async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
             logger.info(f"Created SL order: {sl_order.order_id}")
 
             # Create TP order (not in cross - should be cancelled when SL executes)
-            tp_params = TriggerOrderParameters(
+            tp_params = _trigger_params(
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 1.10),
@@ -861,7 +884,7 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
 
         async with reya_tester.perp_trade() as ctx:
             # Create SL order (not in cross - should be cancelled when TP executes)
-            sl_params = TriggerOrderParameters(
+            sl_params = _trigger_params(
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 0.90),
@@ -871,7 +894,7 @@ async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
             logger.info(f"Created SL order: {sl_order.order_id}")
 
             # Create TP order (in cross - should trigger)
-            tp_params = TriggerOrderParameters(
+            tp_params = _trigger_params(
                 symbol=symbol,
                 is_buy=False,
                 trigger_px=str(float(market_price) * 0.99),

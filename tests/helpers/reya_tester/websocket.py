@@ -16,7 +16,8 @@ from decimal import Decimal
 
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
-from sdk.async_api.depth import Depth
+from sdk.async_api.depth_snapshot import DepthSnapshot
+from sdk.async_api.depth_snapshot_type import DepthSnapshotType
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.execution_bust import ExecutionBust as AsyncExecutionBust
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
@@ -80,7 +81,7 @@ class WebSocketState:
         # Market-level stores (by symbol)
         self.market_perp_executions: dict[str, EventStore[AsyncPerpExecution]] = {}
         self.market_spot_executions: dict[str, EventStore[AsyncSpotExecution]] = {}
-        self.depth: dict[str, Depth] = {}
+        self.depth: dict[str, DepthSnapshot] = {}
 
     # =========================================================================
     # Backward compatibility properties
@@ -118,7 +119,7 @@ class WebSocketState:
             self.spot_executions.add(value)
 
     @property
-    def last_depth(self) -> dict[str, Depth]:
+    def last_depth(self) -> dict[str, DepthSnapshot]:
         """Backward compatibility: alias for depth."""
         return self.depth
 
@@ -292,7 +293,7 @@ class WebSocketState:
 
         # Handle initial snapshot for depth channel
         if "depth" in message.channel and message.contents:
-            depth_data = Depth.model_validate(message.contents)
+            depth_data = DepthSnapshot.model_validate(message.contents)
             self.depth[depth_data.symbol] = depth_data
             logger.info(
                 f"Stored depth snapshot for {depth_data.symbol}: {len(depth_data.bids)} bids, {len(depth_data.asks)} asks"
@@ -413,41 +414,32 @@ class WebSocketState:
             self.positions.add(pos_data)
 
     def _handle_depth_update(self, message: MarketDepthUpdatePayload) -> None:
-        """Handle depth updates with incremental merge."""
-        new_depth = message.data
-        symbol = new_depth.symbol
+        """Merge one bounded-view diff into the maintained snapshot for its symbol."""
+        update = message.data
+        symbol = update.symbol
         existing = self.depth.get(symbol)
 
-        if existing is None:
-            self.depth[symbol] = new_depth
-            return
+        bids = list(existing.bids) if existing is not None else []
+        asks = list(existing.asks) if existing is not None else []
 
-        # Merge updates into existing depth
-        existing_bids = list(existing.bids) if existing.bids else []
-        existing_asks = list(existing.asks) if existing.asks else []
-
-        # Process bid updates
-        for level in new_depth.bids:
-            existing_bids = [b for b in existing_bids if b.px != level.px]
+        # Update levels are absolute: a level replaces the prior qty at that
+        # price, and qty 0 removes it.
+        for level in update.bids:
+            bids = [b for b in bids if b.px != level.px]
             if float(level.qty) > 0:
-                existing_bids.append(level)
+                bids.append(level)
 
-        # Process ask updates
-        for level in new_depth.asks:
-            existing_asks = [a for a in existing_asks if a.px != level.px]
+        for level in update.asks:
+            asks = [a for a in asks if a.px != level.px]
             if float(level.qty) > 0:
-                existing_asks.append(level)
+                asks.append(level)
 
-        # Sort bids descending, asks ascending
-        existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
-        existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
-
-        self.depth[symbol] = Depth(
+        self.depth[symbol] = DepthSnapshot(
             symbol=symbol,
-            type=existing.type,
-            bids=existing_bids,
-            asks=existing_asks,
-            updatedAt=new_depth.updated_at,
+            type=DepthSnapshotType.SNAPSHOT,
+            bids=sorted(bids, key=lambda x: float(x.px), reverse=True),
+            asks=sorted(asks, key=lambda x: float(x.px)),
+            updatedAt=update.updated_at,
         )
 
     def _handle_balance_updates(self, message: AccountBalanceUpdatePayload) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import inspect
+from enum import Enum
 
 import pytest
 from pydantic import ValidationError
@@ -78,21 +79,41 @@ CANCEL_REASONS = {
     # an order refused at admission was never created and returns a RequestErrorCode
     # instead. See tests/validation/test_risk_reject_taxonomy.py.
     "RISK_CANCELLED",
+    # The protective-stop reasons. RISK_REJECTED is the admission-time twin of
+    # RISK_CANCELLED for a fired child nobody is waiting on; the rest describe a
+    # stop's own lifecycle — its OCO sibling fired, its position closed under it,
+    # or it swept the account's own resting liquidity out of the child's way.
+    "RISK_REJECTED",
+    "OCO_SIBLING_FIRED",
+    "POSITION_CLOSED",
+    "PROTECTIVE_SELF_TRADE_SWEEP",
 }
 
 EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
 
 
+def specs_values(enum: type[Enum]) -> set[str]:
+    """The enum's spec vocabulary: its members minus the client-side `UNKNOWN`.
+
+    Open-vocabulary enums carry an `UNKNOWN` sentinel that `_missing_` resolves
+    unrecognised wire values onto, so the SDK survives a server that allocates a
+    new member. It is a client construct and never appears in the specs, so a
+    spec-parity assertion has to drop it; `test_open_vocabulary_enums.py` is
+    what pins its presence.
+    """
+    return {member.value for member in enum} - {"UNKNOWN"}
+
+
 def test_order_status_enums_do_not_expose_rejected() -> None:
-    assert {status.value for status in RestOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
-    assert {status.value for status in WsInfoOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
-    assert {status.value for status in WsExecOrderStatus} == {"OPEN", "FILLED", "CANCELLED"}
+    assert specs_values(RestOrderStatus) == {"OPEN", "FILLED", "CANCELLED"}
+    assert specs_values(WsInfoOrderStatus) == {"OPEN", "FILLED", "CANCELLED"}
+    assert specs_values(WsExecOrderStatus) == {"OPEN", "FILLED", "CANCELLED"}
 
 
 def test_execution_type_enums_share_specs_values() -> None:
     """REST and wallet-info WS must expose the same public execution types."""
-    assert {execution_type.value for execution_type in RestExecutionType} == EXECUTION_TYPES
-    assert {execution_type.value for execution_type in WsInfoExecutionType} == EXECUTION_TYPES
+    assert specs_values(RestExecutionType) == EXECUTION_TYPES
+    assert specs_values(WsInfoExecutionType) == EXECUTION_TYPES
 
 
 @pytest.mark.parametrize(
@@ -167,9 +188,12 @@ def test_request_error_code_uses_error_suffix_convention() -> None:
 
 
 def test_cancel_reason_enums_share_specs_values() -> None:
-    assert CANCEL_REASONS == {reason.value for reason in RestCancelReason}
-    assert CANCEL_REASONS == {reason.value for reason in WsInfoCancelReason}
-    assert CANCEL_REASONS == {reason.value for reason in WsExecCancelReason}
+    assert CANCEL_REASONS == specs_values(RestCancelReason)
+    assert CANCEL_REASONS == specs_values(WsExecCancelReason)
+
+
+def test_ws_info_cancel_reason_enum_shares_specs_values() -> None:
+    assert CANCEL_REASONS == specs_values(WsInfoCancelReason)
 
 
 def _base_create_request_payload() -> dict[str, Any]:
@@ -180,6 +204,9 @@ def _base_create_request_payload() -> dict[str, Any]:
         "isBuy": True,
         "limitPx": "2500",
         "orderType": "STOP_LOSS",
+        # timeInForce is REQUIRED on every create, triggers included: it chooses
+        # what the stop becomes when it fires.
+        "timeInForce": "GTC",
         "triggerPx": "2400",
         "signature": "0x" + "11" * 65,
         "nonce": "1778601294999111",
@@ -304,7 +331,7 @@ def test_rest_create_order_request_accepts_trigger_without_qty() -> None:
     assert request.qty is None
     serialized = request.to_dict()
     assert "qty" not in serialized
-    assert "timeInForce" not in serialized
+    assert serialized["timeInForce"] == "GTC"
 
 
 def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
@@ -313,7 +340,7 @@ def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
     assert request.qty is None
     serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
     assert "qty" not in serialized
-    assert "timeInForce" not in serialized
+    assert serialized["timeInForce"] == "GTC"
 
 
 def test_rest_modify_order_request_accepts_omitted_expires_after() -> None:

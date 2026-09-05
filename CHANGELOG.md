@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- All three generated packages (`sdk/open_api`, `sdk/async_api`,
+  `sdk/async_exec_api`) regenerated from the specs `3.1.0` tag:
+  `Order.triggered` —
+  the armed-vs-fired discriminator, since both states surface as `OPEN` — and
+  the four SL/TP firing `CancelReason` members `OCO_SIBLING_FIRED`,
+  `POSITION_CLOSED`, `RISK_REJECTED` and
+  `PROTECTIVE_SELF_TRADE_SWEEP`. Until now `ReyaSocket` raised
+  `WebSocketDataError` out of `on_message` on the first frame carrying any of
+  them — which is every fired stop, because `OCO_SIBLING_FIRED` publishes on
+  every fire.
 - Typed read-side WebSocket account discovery via
   `socket.wallet.accounts(address)`, generated from the canonical
   `/v2/wallet/{address}/accounts` AsyncAPI channel.
@@ -21,11 +31,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ModifyOrderParameters(...)` call that was valid in 3.0.14 still binds
   unchanged; the default keeps LIMIT modifies byte-identical, and the trigger
   create/cancel wire contract is unchanged (omit `qty`; the signed quantity is
-  the ±int256.max full-position sentinel, sign from `is_buy`). The buy-side
-  `limit_px` sentinel is now the largest tick-aligned price under the ME's
-  MAX_PRICE (the old 1e20 sentinel fails off-chain price validation). The live trigger create/modify/cancel e2e tests
-  are staged (skipped) until the SL/TP backbone matching engine is deployed to
-  devnet1.
+  the ±int256.max full-position sentinel, sign from `is_buy`). The live trigger
+  create/modify/cancel e2e tests are staged (skipped) until the SL/TP backbone
+  matching engine is deployed to devnet1.
+- Server-extended enums degrade instead of breaking: `CancelReason`,
+  `OrderStatus`, `RequestErrorCode`, `WsExecErrorCode`, `ExecutionType`,
+  `AccountType` and `TierType` gain an `UNKNOWN` member that a value this SDK
+  has never heard of resolves to. A matching engine that allocates a new
+  cancel reason no longer costs the read-side stream a silently dropped frame,
+  or a ws-exec caller an unparseable response to an order the server already
+  acted on. The order-entry vocabularies (`OrderType`, `TimeInForce`) are
+  deliberately excluded — a request the client cannot encode still fails loudly.
 - `sdk.reya_ws_exec.ReyaWsExecClient`: high-level client for the new ws-exec
   WebSocket order-entry service. Mirrors `ReyaTradingClient`'s order surface
   (`create_limit_order`, `create_trigger_order`, `cancel_order`, `mass_cancel`)
@@ -36,6 +52,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values and caps the future-distance at 24h before signing.
 
 ### Changed
+- **BREAKING (generated read-side models): `sdk.async_api.depth.Depth` is
+  replaced by `sdk.async_api.depth_snapshot.DepthSnapshot` and
+  `sdk.async_api.depth_update.DepthUpdate`.** The subscribe frame carries a
+  bounded `DepthSnapshot` (at most 100 levels per side on the WebSocket) and
+  every `channel_data` frame carries a `DepthUpdate` describing the transition
+  from one bounded view to the next; `MarketDepthUpdatePayload.data` is now
+  typed `DepthUpdate`. Field names and their semantics are unchanged, so
+  migration is the import and the type name. The REST `sdk.open_api` `Depth`
+  model is unaffected.
+- **BREAKING (generated models): `RequestErrorCode.TRIGGER_REQUIRES_GTC_ERROR`
+  is gone** — a trigger no longer has to be `GTC`. The tagged spec replaces it
+  with `TRIGGER_IOC_MUST_NOT_EXPIRE_ERROR` and
+  `TRIGGER_LIMIT_OUTSIDE_BAND_ERROR`.
+- A LIMIT modify now refuses `reduce_only=True` and a restated `IOC`
+  `time_in_force` client-side, matching the guards the trigger-modify path
+  already had. Neither shape can name a resting order — reduce-only is
+  perp-IOC-only and IOC never rests — so both were guaranteed server rejections
+  bought with a spent nonce.
+- **BREAKING: `TriggerOrderParameters` now REQUIRES `limit_px` and
+  `time_in_force`.** `limit_px` is the worst-acceptable execution price of the
+  child the trigger fires into; the client no longer synthesizes one when it is
+  omitted (the old direction-aware sentinel — one tick for sells, the largest
+  tick-aligned price under the ME's MAX_PRICE for buys — is gone: the venue
+  admits a fired child's limit price on its own rules, so there is no price
+  that always executes).
+  `time_in_force` chooses what the stop BECOMES when it fires (`GTC`/`GTT`/`IOC`)
+  and flows into both the EIP-712 digest and the `timeInForce` wire key, which
+  the backend now requires on every create. A `GTT` trigger must carry a future
+  `expires_after` — one deadline covering both the armed trigger's lifetime and
+  the fired child's on-chain settlement, so the settlement-headroom rule applies
+  to it — while `GTC` and `IOC` triggers must omit it. Migration: pass the two
+  new fields explicitly; a call that omitted them raises `TypeError` rather than
+  signing a price you did not choose. Note that `time_in_force` is inserted
+  BEFORE `expires_after`, and this is a plain `@dataclass` (no runtime type
+  validation): a caller that passed `expires_after` POSITIONALLY binds it to
+  `time_in_force` silently instead of raising. Pass trigger parameters by
+  keyword.
+- Trigger modifies no longer require `GTC`. `time_in_force` and `expires_after`
+  are restate-immutable on an armed trigger: restating the armed values is
+  admitted, and a change that lands on an impossible shape is refused
+  client-side with a message pointing at cancel-and-recreate.
 - The ws-exec quickstart now defaults to the current devnet endpoint, exposes
   offline-testable URL/order builders, and links to the actual pytest live
   suite instead of the removed `tests/ws_exec/mvp.py` harness.
@@ -70,6 +127,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the spec repo.
 
 ### Fixed
+- Trigger admission lost its price ceiling when the `limit_px` sentinel was
+  deleted: the client accepted any positive price at all. Both `limit_px` and
+  `trigger_px` are checked against the matching engine's price domain again —
+  MIN_PRICE (0.000000001) through MAX_PRICE (562949.953421312), the same domain
+  the engine's own `validate_place` enforces. Below MIN_PRICE the E18 scaling in
+  the signer truncated the price to zero, so a sub-nano price used to be signed
+  as 0 before the wire string was refused. The per-market trigger limit band is
+  NOT mirrored client-side: it is a matching-engine setting, it is published
+  nowhere, and a `limit_px` outside it comes back as
+  `TRIGGER_LIMIT_OUTSIDE_BAND_ERROR`.
+- A `STOP_LOSS`/`TAKE_PROFIT` on a spot symbol was refused with a message about
+  market metadata. Spot markets arm no triggers at all, so the refusal now says
+  so.
+- A plain string where the SDK documents an enum (`time_in_force="GTC"`,
+  `trigger_type="STOP_LOSS"`) claimed the per-wallet nonce and then died on
+  `AttributeError: 'str' object has no attribute 'value'` while building the
+  wire payload — the order was never sent, but the counter had advanced.
+  `TimeInForce`/`OrderType` are now normalised in one place ahead of the nonce,
+  so the string form is accepted and produces the same payload as the enum,
+  and an unrecognised value raises the named `ValueError` with the nonce
+  untouched.
+- `is_buy` is now required to be a real `bool` on all three builders. A truthy
+  string such as `"false"` signed the buy-side sentinel while the ws-exec wire
+  coerced `isBuy: false`, which the venue could only report as a signature
+  mismatch.
+- Every price the builders emit is rendered with `format(value, "f")`. Only the
+  trigger-create `limitPx` was; `triggerPx`, the LIMIT-create `limitPx` and both
+  modify prices used `str()`, so a `Decimal("0.0000001")` reached the wire as
+  `"1E-7"` and the server's ethers `FixedNumber` parser rejected it with
+  `INVALID_ARGUMENT` — after the nonce and the signature.
+- Repricing a GTT order in its final minute is no longer refused for a deadline
+  the client chose itself. The DEFAULT `deadline` is clamped to just under an
+  `expires_after` nearer than 60s, so restating an armed trigger's
+  restate-immutable expiry — the only legal thing a reprice does with it — is
+  admitted. An explicitly passed `deadline` is unchanged.
+- `limit_px=None` raised a bare `TypeError` from `Decimal`, and a `None` or
+  unmapped `time_in_force` carrying an `expires_after` raised `AttributeError`
+  from the coupling message's own f-string, shadowing the intended
+  "Unsupported time_in_force" `ValueError`. Both now name the field.
+- The per-wallet nonce was claimed before the last few refusals on the create
+  and modify paths, so a rejected order still advanced the counter. An
+  unmapped `time_in_force` / `order_type` now raises a named `ValueError`
+  instead of a bare `KeyError`, and every refusal on all three builders
+  precedes the nonce.
+- `build_create_limit_order_payload` and `build_modify_order_payload` refuse an
+  `IOC` order carrying `expires_after`. IOC never rests, so the server rejected
+  it after the nonce was already spent; the trigger path already covered all
+  three time-in-force arms.
 - `examples/rest_api/spot/test_rate_limit.py` was matching pytest's default
   test-collection pattern and would have been picked up by `pytest`, running
   8 verification tests against a live API per run. Renamed to

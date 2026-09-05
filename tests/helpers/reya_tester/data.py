@@ -7,7 +7,7 @@ import logging
 
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.account_balance import AccountBalance
-from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot
 from sdk.open_api.models.execution_bust import ExecutionBust
 from sdk.open_api.models.execution_bust_list import ExecutionBustList
 from sdk.open_api.models.market_definition import MarketDefinition
@@ -146,7 +146,7 @@ class DataOperations:
         balances = await self.balances()
         return balances.get(asset)
 
-    async def market_depth(self, symbol: str) -> Depth:
+    async def market_depth(self, symbol: str) -> DepthSnapshot:
         """Get L2 market depth (orderbook) for a given symbol via REST API."""
         return await self._t.client.markets.get_market_depth(symbol=symbol)
 

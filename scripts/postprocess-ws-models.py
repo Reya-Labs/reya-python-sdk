@@ -3,9 +3,22 @@
 
 from __future__ import annotations
 
+import ast
 import sys
 from collections.abc import Callable
 from pathlib import Path
+
+UNKNOWN_MEMBER = "UNKNOWN"
+
+# Enums whose vocabulary the SERVER owns and can widen without an SDK release.
+# A frame carrying a member this SDK has never heard of parses as UNKNOWN
+# instead of raising a ValidationError the socket layer can only drop the frame
+# over. The order-entry vocabularies (OrderType, TimeInForce) are deliberately
+# absent: a request the client cannot encode must keep failing loudly.
+OPEN_VOCABULARY_ENUMS: dict[str, tuple[str, ...]] = {
+    "async_api": ("cancel_reason", "execution_type", "order_status"),
+    "async_exec_api": ("cancel_reason", "order_status", "request_error_code", "ws_exec_error_code"),
+}
 
 
 def replace_once(text: str, old: str, new: str, path: Path) -> str:
@@ -104,13 +117,44 @@ def patch_account_update_payload(output_dir: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def add_unknown_fallback(output_dir: Path, module: str) -> None:
+    """Give a server-extended enum an UNKNOWN member and the hook that lands on it."""
+    path = output_dir / f"{module}.py"
+    class_name = "".join(part.title() for part in module.split("_"))
+    text = path.read_text(encoding="utf-8")
+    header = f"class {class_name}(Enum): "
+    if header not in text:
+        raise RuntimeError(f"expected {header!r} in {path}")
+    if f"  {UNKNOWN_MEMBER} = " in text:
+        raise RuntimeError(f"{class_name} already declares {UNKNOWN_MEMBER} in {path}")
+
+    updated = text.rstrip("\n") + (
+        f'\n  {UNKNOWN_MEMBER} = "{UNKNOWN_MEMBER}"\n'
+        "\n"
+        "  @classmethod\n"
+        f'  def _missing_(cls, value: object) -> "{class_name}":\n'
+        '    """Resolve a member added by the server since this SDK was generated."""\n'
+        f"    return cls.{UNKNOWN_MEMBER}\n"
+    )
+    ast.parse(updated, filename=str(path))
+    path.write_text(updated, encoding="utf-8")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(f"usage: {Path(sys.argv[0]).name} OUTPUT_DIR")
 
     output_dir = Path(sys.argv[1])
-    patch_account_update_data(output_dir)
-    patch_account_update_payload(output_dir)
+    package = output_dir.name
+    if package not in OPEN_VOCABULARY_ENUMS:
+        raise SystemExit(f"unknown generated package {package!r} in {output_dir}")
+
+    if package == "async_api":
+        patch_account_update_data(output_dir)
+        patch_account_update_payload(output_dir)
+
+    for module in OPEN_VOCABULARY_ENUMS[package]:
+        add_unknown_fallback(output_dir, module)
 
 
 if __name__ == "__main__":

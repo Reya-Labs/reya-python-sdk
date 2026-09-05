@@ -49,6 +49,10 @@ class ModifyOrderParameters:
     TAKE_PROFIT modify: a trigger modify signs the ±int256.max full-position
     sentinel (sign from `is_buy`; protect the whole position) and omits `qty`
     from the wire, exactly like a trigger create.
+
+    On a trigger modify only `limit_px` and `trigger_px` move; `time_in_force`
+    and `expires_after` are restated immutables, so changing the fired child's
+    TIF or the shared expiry means cancelling the trigger and creating a new one.
     """
 
     symbol: str
@@ -78,17 +82,35 @@ class TriggerOrderParameters:
     is retained only so older callers receive a targeted client-side error
     instead of a server 400.
 
-    `limit_px` is the worst-acceptable execution price after the trigger fires;
-    if omitted the client signs a sentinel — a very high value for buys, a very
-    low non-zero value for sells — so the order executes at any price available
-    after the trigger.
+    `limit_px` is the worst-acceptable execution price of the child the trigger
+    fires into — not a pad on `trigger_px`. It is REQUIRED: the venue enforces a
+    per-market band, `|limit_px - trigger_px| <= trigger_px * band`, so there is
+    no price that "always executes". The band is a matching-engine setting and
+    is not published, so a limit outside it comes back as
+    TRIGGER_LIMIT_OUTSIDE_BAND_ERROR rather than being caught locally.
+
+    `time_in_force` is what the stop BECOMES when it fires: the fired child rests
+    as GTC, rests-with-expiry as GTT, or takes-or-cancels as IOC. GTT requires a
+    future `expires_after` — one deadline covering both the armed trigger's
+    lifetime and the fired child's settlement — while GTC and IOC must omit it.
+
+    `is_buy` is the side the stop CLOSES with, not the side of the position it
+    protects — it is the sole input to the signed sentinel's sign, and the SDK
+    never reads your position, so it cannot catch an inverted value. Protecting a
+    LONG means selling to close (`is_buy=False`); protecting a SHORT means buying
+    to close (`is_buy=True`). Together with `trigger_type` it also fixes the
+    crossing direction (a trigger fires on a RISE exactly when `is_buy` and
+    "is a STOP_LOSS" agree), so an inverted `is_buy` arms a stop that fires the
+    wrong way AND closes the wrong way.
     """
 
     symbol: str
     is_buy: bool
     trigger_px: str
     trigger_type: OrderType
-    limit_px: Optional[str] = None
+    limit_px: str
+    time_in_force: TimeInForce
+    expires_after: Optional[int] = None
     qty: Optional[str] = None
     reduce_only: Optional[bool] = None
     client_order_id: Optional[int] = None

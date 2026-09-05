@@ -281,6 +281,8 @@ async def flow_perp_create_trigger_and_cancel(
             is_buy=False,
             trigger_px=trigger_px,
             trigger_type=trigger_type,
+            limit_px=trigger_px,
+            time_in_force=TimeInForce.IOC,
         )
     )
     if resp.order_id is None:

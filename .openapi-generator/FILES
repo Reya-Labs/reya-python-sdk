@@ -25,6 +25,9 @@ sdk/open_api/models/candle_history_data.py
 sdk/open_api/models/create_order_request.py
 sdk/open_api/models/create_order_response.py
 sdk/open_api/models/depth.py
+sdk/open_api/models/depth_base.py
+sdk/open_api/models/depth_snapshot.py
+sdk/open_api/models/depth_snapshot_type.py
 sdk/open_api/models/depth_type.py
 sdk/open_api/models/execution_bust.py
 sdk/open_api/models/execution_bust_list.py
