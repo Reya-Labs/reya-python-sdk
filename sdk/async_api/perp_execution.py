@@ -9,7 +9,7 @@ class PerpExecution(BaseModel):
   taker_account_id: int = Field(alias='''takerAccountId''')
   maker_account_id: Optional[int] = Field(default=None, alias='''makerAccountId''')
   taker_order_id: Optional[str] = Field(description='''Order ID for the taker. Absent for legacy V2 executions and omitted when not meaningful.''', default=None, alias='''takerOrderId''')
-  maker_order_id: Optional[str] = Field(description='''Order ID for the maker. Absent for legacy V2 executions and omitted when not meaningful.''', default=None, alias='''makerOrderId''')
+  maker_order_id: Optional[str] = Field(description='''Order ID for the maker. Absent for legacy V2, ADL, and MARKET_CLOSE executions and omitted when not meaningful.''', default=None, alias='''makerOrderId''')
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   price: str = Field()

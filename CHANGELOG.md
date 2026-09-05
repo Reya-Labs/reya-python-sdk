@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Read-side WebSocket models regenerated from specs 3.1.0: `Order.triggered` —
+- All three generated packages (`sdk/open_api`, `sdk/async_api`,
+  `sdk/async_exec_api`) regenerated from the specs `3.1.0` tag:
+  `Order.triggered` —
   the armed-vs-fired discriminator, since both states surface as `OPEN` — and
   the four SL/TP firing `CancelReason` members `OCO_SIBLING_FIRED`,
   `POSITION_CLOSED`, `RISK_REJECTED` and
@@ -59,6 +61,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   typed `DepthUpdate`. Field names and their semantics are unchanged, so
   migration is the import and the type name. The REST `sdk.open_api` `Depth`
   model is unaffected.
+- **BREAKING (generated models): `RequestErrorCode.TRIGGER_REQUIRES_GTC_ERROR`
+  is gone** — a trigger no longer has to be `GTC`. The tagged spec replaces it
+  with `TRIGGER_IOC_MUST_NOT_EXPIRE_ERROR` and
+  `TRIGGER_LIMIT_OUTSIDE_BAND_ERROR`.
 - A LIMIT modify now refuses `reduce_only=True` and a restated `IOC`
   `time_in_force` client-side, matching the guards the trigger-modify path
   already had. Neither shape can name a resting order — reduce-only is

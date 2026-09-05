@@ -15,7 +15,7 @@ class CreateOrderRequest(BaseModel):
   trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
   reduce_only: Optional[bool] = Field(description='''Reduce-only intent. Required only for perp IOC orders. Omit this field for every other order class: perp GTC/GTT, STOP_LOSS/TAKE_PROFIT, and all spot orders. Sending the field, including `false`, for those order classes is rejected with `INPUT_VALIDATION_ERROR`. Omitted values map to `false` in the signed on-chain `OrderDetails.reduceOnly` field.''', default=None, alias='''reduceOnly''')
   post_only: Optional[bool] = Field(description='''Post-only (maker-only) intent: the order must rest and never cross as a taker. Valid on GTC/GTT; rejected on IOC. An order that would cross at insertion is rejected with `POST_ONLY_WOULD_CROSS_ERROR`. Maps to on-chain `OrderDetails.postOnly`.''', default=None, alias='''postOnly''')
-  signature: str = Field(description='''EIP-712 signature over the `Order(uint256 verifyingChainId, uint256 deadline, OrderDetails order)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
+  signature: str = Field(description='''EIP-712 signature over the `Order(uint256 verifyingChainId, uint256 deadline, OrderDetails order)` envelope. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.''')
   nonce: str = Field(description='''Monotonically increasing per-signer nonce. Maps to on-chain `OrderDetails.nonce`.''')
   signer_wallet: str = Field(alias='''signerWallet''')
   deadline: int = Field()

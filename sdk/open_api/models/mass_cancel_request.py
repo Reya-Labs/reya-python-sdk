@@ -29,8 +29,8 @@ class MassCancelRequest(BaseModel):
     """ # noqa: E501
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     symbol: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
-    signature: StrictStr = Field(description="EIP-712 signature over the `MassCancel(uint64 verifyingChainId, uint64 deadline, MassCancelDetails massCancel)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.")
-    nonce: StrictStr = Field(description="Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See `docs/eip712.md`.")
+    signature: StrictStr = Field(description="EIP-712 signature over the `MassCancel(uint64 verifyingChainId, uint64 deadline, MassCancelDetails massCancel)` envelope. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.")
+    nonce: StrictStr = Field(description="Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces).")
     deadline: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["accountId", "symbol", "signature", "nonce", "deadline"]

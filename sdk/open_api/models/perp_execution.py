@@ -27,14 +27,14 @@ from typing_extensions import Self
 
 class PerpExecution(BaseModel):
     """
-    PerpExecution
+    A settled perp execution. Maker-side fields are optional. They are always omitted for ADL and MARKET_CLOSE executions, which are single-sided and have no maker, and can also be absent on legacy executions.
     """ # noqa: E501
     exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     taker_account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="takerAccountId")
     maker_account_id: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="makerAccountId")
     taker_order_id: Optional[StrictStr] = Field(default=None, description="Order ID for the taker. Absent for legacy V2 executions and omitted when not meaningful.", alias="takerOrderId")
-    maker_order_id: Optional[StrictStr] = Field(default=None, description="Order ID for the maker. Absent for legacy V2 executions and omitted when not meaningful.", alias="makerOrderId")
+    maker_order_id: Optional[StrictStr] = Field(default=None, description="Order ID for the maker. Absent for legacy V2, ADL, and MARKET_CLOSE executions and omitted when not meaningful.", alias="makerOrderId")
     qty: Annotated[str, Field(strict=True)]
     side: Side
     price: Annotated[str, Field(strict=True)]

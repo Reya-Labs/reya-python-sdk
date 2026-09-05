@@ -31,8 +31,8 @@ class CancelOrderRequest(BaseModel):
     client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided order ID for tracking and correlation, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero; JSON Schema validates presence only and the server enforces the non-zero rule. This is the same clientOrderId provided in CreateOrderRequest.", alias="clientOrderId")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
-    signature: StrictStr = Field(description="EIP-712 signature over the `OrderCancel(uint64 verifyingChainId, uint64 deadline, OrderCancelDetails cancel)` envelope. See `docs/eip712.md` for the exact typehash string and signing algorithm.")
-    nonce: StrictStr = Field(description="Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See `docs/eip712.md`.")
+    signature: StrictStr = Field(description="EIP-712 signature over the `OrderCancel(uint64 verifyingChainId, uint64 deadline, OrderCancelDetails cancel)` envelope. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.")
+    nonce: StrictStr = Field(description="Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces).")
     deadline: Annotated[int, Field(strict=True, ge=0)]
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "accountId", "symbol", "signature", "nonce", "deadline"]

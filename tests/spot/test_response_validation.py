@@ -544,7 +544,7 @@ async def test_depth_response_structure(spot_config: SpotTestConfig, spot_tester
 
     Validates:
     - symbol: str
-    - type: DepthType enum (SNAPSHOT or UPDATE)
+    - type: DepthSnapshotType enum (SNAPSHOT)
     - bids: list[Level]
     - asks: list[Level]
     - updated_at: int (timestamp)
