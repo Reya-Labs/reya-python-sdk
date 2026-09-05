@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional, Union
 import asyncio
 import logging
 import os
+import time
 from decimal import Decimal
 
 import pytest
@@ -25,6 +26,12 @@ if TYPE_CHECKING:
     from .tester import ReyaTester
 
 logger = logging.getLogger("reya.integration_tests")
+
+
+# How long to let cancellations settle before calling a leftover order a
+# failure. Generous on purpose: the cost of being too short is a false
+# failure in an unrelated test, which is what this used to produce.
+_NO_OPEN_ORDERS_SETTLE_TIMEOUT_S = 8.0
 
 
 class Checks:
@@ -118,18 +125,35 @@ class Checks:
             return
 
         logger.warning(f"Waiting for {len(legitimate_orders)} legitimate orders to be cancelled...")
-        await asyncio.sleep(0.05)
 
-        remaining_orders = await self._t.client.get_open_orders()
-        remaining_legitimate = []
-        for order in remaining_orders:
-            try:
-                await self._t.client.cancel_order(
-                    order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
-                )
-            except ApiException as e:
-                if "Missing order" not in str(e):
+        # Poll until the cancels above are REFLECTED, rather than sleeping a
+        # fixed 50ms and re-checking once. Cancellation is asynchronous
+        # (matching engine -> API DB), so 50ms is enough only when the account
+        # is nearly empty and the run is quiet. Under a full-suite run -- more
+        # orders to clear, more load -- an order cancelled moments ago is still
+        # listed, the re-cancel below succeeds idempotently, and it gets
+        # counted as a "legitimate remaining" order that fails the check.
+        #
+        # That raciness is why the spot suites pass in isolation (47 passed)
+        # and fail when run after tests/engine (6 failed): same code, same
+        # environment, different amount of state to settle.
+        deadline = time.time() + _NO_OPEN_ORDERS_SETTLE_TIMEOUT_S
+        remaining_legitimate: list = []
+        while True:
+            remaining_orders = await self._t.client.get_open_orders()
+            remaining_legitimate = []
+            for order in remaining_orders:
+                try:
+                    await self._t.client.cancel_order(
+                        order_id=order.order_id, symbol=order.symbol, account_id=order.account_id
+                    )
                     remaining_legitimate.append(order)
+                except ApiException as e:
+                    if "Missing order" not in str(e) and "Order not found" not in str(e):
+                        remaining_legitimate.append(order)
+            if not remaining_legitimate or time.time() >= deadline:
+                break
+            await asyncio.sleep(0.25)
 
         if len(remaining_legitimate) > 0:
             logger.error(f"check_no_open_orders: Still found {len(remaining_legitimate)} legitimate open orders:")

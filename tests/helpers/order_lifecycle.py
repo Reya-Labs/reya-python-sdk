@@ -14,12 +14,16 @@ import asyncio
 import time
 from decimal import Decimal
 
+import pytest
+
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api.models.order import Order
+from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.spot_execution import SpotExecution
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
+from tests.helpers.liquidity_detector import skip_if_order_would_cross
 from tests.helpers.market_config import MarketTestConfig, SpotTestConfig
 
 
@@ -84,11 +88,30 @@ async def rest_gtc(
     ``market_config.price(multiplier)`` on the config's symbol, wait for
     creation, return the fetched Order. Unifies the `rest_spot_gtc` /
     `rest_perp_gtc` split."""
+    # A maker order can only be MODIFIED, EXPIRED or CANCELLED if it actually
+    # RESTS. When someone else's liquidity (typically a market-making bot on
+    # the same env) sits inside the band, this order crosses it and fills
+    # instantly instead of resting -- and the caller then dies in
+    # `for_order_creation` with the opaque "Order X not created after 10
+    # seconds", which points at order creation rather than at the book.
+    #
+    # Guarded HERE rather than per-test: every caller needs the order to rest,
+    # so the precondition belongs with the helper. The perp suites already
+    # skip on this via the same detector; the modify and GTT batteries reach
+    # the book through this helper and failed instead of skipping.
+    px_gtc = str(market_config.price(price_multiplier))
+    await skip_if_order_would_cross(
+        market_config,
+        tester,
+        price=px_gtc,
+        is_buy=is_buy,
+        reason="rest_gtc needs the maker order to REST.",
+    )
     builder = (
         OrderBuilder()
         .symbol(market_config.symbol)
         .side(is_buy)
-        .price(str(market_config.price(price_multiplier)))
+        .price(px_gtc)
         .qty(qty if qty is not None else market_config.min_qty)
         .gtc()
     )
@@ -122,7 +145,25 @@ async def rest_gtt(
     (default client deadline is now+60s) for tests that must not expire mid-run.
     Pass an absolute ``price`` (e.g. the re-fetched current mark) for crossing
     tests where the stale session-config price would drift off the perp band."""
+    # A maker order can only be MODIFIED, EXPIRED or CANCELLED if it actually
+    # RESTS. When someone else's liquidity (typically a market-making bot on
+    # the same env) sits inside the band, this order crosses it and fills
+    # instantly instead of resting -- and the caller then dies in
+    # `for_order_creation` with the opaque "Order X not created after 10
+    # seconds", which points at order creation rather than at the book.
+    #
+    # Guarded HERE rather than per-test: every caller needs the order to rest,
+    # so the precondition belongs with the helper. The perp suites already
+    # skip on this via the same detector; the modify and GTT batteries reach
+    # the book through this helper and failed instead of skipping.
     px = price if price is not None else str(market_config.price(price_multiplier))
+    await skip_if_order_would_cross(
+        market_config,
+        tester,
+        price=px,
+        is_buy=is_buy,
+        reason="rest_gtt needs the maker order to REST.",
+    )
     builder = (
         OrderBuilder()
         .symbol(market_config.symbol)
@@ -288,4 +329,109 @@ async def wait_for_ws_order_change(
     raise AssertionError(
         f"No WS orderChange with px={limit_px} qty={qty} for order {order_id} within {timeout_s}s; "
         f"last seen: {last_seen}"
+    )
+
+
+async def assert_resting_or_explain(
+    tester,
+    order_id,
+    *,
+    label: str,
+    expires_after: int,
+) -> None:
+    """Assert an order is still resting, and when it is NOT, say WHY.
+
+    The naive form of this check -- ``assert order is not None`` -- reads any
+    disappearance as the reaper firing early, because that is the bug the
+    caller is hunting. On a shared environment that is usually wrong: the
+    order is far more often cancelled by somebody else's mass-cancel, a COD
+    deadline, or the risk engine. The cancel reason distinguishes them
+    unambiguously and is already on the WS order, so an assertion that omits
+    it turns a one-line answer into an investigation.
+
+    GTT_EXPIRED before ``expires_after`` is the real defect and FAILS loudly.
+    Every other reason means the environment removed the precondition rather
+    than the engine misbehaving, so the test SKIPS naming the reason -- same
+    philosophy as the liquidity guards above.
+    """
+    order = await tester.data.open_order(order_id)
+    if order is not None and order.status == OrderStatus.OPEN:
+        return
+
+    ws_order = tester.ws.orders.get(str(order_id))
+    reason = getattr(ws_order, "cancel_reason", None)
+    now = int(time.time())
+    early_by = expires_after - now
+
+    if reason is None:
+        pytest.fail(
+            f"{label} order {order_id} vanished {early_by}s before its expiry "
+            f"({now} < {expires_after}) and no cancel reason reached the WS "
+            f"client -- cannot tell an early reap from an external cancel."
+        )
+
+    if str(getattr(reason, "value", reason)).upper().endswith("GTT_EXPIRED"):
+        pytest.fail(
+            f"{label} GTT was reaped EARLY: cancelled GTT_EXPIRED at {now}, "
+            f"{early_by}s before its expiresAfter ({expires_after}). This is "
+            f"the matching engine reaping ahead of the deadline."
+        )
+
+    pytest.skip(
+        f"{label} order {order_id} was cancelled by "
+        f"{getattr(reason, 'value', reason)} {early_by}s before "
+        f"its expiry -- something outside this test removed it (shared "
+        f"environment), so the reap behaviour cannot be observed."
+    )
+
+
+async def assert_resting_or_explain_rest(
+    rest,
+    order_id,
+    *,
+    label: str,
+    expires_after: int,
+) -> None:
+    """REST-only twin of `assert_resting_or_explain`, for the ws-exec suites.
+
+    Those tests hold a raw ReyaTradingClient rather than a ReyaTester, so
+    there is no WS order store to read the cancel reason from. Order history
+    carries it, so fetch from there instead -- the point is the same: never
+    report "the reaper fired early" for an order somebody else cancelled.
+    """
+    open_ids = {str(o.order_id) for o in await rest.get_open_orders()}
+    if str(order_id) in open_ids:
+        return
+
+    reason = None
+    try:
+        history = await rest.get_order_history()
+        rows = getattr(history, "data", None) or history
+        for row in rows:
+            if str(getattr(row, "order_id", "")) == str(order_id):
+                reason = getattr(row, "cancel_reason", None)
+                break
+    except Exception:  # pylint: disable=broad-except
+        reason = None
+
+    now = int(time.time())
+    early_by = expires_after - now
+
+    if reason is None:
+        pytest.fail(
+            f"{label} order {order_id} left the book {early_by}s before its "
+            f"expiry ({now} < {expires_after}) and order history carried no "
+            f"cancel reason -- cannot tell an early reap from an external cancel."
+        )
+
+    if str(getattr(reason, "value", reason)).upper().endswith("GTT_EXPIRED"):
+        pytest.fail(
+            f"{label} GTT was reaped EARLY: cancelled GTT_EXPIRED at {now}, "
+            f"{early_by}s before its expiresAfter ({expires_after})."
+        )
+
+    pytest.skip(
+        f"{label} order {order_id} was cancelled by "
+        f"{getattr(reason, 'value', reason)} {early_by}s before its expiry -- "
+        f"something outside this test removed it (shared environment)."
     )

@@ -25,6 +25,7 @@ from decimal import Decimal
 import pytest
 
 from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -39,7 +40,7 @@ from tests.helpers.gtt_timing import (
 )
 from tests.helpers.liquidity_detector import skip_if_external_config_liquidity
 from tests.helpers.market_config import PerpTestConfig, SpotTestConfig
-from tests.helpers.order_lifecycle import rest_gtc, rest_gtt, wait_for_order_fields
+from tests.helpers.order_lifecycle import assert_resting_or_explain, rest_gtc, rest_gtt, wait_for_order_fields
 from tests.helpers.reya_tester import logger
 from tests.helpers.settlement import SettlementProbe
 
@@ -111,11 +112,11 @@ async def test_gtt_reaped_at_expiry(
     remaining = (expires_after - GTT_REAP_PRE_EXPIRY_MARGIN_S) - time.time()
     if remaining > 0:
         await asyncio.sleep(remaining)
-    early = await maker.data.open_order(order_id)
-    assert early is not None and early.status == OrderStatus.OPEN, (
-        f"[{market_type}] GTT was reaped BEFORE its expiresAfter "
-        f"(observed gone at ~{int(time.time())} < {expires_after})"
-    )
+    # Reports the cancel REASON when the order is gone: an early GTT_EXPIRED is
+    # the defect this test hunts, while a USER_CANCEL / MASS_CANCEL from another
+    # actor on this shared account means the precondition was removed and the
+    # behaviour simply cannot be observed.
+    await assert_resting_or_explain(maker, order_id, label=f"[{market_type}]", expires_after=expires_after)
 
     # Upper bound: reaped within a finite window AFTER expiry — no explicit cancel.
     await maker.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=REAP_WAIT_TIMEOUT_S)
@@ -173,11 +174,8 @@ async def test_gtc_survives_while_gtt_is_reaped(
         remaining = (expires_after - GTT_REAP_PRE_EXPIRY_MARGIN_S) - time.time()
         if remaining > 0:
             await asyncio.sleep(remaining)
-        gtt_pre = await maker.data.open_order(gtt_id)
+        await assert_resting_or_explain(maker, gtt_id, label=f"[{market_type}]", expires_after=expires_after)
         gtc_pre = await maker.data.open_order(gtc.order_id)
-        assert (
-            gtt_pre is not None and gtt_pre.status == OrderStatus.OPEN
-        ), f"[{market_type}] GTT must rest before expiry"
         assert gtc_pre is not None and gtc_pre.status == OrderStatus.OPEN, f"[{market_type}] GTC must rest"
 
         # The GTT is auto-reaped at its expiry (no explicit cancel)...
@@ -194,8 +192,22 @@ async def test_gtc_survives_while_gtt_is_reaped(
         logger.info(f"[{market_type}] ✅ GTC survived past the GTT reap horizon (never auto-cleared)")
     finally:
         # Always clean up the resting GTC (the GTT is already reaped).
-        await maker.client.cancel_order(symbol=market_config.symbol, account_id=maker.account_id, order_id=gtc.order_id)
-        await maker.wait.for_order_state(gtc.order_id, OrderStatus.CANCELLED)
+        #
+        # Tolerant of the order already being gone. On a shared account it may
+        # have been cancelled by somebody else, and the body above may exit via
+        # pytest.skip for exactly that reason -- a raising cleanup would then
+        # REPLACE the skip with its own 400 and report the test as failed.
+        # That is not hypothetical: it is why this test failed every run while
+        # the skip was working correctly underneath.
+        try:
+            await maker.client.cancel_order(
+                symbol=market_config.symbol, account_id=maker.account_id, order_id=gtc.order_id
+            )
+            await maker.wait.for_order_state(gtc.order_id, OrderStatus.CANCELLED)
+        except ApiException as e:
+            if "not found" not in str(e).lower() and "missing order" not in str(e).lower():
+                raise
+            logger.info(f"[{market_type}] cleanup: GTC {gtc.order_id} already gone ({e})")
 
 
 @pytest.mark.asyncio

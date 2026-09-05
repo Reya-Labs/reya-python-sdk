@@ -23,6 +23,7 @@ from sdk.async_api.order import Order as WsInfoOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
+from sdk.async_api.perp_execution import PerpExecution as WsInfoPerpExecution
 from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
@@ -43,6 +44,7 @@ from sdk.open_api import ModifyOrderResponse as RestModifyOrderResponse
 from sdk.open_api import Order as RestOrder
 from sdk.open_api import OrderHistoryList as RestOrderHistoryList
 from sdk.open_api import OrderStatus as RestOrderStatus
+from sdk.open_api import PerpExecution as RestPerpExecution
 from sdk.open_api import RequestErrorCode as RestRequestErrorCode
 from sdk.open_api import SpotExecution as RestSpotExecution
 from sdk.open_api.api.market_data_api import MarketDataApi
@@ -281,6 +283,21 @@ def _base_spot_execution_payload() -> dict[str, Any]:
         "timestamp": 1745000000,
         "sequenceNumber": 99,
         "fillId": "9001",
+    }
+
+
+def _makerless_perp_execution_payload(execution_type: str) -> dict[str, Any]:
+    return {
+        "exchangeId": 2,
+        "symbol": "ETHRUSDPERP",
+        "takerAccountId": 12345,
+        "qty": "1",
+        "side": "A",
+        "price": "2500",
+        "takerFee": "0",
+        "type": execution_type,
+        "timestamp": 1745000000,
+        "sequenceNumber": 99,
     }
 
 
@@ -832,6 +849,23 @@ def test_ws_info_spot_execution_uses_taker_field_names() -> None:
     assert serialized["takerAccountId"] == 12345
     assert serialized["takerOrderId"] == "490346525705109504"
     assert serialized["takerFee"] == "0"
+
+
+@pytest.mark.parametrize("execution_type", ["ADL", "MARKET_CLOSE"])
+def test_rest_perp_execution_accepts_omitted_maker_fields(execution_type: str) -> None:
+    execution = RestPerpExecution.from_dict(_makerless_perp_execution_payload(execution_type))
+
+    assert execution is not None
+    serialized = execution.to_dict()
+    assert not any(field.startswith("maker") for field in serialized)
+
+
+@pytest.mark.parametrize("execution_type", ["ADL", "MARKET_CLOSE"])
+def test_ws_info_perp_execution_accepts_omitted_maker_fields(execution_type: str) -> None:
+    execution = WsInfoPerpExecution.model_validate(_makerless_perp_execution_payload(execution_type))
+
+    serialized = execution.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert not any(field.startswith("maker") for field in serialized)
 
 
 def test_rest_execution_bust_uses_taker_field_names() -> None:

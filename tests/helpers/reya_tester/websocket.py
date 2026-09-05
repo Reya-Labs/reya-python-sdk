@@ -18,9 +18,11 @@ from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
 from sdk.async_api.depth_snapshot import DepthSnapshot
 from sdk.async_api.depth_snapshot_type import DepthSnapshotType
+from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.execution_bust import ExecutionBust as AsyncExecutionBust
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
+from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
 from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
@@ -60,6 +62,13 @@ class WebSocketState:
         self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
 
+        # Server-sent error frames. The harness previously dropped these on the
+        # floor: a channel could fail its snapshot for the whole session and no
+        # test would notice, because subscribe() is fire-and-forget and every
+        # assertion looks at the DATA stores. A wallet holding a collateral the
+        # backend cannot resolve produced exactly that silence.
+        self.errors: list[ErrorMessagePayload] = []
+
         # Keyed stores: direct lookup by key
         self.positions: EventStore[AsyncPosition] = EventStore(key_fn=lambda x: x.symbol)
         self.orders: EventStore[AsyncOrder] = EventStore(key_fn=lambda x: str(x.order_id))
@@ -70,6 +79,7 @@ class WebSocketState:
         self.market_execution_busts: dict[str, EventStore[AsyncExecutionBust]] = {}
 
         # Market-level stores (by symbol)
+        self.market_perp_executions: dict[str, EventStore[AsyncPerpExecution]] = {}
         self.market_spot_executions: dict[str, EventStore[AsyncSpotExecution]] = {}
         self.depth: dict[str, DepthSnapshot] = {}
 
@@ -127,6 +137,7 @@ class WebSocketState:
         self.positions.clear()
         self.orders.clear()
         self.balances.clear()
+        self.market_perp_executions.clear()
         self.market_spot_executions.clear()
         self.market_execution_busts.clear()
         self.depth.clear()
@@ -168,6 +179,13 @@ class WebSocketState:
         self._t.websocket.market.spot_executions(symbol).subscribe()
         logger.info(f"Subscribed to market spot executions for {symbol}")
 
+    def subscribe_to_market_perp_executions(self, symbol: str) -> None:
+        """Subscribe to market-level perp executions for a specific symbol."""
+        if self._t.websocket is None:
+            raise RuntimeError("WebSocket not connected - call setup() first")
+        self._t.websocket.market.perp_executions(symbol).subscribe()
+        logger.info(f"Subscribed to market perp executions for {symbol}")
+
     def subscribe_to_market_execution_busts(self, symbol: str) -> None:
         """Subscribe to market-level execution busts for a specific symbol (spot or perp)."""
         if self._t.websocket is None:
@@ -200,6 +218,16 @@ class WebSocketState:
             self.market_spot_executions.clear()
             logger.debug("Cleared all market spot executions")
 
+    def clear_market_perp_executions(self, symbol: str | None = None) -> None:
+        """Clear market perp executions. If symbol provided, clear only that symbol."""
+        if symbol:
+            if symbol in self.market_perp_executions:
+                self.market_perp_executions[symbol].clear()
+            logger.debug(f"Cleared market perp executions for {symbol}")
+        else:
+            self.market_perp_executions.clear()
+            logger.debug("Cleared all market perp executions")
+
     def on_open(self, ws) -> None:
         """Handle WebSocket connection open."""
         logger.info("WebSocket opened, subscribing to trade feeds")
@@ -219,6 +247,11 @@ class WebSocketState:
         """
         logger.info(f"Received message: {type(message).__name__}")
 
+        if isinstance(message, ErrorMessagePayload):
+            logger.error(f"WS error frame: channel={getattr(message, 'channel', None)} {message.message}")
+            self.errors.append(message)
+            return
+
         # Handle subscribed messages with initial snapshots
         if isinstance(message, OrderChangesSubscribedPayload):
             self._handle_order_changes_subscribed(message)
@@ -226,8 +259,8 @@ class WebSocketState:
         elif isinstance(message, SubscribedMessagePayload):
             self._handle_subscribed(message)
 
-        # Handle perp executions
-        elif isinstance(message, WalletPerpExecutionUpdatePayload):
+        # Handle perp executions (market or wallet level)
+        elif isinstance(message, (MarketPerpExecutionUpdatePayload, WalletPerpExecutionUpdatePayload)):
             self._handle_perp_executions(message)
 
         # Handle spot executions (market or wallet level)
@@ -280,6 +313,16 @@ class WebSocketState:
 
             logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
 
+        if "/market/" in message.channel and "perpExecutions" in message.channel and message.contents:
+            symbol = message.channel.split("/")[3]  # /v2/market/{symbol}/perpExecutions
+            data = message.contents.get("data", [])
+            store = self.market_perp_executions.setdefault(symbol, EventStore())
+
+            for item in data:
+                store.add(AsyncPerpExecution.model_validate(item))
+
+            logger.info(f"Stored market perp executions snapshot for {symbol}: {len(data)} execution(s)")
+
         # Handle initial snapshot for balances channel
         if "balances" in message.channel and message.contents:
             data = message.contents.get("data", [])
@@ -299,8 +342,12 @@ class WebSocketState:
             self.orders.add(order)
         logger.info(f"Stored orderChanges snapshot: {len(message.contents.data)} order(s)")
 
-    def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
-        """Handle perp execution updates."""
+    def _handle_perp_executions(
+        self, message: MarketPerpExecutionUpdatePayload | WalletPerpExecutionUpdatePayload
+    ) -> None:
+        """Handle perp execution updates (market or wallet level)."""
+        is_market_channel = "/market/" in message.channel
+
         for trade in message.data:
             logger.info(
                 f"📊 Perp execution received: seq={trade.sequence_number}, "
@@ -308,7 +355,11 @@ class WebSocketState:
                 f"symbol={trade.symbol}, "
                 f"side={trade.side.value if hasattr(trade.side, 'value') else trade.side}, qty={trade.qty}"
             )
-            self.perp_executions.add(trade)
+            if is_market_channel:
+                symbol = message.channel.split("/")[3]
+                self.market_perp_executions.setdefault(symbol, EventStore()).add(trade)
+            else:
+                self.perp_executions.add(trade)
 
     def _handle_spot_executions(
         self, message: MarketSpotExecutionUpdatePayload | WalletSpotExecutionUpdatePayload

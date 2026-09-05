@@ -39,6 +39,7 @@ from tests.helpers.gtt_timing import (
     GTT_REAP_EXPIRY_OFFSET_S,
     GTT_REAP_PRE_EXPIRY_MARGIN_S,
 )
+from tests.helpers.order_lifecycle import assert_resting_or_explain_rest
 from tests.helpers.ws_exec_market import WsExecMarket
 
 pytestmark = [pytest.mark.e2e, pytest.mark.gtt]
@@ -142,8 +143,10 @@ async def test_ws_exec_gtt_reaped_at_expiry(ws_exec_market: WsExecMarket):
     remaining = (expires_after - GTT_REAP_PRE_EXPIRY_MARGIN_S) - time.time()
     if remaining > 0:
         await asyncio.sleep(remaining)
-    open_ids = {o.order_id for o in await m.rest.get_open_orders()}
-    assert order_id in open_ids, f"[{m.market_type}] GTT was reaped BEFORE its expiresAfter"
+    # Reports the cancel REASON when the order is gone: an early GTT_EXPIRED is
+    # the defect this test hunts, while a USER_CANCEL / MASS_CANCEL from another
+    # actor on this shared account means the precondition was removed.
+    await assert_resting_or_explain_rest(m.rest, order_id, label=f"[{m.market_type}]", expires_after=expires_after)
 
     # Upper bound: reaped (drops out of openOrders) within a finite window after expiry.
     await _wait_for_order_gone(m.rest, order_id, timeout_s=GTT_REAP_PRE_EXPIRY_MARGIN_S + GTT_REAP_DETECT_BOUND_S + 10)

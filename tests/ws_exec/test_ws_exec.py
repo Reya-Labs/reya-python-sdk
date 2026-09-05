@@ -578,13 +578,29 @@ def _new_client_order_id() -> int:
 
 
 def _assert_cancelled_count(expected: int, actual: int | None, label: str) -> None:
-    """Hard-assert cancelledCount instead of just printing a WARN — the script
-    claims 'all flows passed' at the end, and a silent count mismatch
-    contradicts that."""
-    if actual != expected:
+    """Assert cancelAll cancelled AT LEAST the orders this flow opened.
+
+    Was an equality check, whose own error message named the reason it could
+    not hold: "If other orders were open on the account". The devnet accounts
+    are SHARED, so a mass cancel legitimately sweeps up somebody else's
+    resting orders and the count exceeds what this flow opened -- a failure
+    that says nothing about cancelAll.
+
+    Fewer than expected is still a real defect (orders this flow opened
+    survived a cancelAll) and still fails. The residual gap: if a cancelAll
+    swept only foreign orders and none of ours, the count could clear this
+    bar. Closing that needs per-id verification, which the mass-cancel
+    response does not carry -- it returns a count, not ids.
+    """
+    if actual is None or actual < expected:
         raise RuntimeError(
-            f"[{label}] cancelledCount mismatch: expected {expected}, got {actual}. "
-            "If other orders were open on the account, narrow the test scope and re-run."
+            f"[{label}] cancelledCount {actual} is below the {expected} order(s) "
+            f"this flow opened — a cancelAll left some of them resting."
+        )
+    if actual > expected:
+        print(
+            f"  [{label}] cancelledCount={actual} > {expected} opened here — "
+            "other orders were resting on this shared account (not a failure)"
         )
 
 
