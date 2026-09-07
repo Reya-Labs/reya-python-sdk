@@ -34,12 +34,19 @@ Keyrock's net short shrinks rather than a second position appearing.
 Pause the local devnet perp market-maker only for the controlled opening fill.
 The service uses account 10 through explicit environment overrides. Preserve its
 previous running/stopped state; do not start it if it was already stopped.
+Use STOP/CONT signals, not `systemctl stop`: this is a transient unit that can
+disappear when stopped. Its existing quotes remain in the book while paused;
+the rehearsal chooses a better price inside that spread to isolate its fill.
 The spot market-maker does not need to be stopped.
 
 ```sh
-systemctl --user stop reya-mm-perp-devnet.service
-.venv/bin/python -m scripts.devnet_liquidation_rehearsal open --qty 3.8 --side long --execute
-systemctl --user start reya-mm-perp-devnet.service
+(
+  if systemctl --user is-active --quiet reya-mm-perp-devnet.service; then
+    trap 'systemctl --user kill --kill-whom=main --signal=SIGCONT reya-mm-perp-devnet.service' EXIT
+    systemctl --user kill --kill-whom=main --signal=SIGSTOP reya-mm-perp-devnet.service
+  fi
+  .venv/bin/python -m scripts.devnet_liquidation_rehearsal open --qty 3.8 --side long --execute
+)
 
 .venv/bin/python -m scripts.devnet_liquidation_rehearsal dutch --execute
 .venv/bin/python -m scripts.devnet_liquidation_rehearsal backstop --execute
@@ -93,3 +100,37 @@ Offline validation:
 ```sh
 .venv/bin/python -m unittest scripts.test_devnet_liquidation_rehearsal
 ```
+
+## Verified September 7, 2026, 23:16 UTC
+
+Deployed image digest:
+`sha256:47cb3eb500404a30e03ce0fb91030d6d6829c8854036072cbe43b98052b91d23`.
+Source commit: `6ef453ee82680ea0fdc939593e1215066a59bb12`, based on main `97f9c7a6`.
+Local Rust formatting, Clippy, all-features tests and no-default-features tests
+passed. Fresh live opening fill and both liquidation tiers settled successfully.
+
+| Stage | Victim base before → after | Keyrock acquisition | V3 type | Sequence |
+|---|---|---|---:|---:|
+| Dutch, mark 2453.076 | 3.8 → 2.691 ETH | 1.109 ETH long | 1 | 121015 |
+| Backstop, mark 2406.067 | 2.691 → 0 ETH | 2.691 ETH long | 3 | 121016 |
+
+Dutch transaction:
+`0x44dfbd6472e08f52c16c91977fbf50e331590dbea8f52331d2c8c5615984a46a`.
+Backstop transaction:
+`0xadc9497a0a486c675398edeb8738535d4d1b39118eeb119e9d474104ab1d441b`.
+Both also appeared in Keyrock's
+[perpExecutions](https://api-devnet.reya-cronos.network/v2/wallet/0xB89F0700dc6D92f715325d460aAF87a1640F629B/perpExecutions).
+Keyrock's net short became 3.4 ETH (from 7.2). Account 11's long became 3.714 ETH.
+
+The override was cleared after each stage. The victim was re-funded to exactly
+400 rUSD from its own spot account, in transaction
+`0x2696c68b663d270f40c0900fbcbd0335e64685b655dcaf89ae72e474947e35b5`.
+Both market-maker services were restored to active state.
+
+Deployment reconciliation is in
+[reya-devops #1062](https://github.com/Reya-Labs/reya-devops/pull/1062).
+The live rollout changed only the ME image and the override-enable env, preserving
+existing unrelated deployment settings. Until that PR is merged, a manual ArgoCD
+sync of the old configuration would remove the rehearsal feature. Automatic sync
+and self-heal are disabled for this workload; do not sync the old config before
+the call.
