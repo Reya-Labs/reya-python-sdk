@@ -14,6 +14,7 @@ Note: Spot trading has ZERO fees, so we can verify exact balance changes:
 
 import asyncio
 import logging
+import time
 from decimal import Decimal
 
 import pytest
@@ -32,6 +33,25 @@ async def get_account_balances(tester: ReyaTester) -> dict:
     # Filter by the tester's account_id
     account_balances = [b for b in balances if b.account_id == tester.account_id]
     return {b.asset: Decimal(b.real_balance) for b in account_balances}
+
+
+async def wait_for_account_balances(
+    tester: ReyaTester,
+    expected: dict[str, Decimal],
+    timeout: float = 10.0,
+) -> dict[str, Decimal]:
+    """Wait for the REST read model to expose all expected balances."""
+    deadline = time.monotonic() + timeout
+    latest = await get_account_balances(tester)
+    while time.monotonic() < deadline:
+        if all(latest.get(asset, Decimal(0)) == balance for asset, balance in expected.items()):
+            return latest
+        await asyncio.sleep(0.2)
+        latest = await get_account_balances(tester)
+    raise AssertionError(
+        f"Account {tester.account_id} balances did not converge within {timeout}s: "
+        f"expected {expected}, got {latest}"
+    )
 
 
 @pytest.mark.spot
@@ -110,12 +130,28 @@ async def test_spot_balance_update_after_buy(
     await asyncio.sleep(0.05)
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
-    # Wait for indexer to update balances (REST API may lag behind WebSocket)
-    await asyncio.sleep(1.0)
-
-    # Get balances after trade
-    maker_balances_after = await get_account_balances(maker_tester)
-    taker_balances_after = await get_account_balances(taker_tester)
+    # REST balances trail the fill while the indexer applies both account
+    # updates. Poll the exact post-trade state instead of racing that boundary
+    # with a fixed sleep.
+    qty = Decimal(spot_config.min_qty)
+    execution_price = Decimal(str(maker_price))
+    expected_rusd_change = qty * execution_price
+    maker_balances_after, taker_balances_after = await asyncio.gather(
+        wait_for_account_balances(
+            maker_tester,
+            {
+                base_asset: maker_balances_before.get(base_asset, Decimal(0)) - qty,
+                "RUSD": maker_balances_before.get("RUSD", Decimal(0)) + expected_rusd_change,
+            },
+        ),
+        wait_for_account_balances(
+            taker_tester,
+            {
+                base_asset: taker_balances_before.get(base_asset, Decimal(0)) + qty,
+                "RUSD": taker_balances_before.get("RUSD", Decimal(0)) - expected_rusd_change,
+            },
+        ),
+    )
 
     logger.info(
         f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}"
@@ -125,10 +161,6 @@ async def test_spot_balance_update_after_buy(
     )
 
     # Calculate changes
-    qty = Decimal(spot_config.min_qty)
-    execution_price = Decimal(str(maker_price))  # Trade executes at maker's price
-    expected_rusd_change = qty * execution_price
-
     # Maker sold base asset, received RUSD
     maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(
         base_asset, Decimal(0)
@@ -243,12 +275,27 @@ async def test_spot_balance_update_after_sell(
     await asyncio.sleep(0.05)
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
-    # Wait for indexer to update balances (REST API may lag behind WebSocket)
-    await asyncio.sleep(1.0)
-
-    # Get balances after trade
-    maker_balances_after = await get_account_balances(maker_tester)
-    taker_balances_after = await get_account_balances(taker_tester)
+    # Poll the exact post-trade state; FILLED can precede the two REST balance
+    # projections under full-suite load.
+    qty = Decimal(spot_config.min_qty)
+    execution_price = Decimal(str(maker_price))
+    expected_rusd_change = qty * execution_price
+    maker_balances_after, taker_balances_after = await asyncio.gather(
+        wait_for_account_balances(
+            maker_tester,
+            {
+                base_asset: maker_balances_before.get(base_asset, Decimal(0)) - qty,
+                "RUSD": maker_balances_before.get("RUSD", Decimal(0)) + expected_rusd_change,
+            },
+        ),
+        wait_for_account_balances(
+            taker_tester,
+            {
+                base_asset: taker_balances_before.get(base_asset, Decimal(0)) + qty,
+                "RUSD": taker_balances_before.get("RUSD", Decimal(0)) - expected_rusd_change,
+            },
+        ),
+    )
 
     logger.info(
         f"Maker after: {base_asset}={maker_balances_after.get(base_asset, 0)}, RUSD={maker_balances_after.get('RUSD', 0)}"
@@ -258,10 +305,6 @@ async def test_spot_balance_update_after_sell(
     )
 
     # Calculate changes
-    qty = Decimal(spot_config.min_qty)
-    execution_price = Decimal(str(maker_price))  # Trade executes at maker's price
-    expected_rusd_change = qty * execution_price
-
     # Maker sold base asset, received RUSD
     maker_base_change = maker_balances_after.get(base_asset, Decimal(0)) - maker_balances_before.get(
         base_asset, Decimal(0)
@@ -353,7 +396,7 @@ async def test_spot_balance_maker_taker_consistency(
     logger.info(f"Total before: {base_asset}={total_base_before}, RUSD={total_rusd_before}")
 
     # Execute a trade
-    _ = spot_config.price(0.97)  # maker_price - calculated for reference
+    maker_price = spot_config.price(0.97)
 
     maker_params = OrderBuilder.from_config(spot_config).buy().at_price(0.97).gtc().build()
 
@@ -366,12 +409,24 @@ async def test_spot_balance_maker_taker_consistency(
     await asyncio.sleep(0.05)
     await maker_tester.wait.for_order_state(maker_order_id, OrderStatus.FILLED, timeout=5)
 
-    # Wait for indexer to update balances (REST API may lag behind WebSocket)
-    await asyncio.sleep(1.0)
-
-    # Get balances after trade
-    maker_balances_after = await get_account_balances(maker_tester)
-    taker_balances_after = await get_account_balances(taker_tester)
+    qty = Decimal(spot_config.min_qty)
+    expected_rusd_change = qty * Decimal(str(maker_price))
+    maker_balances_after, taker_balances_after = await asyncio.gather(
+        wait_for_account_balances(
+            maker_tester,
+            {
+                base_asset: maker_balances_before.get(base_asset, Decimal(0)) + qty,
+                "RUSD": maker_balances_before.get("RUSD", Decimal(0)) - expected_rusd_change,
+            },
+        ),
+        wait_for_account_balances(
+            taker_tester,
+            {
+                base_asset: taker_balances_before.get(base_asset, Decimal(0)) - qty,
+                "RUSD": taker_balances_before.get("RUSD", Decimal(0)) + expected_rusd_change,
+            },
+        ),
+    )
 
     total_base_after = maker_balances_after.get(base_asset, Decimal(0)) + taker_balances_after.get(
         base_asset, Decimal(0)

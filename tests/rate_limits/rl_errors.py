@@ -3,9 +3,12 @@
 Why raw dicts instead of the generated models:
 
 * ``RequestErrorCode`` (sdk/open_api/models/request_error_code.py) is generated
-  from the CURRENT tagged spec, which predates the Rate-Limit v1 codes. Parsing
-  a ``NOT_WHITELISTED_ERROR`` body through ``RequestError`` raises a pydantic
-  ``ValidationError`` today, so nothing typed can assert on it.
+  from the CURRENT tagged spec, which predates the Rate-Limit v1 codes. That
+  enum is now open-vocabulary — ``_missing_`` resolves an unrecognized member
+  to ``UNKNOWN`` rather than raising — so parsing a ``NOT_WHITELISTED_ERROR``
+  body through ``RequestError`` succeeds but LOSES the code. Typed parsing
+  therefore still cannot assert on it, and the raw body stays the source of
+  truth for the code.
 * ``RequestError`` has no ``retryAfterMs`` field yet. It DOES carry an
   ``additional_properties`` bag, so the value survives a ``from_dict`` round
   trip once the enum knows the code — but reading the raw payload works both
@@ -37,6 +40,10 @@ from sdk.open_api.exceptions import ApiException
 #: grammar means a client needs a single branch rather than a per-surface case.
 #: The captured group is the advisory backoff a prompt reconnect waits out.
 MSG_RATE_CLOSE_REASON_PATTERN = re.compile(r"^MSG_RATE_EXCEEDED retry_after_ms=(\d+)$")
+
+#: What an open-vocabulary generated enum resolves an unrecognized member to.
+#: Written by scripts/postprocess-openapi.py, so it survives regeneration.
+UNKNOWN_ENUM_MEMBER = "UNKNOWN"
 
 
 def _header(headers: Any, name: str) -> str | None:
@@ -75,14 +82,7 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
-def _payload_from_exception(exc: ApiException) -> dict[str, Any] | None:
-    """Best-effort JSON body: typed ``data`` first, then the raw ``body``."""
-    to_dict = getattr(exc.data, "to_dict", None)
-    if callable(to_dict):
-        typed = to_dict()
-        if isinstance(typed, dict):
-            return typed
-
+def _raw_payload(exc: ApiException) -> dict[str, Any] | None:
     # ``ApiException.body`` is the raw response text — the only place the
     # payload survives for statuses the generated response map does not list.
     # ``json.loads`` accepts str or bytes, so no decoding branch is needed.
@@ -104,6 +104,32 @@ def _code_from_payload(payload: dict[str, Any] | None) -> str | None:
         return None
     # A regenerated model hands back the enum; a raw body hands back a string.
     return str(getattr(code, "value", code))
+
+
+def _widened_to_unknown(typed: dict[str, Any], raw: dict[str, Any] | None) -> bool:
+    """Did the generated enum swallow a code the wire actually named?"""
+    typed_code = _code_from_payload(typed)
+    raw_code = _code_from_payload(raw)
+    return typed_code == UNKNOWN_ENUM_MEMBER and raw_code not in (None, UNKNOWN_ENUM_MEMBER)
+
+
+def _payload_from_exception(exc: ApiException) -> dict[str, Any] | None:
+    """Best-effort JSON body: typed ``data`` first, then the raw ``body``.
+
+    The typed payload is skipped when its enum widened the code to
+    ``UNKNOWN`` while the raw body still names it. The generated enums resolve
+    an unrecognized member to that sentinel instead of raising, so a typed
+    ``data`` no longer proves the SDK knew the code it hands back — preferring
+    it unconditionally would report every code this SDK predates as
+    ``UNKNOWN``.
+    """
+    raw = _raw_payload(exc)
+    to_dict = getattr(exc.data, "to_dict", None)
+    if callable(to_dict):
+        typed = to_dict()
+        if isinstance(typed, dict) and not _widened_to_unknown(typed, raw):
+            return typed
+    return raw
 
 
 @dataclass(frozen=True)

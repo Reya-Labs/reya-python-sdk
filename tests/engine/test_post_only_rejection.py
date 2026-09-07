@@ -22,13 +22,9 @@ import pytest
 from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
-from tests.engine.post_only_helpers import (
-    PERP_SYMBOL,
-    open_order_ids,
-    perp_min_qty_and_oracle,
-    rest_gtc_at_price,
-)
+from tests.engine.post_only_helpers import PERP_SYMBOL, open_order_ids, perp_min_qty_and_oracle, rest_gtc_at_price
 from tests.helpers import ReyaTester
 from tests.helpers.builders import OrderBuilder
 from tests.helpers.liquidity_detector import skip_if_external_config_liquidity
@@ -149,9 +145,9 @@ async def test_post_only_on_trigger_order_rejected(perp_maker_tester: ReyaTester
     Driven as a RAW CreateOrderRequest because TriggerOrderParameters has no
     post_only field (the typed path cannot express the invalid combination).
     The signature covers the EXACT wire values — post_only=True included, and
-    the trigger envelope mirrors build_create_trigger_order_payload (GTC
-    time-in-force, expiresAfter=0, no reduceOnly) — so the server's
-    trigger/post-only validation, not signature recovery, is what rejects.
+    the rest is a shape the builder would emit (a GTC trigger, so expiresAfter
+    is 0, and no reduceOnly) — so the server's trigger/post-only validation, not
+    signature recovery, is what rejects.
     """
     min_qty, oracle_price = await perp_min_qty_and_oracle(perp_maker_tester)
     trigger_px = str(round(oracle_price * 10, 2))
@@ -185,6 +181,7 @@ async def test_post_only_on_trigger_order_rejected(perp_maker_tester: ReyaTester
         qty=min_qty,
         triggerPx=trigger_px,
         orderType=OrderType.TAKE_PROFIT,
+        timeInForce=TimeInForce.GTC,
         reduceOnly=None,
         postOnly=True,
         expiresAfter=0,

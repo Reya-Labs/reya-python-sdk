@@ -12,7 +12,7 @@ import asyncio
 
 import pytest
 
-from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot
 from sdk.open_api.models.level import Level
 from sdk.open_api.models.order_status import OrderStatus
 from tests.helpers import ReyaTester
@@ -52,7 +52,7 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
     # Get initial depth and determine safe no-match price
     await spot_config.refresh_order_book(spot_tester.data)
     initial_depth = await spot_tester.data.market_depth(spot_config.symbol)
-    assert isinstance(initial_depth, Depth), f"Expected Depth type, got {type(initial_depth)}"
+    assert isinstance(initial_depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(initial_depth)}"
     initial_bid_count = len(initial_depth.bids)
     logger.info(f"Initial depth: {initial_bid_count} bids")
 
@@ -72,7 +72,7 @@ async def test_spot_order_appears_in_depth(spot_config: SpotTestConfig, spot_tes
 
     # Get updated depth
     updated_depth = await spot_tester.data.market_depth(spot_config.symbol)
-    assert isinstance(updated_depth, Depth), f"Expected Depth type, got {type(updated_depth)}"
+    assert isinstance(updated_depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(updated_depth)}"
     bids = updated_depth.bids
 
     # Find our order in bids (using typed Level.px attribute)
@@ -160,7 +160,7 @@ async def test_spot_multiple_orders_aggregate_in_depth(spot_config: SpotTestConf
 
     # Get depth and verify aggregation
     depth = await spot_tester.data.market_depth(spot_config.symbol)
-    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    assert isinstance(depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(depth)}"
     bids = depth.bids
 
     aggregated_qty = None
@@ -238,7 +238,7 @@ async def test_spot_bid_ask_spread(spot_config: SpotTestConfig, maker_tester: Re
 
     # Get depth
     depth = await maker_tester.data.market_depth(spot_config.symbol)
-    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    assert isinstance(depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(depth)}"
     bids = depth.bids
     asks = depth.asks
 

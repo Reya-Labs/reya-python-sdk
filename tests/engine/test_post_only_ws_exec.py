@@ -42,7 +42,7 @@ from dotenv import load_dotenv
 
 from sdk.async_exec_api.order_status import OrderStatus
 from sdk.open_api.exceptions import ApiException
-from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
@@ -135,7 +135,7 @@ class _RestDepthOps:
     def __init__(self, rest: ReyaTradingClient) -> None:
         self._rest = rest
 
-    async def market_depth(self, symbol: str) -> Depth:
+    async def market_depth(self, symbol: str) -> DepthSnapshot:
         return await self._rest.markets.get_market_depth(symbol=symbol)
 
 

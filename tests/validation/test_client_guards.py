@@ -17,6 +17,12 @@ and asserts on the client-layer validation rules:
 - post-only gate-lift: postOnly=True + GTC flows AND is covered by the
   signature (the entry rejections — postOnly+IOC, GTT — are pinned in
   tests/parity/test_wire_serialization.py).
+- trigger admission: the TIF↔``expiresAfter`` coupling on creates, the
+  restate-immutability of both on modifies, and the
+  ``[MIN_PRICE, MAX_PRICE]`` domain both trigger prices share with the engine.
+- input normalisation ahead of the nonce: plain-string enums, strict-bool
+  ``is_buy``, and the targeted messages for a missing ``limit_px`` or an
+  unmapped ``time_in_force``.
 """
 
 from __future__ import annotations
@@ -32,7 +38,8 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig
-from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters
+from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
+from tests.helpers.offline_clock import OFFLINE_CLOCK_S
 
 pytestmark = pytest.mark.offline
 
@@ -40,6 +47,7 @@ PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff8
 SIGNER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 CHAIN_ID = 89346162
 PERP_SYMBOL = "ETHRUSDPERP"
+SPOT_SYMBOL = "WETHRUSD"  # spot markets arm no triggers
 
 PINNED_NONCE = 1700000000000005
 PINNED_DEADLINE = 1745000300
@@ -62,7 +70,7 @@ def client() -> ReyaTradingClient:
         dex_id_override=2,
     )
     c = ReyaTradingClient(config)
-    c._symbol_to_market_id = {PERP_SYMBOL: 1}
+    c._symbol_to_market_id = {PERP_SYMBOL: 1, SPOT_SYMBOL: 10_000_000_001}
     c._initialized = True
     return c
 
@@ -129,10 +137,14 @@ def _modify_params(**overrides: Any) -> ModifyOrderParameters:
 
 
 def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
-    """A valid trigger reprice restating the trigger-create immutables."""
+    """A valid trigger reprice restating the armed trigger's immutables.
+
+    The armed trigger is GTC with no expiry.
+    """
     fields: dict[str, Any] = {
         "order_type": OrderType.STOP_LOSS,
         "trigger_px": "1500",
+        "limit_px": "1450",
         "qty": None,
         "post_only": False,
         "expires_after": None,
@@ -191,23 +203,88 @@ def test_modify_trigger_order_rejects_qty(client: ReyaTradingClient, order_type:
 
 
 @pytest.mark.modify
+def test_modify_trigger_rejects_post_only(client: ReyaTradingClient) -> None:
+    """A trigger create is never post-only, so a modify restating one signs a
+    shape the matching engine must reject."""
+    with pytest.raises(ValueError, match="post_only on TP/SL"):
+        client.build_modify_order_payload(_trigger_modify_params(post_only=True))
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
 @pytest.mark.parametrize(
-    ("overrides", "message"),
+    ("armed", "label"),
     [
-        ({"time_in_force": TimeInForce.GTT, "expires_after": PINNED_DEADLINE + 600}, "require GTC"),
-        ({"post_only": True}, "post_only on TP/SL"),
-        ({"expires_after": PINNED_DEADLINE + 600}, "must omit expires_after"),
+        ({"time_in_force": TimeInForce.GTC, "expires_after": None}, "GTC"),
+        ({"time_in_force": TimeInForce.IOC, "expires_after": None}, "IOC"),
+        ({"time_in_force": TimeInForce.GTT, "expires_after": PINNED_DEADLINE + 600}, "GTT"),
     ],
 )
-def test_modify_trigger_rejects_non_create_immutable_shape(
-    client: ReyaTradingClient,
-    overrides: dict[str, Any],
-    message: str,
+def test_modify_trigger_restating_the_armed_tif_and_expiry_builds(
+    client: ReyaTradingClient, armed: dict[str, Any], label: str
 ) -> None:
-    """Trigger modifies must restate the GTC, non-post-only, non-expiring
-    shape used by trigger creates; limit-order fixtures are invalid here."""
-    with pytest.raises(ValueError, match=message):
-        client.build_modify_order_payload(_trigger_modify_params(**overrides))
+    """A reprice restates the armed TIF and expiry unchanged and is admitted.
+
+    Restating them is the ONLY legal thing a trigger modify does with these two
+    fields, so every armed shape must survive the round trip — including a
+    re-sign at unchanged prices."""
+    payload, _nonce = client.build_modify_order_payload(_trigger_modify_params(**armed))
+
+    assert payload["timeInForce"] == label
+    if armed["expires_after"] is None:
+        assert "expiresAfter" not in payload
+    else:
+        assert payload["expiresAfter"] == armed["expires_after"]
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
+@pytest.mark.parametrize(
+    ("armed", "changed"),
+    [
+        # Armed GTC/IOC (no expiry) re-signed as GTT: the restated expiry is
+        # still absent, which is not a GTT any client could have armed.
+        ({"time_in_force": TimeInForce.GTC, "expires_after": None}, {"time_in_force": TimeInForce.GTT}),
+        ({"time_in_force": TimeInForce.IOC, "expires_after": None}, {"time_in_force": TimeInForce.GTT}),
+        # Armed GTT re-signed as GTC/IOC while restating the armed expiry.
+        (
+            {"time_in_force": TimeInForce.GTT, "expires_after": PINNED_DEADLINE + 600},
+            {"time_in_force": TimeInForce.GTC},
+        ),
+        (
+            {"time_in_force": TimeInForce.GTT, "expires_after": PINNED_DEADLINE + 600},
+            {"time_in_force": TimeInForce.IOC},
+        ),
+    ],
+    ids=["gtc-to-gtt", "ioc-to-gtt", "gtt-to-gtc", "gtt-to-ioc"],
+)
+def test_modify_trigger_changing_the_armed_tif_is_refused(
+    client: ReyaTradingClient, armed: dict[str, Any], changed: dict[str, Any]
+) -> None:
+    """Changing the fired child's TIF means cancel-and-recreate, and the message
+    says so rather than leaving the caller to decode a server rejection."""
+    with pytest.raises(ValueError, match="cancel the trigger and create a new one"):
+        client.build_modify_order_payload(_trigger_modify_params(**{**armed, **changed}))
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
+@pytest.mark.parametrize("armed_tif", [TimeInForce.GTC, TimeInForce.IOC], ids=["gtc", "ioc"])
+def test_modify_trigger_adding_an_expiry_is_refused(client: ReyaTradingClient, armed_tif: TimeInForce) -> None:
+    """`expires_after` is restate-immutable too: a trigger armed without one
+    cannot grow a lifetime through a reprice."""
+    with pytest.raises(ValueError, match="cancel the trigger and create a new one"):
+        client.build_modify_order_payload(
+            _trigger_modify_params(time_in_force=armed_tif, expires_after=PINNED_DEADLINE + 600)
+        )
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
+def test_modify_trigger_dropping_the_armed_expiry_is_refused(client: ReyaTradingClient) -> None:
+    """The mirror image: a GTT trigger cannot be repriced into a lifetime-free one."""
+    with pytest.raises(ValueError, match="cancel the trigger and create a new one"):
+        client.build_modify_order_payload(_trigger_modify_params(time_in_force=TimeInForce.GTT, expires_after=None))
 
 
 @pytest.mark.modify
@@ -436,3 +513,441 @@ def test_post_only_gtt_flows_and_is_signed(client: ReyaTradingClient) -> None:
     assert payload["signature"] == _resign(int(TimeInForceInt.GTT))
     # Sanity: the GTT int matters — re-signing as GTC signs different bytes.
     assert payload["signature"] != _resign(int(TimeInForceInt.GTC))
+
+
+# ============================================================================
+# trigger creates: the TIF <-> expiresAfter coupling and the price domain
+# ============================================================================
+
+
+def _trigger_create_params(**overrides: Any) -> TriggerOrderParameters:
+    """A STOP_LOSS on the fixture's perp market."""
+    fields: dict[str, Any] = {
+        "symbol": PERP_SYMBOL,
+        "is_buy": False,
+        "trigger_px": "1000",
+        "limit_px": "990",
+        "trigger_type": OrderType.STOP_LOSS,
+        "time_in_force": TimeInForce.GTC,
+        "deadline": PINNED_DEADLINE,
+    }
+    fields.update(overrides)
+    return TriggerOrderParameters(**fields)
+
+
+@pytest.mark.trigger
+@pytest.mark.parametrize("time_in_force", [TimeInForce.GTC, TimeInForce.IOC], ids=["gtc", "ioc"])
+def test_trigger_create_with_a_non_zero_expiry_on_a_lifetimeless_tif_rejected(
+    client: ReyaTradingClient, time_in_force: TimeInForce
+) -> None:
+    """Only GTT carries a lifetime. A GTC or IOC trigger that signs one is
+    refused before a nonce is claimed."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="must omit expires_after"):
+        client.build_create_trigger_order_payload(
+            _trigger_create_params(time_in_force=time_in_force, expires_after=PINNED_DEADLINE + 600)
+        )
+    assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
+
+
+@pytest.mark.trigger
+@pytest.mark.gtt
+def test_gtt_trigger_create_without_an_expiry_rejected(client: ReyaTradingClient) -> None:
+    """A GTT that never expires is a contradiction (that is GTC)."""
+    with pytest.raises(ValueError, match="GTT trigger orders require a non-zero expires_after"):
+        client.build_create_trigger_order_payload(_trigger_create_params(time_in_force=TimeInForce.GTT))
+
+
+@pytest.mark.trigger
+@pytest.mark.gtt
+def test_gtt_trigger_create_expiring_before_its_own_deadline_rejected(client: ReyaTradingClient) -> None:
+    """The order has to outlive the window it may be submitted in."""
+    with pytest.raises(ValueError, match="GTT expires_after must be greater than deadline"):
+        client.build_create_trigger_order_payload(
+            _trigger_create_params(time_in_force=TimeInForce.GTT, expires_after=PINNED_DEADLINE - 1)
+        )
+
+
+@pytest.mark.trigger
+def test_trigger_create_error_messages_do_not_mention_cancel_and_recreate(client: ReyaTradingClient) -> None:
+    """The restate-immutable remedy belongs to a modify. Nothing is armed yet on
+    a create, so telling the caller to cancel a trigger would be nonsense."""
+    with pytest.raises(ValueError) as excinfo:
+        client.build_create_trigger_order_payload(_trigger_create_params(expires_after=PINNED_DEADLINE + 600))
+    assert "cancel the trigger" not in str(excinfo.value)
+
+
+@pytest.mark.trigger
+def test_a_non_positive_limit_price_is_refused(client: ReyaTradingClient) -> None:
+    """Zero is not a price. The `(0, MAX_PRICE]` domain is what a client can
+    still check locally — the per-market band is engine-side and unpublished,
+    so an inadmissible limit comes back as TRIGGER_LIMIT_OUTSIDE_BAND_ERROR."""
+    with pytest.raises(ValueError, match="limit_px must be a positive price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(limit_px="0"))
+
+
+@pytest.mark.trigger
+def test_a_non_positive_trigger_price_is_refused(client: ReyaTradingClient) -> None:
+    """The same domain binds ``trigger_px`` — it is not exempt from the check."""
+    with pytest.raises(ValueError, match="trigger_px must be a positive price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(trigger_px="0"))
+
+
+@pytest.mark.trigger
+def test_a_limit_above_the_engine_ceiling_is_refused(client: ReyaTradingClient) -> None:
+    """MAX_PRICE is the client-checkable upper bound; without it a trigger would
+    be signed with no upper bound at all."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="limit_px .* exceeds the matching engine's maximum price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(limit_px="600000"))
+    assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
+
+
+@pytest.mark.trigger
+def test_a_trigger_above_the_engine_ceiling_is_refused(client: ReyaTradingClient) -> None:
+    """The ceiling binds ``trigger_px`` too, and refuses before a nonce is claimed."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="trigger_px .* exceeds the matching engine's maximum price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(trigger_px="600000"))
+    assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
+
+
+@pytest.mark.trigger
+def test_the_engine_ceiling_admits_its_own_boundary(client: ReyaTradingClient) -> None:
+    """The ceiling is inclusive: MAX_PRICE itself (2^49 in E9) is a price."""
+    max_price = "562949.953421312"
+    payload, _nonce = client.build_create_trigger_order_payload(_trigger_create_params(limit_px=max_price))
+    assert payload["limitPx"] == max_price
+
+
+@pytest.mark.trigger
+def test_a_spot_symbol_is_refused_as_perp_only(client: ReyaTradingClient) -> None:
+    """Spot markets arm no stops, so a spot symbol is refused before signing
+    instead of being sent for the venue to reject."""
+    with pytest.raises(ValueError, match="perp-only"):
+        client.build_create_trigger_order_payload(_trigger_create_params(symbol=SPOT_SYMBOL))
+
+
+@pytest.mark.trigger
+@pytest.mark.modify
+def test_a_spot_symbol_is_refused_as_perp_only_on_a_reprice_too(client: ReyaTradingClient) -> None:
+    with pytest.raises(ValueError, match="perp-only"):
+        client.build_modify_order_payload(_trigger_modify_params(symbol=SPOT_SYMBOL))
+
+
+# ============================================================================
+# unmapped enums and IOC expiry: refusals that must precede the nonce
+# ============================================================================
+
+
+@pytest.mark.trigger
+def test_an_unmapped_trigger_time_in_force_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    """A value the signer cannot map is a client-side refusal, not a bare
+    KeyError raised after the per-wallet counter has already advanced."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="Unsupported time_in_force"):
+        client.build_create_trigger_order_payload(_trigger_create_params(time_in_force="0.01"))
+    assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
+
+
+def test_an_unmapped_limit_time_in_force_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="Unsupported time_in_force"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force="0.01",  # type: ignore[arg-type]
+            )
+        )
+    assert _last_nonce(client) == nonce_before, "a refused create consumed a nonce"
+
+
+@pytest.mark.modify
+def test_an_unmapped_modify_order_type_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="Unsupported order_type"):
+        client.build_modify_order_payload(_modify_params(order_type="0.01", nonce=None))
+    assert _last_nonce(client) == nonce_before, "a refused modify consumed a nonce"
+
+
+@pytest.mark.ioc
+def test_an_ioc_limit_carrying_an_expiry_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    """IOC never rests, so a lifetime on one is a server rejection. The trigger
+    path already refuses it; the limit path must not be the asymmetric one."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="IOC orders must omit expires_after"):
+        client.build_create_limit_order_payload(
+            LimitOrderParameters(
+                symbol=PERP_SYMBOL,
+                is_buy=True,
+                limit_px="3000",
+                qty="0.01",
+                time_in_force=TimeInForce.IOC,
+                expires_after=PINNED_DEADLINE + 600,
+                deadline=PINNED_DEADLINE,
+            )
+        )
+    assert _last_nonce(client) == nonce_before, "a refused create consumed a nonce"
+
+
+@pytest.mark.ioc
+@pytest.mark.modify
+def test_an_ioc_modify_carrying_an_expiry_is_refused(client: ReyaTradingClient) -> None:
+    with pytest.raises(ValueError, match="IOC orders must omit expires_after"):
+        client.build_modify_order_payload(
+            _modify_params(time_in_force=TimeInForce.IOC, expires_after=PINNED_DEADLINE + 600)
+        )
+
+
+# ============================================================================
+# input normalisation: everything below must refuse BEFORE the nonce
+# ============================================================================
+
+
+def _limit_create_params(**overrides: Any) -> LimitOrderParameters:
+    """A GTC LIMIT on the fixture's perp market."""
+    fields: dict[str, Any] = {
+        "symbol": PERP_SYMBOL,
+        "is_buy": True,
+        "limit_px": "3000",
+        "qty": "0.01",
+        "time_in_force": TimeInForce.GTC,
+        "deadline": PINNED_DEADLINE,
+    }
+    fields.update(overrides)
+    return LimitOrderParameters(**fields)
+
+
+def _without_nonce(payload: dict) -> dict:
+    """The part of a payload two separate builds reproduce identically."""
+    return {key: value for key, value in payload.items() if key not in ("nonce", "signature")}
+
+
+@pytest.mark.trigger
+def test_a_plain_string_enum_builds_the_same_trigger_payload(client: ReyaTradingClient) -> None:
+    """`TriggerOrderParameters` is a plain dataclass, so nothing stops a caller
+    handing it the string values its enums are spelled with.
+
+    String-enum members hash equal to their values, so the int resolvers already
+    accepted them and the failure landed later, on `.value` at payload build —
+    after the nonce was claimed and the order signed. Normalising in the
+    resolver makes the two forms produce one payload."""
+    typed, _ = client.build_create_trigger_order_payload(_trigger_create_params())
+    stringly, _ = client.build_create_trigger_order_payload(
+        _trigger_create_params(trigger_type="STOP_LOSS", time_in_force="GTC")
+    )
+    assert _without_nonce(stringly) == _without_nonce(typed)
+    assert stringly["orderType"] == OrderType.STOP_LOSS.value
+    assert stringly["timeInForce"] == TimeInForce.GTC.value
+
+
+def test_a_plain_string_time_in_force_builds_the_same_limit_payload(client: ReyaTradingClient) -> None:
+    def _build(time_in_force: Any) -> dict:
+        payload, _nonce = client.build_create_limit_order_payload(
+            _limit_create_params(time_in_force=time_in_force, client_order_id=42)
+        )
+        return payload
+
+    assert _without_nonce(_build("GTC")) == _without_nonce(_build(TimeInForce.GTC))
+
+
+@pytest.mark.modify
+def test_plain_string_enums_build_the_same_modify_payload(client: ReyaTradingClient) -> None:
+    """The modify fixture pins the nonce and deadline, so the two builds must
+    match byte for byte — the SIGNATURE included, not just the wire strings."""
+    typed, _ = client.build_modify_order_payload(_trigger_modify_params())
+    stringly, _ = client.build_modify_order_payload(_trigger_modify_params(order_type="STOP_LOSS", time_in_force="GTC"))
+    assert stringly == typed
+
+
+@pytest.mark.modify
+def test_an_unmapped_modify_time_in_force_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="Unsupported time_in_force"):
+        client.build_modify_order_payload(_modify_params(time_in_force="0.01", nonce=None))
+    assert _last_nonce(client) == nonce_before, "a refused modify consumed a nonce"
+
+
+@pytest.mark.trigger
+def test_an_unmapped_trigger_type_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="Unsupported trigger_type"):
+        client.build_create_trigger_order_payload(_trigger_create_params(trigger_type="TRAILING_STOP"))
+    assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
+
+
+@pytest.mark.parametrize("is_buy", ["false", "true", 1, 0], ids=["str-false", "str-true", "int-1", "int-0"])
+@pytest.mark.parametrize("builder", ["limit_create", "trigger_create", "modify"])
+def test_a_non_bool_is_buy_is_refused_before_a_nonce(client: ReyaTradingClient, builder: str, is_buy: Any) -> None:
+    """A non-empty string is truthy in Python, so `is_buy="false"` signed the
+    +sentinel (buy side) while the ws-exec wire coerced `isBuy: false` — a
+    guaranteed signature mismatch reported by the venue rather than a clean
+    client-side refusal. REST caught it via pydantic StrictBool, but only after
+    the builder had already claimed the nonce."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="is_buy must be a bool"):
+        if builder == "limit_create":
+            client.build_create_limit_order_payload(_limit_create_params(is_buy=is_buy))
+        elif builder == "trigger_create":
+            client.build_create_trigger_order_payload(_trigger_create_params(is_buy=is_buy))
+        else:
+            client.build_modify_order_payload(_modify_params(is_buy=is_buy, nonce=None))
+    assert _last_nonce(client) == nonce_before, "a refused build consumed a nonce"
+
+
+# ============================================================================
+# targeted messages on the newly-required fields
+# ============================================================================
+
+
+@pytest.mark.trigger
+def test_a_missing_trigger_limit_px_names_the_field(client: ReyaTradingClient) -> None:
+    """`Decimal(None)` raises a bare TypeError naming neither the field nor the
+    requirement; the legacy `qty` path kept a targeted message and so must this."""
+    with pytest.raises(ValueError, match="limit_px is required"):
+        client.build_create_trigger_order_payload(_trigger_create_params(limit_px=None))
+
+
+def test_a_missing_limit_px_names_the_field_on_a_limit_create(client: ReyaTradingClient) -> None:
+    with pytest.raises(ValueError, match="limit_px is required"):
+        client.build_create_limit_order_payload(_limit_create_params(limit_px=None))
+
+
+@pytest.mark.modify
+def test_a_missing_limit_px_names_the_field_on_a_modify(client: ReyaTradingClient) -> None:
+    with pytest.raises(ValueError, match="limit_px is required"):
+        client.build_modify_order_payload(_modify_params(limit_px=None))
+
+
+def test_a_none_time_in_force_carrying_an_expiry_names_the_time_in_force(client: ReyaTradingClient) -> None:
+    """The coupling message interpolates `time_in_force.value`, so an unmapped
+    TIF WITH an expiry used to die on AttributeError inside the message's own
+    f-string — shadowing the "Unsupported time_in_force" refusal it was building.
+    The existing guard tests only covered an unmapped TIF WITHOUT one."""
+    with pytest.raises(ValueError, match="Unsupported time_in_force"):
+        client.build_create_limit_order_payload(
+            _limit_create_params(time_in_force=None, expires_after=PINNED_DEADLINE + 600)
+        )
+
+
+@pytest.mark.modify
+def test_an_unmapped_modify_time_in_force_carrying_an_expiry_names_the_time_in_force(
+    client: ReyaTradingClient,
+) -> None:
+    with pytest.raises(ValueError, match="Unsupported time_in_force"):
+        client.build_modify_order_payload(
+            _modify_params(time_in_force=None, expires_after=PINNED_DEADLINE + 600, nonce=None)
+        )
+
+
+# ============================================================================
+# the engine's MIN_PRICE floor
+# ============================================================================
+
+
+@pytest.mark.trigger
+@pytest.mark.parametrize("field_name", ["limit_px", "trigger_px"])
+def test_a_price_below_the_engine_floor_is_refused(client: ReyaTradingClient, field_name: str) -> None:
+    """MIN_PRICE is 1 in E9 (1e-9). Below it the venue refuses the price anyway,
+    and `_scale_e18` truncates the signed value toward zero first — so the
+    signed price stops being the one the caller wrote."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match=f"{field_name} .* is below the matching engine's minimum price"):
+        client.build_create_trigger_order_payload(_trigger_create_params(**{field_name: "0.0000000001"}))
+    assert _last_nonce(client) == nonce_before, "a refused trigger consumed a nonce"
+
+
+@pytest.mark.trigger
+def test_the_engine_floor_admits_its_own_boundary(client: ReyaTradingClient) -> None:
+    """The floor is inclusive: MIN_PRICE itself (1 in E9) is a price."""
+    min_price = "0.000000001"
+    payload, _nonce = client.build_create_trigger_order_payload(
+        _trigger_create_params(limit_px=min_price, trigger_px=min_price)
+    )
+    assert payload["limitPx"] == min_price
+    assert payload["triggerPx"] == min_price
+
+
+# ============================================================================
+# LIMIT-modify guards: shapes no resting order can have
+# ============================================================================
+
+
+@pytest.mark.modify
+def test_a_reduce_only_limit_modify_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    """Reduce-only is perp-IOC-only and IOC never rests, so no resting order is
+    reduce-only. The trigger-modify path already refused this shape."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="no resting order is reduce-only"):
+        client.build_modify_order_payload(_modify_params(reduce_only=True, nonce=None))
+    assert _last_nonce(client) == nonce_before, "a refused modify consumed a nonce"
+
+
+@pytest.mark.modify
+@pytest.mark.ioc
+def test_an_ioc_limit_modify_without_an_expiry_is_refused_before_a_nonce(client: ReyaTradingClient) -> None:
+    """The expiry coupling only refuses an IOC that CARRIES an expiry, so an IOC
+    modify with none passed straight through to a guaranteed server rejection."""
+    nonce_before = _last_nonce(client)
+    with pytest.raises(ValueError, match="no resting IOC order to modify"):
+        client.build_modify_order_payload(_modify_params(time_in_force=TimeInForce.IOC, expires_after=None, nonce=None))
+    assert _last_nonce(client) == nonce_before, "a refused modify consumed a nonce"
+
+
+# ============================================================================
+# the default deadline is clamped under a nearer expiry
+# ============================================================================
+
+
+@pytest.fixture
+def short_headroom_client(client: ReyaTradingClient) -> ReyaTradingClient:
+    """A client on a deployment running a settlement headroom under 60s.
+
+    Under the production 60s headroom that rule refuses a lifetime inside the
+    default deadline window first (venue-true), so the clamp is only observable
+    below it.
+    """
+    client.config.settlement_headroom_s = 10
+    return client
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
+@pytest.mark.gtt
+def test_repricing_a_gtt_trigger_inside_the_default_window_is_admitted(
+    short_headroom_client: ReyaTradingClient,
+) -> None:
+    """`expires_after` is restate-immutable on an armed trigger, so restating it
+    is the ONLY legal thing a reprice does with it — and it was refused with
+    "GTT expires_after must be greater than deadline" whenever the remaining
+    life was under 60s, for a deadline the client had picked itself."""
+    expires_after = OFFLINE_CLOCK_S + 30
+    payload, _nonce = short_headroom_client.build_modify_order_payload(
+        _trigger_modify_params(
+            time_in_force=TimeInForce.GTT,
+            expires_after=expires_after,
+            deadline=None,
+            nonce=None,
+        )
+    )
+    assert payload["expiresAfter"] == expires_after
+    assert payload["deadline"] == expires_after - 1
+
+
+@pytest.mark.modify
+@pytest.mark.gtt
+def test_an_explicitly_passed_deadline_is_never_clamped(short_headroom_client: ReyaTradingClient) -> None:
+    """Only the DEFAULT moves. A caller who pins a deadline past the expiry still
+    gets the coupling refusal, because that pairing is theirs, not the client's."""
+    with pytest.raises(ValueError, match="GTT expires_after must be greater than deadline"):
+        short_headroom_client.build_modify_order_payload(
+            _trigger_modify_params(
+                time_in_force=TimeInForce.GTT,
+                expires_after=OFFLINE_CLOCK_S + 30,
+                deadline=OFFLINE_CLOCK_S + 60,
+                nonce=None,
+            )
+        )

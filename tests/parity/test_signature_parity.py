@@ -719,6 +719,7 @@ def test_trigger_create_builder_signs_order_type(offline_client: ReyaTradingClie
             trigger_px=str(TRIGGER_TRIGGER_PX),
             trigger_type=OrderType.STOP_LOSS,
             limit_px=str(TRIGGER_LIMIT_PX),
+            time_in_force=TimeInForce.GTC,
             client_order_id=TRIGGER_CLIENT_ORDER_ID,
             deadline=TRIGGER_DEADLINE,
         )

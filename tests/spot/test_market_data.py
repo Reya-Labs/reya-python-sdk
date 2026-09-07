@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 from sdk.open_api.models import OrderStatus
-from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot
 from tests.helpers import ReyaTester
 from tests.helpers.builders.order_builder import OrderBuilder
 from tests.helpers.market_config import SpotTestConfig
@@ -196,7 +196,7 @@ async def test_spot_depth_price_ordering(spot_config: SpotTestConfig, spot_teste
 
     # Get depth
     depth = await spot_tester.data.market_depth(spot_config.symbol)
-    assert isinstance(depth, Depth), f"Expected Depth type, got {type(depth)}"
+    assert isinstance(depth, DepthSnapshot), f"Expected DepthSnapshot type, got {type(depth)}"
     bids = depth.bids
 
     logger.info(f"Bids in depth: {len(bids)}")

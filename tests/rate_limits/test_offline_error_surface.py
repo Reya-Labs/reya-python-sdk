@@ -17,8 +17,10 @@ Findings pinned here (see tests/rate_limits/README.md § Findings):
    deserialized and ``ApiException.data`` is ``None`` — the payload survives
    ONLY on ``ApiException.body``. Nothing is lost (headers and body are both
    intact), so this is a spec gap, not an SDK bug: no client hacking here.
-2. ``RequestErrorCode`` predates the v1 codes, so typed parsing of e.g.
-   ``NOT_WHITELISTED_ERROR`` raises. ``RequestError`` also has no
+2. ``RequestErrorCode`` predates the v1 codes and is open-vocabulary, so typed
+   parsing of e.g. ``NOT_WHITELISTED_ERROR`` does not raise — it widens the
+   code to ``UNKNOWN``. The raw body is therefore the only faithful source for
+   the code, whatever the response map says. ``RequestError`` also has no
    ``retryAfterMs`` field, though its ``additional_properties`` bag preserves
    the value. Both are fixed by regeneration, and the helpers under test here
    are written to work identically before and after.
@@ -65,6 +67,7 @@ from tests.rate_limits.rl_config import (
     RATE_LIMITED_ERROR,
 )
 from tests.rate_limits.rl_errors import (
+    UNKNOWN_ENUM_MEMBER,
     assert_msg_rate_close_reason,
     assert_no_retry_after,
     assert_retry_after_plausible,
@@ -306,6 +309,11 @@ def test_request_error_model_gap_matches_the_helper_strategy() -> None:
     ``additional_properties`` when it is absent from ``__properties``. Both
     halves are written conditionally so regeneration flips them rather than
     breaking them — which is exactly what ``rl_errors`` already tolerates.
+
+    A code the enum does not carry never raises: ``RequestErrorCode`` is
+    open-vocabulary, so ``from_dict`` succeeds and widens it to ``UNKNOWN``.
+    That is precisely why ``rl_errors`` reads the code off the raw body rather
+    than trusting a typed payload.
     """
     known = RequestError.from_dict({"error": RATE_LIMITED_ERROR, "message": "m", "retryAfterMs": 1234})
     assert known is not None
@@ -320,12 +328,12 @@ def test_request_error_model_gap_matches_the_helper_strategy() -> None:
         assert known.additional_properties.get("retryAfterMs") == 1234
 
     unknown_payload = {"error": NOT_WHITELISTED_ERROR, "message": "m"}
+    parsed = RequestError.from_dict(unknown_payload)
+    assert parsed is not None
     if NOT_WHITELISTED_ERROR in {member.value for member in RequestErrorCode}:
-        parsed = RequestError.from_dict(unknown_payload)
-        assert parsed is not None and parsed.error.value == NOT_WHITELISTED_ERROR
+        assert parsed.error.value == NOT_WHITELISTED_ERROR
     else:
-        with pytest.raises(Exception):  # pylint: disable=broad-exception-caught
-            RequestError.from_dict(unknown_payload)
+        assert parsed.error.value == UNKNOWN_ENUM_MEMBER
 
 
 def test_ws_exec_error_envelope_extraction() -> None:

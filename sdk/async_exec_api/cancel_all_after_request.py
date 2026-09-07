@@ -5,7 +5,7 @@ from pydantic import model_serializer, model_validator, BaseModel, Field
 class CancelAllAfterRequest(BaseModel): 
   account_id: int = Field(alias='''accountId''')
   timeout_ms: int = Field(alias='''timeoutMs''')
-  signature: str = Field(description='''EIP-712 signature over the `CancelAllAfter(uint64 verifyingChainId, uint64 deadline, CancelAllAfterDetails cancelAllAfter)` envelope, where `CancelAllAfterDetails(uint64 accountId, uint64 timeoutMs, uint64 nonce)`. See `docs/eip712.md` for the exact typehash string and signing algorithm.''')
+  signature: str = Field(description='''EIP-712 signature over the `CancelAllAfter(uint64 verifyingChainId, uint64 deadline, CancelAllAfterDetails cancelAllAfter)` envelope, where `CancelAllAfterDetails(uint64 accountId, uint64 timeoutMs, uint64 nonce)`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.''')
   nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required on every arm/refresh/disarm call; replayed nonces are rejected with `INVALID_NONCE_ERROR`.''')
   signer_wallet: str = Field(alias='''signerWallet''')
   deadline: int = Field()

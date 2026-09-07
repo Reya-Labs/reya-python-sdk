@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 if TYPE_CHECKING:
-    from sdk.open_api.models.depth import Depth
+    from sdk.open_api.models.depth_snapshot import DepthSnapshot
     from sdk.open_api.models.level import Level
     from tests.helpers.reya_tester.data import DataOperations
 
@@ -115,7 +115,7 @@ class LiquidityDetector:
         Returns:
             OrderBookState with analyzed liquidity information.
         """
-        depth: Optional["Depth"] = await data_ops.market_depth(symbol)
+        depth: Optional["DepthSnapshot"] = await data_ops.market_depth(symbol)
 
         bids = self._analyze_side(
             levels=depth.bids if depth else [],
@@ -366,6 +366,35 @@ async def skip_if_external_liquidity(
         "any liquidity within the ±5% circuit-breaker band rather than "
         "resting on the book. Rerun against a controlled environment."
     )
+
+
+async def skip_if_order_would_cross(config, tester, *, price: Decimal | str | float, is_buy: bool, reason: str) -> None:
+    """Skip only when a resting order at THIS price on THIS side would cross
+    external liquidity.
+
+    The two guards above skip on ANY external liquidity, which is right for
+    tests needing an empty book (deterministic fills, self-match) but far too
+    blunt for tests that merely need their own order to REST: an order well
+    outside the touch rests perfectly happily while a market-making bot quotes
+    around mid. Using the blunt guard there trades false failures for false
+    skips -- it silently deletes real coverage.
+
+    So ask the precise question instead: is there external size at this price
+    or better on the opposite side? Only then would the order fill instead of
+    rest.
+    """
+    await config.refresh_order_book(tester.data)
+    detector = LiquidityDetector(float(config.oracle_price))
+    state = await detector.get_order_book_state(tester.data, config.symbol)
+    # A buy crosses resting ASKS at or below its price; a sell crosses BIDS at
+    # or above it.
+    opposite = "ask" if is_buy else "bid"
+    crossing_qty = detector.get_qty_at_price_or_better(state, opposite, Decimal(str(price)))
+    if crossing_qty > 0:
+        pytest.skip(
+            f"Skipping: {crossing_qty} external {opposite} qty at {price} or better "
+            f"would fill this order instead of resting it. {reason}"
+        )
 
 
 async def skip_if_external_config_liquidity(config, tester, reason: str) -> None:

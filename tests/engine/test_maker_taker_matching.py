@@ -16,7 +16,7 @@ import asyncio
 
 import pytest
 
-from sdk.open_api.models.depth import Depth
+from sdk.open_api.models.depth_snapshot import DepthSnapshot
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api.models import LimitOrderParameters
@@ -67,7 +67,7 @@ async def test_maker_taker_match_e2e(
     # Step 2: Maker order is visible in L2 depth.
     await asyncio.sleep(0.1)
     depth = await maker.data.market_depth(market_config.symbol)
-    assert isinstance(depth, Depth), f"[{market_type}] expected Depth"
+    assert isinstance(depth, DepthSnapshot), f"[{market_type}] expected DepthSnapshot"
     found_in_depth = any(abs(float(bid.px) - cross_px_float) < 0.01 for bid in (depth.bids or []))
     assert found_in_depth, f"[{market_type}] maker order should appear at ${cross_px_float} in L2 depth"
     logger.info(f"[{market_type}] ✅ maker visible in L2 at ${cross_px_float}")

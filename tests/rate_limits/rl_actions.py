@@ -175,6 +175,11 @@ async def arm_protective_stop(client: ReyaTradingClient, market: RlMarket) -> st
     the close size is derived when the trigger fires). The arm-time bounds are
     only "perp market" and "at most one STOP_LOSS and one TAKE_PROFIT per
     (account, market)".
+
+    ``limit_px == trigger_px`` is the only limit price admissible under every
+    market's band whatever the venue configures it to, so the suite never reads
+    per-market trigger configuration. IOC keeps the fired child from resting and
+    needs no ``expires_after``.
     """
     trigger_px = quantize_down(market.oracle_price * TRIGGER_PRICE_FACTOR, market.tick_size)
     response = await client.create_trigger_order(
@@ -183,6 +188,8 @@ async def arm_protective_stop(client: ReyaTradingClient, market: RlMarket) -> st
             is_buy=False,
             trigger_px=wire(trigger_px),
             trigger_type=OrderType.STOP_LOSS,
+            limit_px=wire(trigger_px),
+            time_in_force=TimeInForce.IOC,
         )
     )
     assert response.order_id is not None, f"createOrder (trigger) returned no orderId: {response!r}"

@@ -8,11 +8,11 @@ plain decimal strings (never scientific notation), the decoupled
 (``reduceOnly``, ``postOnly``, the GTC/GTT↔``expiresAfter`` coupling, and the
 cancel-identifier rules).
 
-Regression: the sell-trigger sentinel limit price is ``Decimal("0.000000001")``,
-and ``str(Decimal("0.000000001"))`` is ``"1E-9"``. The server's ethers
-``FixedNumber`` parser rejects ``"1E-9"`` with INVALID_ARGUMENT, so a TP/SL
-sell with no explicit limit price failed on the wire even though the signature
-was correct. The builder now uses ``format(value, "f")``.
+Regression: ``str(Decimal("0.0000001"))`` is ``"1E-7"``, and the server's ethers
+``FixedNumber`` parser rejects scientific notation with INVALID_ARGUMENT. The
+builder renders every price with ``format(value, "f")`` — all five emissions,
+pinned one by one below, because a rejection lands after the nonce and the
+signature.
 """
 
 from __future__ import annotations
@@ -59,47 +59,35 @@ def client() -> ReyaTradingClient:
         account_id=12345,
     )
     c = ReyaTradingClient(config)
-    c._symbol_to_market_id = {PERP_SYMBOL: 1, SPOT_SYMBOL: _SPOT_MARKET_ID_OFFSET + 1}
-    c._symbol_to_tick_size = {PERP_SYMBOL: "0.001"}  # tick size drives the sell-trigger sentinel
+    c._symbol_to_market_id = {
+        PERP_SYMBOL: 1,
+        SPOT_SYMBOL: _SPOT_MARKET_ID_OFFSET + 1,
+    }
     c._initialized = True
     return c
 
 
-def test_sell_trigger_sentinel_is_one_tick(client: ReyaTradingClient) -> None:
-    """is_buy=False + no limit_px → sentinel is exactly one tick (spacing-conforming),
-    not a sub-tick value the matching engine would reject as off-grid."""
-    payload, _ = client.build_create_trigger_order_payload(
-        TriggerOrderParameters(
+@pytest.mark.trigger
+@pytest.mark.parametrize("is_buy", [True, False])
+def test_trigger_create_never_synthesises_a_limit_price(is_buy: bool) -> None:
+    """``limit_px`` is REQUIRED, and its absence is a construction error rather
+    than a synthesized sentinel.
+
+    The builder used to invent one — one tick for sells, the largest
+    tick-aligned price under the ME's MAX_PRICE for buys — so a caller who
+    omitted it silently signed a limit price they never chose. The venue admits
+    a fired child's limit price on its own rules, so there is no "always
+    executes" price to synthesize: the field is required and the omission has to
+    fail loudly at construction."""
+    with pytest.raises(TypeError, match="limit_px"):
+        # pylint: disable-next=no-value-for-parameter
+        TriggerOrderParameters(  # type: ignore[call-arg]
             symbol=PERP_SYMBOL,
-            is_buy=False,
-            trigger_px="1",
+            is_buy=is_buy,
+            trigger_px="1000",
             trigger_type=OrderType.STOP_LOSS,
+            time_in_force=TimeInForce.GTC,
         )
-    )
-    assert payload["limitPx"] == "0.001"  # == market tick size
-    assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
-    assert "qty" not in payload
-    assert "expiresAfter" not in payload
-
-
-def test_buy_trigger_sentinel_is_tick_aligned_me_max(client: ReyaTradingClient) -> None:
-    """is_buy=True + no limit_px → the sentinel is the LARGEST tick-aligned
-    price under the ME's MAX_PRICE (2^49 E9): tick 0.001 → 562949.953. The old
-    1e20 sentinel is rejected by the off-chain price validation now that
-    triggers run checkPxValidity, so every buy trigger omitting limit_px would
-    deterministically fail PRICE_QTY_BOUNDS_ERROR. Must also be plain decimal
-    (no 'E')."""
-    payload, _ = client.build_create_trigger_order_payload(
-        TriggerOrderParameters(
-            symbol=PERP_SYMBOL,
-            is_buy=True,
-            trigger_px="1000000",
-            trigger_type=OrderType.TAKE_PROFIT,
-        )
-    )
-    # floor(2^49/1e9 / 0.001) * 0.001 == 562949.953 (tick-aligned, under bound)
-    assert payload["limitPx"] == "562949.953"
-    assert "E" not in payload["limitPx"].upper()
 
 
 def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClient) -> None:
@@ -113,10 +101,149 @@ def test_caller_supplied_small_limit_px_is_plain_decimal(client: ReyaTradingClie
             trigger_px="1",
             trigger_type=OrderType.STOP_LOSS,
             limit_px="0.0000001",
+            time_in_force=TimeInForce.GTC,
         )
     )
     assert payload["limitPx"] == "0.0000001"
     assert "E" not in payload["limitPx"].upper(), f"limitPx in scientific notation: {payload['limitPx']!r}"
+    assert "qty" not in payload
+    assert "expiresAfter" not in payload
+
+
+TRIGGER_DEADLINE = OFFLINE_CLOCK_S + 60
+TRIGGER_EXPIRES_AFTER = TRIGGER_DEADLINE + 600
+
+
+def _trigger_create_params(**overrides: Any) -> TriggerOrderParameters:
+    """A STOP_LOSS on the fixture's perp market."""
+    fields: dict[str, Any] = {
+        "symbol": PERP_SYMBOL,
+        "is_buy": False,
+        "trigger_px": "1000",
+        "limit_px": "990",
+        "trigger_type": OrderType.STOP_LOSS,
+        "time_in_force": TimeInForce.GTC,
+        "deadline": TRIGGER_DEADLINE,
+    }
+    fields.update(overrides)
+    return TriggerOrderParameters(**fields)
+
+
+# What a caller doing Decimal arithmetic hands the builder: str(Decimal) is the
+# natural conversion and it emits scientific notation below 1e-6.
+SCI_NOTATION_PRICE = str(Decimal("0.0000001"))
+PLAIN_PRICE = "0.0000001"
+
+
+def test_the_sci_notation_fixture_is_the_shape_the_server_refuses() -> None:
+    """The premise of every case below: this really is what `str(Decimal)` emits."""
+    assert SCI_NOTATION_PRICE == "1E-7"
+
+
+@pytest.mark.trigger
+def test_trigger_create_renders_both_prices_as_plain_decimals(client: ReyaTradingClient) -> None:
+    """``triggerPx`` shares ``limitPx``'s rendering — it used to reach the wire
+    through a bare ``str()`` and arrive as ``"1E-7"``."""
+    payload, _ = client.build_create_trigger_order_payload(
+        _trigger_create_params(trigger_px=SCI_NOTATION_PRICE, limit_px=SCI_NOTATION_PRICE)
+    )
+    assert payload["limitPx"] == PLAIN_PRICE
+    assert payload["triggerPx"] == PLAIN_PRICE
+
+
+def test_limit_create_renders_limit_px_as_a_plain_decimal(client: ReyaTradingClient) -> None:
+    """The LIMIT create path emitted ``limit_px`` verbatim."""
+    payload, _ = client.build_create_limit_order_payload(
+        LimitOrderParameters(
+            symbol=PERP_SYMBOL,
+            is_buy=True,
+            limit_px=SCI_NOTATION_PRICE,
+            qty="0.01",
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert payload["limitPx"] == PLAIN_PRICE
+
+
+@pytest.mark.trigger
+@pytest.mark.parametrize(
+    ("time_in_force", "tif_int", "expires_after"),
+    [
+        (TimeInForce.GTC, TimeInForceInt.GTC, None),
+        (TimeInForce.IOC, TimeInForceInt.IOC, None),
+        (TimeInForce.GTT, TimeInForceInt.GTT, TRIGGER_EXPIRES_AFTER),
+    ],
+    ids=["gtc", "ioc", "gtt"],
+)
+def test_trigger_create_signs_and_sends_the_chosen_time_in_force(
+    client: ReyaTradingClient,
+    time_in_force: TimeInForce,
+    tif_int: TimeInForceInt,
+    expires_after: int | None,
+) -> None:
+    """`time_in_force` chooses what the stop BECOMES when it fires, so it has to
+    reach BOTH the EIP-712 digest and the wire.
+
+    The wire string alone cannot prove the digest — a builder that sent the
+    caller's TIF but signed a hardcoded GTC would pass a payload-only check and
+    then fail signature recovery on chain. Re-signing with the expected TIF and
+    comparing bytes is what pins it.
+    """
+    payload, nonce = client.build_create_trigger_order_payload(
+        _trigger_create_params(time_in_force=time_in_force, expires_after=expires_after)
+    )
+
+    assert payload["timeInForce"] == time_in_force.value
+    assert payload["orderType"] == OrderType.STOP_LOSS.value
+    assert "qty" not in payload  # the signer derives the ±sentinel from is_buy
+    if expires_after is None:
+        assert "expiresAfter" not in payload
+    else:
+        assert payload["expiresAfter"] == expires_after
+
+    expected_sig = client.signature_generator.sign_order(
+        account_id=12345,
+        market_id=client.get_market_id_from_symbol(PERP_SYMBOL),
+        exchange_id=client.config.dex_id,
+        order_type=int(OrderTypeInt.STOP_LOSS),
+        is_buy=False,
+        qty=Decimal(0),
+        limit_price=Decimal("990"),
+        trigger_price=Decimal("1000"),
+        time_in_force=int(tif_int),
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=expires_after or 0,
+        nonce=nonce,
+        deadline=TRIGGER_DEADLINE,
+    )
+    assert payload["signature"] == expected_sig
+
+
+@pytest.mark.trigger
+def test_trigger_create_time_in_force_changes_the_signature(client: ReyaTradingClient) -> None:
+    """Two otherwise-identical stops signed under different TIFs must not share
+    a signature — the guard against a builder that drops the field before signing."""
+    gtc_payload, gtc_nonce = client.build_create_trigger_order_payload(
+        _trigger_create_params(time_in_force=TimeInForce.GTC)
+    )
+    ioc_resigned = client.signature_generator.sign_order(
+        account_id=12345,
+        market_id=client.get_market_id_from_symbol(PERP_SYMBOL),
+        exchange_id=client.config.dex_id,
+        order_type=int(OrderTypeInt.STOP_LOSS),
+        is_buy=False,
+        qty=Decimal(0),
+        limit_price=Decimal("990"),
+        trigger_price=Decimal("1000"),
+        time_in_force=int(TimeInForceInt.IOC),
+        client_order_id=0,
+        reduce_only=False,
+        expires_after=0,
+        nonce=gtc_nonce,
+        deadline=TRIGGER_DEADLINE,
+    )
+    assert gtc_payload["signature"] != ioc_resigned
 
 
 def test_limit_payload_decouples_deadline_from_expires_after(client: ReyaTradingClient) -> None:
@@ -283,6 +410,8 @@ def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient) -> None:
                 is_buy=False,
                 trigger_px="1000",
                 trigger_type=OrderType.STOP_LOSS,
+                limit_px="990",
+                time_in_force=TimeInForce.GTC,
                 reduce_only=True,
             )
         )
@@ -297,6 +426,8 @@ def test_trigger_qty_rejected_client_side(client: ReyaTradingClient) -> None:
                 is_buy=False,
                 trigger_px="1000",
                 trigger_type=OrderType.STOP_LOSS,
+                limit_px="990",
+                time_in_force=TimeInForce.GTC,
                 qty="0.01",
             )
         )
@@ -355,6 +486,7 @@ def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
     fields: dict[str, Any] = {
         "order_type": OrderType.STOP_LOSS,
         "trigger_px": "1500",
+        "limit_px": "1450",
         "qty": None,
         "post_only": False,
         "expires_after": None,
@@ -362,6 +494,23 @@ def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
     }
     fields.update(overrides)
     return _modify_params(**fields)
+
+
+@pytest.mark.modify
+@pytest.mark.trigger
+def test_modify_trigger_renders_both_prices_as_plain_decimals(client: ReyaTradingClient) -> None:
+    """Both modify price emissions used a bare ``str()``."""
+    payload, _ = client.build_modify_order_payload(
+        _trigger_modify_params(limit_px=SCI_NOTATION_PRICE, trigger_px=SCI_NOTATION_PRICE)
+    )
+    assert payload["limitPx"] == PLAIN_PRICE
+    assert payload["triggerPx"] == PLAIN_PRICE
+
+
+@pytest.mark.modify
+def test_modify_limit_renders_limit_px_as_a_plain_decimal(client: ReyaTradingClient) -> None:
+    payload, _ = client.build_modify_order_payload(_modify_params(limit_px=SCI_NOTATION_PRICE))
+    assert payload["limitPx"] == PLAIN_PRICE
 
 
 @pytest.mark.modify
@@ -498,7 +647,7 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
         order_type=int(OrderTypeInt.STOP_LOSS),
         is_buy=True,
         qty=Decimal(0),
-        limit_price=Decimal("2950"),
+        limit_price=Decimal("1450"),
         trigger_price=Decimal("1500"),
         time_in_force=int(TimeInForceInt.GTC),
         client_order_id=0,
@@ -561,7 +710,7 @@ def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
     assert payload["isBuy"] is True
     assert payload["reduceOnly"] is False
     assert payload["postOnly"] is False
-    assert payload["limitPx"] == "2950"
+    assert payload["limitPx"] == "1450"
     assert "expiresAfter" not in payload
 
 
@@ -639,7 +788,7 @@ def test_modify_params_positional_3_0_14_signature_still_binds(client: ReyaTradi
     trigger_params = ModifyOrderParameters(
         PERP_SYMBOL,  # symbol
         False,  # is_buy
-        "2950",  # limit_px
+        "1450",  # limit_px
         None,  # qty=None positionally → omit-qty trigger modify
         False,  # post_only
         0,  # expires_after (GTC omits expiry)

@@ -16,10 +16,13 @@ from decimal import Decimal
 
 from sdk.async_api.account_balance import AccountBalance as AsyncAccountBalance
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
-from sdk.async_api.depth import Depth
+from sdk.async_api.depth_snapshot import DepthSnapshot
+from sdk.async_api.depth_snapshot_type import DepthSnapshotType
+from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.execution_bust import ExecutionBust as AsyncExecutionBust
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
 from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
+from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
 from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
 from sdk.async_api.order import Order as AsyncOrder
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
@@ -59,6 +62,13 @@ class WebSocketState:
         self.spot_executions: EventStore[AsyncSpotExecution] = EventStore(key_fn=lambda x: str(x.taker_order_id))
         self.balance_updates: EventStore[AsyncAccountBalance] = EventStore()
 
+        # Server-sent error frames. The harness previously dropped these on the
+        # floor: a channel could fail its snapshot for the whole session and no
+        # test would notice, because subscribe() is fire-and-forget and every
+        # assertion looks at the DATA stores. A wallet holding a collateral the
+        # backend cannot resolve produced exactly that silence.
+        self.errors: list[ErrorMessagePayload] = []
+
         # Keyed stores: direct lookup by key
         self.positions: EventStore[AsyncPosition] = EventStore(key_fn=lambda x: x.symbol)
         self.orders: EventStore[AsyncOrder] = EventStore(key_fn=lambda x: str(x.order_id))
@@ -69,8 +79,9 @@ class WebSocketState:
         self.market_execution_busts: dict[str, EventStore[AsyncExecutionBust]] = {}
 
         # Market-level stores (by symbol)
+        self.market_perp_executions: dict[str, EventStore[AsyncPerpExecution]] = {}
         self.market_spot_executions: dict[str, EventStore[AsyncSpotExecution]] = {}
-        self.depth: dict[str, Depth] = {}
+        self.depth: dict[str, DepthSnapshot] = {}
 
     # =========================================================================
     # Backward compatibility properties
@@ -108,7 +119,7 @@ class WebSocketState:
             self.spot_executions.add(value)
 
     @property
-    def last_depth(self) -> dict[str, Depth]:
+    def last_depth(self) -> dict[str, DepthSnapshot]:
         """Backward compatibility: alias for depth."""
         return self.depth
 
@@ -126,6 +137,7 @@ class WebSocketState:
         self.positions.clear()
         self.orders.clear()
         self.balances.clear()
+        self.market_perp_executions.clear()
         self.market_spot_executions.clear()
         self.market_execution_busts.clear()
         self.depth.clear()
@@ -167,6 +179,13 @@ class WebSocketState:
         self._t.websocket.market.spot_executions(symbol).subscribe()
         logger.info(f"Subscribed to market spot executions for {symbol}")
 
+    def subscribe_to_market_perp_executions(self, symbol: str) -> None:
+        """Subscribe to market-level perp executions for a specific symbol."""
+        if self._t.websocket is None:
+            raise RuntimeError("WebSocket not connected - call setup() first")
+        self._t.websocket.market.perp_executions(symbol).subscribe()
+        logger.info(f"Subscribed to market perp executions for {symbol}")
+
     def subscribe_to_market_execution_busts(self, symbol: str) -> None:
         """Subscribe to market-level execution busts for a specific symbol (spot or perp)."""
         if self._t.websocket is None:
@@ -199,6 +218,16 @@ class WebSocketState:
             self.market_spot_executions.clear()
             logger.debug("Cleared all market spot executions")
 
+    def clear_market_perp_executions(self, symbol: str | None = None) -> None:
+        """Clear market perp executions. If symbol provided, clear only that symbol."""
+        if symbol:
+            if symbol in self.market_perp_executions:
+                self.market_perp_executions[symbol].clear()
+            logger.debug(f"Cleared market perp executions for {symbol}")
+        else:
+            self.market_perp_executions.clear()
+            logger.debug("Cleared all market perp executions")
+
     def on_open(self, ws) -> None:
         """Handle WebSocket connection open."""
         logger.info("WebSocket opened, subscribing to trade feeds")
@@ -218,6 +247,11 @@ class WebSocketState:
         """
         logger.info(f"Received message: {type(message).__name__}")
 
+        if isinstance(message, ErrorMessagePayload):
+            logger.error(f"WS error frame: channel={getattr(message, 'channel', None)} {message.message}")
+            self.errors.append(message)
+            return
+
         # Handle subscribed messages with initial snapshots
         if isinstance(message, OrderChangesSubscribedPayload):
             self._handle_order_changes_subscribed(message)
@@ -225,8 +259,8 @@ class WebSocketState:
         elif isinstance(message, SubscribedMessagePayload):
             self._handle_subscribed(message)
 
-        # Handle perp executions
-        elif isinstance(message, WalletPerpExecutionUpdatePayload):
+        # Handle perp executions (market or wallet level)
+        elif isinstance(message, (MarketPerpExecutionUpdatePayload, WalletPerpExecutionUpdatePayload)):
             self._handle_perp_executions(message)
 
         # Handle spot executions (market or wallet level)
@@ -259,7 +293,7 @@ class WebSocketState:
 
         # Handle initial snapshot for depth channel
         if "depth" in message.channel and message.contents:
-            depth_data = Depth.model_validate(message.contents)
+            depth_data = DepthSnapshot.model_validate(message.contents)
             self.depth[depth_data.symbol] = depth_data
             logger.info(
                 f"Stored depth snapshot for {depth_data.symbol}: {len(depth_data.bids)} bids, {len(depth_data.asks)} asks"
@@ -278,6 +312,16 @@ class WebSocketState:
                 self.market_spot_executions[symbol].add(execution)
 
             logger.info(f"Stored market spot executions snapshot for {symbol}: {len(data)} execution(s)")
+
+        if "/market/" in message.channel and "perpExecutions" in message.channel and message.contents:
+            symbol = message.channel.split("/")[3]  # /v2/market/{symbol}/perpExecutions
+            data = message.contents.get("data", [])
+            store = self.market_perp_executions.setdefault(symbol, EventStore())
+
+            for item in data:
+                store.add(AsyncPerpExecution.model_validate(item))
+
+            logger.info(f"Stored market perp executions snapshot for {symbol}: {len(data)} execution(s)")
 
         # Handle initial snapshot for balances channel
         if "balances" in message.channel and message.contents:
@@ -298,8 +342,12 @@ class WebSocketState:
             self.orders.add(order)
         logger.info(f"Stored orderChanges snapshot: {len(message.contents.data)} order(s)")
 
-    def _handle_perp_executions(self, message: WalletPerpExecutionUpdatePayload) -> None:
-        """Handle perp execution updates."""
+    def _handle_perp_executions(
+        self, message: MarketPerpExecutionUpdatePayload | WalletPerpExecutionUpdatePayload
+    ) -> None:
+        """Handle perp execution updates (market or wallet level)."""
+        is_market_channel = "/market/" in message.channel
+
         for trade in message.data:
             logger.info(
                 f"📊 Perp execution received: seq={trade.sequence_number}, "
@@ -307,7 +355,11 @@ class WebSocketState:
                 f"symbol={trade.symbol}, "
                 f"side={trade.side.value if hasattr(trade.side, 'value') else trade.side}, qty={trade.qty}"
             )
-            self.perp_executions.add(trade)
+            if is_market_channel:
+                symbol = message.channel.split("/")[3]
+                self.market_perp_executions.setdefault(symbol, EventStore()).add(trade)
+            else:
+                self.perp_executions.add(trade)
 
     def _handle_spot_executions(
         self, message: MarketSpotExecutionUpdatePayload | WalletSpotExecutionUpdatePayload
@@ -362,41 +414,32 @@ class WebSocketState:
             self.positions.add(pos_data)
 
     def _handle_depth_update(self, message: MarketDepthUpdatePayload) -> None:
-        """Handle depth updates with incremental merge."""
-        new_depth = message.data
-        symbol = new_depth.symbol
+        """Merge one bounded-view diff into the maintained snapshot for its symbol."""
+        update = message.data
+        symbol = update.symbol
         existing = self.depth.get(symbol)
 
-        if existing is None:
-            self.depth[symbol] = new_depth
-            return
+        bids = list(existing.bids) if existing is not None else []
+        asks = list(existing.asks) if existing is not None else []
 
-        # Merge updates into existing depth
-        existing_bids = list(existing.bids) if existing.bids else []
-        existing_asks = list(existing.asks) if existing.asks else []
-
-        # Process bid updates
-        for level in new_depth.bids:
-            existing_bids = [b for b in existing_bids if b.px != level.px]
+        # Update levels are absolute: a level replaces the prior qty at that
+        # price, and qty 0 removes it.
+        for level in update.bids:
+            bids = [b for b in bids if b.px != level.px]
             if float(level.qty) > 0:
-                existing_bids.append(level)
+                bids.append(level)
 
-        # Process ask updates
-        for level in new_depth.asks:
-            existing_asks = [a for a in existing_asks if a.px != level.px]
+        for level in update.asks:
+            asks = [a for a in asks if a.px != level.px]
             if float(level.qty) > 0:
-                existing_asks.append(level)
+                asks.append(level)
 
-        # Sort bids descending, asks ascending
-        existing_bids = sorted(existing_bids, key=lambda x: float(x.px), reverse=True)
-        existing_asks = sorted(existing_asks, key=lambda x: float(x.px))
-
-        self.depth[symbol] = Depth(
+        self.depth[symbol] = DepthSnapshot(
             symbol=symbol,
-            type=existing.type,
-            bids=existing_bids,
-            asks=existing_asks,
-            updatedAt=new_depth.updated_at,
+            type=DepthSnapshotType.SNAPSHOT,
+            bids=sorted(bids, key=lambda x: float(x.px), reverse=True),
+            asks=sorted(asks, key=lambda x: float(x.px)),
+            updatedAt=update.updated_at,
         )
 
     def _handle_balance_updates(self, message: AccountBalanceUpdatePayload) -> None:

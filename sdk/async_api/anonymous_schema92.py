@@ -1,4 +1,4 @@
 from enum import Enum
 
 class AnonymousSchema92(Enum): 
-  MAX_QUANTITY_EXCEEDED = "MaxQuantityExceeded"
+  STALE_PRICE_DETECTED = "StalePriceDetected"

@@ -26,11 +26,7 @@ import pytest
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
-from sdk.reya_rest_api.client import (
-    PERPETUAL_LIFETIME,
-    _reject_zero_deadline,
-    _require_settlement_headroom,
-)
+from sdk.reya_rest_api.client import PERPETUAL_LIFETIME, _reject_zero_deadline, _require_settlement_headroom
 from sdk.reya_rest_api.config import DEFAULT_SETTLEMENT_HEADROOM_S, TradingConfig, settlement_headroom_from_env
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 from tests.helpers import gtt_timing
@@ -206,7 +202,6 @@ def client() -> ReyaTradingClient:
         )
     )
     built._symbol_to_market_id = {_SYMBOL: 1}
-    built._symbol_to_tick_size = {_SYMBOL: "0.001"}
     built._initialized = True
     return built
 
@@ -274,9 +269,53 @@ def test_trigger_create_refuses_a_zero_deadline(client: ReyaTradingClient) -> No
                 is_buy=False,
                 trigger_px="2500",
                 trigger_type=OrderType.STOP_LOSS,
+                limit_px="2450",
+                time_in_force=TimeInForce.GTC,
                 deadline=0,
             )
         )
+
+
+def _gtt_trigger(expires_after: int) -> TriggerOrderParameters:
+    return TriggerOrderParameters(
+        symbol=_SYMBOL,
+        is_buy=False,
+        trigger_px="2500",
+        limit_px="2450",
+        trigger_type=OrderType.STOP_LOSS,
+        time_in_force=TimeInForce.GTT,
+        expires_after=expires_after,
+        deadline=OFFLINE_CLOCK_S + 10,
+    )
+
+
+@pytest.mark.trigger
+@pytest.mark.gtt
+def test_gtt_trigger_create_refuses_a_lifetime_inside_the_headroom(client: ReyaTradingClient) -> None:
+    """A GTT trigger's signed `expiresAfter` is ONE deadline covering both
+    phases — the armed trigger's lifetime and the fired child's on-chain
+    settlement — so a stop that could never settle a fill is refused up front
+    rather than armed and left useless."""
+    with pytest.raises(ValueError, match="settlement headroom"):
+        client.build_create_trigger_order_payload(_gtt_trigger(OFFLINE_CLOCK_S + PRODUCTION_HEADROOM_S))
+
+
+@pytest.mark.trigger
+@pytest.mark.gtt
+def test_gtt_trigger_create_admits_a_lifetime_beyond_the_headroom(client: ReyaTradingClient) -> None:
+    expires_after = OFFLINE_CLOCK_S + PRODUCTION_HEADROOM_S + 600
+    payload, _nonce = client.build_create_trigger_order_payload(_gtt_trigger(expires_after))
+    assert payload["expiresAfter"] == expires_after
+    assert payload["timeInForce"] == TimeInForce.GTT.value
+
+
+@pytest.mark.trigger
+@pytest.mark.gtt
+def test_a_refused_gtt_trigger_create_does_not_claim_a_nonce(client: ReyaTradingClient) -> None:
+    before = _wallet_nonce()
+    with pytest.raises(ValueError, match="settlement headroom"):
+        client.build_create_trigger_order_payload(_gtt_trigger(OFFLINE_CLOCK_S + PRODUCTION_HEADROOM_S))
+    assert _wallet_nonce() == before
 
 
 def test_modify_refuses_a_lifetime_inside_the_headroom(client: ReyaTradingClient) -> None:
