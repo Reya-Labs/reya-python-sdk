@@ -27,14 +27,13 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, TriggerOrderParameters
 from tests.rate_limits.rl_config import (
-    HTTP_FORBIDDEN,
-    HTTP_RATE_LIMITED,
-    NOT_WHITELISTED_ERROR,
+    ACCESS_CONTROL_CODES,
+    CAPACITY_LIMITED_ERROR,
     OPEN_ORDER_COUNT_EXCEEDED_ERROR,
     RATE_LIMITED_ERROR,
     RateLimitSuiteConfig,
 )
-from tests.rate_limits.rl_errors import RestReject, rest_reject
+from tests.rate_limits.rl_errors import RestReject, assert_venue_verdict, rest_reject
 
 logger = logging.getLogger("reya.rate_limits")
 
@@ -488,23 +487,26 @@ async def burst_until_code(
 
 
 def assert_rate_limited(reject: RestReject, label: str) -> None:
-    """Assert a reject is the per-account GCRA verdict on the 429 status."""
+    """Assert a reject is the per-account GCRA verdict, on the venue's 400."""
     assert reject.code == RATE_LIMITED_ERROR, f"[{label}] expected {RATE_LIMITED_ERROR}; got {reject.describe()}"
-    assert reject.status == HTTP_RATE_LIMITED, f"[{label}] expected HTTP {HTTP_RATE_LIMITED}; got {reject.describe()}"
+    assert_venue_verdict(reject, label)
 
 
 async def assert_not_whitelist_gated(awaitable: object, label: str) -> RestReject | None:
-    """Await a risk-off op that the whitelist gate must NEVER block.
+    """Await a risk-off op that access control must NEVER block.
 
     The gate covers create + modify only: a de-whitelisted (or ejected) owner
     must still be able to cancel resting orders and keep its dead-man's switch
     alive, or removing a wallet from the whitelist would trap it in its
-    positions.
+    positions. Venue capacity shedding is carved out on the same terms — a
+    cancel is never refused because the exchange is at its ingest ceiling.
 
     Returns ``None`` when the op succeeded, or the reject when the deployment
     refused it for an UNRELATED reason (e.g. cancelling an order that does not
-    exist). Only a gate verdict — ``NOT_WHITELISTED_ERROR``, or any 403-class
-    status — fails the assertion.
+    exist). Only a verdict from one of those two families fails the assertion.
+
+    The check is on the CODE alone: every venue verdict shares HTTP 400, so a
+    status can no longer tell an access decision from an order-not-found.
     """
     try:
         await awaitable  # type: ignore[misc]  # caller passes an awaitable client call
@@ -512,13 +514,14 @@ async def assert_not_whitelist_gated(awaitable: object, label: str) -> RestRejec
     except ApiException as exc:
         reject = rest_reject(exc)
 
-    assert reject.code != NOT_WHITELISTED_ERROR, (
-        f"[{label}] risk-off must never be whitelist-gated, but the edge returned "
-        f"{NOT_WHITELISTED_ERROR}: {reject.describe()}"
+    assert reject.code not in ACCESS_CONTROL_CODES, (
+        f"[{label}] risk-off must never be refused for access control, but the venue returned "
+        f"{reject.code}: {reject.describe()}"
     )
-    assert (
-        reject.status != HTTP_FORBIDDEN
-    ), f"[{label}] risk-off must never be rejected 403-class by the gate; got {reject.describe()}"
+    assert reject.code != CAPACITY_LIMITED_ERROR, (
+        f"[{label}] risk-off must never be shed for venue capacity — cancelling has to stay available while the "
+        f"exchange is refusing new orders; got {reject.describe()}"
+    )
     logger.info("[%s] not gated; rejected for an unrelated reason: %s", label, reject.describe())
     return reject
 

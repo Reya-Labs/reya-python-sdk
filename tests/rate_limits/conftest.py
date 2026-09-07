@@ -4,7 +4,8 @@ The live modules build their OWN REST clients rather than reusing the shared
 ``ReyaTester`` fixtures, for two reasons:
 
 * ``ReyaTester.orders.create_limit`` wraps creates in ``with_retry``, which
-  would silently retry the very 429 these tests exist to observe;
+  would silently retry the very ``RATE_LIMITED_ERROR`` these tests exist to
+  observe;
 * the whitelist-gate module needs an account that is deliberately NOT one of
   the seeded test wallets.
 """

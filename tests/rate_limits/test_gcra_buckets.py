@@ -3,9 +3,9 @@
 Every property is asserted structurally rather than arithmetically — the suite
 never re-derives GCRA:
 
-* **place** — bursting past the budget produces ``RATE_LIMITED_ERROR`` on HTTP
-  429 with a present, plausible ``Retry-After``, and a create succeeds again
-  after waiting it out. ``modify`` draws the SAME bucket (design §4.1: "modify
+* **place** — bursting past the budget produces ``RATE_LIMITED_ERROR`` on the
+  venue's HTTP 400 with a present, plausible ``retryAfterMs`` on the body, and a
+  create succeeds again after waiting it out. ``modify`` draws the SAME bucket (design §4.1: "modify
   == create — same weight"), which is proven by draining it with modifies only;
 * **cancel** — INDEPENDENT of ``place``: risk-off keeps flowing while an account
   is place-limited. That carve-out is the highest-value assertion in this file —
@@ -88,7 +88,7 @@ async def test_place_burst_is_rate_limited_while_cancels_still_flow(
     assert_rate_limited(result.reject, "place burst")
     retry_after_s = assert_retry_after_plausible(result.reject, rl_suite_config.timing.retry_after_max_s, "place burst")
     logger.info(
-        "place bucket: %d creates accepted, rejected on attempt %d, Retry-After=%ss",
+        "place bucket: %d creates accepted, rejected on attempt %d, retryAfterMs hint=%ss",
         len(result.placed),
         result.attempts,
         retry_after_s,
@@ -111,8 +111,8 @@ async def test_place_burst_is_rate_limited_while_cancels_still_flow(
     await asyncio.sleep(retry_after_s + rl_suite_config.timing.retry_after_slack_s)
 
     recovered_order_id = await create_resting_order(rl_client, rl_market)
-    assert recovered_order_id, "a create must be admitted again after waiting out Retry-After"
-    logger.info("create admitted again after Retry-After: orderId=%s", recovered_order_id)
+    assert recovered_order_id, "a create must be admitted again after waiting out retryAfterMs"
+    logger.info("create admitted again after the retryAfterMs hint: orderId=%s", recovered_order_id)
 
 
 async def test_cancel_bucket_is_independent_of_the_place_bucket(

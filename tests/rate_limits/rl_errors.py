@@ -1,22 +1,23 @@
-"""Model-agnostic extraction of rate-limit rejects from REST and ws-exec.
+"""Model-agnostic extraction of venue verdicts from REST and ws-exec.
+
+Every venue verdict is an HTTP 400 carrying ``{error, message, retryAfterMs?}``
+— the same code and the same hint the order-entry WebSocket puts on its
+``{ok:false, error}`` envelope. The status says only that the venue refused, so
+nothing here reads a retry decision out of it; the code is the contract.
 
 Why raw dicts instead of the generated models:
 
 * ``RequestErrorCode`` (sdk/open_api/models/request_error_code.py) is generated
-  from the CURRENT tagged spec, which predates the Rate-Limit v1 codes. That
-  enum is now open-vocabulary — ``_missing_`` resolves an unrecognized member
+  from the CURRENT tagged spec, which predates most of the Rate-Limit v1 codes.
+  That enum is open-vocabulary — ``_missing_`` resolves an unrecognized member
   to ``UNKNOWN`` rather than raising — so parsing a ``NOT_WHITELISTED_ERROR``
-  body through ``RequestError`` succeeds but LOSES the code. Typed parsing
-  therefore still cannot assert on it, and the raw body stays the source of
-  truth for the code.
+  body through ``RequestError`` succeeds but LOSES the code. 400 IS in the
+  generated response map, so ``ApiException.data`` is populated and would be
+  preferred by default; the widening guard below is what keeps a code this SDK
+  predates from being reported as ``UNKNOWN``.
 * ``RequestError`` has no ``retryAfterMs`` field yet. It DOES carry an
   ``additional_properties`` bag, so the value survives a ``from_dict`` round
-  trip once the enum knows the code — but reading the raw payload works both
-  before and after regeneration.
-* The generated ``_response_types_map`` for the order-entry endpoints only
-  lists ``200`` / ``400`` / ``500``, so a 429 / 503 / 403 response is never
-  deserialized: ``ApiException.data`` is ``None`` and the JSON only survives on
-  ``ApiException.body``.
+  trip — but reading the raw payload works both before and after regeneration.
 
 TODO(post-regen): once the Rate-Limit v1 spec is tagged and the SDK models are
 regenerated, tighten these helpers to prefer ``ApiException.data`` (a typed
@@ -33,6 +34,7 @@ import re
 from dataclasses import dataclass
 
 from sdk.open_api.exceptions import ApiException
+from tests.rate_limits.rl_config import HTTP_VENUE_VERDICT
 
 #: The reason string that accompanies a ``4029`` inbound-message-rate close.
 #: Both WebSocket surfaces emit it byte-for-byte — the ws-exec relayer and the
@@ -69,15 +71,6 @@ def _as_int(value: Any) -> int | None:
         return None
     try:
         return int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _as_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(str(value).strip())
     except (TypeError, ValueError):
         return None
 
@@ -136,11 +129,11 @@ def _payload_from_exception(exc: ApiException) -> dict[str, Any] | None:
 class RestReject:
     """One REST rejection, flattened to the fields the wire contract defines.
 
-    ``retry_after_ms`` is a **defensive fallback, not a REST contract**: on REST
-    the backoff hint travels in the ``Retry-After`` header only, and the edge
-    builds the error body as ``{error, message}``. The body is read anyway so a
-    deployment that starts echoing the ws-exec field is not silently ignored —
-    but no REST assertion may require it.
+    ``code`` and ``retry_after_ms`` both come from the BODY, which is the whole
+    contract: the status is 400 for every venue verdict and carries no retry
+    information. ``retry_after_header`` is read only so an assertion can prove
+    a ``Retry-After`` header is ABSENT — the venue does not use one, and a
+    deployment that grew one would be advertising a second, unspecified hint.
     """
 
     status: int | None
@@ -152,18 +145,18 @@ class RestReject:
 
     @property
     def retry_after_s(self) -> float | None:
-        """``Retry-After`` in seconds, or ``None`` when absent/non-numeric.
+        """The body's ``retryAfterMs`` in seconds, or ``None`` when absent.
 
-        The contract specifies delta-seconds; an HTTP-date form would parse as
-        ``None`` here and fail the caller's assertion loudly rather than
-        silently reading as 0.
+        Callers sleep on this, so ``None`` must mean "the rejection carried no
+        hint" and never read as 0 — a zero-length backoff would retry straight
+        back into the same verdict.
         """
-        return _as_float(self.retry_after_header)
+        return None if self.retry_after_ms is None else self.retry_after_ms / 1000
 
     def describe(self) -> str:
         return (
-            f"status={self.status} code={self.code!r} retryAfter={self.retry_after_header!r} "
-            f"retryAfterMs={self.retry_after_ms!r} message={self.message!r}"
+            f"status={self.status} code={self.code!r} retryAfterMs={self.retry_after_ms!r} "
+            f"retryAfterHeader={self.retry_after_header!r} message={self.message!r}"
         )
 
 
@@ -264,38 +257,65 @@ def assert_msg_rate_close_reason(reason: str | None, max_s: float, label: str) -
     return seconds
 
 
-def assert_no_retry_after(reject: RestReject, label: str) -> None:
-    """Assert an access-control 403 carries NO ``Retry-After``.
+def assert_venue_verdict(reject: RestReject, label: str) -> None:
+    """Assert the rejection arrived as a venue verdict: HTTP 400 with a code.
 
-    A 403 answers "not you", never "not yet": there is no wait that clears a
-    whitelist or eject verdict, so advertising a backoff would invite a client
-    to retry-loop against a decision that will not change.
+    Every code in the enum is a 400, so this is the one status assertion the
+    suite makes. It exists to catch a deployment that answers a venue verdict
+    with 429 / 503 / 403 — a status a client would branch on before ever
+    reading the code, and one that would hide the code from a generated SDK
+    whose response map lists only 200 / 400 / 500.
     """
+    assert reject.status == HTTP_VENUE_VERDICT, (
+        f"[{label}] every venue verdict is HTTP {HTTP_VENUE_VERDICT} (the code is the contract, not the status); "
+        f"got {reject.describe()}"
+    )
+    assert reject.code is not None, f"[{label}] a venue verdict must name its code in the body; got {reject.describe()}"
+
+
+def assert_no_retry_hint(reject: RestReject, label: str) -> None:
+    """Assert a rejection advertises NO wait — neither in the body nor a header.
+
+    Two families land here and both mean "waiting changes nothing": the access
+    decisions answer "not you", never "not yet", and the open-order caps clear
+    only when resting orders are cancelled or filled. Advertising a backoff
+    would invite a client to retry-loop against a verdict that will not move.
+
+    The header half is not a second contract — the venue never sends
+    ``Retry-After`` — it is there so a deployment that grew one is caught
+    rather than quietly believed.
+    """
+    assert (
+        reject.retry_after_ms is None
+    ), f"[{label}] this reject must carry no retryAfterMs (waiting never clears it); got {reject.describe()}"
     assert reject.retry_after_header is None, (
-        f"[{label}] a 403 access-control reject must carry no Retry-After (waiting never clears it); "
+        f"[{label}] the venue never answers with a Retry-After header; the hint is the body's retryAfterMs; "
         f"got {reject.describe()}"
     )
 
 
 def assert_retry_after_plausible(reject: RestReject, max_s: float, label: str) -> float:
-    """Assert the mandatory 429 ``Retry-After`` is present and sane.
+    """Assert the mandatory ``retryAfterMs`` hint is present and sane.
 
-    Returns the parsed seconds so the caller can sleep exactly that long. The
-    contract is a backoff FLOOR expressed in ceil-ed seconds, so any positive
-    value up to ``max_s`` passes; the test never re-derives GCRA arithmetic.
+    Returns the hint in seconds so the caller can sleep exactly that long. The
+    contract is a backoff FLOOR in milliseconds, so any positive value up to
+    ``max_s`` passes; the test never re-derives GCRA arithmetic.
+
+    The header is asserted ABSENT in the same breath: a rejection carrying both
+    would leave a client two hints to reconcile, and only one of them is
+    specified.
     """
     assert (
-        reject.retry_after_header is not None
-    ), f"[{label}] 429 must carry a Retry-After header; got {reject.describe()}"
-    seconds = reject.retry_after_s
-    assert seconds is not None, f"[{label}] Retry-After must be delta-seconds; got {reject.retry_after_header!r}"
+        reject.retry_after_ms is not None
+    ), f"[{label}] a retryable verdict must carry retryAfterMs on the body; got {reject.describe()}"
+    assert 0 < reject.retry_after_ms <= max_s * 1000, (
+        f"[{label}] implausible retryAfterMs {reject.retry_after_ms} "
+        f"(expected 0 < x <= {max_s * 1000}); {reject.describe()}"
+    )
     assert (
-        0 < seconds <= max_s
-    ), f"[{label}] implausible Retry-After {seconds}s (expected 0 < x <= {max_s}); {reject.describe()}"
+        reject.retry_after_header is None
+    ), f"[{label}] the hint travels on the body only, never a Retry-After header; got {reject.describe()}"
 
-    if reject.retry_after_ms is not None:
-        assert (
-            0 < reject.retry_after_ms <= max_s * 1000
-        ), f"[{label}] implausible retryAfterMs {reject.retry_after_ms}; {reject.describe()}"
-
+    seconds = reject.retry_after_s
+    assert seconds is not None
     return seconds

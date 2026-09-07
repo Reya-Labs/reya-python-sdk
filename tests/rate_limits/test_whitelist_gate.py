@@ -2,10 +2,10 @@
 """Rate-Limit v1 §3 — the edge whitelist gate, and its risk-off carve-out.
 
 The gate covers **create and modify only**. A wallet that is not in
-``rl_whitelist`` cannot open or grow exposure — those are rejected 403-class
-with ``NOT_WHITELISTED_ERROR``. The gate is owner-keyed and runs before
-signature verification, so a correctly-signed order from a non-whitelisted
-owner is still rejected.
+``rl_whitelist`` cannot open or grow exposure — those are refused with
+``NOT_WHITELISTED_ERROR`` on the venue's HTTP 400, carrying no retry hint. The
+gate is owner-keyed and runs before signature verification, so a
+correctly-signed order from a non-whitelisted owner is still rejected.
 
 **Cancel, cancelAll and cancelAllAfter are deliberately NOT gated.** Removing a
 wallet from the whitelist is graceful offboarding, not a punishment: it stops
@@ -37,13 +37,8 @@ from tests.rate_limits.rl_actions import (
     resting_order,
     wire,
 )
-from tests.rate_limits.rl_config import (
-    HTTP_FORBIDDEN,
-    NOT_WHITELISTED_ERROR,
-    RateLimitSuiteConfig,
-    requires_rate_limits,
-)
-from tests.rate_limits.rl_errors import RestReject, assert_no_retry_after, capture_rest_reject
+from tests.rate_limits.rl_config import NOT_WHITELISTED_ERROR, RateLimitSuiteConfig, requires_rate_limits
+from tests.rate_limits.rl_errors import RestReject, assert_no_retry_hint, assert_venue_verdict, capture_rest_reject
 
 logger = logging.getLogger("reya.rate_limits")
 
@@ -78,17 +73,15 @@ async def gate_market(rl_non_whitelisted_client: ReyaTradingClient, rl_suite_con
 
 def _assert_gate_reject(reject: RestReject, label: str) -> None:
     assert reject.code == NOT_WHITELISTED_ERROR, f"[{label}] expected {NOT_WHITELISTED_ERROR}; got {reject.describe()}"
-    assert (
-        reject.status == HTTP_FORBIDDEN
-    ), f"[{label}] expected HTTP {HTTP_FORBIDDEN} (403-class); got {reject.describe()}"
-    assert_no_retry_after(reject, label)
+    assert_venue_verdict(reject, label)
+    assert_no_retry_hint(reject, label)
 
 
 # ---- Gated: the exposure-increasing ops ------------------------------------
 
 
 async def test_create_order_is_gated(rl_non_whitelisted_client: ReyaTradingClient, gate_market: RlMarket) -> None:
-    """createOrder from a non-whitelisted owner → 403 NOT_WHITELISTED_ERROR."""
+    """createOrder from a non-whitelisted owner → 400 NOT_WHITELISTED_ERROR."""
     reject = await capture_rest_reject(
         rl_non_whitelisted_client.create_limit_order(resting_order(gate_market)),
         "non-whitelisted create",
@@ -125,7 +118,7 @@ async def test_modify_order_is_gated(rl_non_whitelisted_client: ReyaTradingClien
 async def test_create_for_an_unresolvable_account_is_gated(
     rl_unknown_owner_client: ReyaTradingClient, gate_market: RlMarket
 ) -> None:
-    """An ``accountId`` that resolves to NO owner → 403 NOT_WHITELISTED_ERROR.
+    """An ``accountId`` that resolves to NO owner → 400 NOT_WHITELISTED_ERROR.
 
     The gate is owner-keyed, so "no owner" must fail closed onto the same
     verdict as "owner not in the whitelist" — the one row of the §3 verb table

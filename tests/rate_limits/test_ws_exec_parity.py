@@ -1,7 +1,9 @@
 """Rate-Limit v1 §8 — ws-exec parity for the gate and the place bucket.
 
-The same verdicts REST maps to 429 / 403 arrive on ws-exec as the per-operation
-error envelope ``{ok:false, error:{error, message, retryAfterMs?}}``. These
+The same verdicts REST answers with on its HTTP 400 arrive on ws-exec as the
+per-operation error envelope ``{ok:false, error:{error, message,
+retryAfterMs?}}`` — the same code and the same hint on either transport, which
+is the point of putting nothing a client branches on in the status. These
 tests drive a RAW WebSocket (the harness the ws-exec suite already uses) rather
 than :class:`ReyaWsExecClient`: what is under test is the RELAYER's envelope, so
 reading it off the wire keeps the assertions independent of whatever the client

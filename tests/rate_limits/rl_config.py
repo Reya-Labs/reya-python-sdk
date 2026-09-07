@@ -17,14 +17,16 @@ import math
 import os
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 
 import pytest
 
 # --------------------------------------------------------------------------
 # Public error codes (the FINAL Rate-Limit v1 wire contract).
 # Kept as plain strings, deliberately NOT the generated ``RequestErrorCode``
-# enum: the specs are not tagged yet, so the generated enum does not know most
-# of these codes and typed parsing would raise before a test could assert.
+# enum: the pinned spec predates most of these codes, and the generated enum is
+# open-vocabulary, so typed parsing widens an unknown code to ``UNKNOWN``
+# instead of raising — a typed assertion would silently compare sentinels.
 # --------------------------------------------------------------------------
 
 RATE_LIMITED_ERROR = "RATE_LIMITED_ERROR"
@@ -33,18 +35,65 @@ OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR = "OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR"
 CAPACITY_LIMITED_ERROR = "CAPACITY_LIMITED_ERROR"
 ACCOUNT_SUSPENDED_ERROR = "ACCOUNT_SUSPENDED_ERROR"
 NOT_WHITELISTED_ERROR = "NOT_WHITELISTED_ERROR"
+UNAVAILABLE_MATCHING_ENGINE_ERROR = "UNAVAILABLE_MATCHING_ENGINE_ERROR"
+UNAVAILABLE_ACCOUNT_OWNER_ERROR = "UNAVAILABLE_ACCOUNT_OWNER_ERROR"
 
-#: Statuses the edge uses for the per-account / cap rejects and the 403-class
-#: gate rejects. ``Retry-After`` is mandatory on 429 and optional on 503.
-HTTP_RATE_LIMITED = 429
-HTTP_CAPACITY_LIMITED = 503
-HTTP_FORBIDDEN = 403
+#: The status EVERY venue verdict arrives on. Throttling, the open-order caps,
+#: load shedding and the access decisions all share it: the status says only
+#: that the venue refused, and the body's ``error`` code says why. A client
+#: branches on the code, never on the status.
+HTTP_VENUE_VERDICT = 400
+
+#: Reserved for infrastructure-level (per-IP) limits sitting in front of the
+#: API. The venue never emits it, so a 429 never carries a ``RequestErrorCode``
+#: and never means an account-level verdict.
+HTTP_INFRASTRUCTURE_RATE_LIMITED = 429
 
 #: An ejected account may be rejected by the edge (it was removed from
 #: ``rl_whitelist`` in the same transaction) or by the matching engine (the
-#: ``rl_ejected_accounts`` admission check). Both are 403-class; tests accept
-#: either and record which one the deployment actually produced.
+#: ``rl_ejected_accounts`` admission check). Tests accept either code and
+#: record which one the deployment actually produced.
 EJECT_REJECT_CODES = (NOT_WHITELISTED_ERROR, ACCOUNT_SUSPENDED_ERROR)
+
+#: The access decisions. Neither is retryable, and neither may ever answer a
+#: risk-off op: cancelling is outside the allowlist check entirely, and
+#: disarming a countdown is never refused for access control.
+ACCESS_CONTROL_CODES = (NOT_WHITELISTED_ERROR, ACCOUNT_SUSPENDED_ERROR)
+
+
+class RetryPolicy(Enum):
+    """What a client should do with a venue verdict, keyed on its CODE.
+
+    The HTTP status is 400 for every one of them, so it carries no retry
+    information at all — this is the whole reason a client branches on the code.
+    """
+
+    #: Wait at least ``retryAfterMs``, then retry.
+    AFTER_HINT = "after-hint"
+    #: Back off — the venue is shedding load — and retry after ``retryAfterMs``.
+    BACK_OFF = "back-off"
+    #: The request was never evaluated: retry it unchanged after a short delay,
+    #: with no hint to wait out and nothing to re-sign.
+    UNCHANGED = "unchanged"
+    #: Nothing a client waits for clears it — free capacity, or gain access.
+    NOT_RETRYABLE = "not-retryable"
+
+
+_RETRY_POLICIES = {
+    RATE_LIMITED_ERROR: RetryPolicy.AFTER_HINT,
+    CAPACITY_LIMITED_ERROR: RetryPolicy.BACK_OFF,
+    UNAVAILABLE_MATCHING_ENGINE_ERROR: RetryPolicy.UNCHANGED,
+    UNAVAILABLE_ACCOUNT_OWNER_ERROR: RetryPolicy.UNCHANGED,
+    OPEN_ORDER_COUNT_EXCEEDED_ERROR: RetryPolicy.NOT_RETRYABLE,
+    OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR: RetryPolicy.NOT_RETRYABLE,
+    NOT_WHITELISTED_ERROR: RetryPolicy.NOT_RETRYABLE,
+    ACCOUNT_SUSPENDED_ERROR: RetryPolicy.NOT_RETRYABLE,
+}
+
+
+def retry_policy(code: str | None) -> RetryPolicy | None:
+    """The published retry strategy for ``code``, or ``None`` when unclassified."""
+    return _RETRY_POLICIES.get(code) if code is not None else None
 
 
 # --------------------------------------------------------------------------

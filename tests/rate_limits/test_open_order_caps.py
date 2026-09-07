@@ -52,14 +52,13 @@ from tests.rate_limits.rl_actions import (
     wire,
 )
 from tests.rate_limits.rl_config import (
-    HTTP_RATE_LIMITED,
     OPEN_ORDER_COUNT_EXCEEDED_ERROR,
     OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
     RateLimitSuiteConfig,
     requires_rate_limits,
     trigger_credentials_env_hint,
 )
-from tests.rate_limits.rl_errors import capture_rest_reject
+from tests.rate_limits.rl_errors import assert_no_retry_hint, assert_venue_verdict, capture_rest_reject
 
 logger = logging.getLogger("reya.rate_limits")
 
@@ -81,7 +80,7 @@ async def test_open_order_count_cap(
     rl_second_market: RlMarket | None,
     rl_suite_config: RateLimitSuiteConfig,
 ) -> None:
-    """Fill the book to the ACCOUNT count cap → next create is 429 COUNT_EXCEEDED.
+    """Fill the book to the ACCOUNT count cap → next create is COUNT_EXCEEDED.
 
     The fill is spread so the probe market keeps PER-MARKET headroom while the
     account sits at its total: both granularities answer with the same error
@@ -137,7 +136,8 @@ async def test_open_order_count_cap(
             "if this is RATE_LIMITED_ERROR the pacing is too fast (raise RL_TEST_PLACE_PACE_S); "
             "if the create was accepted, RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP is below the deployment's cap"
         )
-        assert reject.status == HTTP_RATE_LIMITED, f"cap rejects map to HTTP 429; got {reject.describe()}"
+        assert_venue_verdict(reject, "create at count cap")
+        assert_no_retry_hint(reject, "create at count cap")
 
         # Free the slot on a market OTHER than the probe wherever the wiring has
         # one: the probe market's per-market count is then unchanged across the
@@ -256,6 +256,8 @@ async def test_open_order_notional_cap_with_ioc_exemption(
         f"expected {OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR} on a qty-up past the cap; got {reject.describe()} — "
         "if the modify was accepted, RL_TEST_STANDARD_OPEN_NOTIONAL_CAP is below the deployment's cap"
     )
+    assert_venue_verdict(reject, "qty-up modify past the notional cap")
+    assert_no_retry_hint(reject, "qty-up modify past the notional cap")
 
     await asyncio.sleep(rl_suite_config.timing.place_pace_s)
     ioc_response = await rl_client.create_limit_order(
@@ -337,7 +339,8 @@ async def test_open_order_notional_cap_is_tripped_by_a_create(
         "if this is RATE_LIMITED_ERROR the pacing is too fast (raise RL_TEST_PLACE_PACE_S); "
         "if the create was accepted, RL_TEST_STANDARD_OPEN_NOTIONAL_CAP is below the deployment's cap"
     )
-    assert reject.status == HTTP_RATE_LIMITED, f"cap rejects map to HTTP 429; got {reject.describe()}"
+    assert_venue_verdict(reject, "create past the notional cap")
+    assert_no_retry_hint(reject, "create past the notional cap")
 
 
 async def test_ioc_is_exempt_from_the_open_order_count_cap(
@@ -498,7 +501,8 @@ async def test_per_market_open_order_count_cap(
         f"expected {OPEN_ORDER_COUNT_EXCEEDED_ERROR} at the per-market cap; got {reject.describe()} — "
         "if the create was accepted, RL_TEST_STANDARD_OPEN_ORDER_PER_MARKET_CAP is below the deployment's cap"
     )
-    assert reject.status == HTTP_RATE_LIMITED, f"cap rejects map to HTTP 429; got {reject.describe()}"
+    assert_venue_verdict(reject, "create at the per-market count cap")
+    assert_no_retry_hint(reject, "create at the per-market count cap")
 
     total_open = len(await open_order_ids(rl_client))
     assert total_open < account_cap, (

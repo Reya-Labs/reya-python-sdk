@@ -13,12 +13,12 @@ seed the standard test wallets into `rl_whitelist` (heavy wallets into
 
 | Module | Runs | What it covers |
 | --- | --- | --- |
-| `test_offline_error_surface.py` | **always** (`-m offline`, in CI) | The SDK surfaces 429/503/403 with status + headers + parsed error code; the 403 no-`Retry-After` and 429 `Retry-After` assertions are proven non-vacuous; the **4029 close-reason grammar** shared by both WS surfaces (and the near-misses — `1013` / `1012` — that must not parse as one); extraction works before and after SDK regeneration; the ws-exec client's `retry_after_ms`, 4029 close parsing, indeterminate-outcome failures, and that the reader still survives its own recv timeout |
+| `test_offline_error_surface.py` | **always** (`-m offline`, in CI) | Every venue verdict surfaces as an HTTP **400** with the code and (where a wait helps) `retryAfterMs` read off the **body**; the retry policy per code, including the new `UNAVAILABLE_ACCOUNT_OWNER_ERROR` reaching the caller through the enum-widening guard; a **429 is refused as a venue verdict** (infrastructure only); the no-hint, hint-plausibility and stray-`Retry-After`-header assertions are proven non-vacuous; the **4029 close-reason grammar** shared by both WS surfaces (and the near-misses — `1013` / `1012` — that must not parse as one); extraction works before and after SDK regeneration; the ws-exec client's `retry_after_ms`, 4029 close parsing, indeterminate-outcome failures, and that the reader still survives its own recv timeout |
 | `test_offline_probe_helpers.py` | **always** (`-m offline`, in CI) | The suite's own live-probe helpers, which otherwise only ever run inside a live probe: the **count-cap spreading** arithmetic (exact totals, per-market chunks, and the two skips that refuse to assert the wrong granularity) and the **raw-WebSocket flood probe** (a shed mid-flood still gets its close read; no code is fabricated when none arrives) |
-| `test_whitelist_gate.py` | opt-in | §3 gate: create + modify (and an `accountId` with no owner) rejected `403 NOT_WHITELISTED_ERROR` with no `Retry-After`; cancel / cancelAll / cancelAllAfter asserted **not** gated (risk-off carve-out), including a **REAL (non-zero) cancelAllAfter arm + refresh + disarm**; reads unaffected |
-| `test_gcra_buckets.py` | opt-in | §4.1 all four buckets: `place` (incl. **modify draws it too**), `cancel`, `bulk-cancel`, `cod-control`; the **cancel carve-out** (risk-off flows while place-limited); recovery after `Retry-After`; the cod-control asymmetry (unarmed no-op disarm refusable, **real disarm never refused**); and (`-m cod`) that a **drained bulk-cancel bucket never blocks the CoD fire** |
+| `test_whitelist_gate.py` | opt-in | §3 gate: create + modify (and an `accountId` with no owner) refused `400 NOT_WHITELISTED_ERROR` with no retry hint; cancel / cancelAll / cancelAllAfter asserted **not** gated (risk-off carve-out), including a **REAL (non-zero) cancelAllAfter arm + refresh + disarm**; reads unaffected |
+| `test_gcra_buckets.py` | opt-in | §4.1 all four buckets: `place` (incl. **modify draws it too**), `cancel`, `bulk-cancel`, `cod-control`; the **cancel carve-out** (risk-off flows while place-limited); recovery after the `retryAfterMs` hint; the cod-control asymmetry (unarmed no-op disarm refusable, **real disarm never refused**); and (`-m cod`) that a **drained bulk-cancel bucket never blocks the CoD fire** |
 | `test_open_order_caps.py` | opt-in | §4.2 count cap (account total **and** per market) → `OPEN_ORDER_COUNT_EXCEEDED_ERROR`; notional cap on a **create** and on a qty-up modify → `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`; IOC and armed-trigger exemptions from the count cap |
-| `test_eject_flow.py` | opt-in + eject hook | §3 reactive eject: creates **and modifies** blocked 403-class, **cancels still flow**, **resting** orders swept while **armed SL/TP are retained**, cancelAllAfter **arm refused / disarm open** (option (b)), un-eject restores trading; plus, with `RL_TEST_EJECT_ONLY_CMD`, an eject that does **not** de-whitelist, isolating the ME's own `ACCOUNT_SUSPENDED_ERROR` verdict |
+| `test_eject_flow.py` | opt-in + eject hook | §3 reactive eject: creates **and modifies** refused with an access-control code on `400`, **cancels still flow**, **resting** orders swept while **armed SL/TP are retained**, cancelAllAfter **arm refused / disarm open** (option (b)), un-eject restores trading; plus, with `RL_TEST_EJECT_ONLY_CMD`, an eject that does **not** de-whitelist, isolating the ME's own `ACCOUNT_SUSPENDED_ERROR` verdict |
 | `test_ws_exec_parity.py` | opt-in + `REYA_WS_EXEC_URL` | §8 ws-exec envelope parity for `NOT_WHITELISTED_ERROR`, `RATE_LIMITED_ERROR`, `OPEN_ORDER_COUNT_EXCEEDED_ERROR` and `ACCOUNT_SUSPENDED_ERROR` |
 | `test_ws_msg_rate_cap.py` | opt-in + `REYA_WS_EXEC_URL` | §7 per-connection inbound message-rate cap on the ORDER-ENTRY socket: close code **4029**, its reason, in-flight requests surfaced as **indeterminate**, reconnect works, and the close does **not** fire cancel-on-disconnect (`-m cod`: a countdown armed over the killed connection leaves the book intact and is refreshable over the new one) |
 | `test_md_ws_msg_rate_cap.py` | opt-in + `REYA_WS_URL` + `RL_TEST_MD_WS_INBOUND_MSG_BURST` | The same cap on the READ side (market-data socket, P14): **4029** with the same reason grammar, and reconnect-after-the-hint works. A separate process with its own sizing knob — flooding one surface proves nothing about the other |
@@ -44,6 +44,46 @@ offline` selection). That job is what keeps the regeneration-proofing honest —
 those helpers exist to survive an SDK regeneration, and nothing would notice
 them breaking if a human had to remember to run them.
 
+## The status contract: every venue verdict is a 400
+
+There is exactly one HTTP status for a venue verdict on an order-entry request,
+and it is **400**. Throttling (`RATE_LIMITED_ERROR`), the account's
+resting-order caps (`OPEN_ORDER_COUNT_EXCEEDED_ERROR`,
+`OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`), load shedding (`CAPACITY_LIMITED_ERROR`),
+the access decisions (`NOT_WHITELISTED_ERROR`, `ACCOUNT_SUSPENDED_ERROR`), the
+retry-unchanged pair (`UNAVAILABLE_MATCHING_ENGINE_ERROR`,
+`UNAVAILABLE_ACCOUNT_OWNER_ERROR`) and plain input validation all arrive on it.
+The status says only *the venue refused*; the body's `error` code says why, and
+it is the code — never the status — that a client branches on.
+
+| Where a client reads it | Field |
+| --- | --- |
+| what happened | `error` (a `RequestErrorCode`) in the body |
+| how long to wait, where a wait helps | `retryAfterMs` (integer ms) in the body |
+| how long to wait, everywhere else | *absent* — nothing to wait for |
+
+Two consequences the suite pins:
+
+* **there is no `Retry-After` header.** The hint is a body field, identical on
+  REST and on the order-entry WebSocket envelope, so the two transports carry
+  the same code and the same number. `rl_errors` reads the header only to assert
+  it is ABSENT — a deployment that grew one would be advertising a second,
+  unspecified hint;
+* **429 is infrastructure, never a venue verdict.** It is reserved for per-IP
+  limits sitting in front of the API, so it never carries a `RequestErrorCode`
+  and never means an account-level decision. `assert_venue_verdict` fails on it,
+  and `test_a_429_is_infrastructure_and_never_a_venue_verdict` proves that
+  refusal is real rather than assumed. The same separation is why
+  `tests/helpers/reya_tester/retry.py` (which retries 502/503/504) and the
+  root conftest's WAF-403 delay are untouched by this contract: those are
+  infrastructure, not the venue.
+
+Retry policy is therefore keyed on the code, and `rl_config.retry_policy()`
+encodes it: retry after `retryAfterMs` for `RATE_LIMITED_ERROR`, back off and
+retry after it for `CAPACITY_LIMITED_ERROR`, retry unchanged after a short delay
+for the `UNAVAILABLE_*` pair (the request was never evaluated), and do not
+auto-retry the caps or the access decisions at all.
+
 ## Gate scope (design ruling, 2026-07-31)
 
 The whitelist gate covers **create and modify only**. Cancel, cancelAll and
@@ -62,7 +102,7 @@ which both layers ship:
 
 | cancelAllAfter on an ejected account | Verdict |
 | --- | --- |
-| **arm / refresh** (`timeoutMs > 0`) | refused **403 `ACCOUNT_SUSPENDED_ERROR`** |
+| **arm / refresh** (`timeoutMs > 0`) | refused **`ACCOUNT_SUSPENDED_ERROR`** (on the venue's `400`) |
 | **disarm** (`timeoutMs = 0`) | always allowed |
 
 The reasoning: an ejected account's book is being swept flat every tick anyway,
@@ -79,25 +119,27 @@ edge's whitelist verdict normally wins the race and answers
 nothing else can answer there. With `RL_TEST_EJECT_ONLY_CMD` wired the create
 path becomes attributable too — see *ME-verdict isolation* below.
 
-**The published API description now matches this** (verified against
-`reya-api-specs` @ `feat/rate-limits-v1-specs` 972e834, spec version 3.0.25,
-2026-08-10 — "ratify COD option (b)"). `POST /v2/cancelAllAfter` declares `403`
-(and `429`) and its description states that arming or refreshing from a
-suspended account is refused `403 ACCOUNT_SUSPENDED_ERROR` while disarming never
-is; the three AsyncAPI passages promising that a suspended account could still
-arm were retracted in the same commit. The spec also states the complementary
-rule this suite pins in `test_whitelist_gate.py`: *"Mere removal from the
-allowlist does not gate it: a removed wallet whose account is not suspended may
-still arm, refresh and disarm."*
+**The published API description matches this** (verified against
+`reya-api-specs` @ `feat/rate-limits-v1-specs` d1c4fb5). `POST /v2/cancelAllAfter`
+states that arming or refreshing from a suspended account is refused
+`ACCOUNT_SUSPENDED_ERROR` while disarming never is; the AsyncAPI passages
+promising that a suspended account could still arm were retracted earlier on the
+same branch. The spec also states the complementary rule this suite pins in
+`test_whitelist_gate.py`: *"Mere removal from the allowlist does not gate it: a
+removed wallet whose account is not suspended may still arm, refresh and
+disarm."*
 
-The SDK's own pinned `specs/` submodule is older than that (3.0.18), which is
-why the generated `RequestErrorCode` still lacks five of the six v1 codes — see
+The SDK's own pinned `specs/` submodule is older (3.3.0), which is why the
+generated `RequestErrorCode` still lacks six of the seven v1 codes — see
 § Findings. That is a submodule bump, not a spec gap.
 
 The suite encodes this asymmetry directly — `assert_not_whitelist_gated`
-(`rl_actions.py`) accepts any outcome for a risk-off op *except* a gate verdict
-(`NOT_WHITELISTED_ERROR`, or any 403-class status), so it stays valid whether
-the deployment answers with a success or an order-not-found-class error.
+(`rl_actions.py`) accepts any outcome for a risk-off op *except* an access
+decision (`NOT_WHITELISTED_ERROR` / `ACCOUNT_SUSPENDED_ERROR`) or a capacity
+shed (`CAPACITY_LIMITED_ERROR`), so it stays valid whether the deployment
+answers with a success or an order-not-found-class error. The check is on the
+**code alone**: every venue verdict shares HTTP 400, so a status can no longer
+tell an access decision from an order-not-found.
 
 ## Eject sweep scope (design ruling, 2026-08)
 
@@ -156,9 +198,9 @@ de-whitelisted owner keeps its stops. The gate blocks create and modify, so it
 cannot arm a NEW stop while gated — the ones already armed simply stay.
 
 The remaining risk-off carve-out is unchanged — `assert_not_whitelist_gated`
-(`rl_actions.py`) accepts any outcome for a risk-off op *except* a gate verdict
-(`NOT_WHITELISTED_ERROR`, or any 403-class status), so it stays valid whether
-the deployment answers with a success or an order-not-found-class error.
+(`rl_actions.py`) accepts any outcome for a risk-off op *except* an access
+decision or a capacity shed, so it stays valid whether the deployment answers
+with a success or an order-not-found-class error.
 
 ### A real COD arm for a de-whitelisted wallet (no longer deferred)
 
@@ -187,8 +229,8 @@ requires the countdown to empty the book regardless. A rate-limited fire is a
 dead-man's switch that silently did not pull.
 
 The *ejected* arm was never deferred: `test_eject_flow.py` asserts it is refused
-`403 ACCOUNT_SUSPENDED_ERROR`, which needs no sacrificial book precisely because
-the arm never takes effect.
+`ACCOUNT_SUSPENDED_ERROR`, which needs no sacrificial book precisely because the
+arm never takes effect.
 
 ### ME-verdict isolation (`RL_TEST_EJECT_ONLY_CMD`)
 
@@ -239,7 +281,7 @@ a wallet-scoped post-check.
 | `RL_TEST_TRIGGER_ACCOUNT_ID` | *(none)* | The **perp** account that arms protective stops (eject retention + the count-cap trigger exemption). No fallback: inheriting the spot Standard identity is what let the retention probe arm against a mis-wired account and still go green. Must be owned by the **same wallet** as the Standard account, since the eject hook ejects by owner wallet |
 | `RL_TEST_TRIGGER_PRIVATE_KEY` | *(none)* | its signing key |
 | `RL_TEST_TRIGGER_WALLET_ADDRESS` | *(none)* | its owner wallet |
-| `RL_TEST_UNKNOWN_ACCOUNT_ID` | `999999999` | An `accountId` that resolves to **no owner**, for the §3 `unknown_owner → 403 NOT_WHITELISTED` row. Point it at an id the deployment has definitely never issued; it is signed with the non-whitelisted key so a wrong value can never be a whitelisted wallet's account |
+| `RL_TEST_UNKNOWN_ACCOUNT_ID` | `999999999` | An `accountId` that resolves to **no owner**, for the §3 `unknown_owner → NOT_WHITELISTED` row. Point it at an id the deployment has definitely never issued; it is signed with the non-whitelisted key so a wrong value can never be a whitelisted wallet's account |
 
 The account under test must **not** be in `rl_market_makers`, or the MM tier's
 much larger limits will make the burst tests time out on their attempt bound.
@@ -305,13 +347,14 @@ cap** in free RUSD, so the reject under test is the cap and not
 knob down) is on the localnet wiring checklist.
 
 **Cap error codes.** The ME caps emit only the new codes
-(`OPEN_ORDER_COUNT_EXCEEDED_ERROR` / `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`); the
-legacy `OPEN_ORDER_CAP_ERROR` is **replaced, not aliased**. During the
-transition the legacy API-side cap still exists and still emits the legacy code
-until its P17 removal, so a run against an environment where the legacy cap is
-tighter than the ME's could surface `OPEN_ORDER_CAP_ERROR` first. These tests
-target the ME caps (Standard-tier account, ME enforcing); if the legacy code
-shows up, the legacy cap is biting first and needs raising on that environment.
+(`OPEN_ORDER_COUNT_EXCEEDED_ERROR` / `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`), and
+neither carries a `retryAfterMs`: no wait frees a slot, so the remedy is to
+cancel or let orders fill. The legacy `OPEN_ORDER_CAP_ERROR` was the old
+API-layer limiter's single open-order-cap code; that limiter and the code have
+both been **removed from the enum**, so these two are now the only open-order-cap
+rejections. The pinned SDK still carries the dead member until the next
+regeneration — `tests/validation/test_generated_models.py` pins it against the
+generated enum, so it comes out with the same bump.
 
 ### Timing and robustness
 
@@ -322,8 +365,8 @@ shows up, the legacy cap is biting first and needs raising on that environment.
 | `RL_TEST_MAX_BURST_ATTEMPTS` | `200` | Hard ceiling on burst loops so a misconfigured deployment can't spin |
 | `RL_TEST_BUCKET_RECOVERY_S` | `burst x 60/rate x 1.5`, clamped to `[1, 30]` | Slept after every live test so a drained place bucket cannot poison the next one |
 | `RL_TEST_PLACE_PACE_S` | `60/rate x 1.25` | Gap between paced creates, so a cap test reaches the cap without tripping the rate bucket |
-| `RL_TEST_RETRY_AFTER_MAX_S` | `60` | Upper plausibility bound for `Retry-After` / `retryAfterMs` |
-| `RL_TEST_RETRY_AFTER_SLACK_S` | `1` | Extra sleep added on top of `Retry-After` before asserting recovery |
+| `RL_TEST_RETRY_AFTER_MAX_S` | `60` | Upper plausibility bound for the body's `retryAfterMs` hint |
+| `RL_TEST_RETRY_AFTER_SLACK_S` | `1` | Extra sleep added on top of `retryAfterMs` before asserting recovery |
 | `RL_TEST_SETTLE_TIMEOUT_S` | `30` | Budget for `openOrders` to reflect a placement or a cancel |
 
 ### Eject hook (cross-repo)
@@ -360,25 +403,25 @@ leave the account ejected.
 
 These are generated files, so the fix belongs in the spec.
 
-1. **`ApiException.data` is `None` for 429 / 503 / 403.** The generated
-   `_response_types_map` on the order-entry endpoints lists only
-   `200` / `400` / `500`, so the new statuses are never deserialized. Nothing is
-   lost — `ApiException.body` still holds the raw JSON and `ApiException.headers`
-   still holds `Retry-After` — but callers must parse the body themselves.
-   *Fix:* document `403` / `429` / `503` → `RequestError` on the order-entry
-   endpoints in the spec, then regenerate.
-2. **`RequestErrorCode` predates the v1 codes.** Five of the six are absent —
+1. **`RequestErrorCode` predates the v1 codes.** Six of the seven are absent —
    `NOT_WHITELISTED_ERROR`, `ACCOUNT_SUSPENDED_ERROR`, `CAPACITY_LIMITED_ERROR`,
-   `OPEN_ORDER_COUNT_EXCEEDED_ERROR` and `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR`;
-   only `RATE_LIMITED_ERROR` is known — so typed parsing of such a body raises.
-   `test_the_generated_enum_is_missing_exactly_the_five_documented_codes` pins
-   the exact set, so a partial regeneration is caught. Fixed by regeneration.
-3. **`RequestError` has no `retryAfterMs` field.** The value survives in the
-   model's `additional_properties` bag, so nothing is dropped, but there is no
-   typed accessor. Fixed by regeneration.
+   `OPEN_ORDER_COUNT_EXCEEDED_ERROR`, `OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR` and
+   `UNAVAILABLE_ACCOUNT_OWNER_ERROR`; only `RATE_LIMITED_ERROR` is known. The
+   enum is open-vocabulary, so typed parsing does not raise — it widens the code
+   to `UNKNOWN`, which is worse, because `400` **is** in the generated
+   `_response_types_map` and `ApiException.data` is therefore a typed
+   `RequestError` a helper would otherwise prefer. `rl_errors` skips a typed
+   payload whose code widened while the raw body still names it; that guard is
+   what makes these codes readable at all before regeneration.
+   `test_the_generated_enum_is_missing_exactly_the_six_documented_codes` pins the
+   exact set, so a partial regeneration is caught.
+2. **`RequestError` has no `retryAfterMs` field.** The value survives in the
+   model's `additional_properties` bag (and `to_dict` puts it back at the top
+   level), so nothing is dropped, but there is no typed accessor. Fixed by
+   regeneration.
 
 `tests/rate_limits/rl_errors.py` is written to work identically before and
-after (1)-(3); it carries a `TODO(post-regen)` marking the tightening.
+after (1)-(2); it carries a `TODO(post-regen)` marking the tightening.
 
 ### Fixed in the hand-written ws-exec client
 

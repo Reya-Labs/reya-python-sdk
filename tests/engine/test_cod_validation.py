@@ -59,8 +59,9 @@ async def _cancel_all_after_paced(tester: ReyaTester, request: CancelAllAfterReq
     """Send a raw cancelAllAfter, honouring RATE_LIMITED_ERROR retry hints.
 
     Admission precedes validation, so under cod-control pressure either branch
-    of a validation probe can see a 429 first; a rate-limited reject is a
-    non-event (no nonce burn), so resending the same signed payload is safe.
+    of a validation probe can see a RATE_LIMITED_ERROR first; a rate-limited
+    reject is a non-event (no nonce burn), so resending the same signed payload
+    is safe.
     """
     last_exc: ApiException | None = None
     for _ in range(attempts):

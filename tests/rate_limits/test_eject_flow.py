@@ -4,12 +4,13 @@ One DB transaction removes the wallet from ``rl_whitelist`` and inserts its
 accounts into ``rl_ejected_accounts``; from there the system converges with
 nothing sent by anyone. The five observable consequences:
 
-1. new **creates and modifies** are rejected 403-class — ``NOT_WHITELISTED_ERROR``
-   from the edge or ``ACCOUNT_SUSPENDED_ERROR`` from the ME admission check,
-   depending on which poll tick lands first. Either is correct; the test
-   records which one the deployment actually produced. Modify is refused
-   alongside create because both are risk-INCREASING: a qty-up or a reprice
-   grows exposure just as a new order does;
+1. new **creates and modifies** are refused — ``NOT_WHITELISTED_ERROR`` from
+   the edge or ``ACCOUNT_SUSPENDED_ERROR`` from the ME admission check,
+   depending on which poll tick lands first, both on the venue's HTTP 400 and
+   both carrying no retry hint. Either code is correct; the test records which
+   one the deployment actually produced. Modify is refused alongside create
+   because both are risk-INCREASING: a qty-up or a reprice grows exposure just
+   as a new order does;
 2. **cancels still flow.** The whitelist gate covers create + modify only, and
    the ME's ejected-account check likewise refuses those two, not cancels — so
    an ejected owner can still unwind while the sweep runs. This is asserted
@@ -22,7 +23,7 @@ nothing sent by anyone. The five observable consequences:
    would leave it unprotected in exactly the situation the eject was meant to
    de-risk. The sweep is therefore "no resting liquidity", not "empty book";
 4. the dead-man's switch **splits**: an ARM or REFRESH (``timeoutMs > 0``) is
-   refused ``403 ACCOUNT_SUSPENDED_ERROR`` while a DISARM (``timeoutMs = 0``)
+   refused ``ACCOUNT_SUSPENDED_ERROR`` while a DISARM (``timeoutMs = 0``)
    always succeeds. That is design option (b), which both layers ship. The arm
    leg is also the only place in the suite that pins ``ACCOUNT_SUSPENDED_ERROR``
    on a live run: cancelAllAfter is not whitelist-gated, so the edge's
@@ -36,9 +37,9 @@ README). The test skips cleanly when they are unset.
 
 A second test uses the optional ``RL_TEST_EJECT_ONLY_CMD``, which ejects while
 LEAVING the whitelist row in place. That is the only configuration in which the
-create path attributes its refusal: with the default hook either 403 code is
-correct, so an ME whose ejected-set check did nothing would still pass the flow
-above on the edge's whitelist verdict alone.
+create path attributes its refusal: with the default hook either access-control
+code is correct, so an ME whose ejected-set check did nothing would still pass
+the flow above on the edge's whitelist verdict alone.
 
 Convergence is observed by polling ``openOrders``; the equivalent signal on the
 ``walletOrderChanges`` WebSocket stream is a stream of cancels for the same
@@ -73,13 +74,18 @@ from tests.rate_limits.rl_actions import (
 from tests.rate_limits.rl_config import (
     ACCOUNT_SUSPENDED_ERROR,
     EJECT_REJECT_CODES,
-    HTTP_FORBIDDEN,
     NOT_WHITELISTED_ERROR,
     RateLimitSuiteConfig,
     requires_rate_limits,
     trigger_credentials_env_hint,
 )
-from tests.rate_limits.rl_errors import RestReject, assert_no_retry_after, capture_rest_reject, rest_reject
+from tests.rate_limits.rl_errors import (
+    RestReject,
+    assert_no_retry_hint,
+    assert_venue_verdict,
+    capture_rest_reject,
+    rest_reject,
+)
 
 logger = logging.getLogger("reya.rate_limits")
 
@@ -109,8 +115,8 @@ def _assert_eject_reject(reject: RestReject, label: str) -> None:
     assert (
         reject.code in EJECT_REJECT_CODES
     ), f"[{label}] must be rejected with one of {EJECT_REJECT_CODES}; got {reject.describe()}"
-    assert reject.status == HTTP_FORBIDDEN, f"[{label}] eject rejects are 403-class; got {reject.describe()}"
-    assert_no_retry_after(reject, label)
+    assert_venue_verdict(reject, label)
+    assert_no_retry_hint(reject, label)
 
 
 def _poll_interval(config: RateLimitSuiteConfig) -> float:
@@ -248,8 +254,8 @@ async def _assert_cancel_all_after_split(client: ReyaTradingClient, account_id: 
         f"an ejected account's cancelAllAfter arm must be refused {ACCOUNT_SUSPENDED_ERROR} (design option (b), "
         f"shipped on both layers); got {arm_reject.describe()}"
     )
-    assert arm_reject.status == HTTP_FORBIDDEN, f"the arm refusal is 403-class; got {arm_reject.describe()}"
-    assert_no_retry_after(arm_reject, "ejected-account cancelAllAfter arm")
+    assert_venue_verdict(arm_reject, "ejected-account cancelAllAfter arm")
+    assert_no_retry_hint(arm_reject, "ejected-account cancelAllAfter arm")
 
     # Disarm stays open under both options: a blocked disarm would let a
     # false-positive countdown flatten a book the operator is already unwinding.
@@ -408,8 +414,8 @@ async def test_eject_without_de_whitelisting_pins_the_matching_engines_own_verdi
             f"{NOT_WHITELISTED_ERROR} here means RL_TEST_EJECT_ONLY_CMD removed the whitelist row after all, "
             "and this test proves nothing about the ME"
         )
-        assert reject.status == HTTP_FORBIDDEN, f"eject rejects are 403-class; got {reject.describe()}"
-        assert_no_retry_after(reject, "eject-only create")
+        assert_venue_verdict(reject, "eject-only create")
+        assert_no_retry_hint(reject, "eject-only create")
     finally:
         rl_eject_only_hook.uneject(wallet=wallet, account_id=account_id)
 

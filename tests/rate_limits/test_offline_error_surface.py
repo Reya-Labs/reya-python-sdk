@@ -3,27 +3,27 @@
 No network, no deployment — these run everywhere (``pytest -m offline``) and
 pin the client-side contract the live modules depend on:
 
-* a 429 / 503 / 403 response must reach the caller as an ``ApiException``
-  carrying the HTTP status, the response HEADERS (so ``Retry-After`` is
-  readable), and the raw JSON body (so the error code and ``retryAfterMs``
-  are readable);
+* **every venue verdict is an HTTP 400.** Throttling, the open-order caps, load
+  shedding and the access decisions all share that status, so the status says
+  only "the venue refused" and the body's ``error`` code says why. The retry
+  strategy is keyed on the code, and the wait — where a wait helps — is the
+  body's ``retryAfterMs``. Nothing here reads a ``Retry-After`` header, and a
+  429 is infrastructure (per-IP) and never an account-level verdict;
 * extraction must work whether or not the generated models know the code —
   the Rate-Limit v1 spec is not tagged yet, so the SDK is regenerated later.
 
 Findings pinned here (see tests/rate_limits/README.md § Findings):
 
-1. The generated ``_response_types_map`` for the order-entry endpoints lists
-   only ``200`` / ``400`` / ``500``. A 429 / 503 / 403 is therefore never
-   deserialized and ``ApiException.data`` is ``None`` — the payload survives
-   ONLY on ``ApiException.body``. Nothing is lost (headers and body are both
-   intact), so this is a spec gap, not an SDK bug: no client hacking here.
-2. ``RequestErrorCode`` predates the v1 codes and is open-vocabulary, so typed
-   parsing of e.g. ``NOT_WHITELISTED_ERROR`` does not raise — it widens the
-   code to ``UNKNOWN``. The raw body is therefore the only faithful source for
-   the code, whatever the response map says. ``RequestError`` also has no
-   ``retryAfterMs`` field, though its ``additional_properties`` bag preserves
-   the value. Both are fixed by regeneration, and the helpers under test here
-   are written to work identically before and after.
+1. ``RequestErrorCode`` predates most of the v1 codes and is open-vocabulary, so
+   typed parsing of e.g. ``NOT_WHITELISTED_ERROR`` does not raise — it widens
+   the code to ``UNKNOWN``. Since 400 IS in the generated response map,
+   ``ApiException.data`` is a typed ``RequestError`` that a helper would
+   otherwise prefer, so the widening guard in ``rl_errors`` is what keeps the
+   raw body as the faithful source for the code.
+2. ``RequestError`` has no ``retryAfterMs`` field, though its
+   ``additional_properties`` bag preserves the value. Both gaps are fixed by
+   regeneration, and the helpers under test here are written to work
+   identically before and after.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name
 
 from sdk.open_api.api_client import ApiClient
 from sdk.open_api.configuration import Configuration
-from sdk.open_api.exceptions import ApiException, ForbiddenException, ServiceException
+from sdk.open_api.exceptions import ApiException, BadRequestException
 from sdk.open_api.models.request_error import RequestError
 from sdk.open_api.models.request_error_code import RequestErrorCode
 from sdk.reya_ws_exec import (
@@ -58,19 +58,23 @@ from sdk.reya_ws_exec.client import _parse_close_payload
 from tests.rate_limits.rl_config import (
     ACCOUNT_SUSPENDED_ERROR,
     CAPACITY_LIMITED_ERROR,
-    HTTP_CAPACITY_LIMITED,
-    HTTP_FORBIDDEN,
-    HTTP_RATE_LIMITED,
+    HTTP_INFRASTRUCTURE_RATE_LIMITED,
+    HTTP_VENUE_VERDICT,
     NOT_WHITELISTED_ERROR,
     OPEN_ORDER_COUNT_EXCEEDED_ERROR,
     OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
     RATE_LIMITED_ERROR,
+    UNAVAILABLE_ACCOUNT_OWNER_ERROR,
+    UNAVAILABLE_MATCHING_ENGINE_ERROR,
+    RetryPolicy,
+    retry_policy,
 )
 from tests.rate_limits.rl_errors import (
     UNKNOWN_ENUM_MEMBER,
     assert_msg_rate_close_reason,
-    assert_no_retry_after,
+    assert_no_retry_hint,
     assert_retry_after_plausible,
+    assert_venue_verdict,
     msg_rate_retry_after_s,
     rest_reject,
     ws_reject,
@@ -78,25 +82,33 @@ from tests.rate_limits.rl_errors import (
 
 pytestmark = [pytest.mark.offline, pytest.mark.rate_limits]
 
-#: The map the generated order-entry endpoints pass today.
-CURRENT_RESPONSE_TYPES_MAP = {"200": "CreateOrderResponse", "400": "RequestError", "500": "ServerError"}
+#: The map the generated order-entry endpoints pass. It has always listed
+#: exactly these three, which is why a 400-only verdict contract needs no
+#: regeneration to be deserializable: the venue's own statuses are already in it
+#: and a 429 (infrastructure, per-IP) deliberately is not.
+ORDER_ENTRY_RESPONSE_TYPES_MAP = {"200": "CreateOrderResponse", "400": "RequestError", "500": "ServerError"}
 
-#: What the map becomes once the Rate-Limit v1 spec documents the new statuses.
-#: Both must produce the same ``RestReject``, which is what makes the live
-#: modules regeneration-proof.
-POST_REGEN_RESPONSE_TYPES_MAP = {
-    **CURRENT_RESPONSE_TYPES_MAP,
-    "403": "RequestError",
-    "429": "RequestError",
-    "503": "RequestError",
-}
+#: Every Rate-Limit v1 code, with the retry strategy the enum's description
+#: assigns it. The codes are what a client branches on; the status never is.
+V1_CODES = (
+    RATE_LIMITED_ERROR,
+    OPEN_ORDER_COUNT_EXCEEDED_ERROR,
+    OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
+    CAPACITY_LIMITED_ERROR,
+    ACCOUNT_SUSPENDED_ERROR,
+    NOT_WHITELISTED_ERROR,
+    UNAVAILABLE_ACCOUNT_OWNER_ERROR,
+)
 
-RESPONSE_MAPS = pytest.mark.parametrize(
-    "response_types_map",
-    [
-        pytest.param(CURRENT_RESPONSE_TYPES_MAP, id="current-spec"),
-        pytest.param(POST_REGEN_RESPONSE_TYPES_MAP, id="post-regen-spec"),
-    ],
+#: The codes that carry no ``retryAfterMs``: no wait clears a cap or an access
+#: decision, and a request that was never evaluated is retried unchanged.
+NO_HINT_CODES = (
+    OPEN_ORDER_COUNT_EXCEEDED_ERROR,
+    OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
+    ACCOUNT_SUSPENDED_ERROR,
+    NOT_WHITELISTED_ERROR,
+    UNAVAILABLE_ACCOUNT_OWNER_ERROR,
+    UNAVAILABLE_MATCHING_ENGINE_ERROR,
 )
 
 
@@ -131,123 +143,157 @@ def _raise_through_sdk(
     with pytest.raises(ApiException) as excinfo:
         api_client.response_deserialize(
             response_data=response,  # type: ignore[arg-type]
-            response_types_map=response_types_map or CURRENT_RESPONSE_TYPES_MAP,
+            response_types_map=response_types_map or ORDER_ENTRY_RESPONSE_TYPES_MAP,
         )
     return excinfo.value
 
 
-@RESPONSE_MAPS
-def test_rate_limited_429_exposes_status_headers_and_code(response_types_map: dict[str, str]) -> None:
-    """429 → status + Retry-After header + RATE_LIMITED_ERROR.
+def test_rate_limited_is_a_400_carrying_the_code_and_the_hint_on_the_body() -> None:
+    """RATE_LIMITED_ERROR → 400 + ``error`` + ``retryAfterMs``, no header.
 
-    The body is the REAL edge body: ``{error, message}``. On REST the backoff
-    hint travels in the ``Retry-After`` header ONLY — ``retryAfterMs`` is the
-    ws-exec envelope's field — so the header is what the live modules may
-    assert and the body's hint must read as absent here.
+    This is the shape the whole contract turns on: the status is the same 400 an
+    input-validation failure gets, so a client that branched on it would learn
+    nothing, and the exact wait it must honour is a body field rather than a
+    ``Retry-After`` header the venue never sends.
     """
     exc = _raise_through_sdk(
-        HTTP_RATE_LIMITED,
-        {"error": RATE_LIMITED_ERROR, "message": "too many creates"},
-        headers={"Retry-After": "3"},
-        response_types_map=response_types_map,
+        HTTP_VENUE_VERDICT,
+        {"error": RATE_LIMITED_ERROR, "message": "too many creates", "retryAfterMs": 3000},
     )
 
+    assert isinstance(exc, BadRequestException)
     reject = rest_reject(exc)
-    assert reject.status == HTTP_RATE_LIMITED
+    assert_venue_verdict(reject, "offline rate limited")
     assert reject.code == RATE_LIMITED_ERROR
     assert reject.message == "too many creates"
-    assert reject.retry_after_ms is None
-    assert assert_retry_after_plausible(reject, 60.0, "offline 429") == 3.0
+    assert reject.retry_after_header is None
+    assert reject.retry_after_ms == 3000
+    assert assert_retry_after_plausible(reject, 60.0, "offline rate limited") == 3.0
+    assert retry_policy(reject.code) is RetryPolicy.AFTER_HINT
 
 
-def test_rest_body_retry_after_ms_is_a_defensive_fallback_not_a_contract() -> None:
-    """Document the body read: it works, but no REST contract produces it.
+def test_capacity_limited_is_a_400_that_asks_for_a_back_off() -> None:
+    """CAPACITY_LIMITED_ERROR is a venue verdict, NOT a 5xx.
 
-    The edge builds its error body as ``{error, message}`` and puts the hint in
-    ``Retry-After``. ``rest_reject`` still reads ``retryAfterMs`` off the body so
-    a deployment that starts echoing the ws-exec field is not silently ignored —
-    but this is the ONLY place that behaviour is exercised, deliberately, so no
-    live REST assertion can come to depend on it.
+    Load shedding used to arrive as a 503, which a generic client treats as an
+    outage and a generic retry helper treats as transient infrastructure (see
+    ``tests/helpers/reya_tester/retry.py``, which retries 502/503/504). On 400 it
+    reaches the caller as a decision with a code and a hint, and the back-off is
+    the client's to honour rather than a server-error retry loop's.
     """
     exc = _raise_through_sdk(
-        HTTP_RATE_LIMITED,
-        {"error": RATE_LIMITED_ERROR, "message": "synthetic body", "retryAfterMs": 2500},
-        headers={"Retry-After": "3"},
-    )
-    assert rest_reject(exc).retry_after_ms == 2500
-
-
-@RESPONSE_MAPS
-def test_capacity_limited_503_is_a_service_exception(response_types_map: dict[str, str]) -> None:
-    """503 → ServiceException; Retry-After is OPTIONAL on the capacity path."""
-    exc = _raise_through_sdk(
-        HTTP_CAPACITY_LIMITED,
-        {"error": CAPACITY_LIMITED_ERROR, "message": "engine at high watermark"},
-        response_types_map=response_types_map,
+        HTTP_VENUE_VERDICT,
+        {"error": CAPACITY_LIMITED_ERROR, "message": "engine at high watermark", "retryAfterMs": 250},
     )
 
-    assert isinstance(exc, ServiceException)
+    assert isinstance(exc, BadRequestException)
     reject = rest_reject(exc)
-    assert reject.status == HTTP_CAPACITY_LIMITED
+    assert_venue_verdict(reject, "offline capacity limited")
     assert reject.code == CAPACITY_LIMITED_ERROR
-    assert reject.retry_after_header is None
-    assert reject.retry_after_s is None
+    assert reject.retry_after_ms == 250
+    assert retry_policy(reject.code) is RetryPolicy.BACK_OFF
 
 
-@RESPONSE_MAPS
-def test_not_whitelisted_403_is_a_forbidden_exception(response_types_map: dict[str, str]) -> None:
-    """403 → ForbiddenException, so callers can branch on the class alone."""
+@pytest.mark.parametrize("code", [NOT_WHITELISTED_ERROR, ACCOUNT_SUSPENDED_ERROR])
+def test_access_decisions_are_400s_with_no_hint(code: str) -> None:
+    """An access decision answers "not you", never "not yet".
+
+    There is no wait that clears a whitelist or a suspension, so the rejection
+    must advertise none — a hint would invite a client to retry-loop against a
+    decision that will not change.
+    """
+    exc = _raise_through_sdk(HTTP_VENUE_VERDICT, {"error": code, "message": "no"})
+
+    reject = rest_reject(exc)
+    assert_venue_verdict(reject, f"offline {code}")
+    assert reject.code == code
+    assert_no_retry_hint(reject, f"offline {code}")
+    assert retry_policy(reject.code) is RetryPolicy.NOT_RETRYABLE
+
+
+@pytest.mark.parametrize("code", [OPEN_ORDER_COUNT_EXCEEDED_ERROR, OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR])
+def test_the_open_order_caps_are_400s_with_no_hint(code: str) -> None:
+    """A cap is a standing state, not a burst: waiting cannot clear it.
+
+    Both caps clear only when resting orders are cancelled or filled, so neither
+    carries ``retryAfterMs`` on either transport — the remedy is to free
+    capacity, and a backoff hint would name a wait that resolves nothing.
+    """
+    exc = _raise_through_sdk(HTTP_VENUE_VERDICT, {"error": code, "message": "cap reached"})
+
+    reject = rest_reject(exc)
+    assert_venue_verdict(reject, f"offline {code}")
+    assert reject.code == code
+    assert_no_retry_hint(reject, f"offline {code}")
+    assert retry_policy(reject.code) is RetryPolicy.NOT_RETRYABLE
+
+
+@pytest.mark.parametrize("code", [UNAVAILABLE_MATCHING_ENGINE_ERROR, UNAVAILABLE_ACCOUNT_OWNER_ERROR])
+def test_the_retry_unchanged_family_survives_the_widening_guard(code: str) -> None:
+    """A request that was never evaluated: retry it unchanged, after a short delay.
+
+    ``UNAVAILABLE_ACCOUNT_OWNER_ERROR`` is the newer member — the venue's edge
+    could not resolve the account's owner, so the allowlist gate never ran and
+    nothing about the request reached a verdict. It is deliberately NOT
+    ``CAPACITY_LIMITED_ERROR``: a shed asks for a back-off, while a lookup
+    failure asks for an immediate retry where a different outcome is likely.
+    The two are parametrized together because the pinned enum knows one of them
+    and not the other, and both must extract identically — the widening guard is
+    the only thing that makes that true.
+    """
+    exc = _raise_through_sdk(HTTP_VENUE_VERDICT, {"error": code, "message": "not evaluated"})
+
+    reject = rest_reject(exc)
+    assert_venue_verdict(reject, f"offline {code}")
+    assert reject.code == code, "the raw body's code must survive an enum that widened it to UNKNOWN"
+    assert_no_retry_hint(reject, f"offline {code}")
+    assert retry_policy(reject.code) is RetryPolicy.UNCHANGED
+    assert retry_policy(CAPACITY_LIMITED_ERROR) is not RetryPolicy.UNCHANGED
+
+
+def test_the_new_account_owner_code_is_widened_by_the_pinned_enum() -> None:
+    """The widening guard is load-bearing here, not incidental.
+
+    ``UNAVAILABLE_ACCOUNT_OWNER_ERROR`` post-dates the pinned spec, so typed
+    parsing resolves it to ``UNKNOWN`` and a helper that trusted
+    ``ApiException.data`` would report the sentinel. Pinned in both directions
+    so regeneration flips it rather than breaking it.
+    """
     exc = _raise_through_sdk(
-        HTTP_FORBIDDEN,
-        {"error": NOT_WHITELISTED_ERROR, "message": "wallet is not whitelisted"},
-        response_types_map=response_types_map,
+        HTTP_VENUE_VERDICT,
+        {"error": UNAVAILABLE_ACCOUNT_OWNER_ERROR, "message": "owner lookup failed"},
     )
 
-    assert isinstance(exc, ForbiddenException)
-    reject = rest_reject(exc)
-    assert reject.status == HTTP_FORBIDDEN
-    assert reject.code == NOT_WHITELISTED_ERROR
+    typed = exc.data
+    assert typed is not None, "400 is in the response map, so the SDK does hand back a typed RequestError"
+    if UNAVAILABLE_ACCOUNT_OWNER_ERROR in {member.value for member in RequestErrorCode}:
+        assert typed.error.value == UNAVAILABLE_ACCOUNT_OWNER_ERROR
+    else:
+        assert typed.error.value == UNKNOWN_ENUM_MEMBER
+    assert rest_reject(exc).code == UNAVAILABLE_ACCOUNT_OWNER_ERROR
 
 
-@pytest.mark.parametrize(
-    "code",
-    [
-        RATE_LIMITED_ERROR,
-        OPEN_ORDER_COUNT_EXCEEDED_ERROR,
-        OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
-        CAPACITY_LIMITED_ERROR,
-        ACCOUNT_SUSPENDED_ERROR,
-        NOT_WHITELISTED_ERROR,
-    ],
-)
+@pytest.mark.parametrize("code", V1_CODES)
 def test_every_v1_code_extracts_without_the_generated_enum(code: str) -> None:
-    """All six v1 codes extract from the raw payload, enum coverage or not.
+    """Every v1 code extracts from the raw payload, enum coverage or not.
 
-    FIVE of the six are missing from ``RequestErrorCode`` today — only
+    Six of the seven are missing from ``RequestErrorCode`` today — only
     ``RATE_LIMITED_ERROR`` is present — which is what makes the live modules
     safe to write before the spec is tagged.
     """
-    exc = _raise_through_sdk(HTTP_RATE_LIMITED, {"error": code, "message": "m"})
+    exc = _raise_through_sdk(HTTP_VENUE_VERDICT, {"error": code, "message": "m"})
     assert rest_reject(exc).code == code
 
 
-def test_the_generated_enum_is_missing_exactly_the_five_documented_codes() -> None:
+def test_the_generated_enum_is_missing_exactly_the_six_documented_codes() -> None:
     """Pin the enum gap the suite's plain-string codes work around.
 
     Stated as an exact set rather than a count so a partial regeneration is
     caught: the moment the spec is tagged this flips to an empty set and the
     ``TODO(post-regen)`` in ``rl_errors`` becomes actionable.
     """
-    v1_codes = {
-        RATE_LIMITED_ERROR,
-        OPEN_ORDER_COUNT_EXCEEDED_ERROR,
-        OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
-        CAPACITY_LIMITED_ERROR,
-        ACCOUNT_SUSPENDED_ERROR,
-        NOT_WHITELISTED_ERROR,
-    }
     known = {member.value for member in RequestErrorCode}
-    missing = v1_codes - known
+    missing = set(V1_CODES) - known
     assert missing in (
         {
             NOT_WHITELISTED_ERROR,
@@ -255,35 +301,90 @@ def test_the_generated_enum_is_missing_exactly_the_five_documented_codes() -> No
             CAPACITY_LIMITED_ERROR,
             OPEN_ORDER_COUNT_EXCEEDED_ERROR,
             OPEN_ORDER_NOTIONAL_EXCEEDED_ERROR,
+            UNAVAILABLE_ACCOUNT_OWNER_ERROR,
         },
         set(),
     ), f"unexpected RequestErrorCode coverage; missing v1 codes: {sorted(missing)}"
 
 
-def test_retry_after_assertion_is_not_vacuous() -> None:
-    """A 429 with NO Retry-After must fail the assertion, not pass silently."""
-    exc = _raise_through_sdk(HTTP_RATE_LIMITED, {"error": RATE_LIMITED_ERROR, "message": "no header"})
-    with pytest.raises(AssertionError, match="must carry a Retry-After header"):
-        assert_retry_after_plausible(rest_reject(exc), 60.0, "offline missing-header")
+def test_a_429_is_infrastructure_and_never_a_venue_verdict() -> None:
+    """429 is reserved for per-IP limits in front of the API.
 
-
-def test_403_no_retry_after_assertion_is_not_vacuous() -> None:
-    """A 403 that DOES carry Retry-After must fail the assertion.
-
-    The live gate and eject modules assert that access-control rejects carry no
-    ``Retry-After`` — a 403 answers "not you", never "not yet". That assertion is
-    only worth anything if a header would actually trip it.
+    The venue does not emit it, so it carries no ``RequestErrorCode`` and means
+    nothing about an account. Pinned as a REFUSAL: were a deployment to answer a
+    throttle with 429, ``assert_venue_verdict`` has to fail rather than wave it
+    through on the strength of the code in the body.
     """
-    clean = _raise_through_sdk(HTTP_FORBIDDEN, {"error": NOT_WHITELISTED_ERROR, "message": "no header"})
-    assert_no_retry_after(rest_reject(clean), "offline 403 clean")
+    exc = _raise_through_sdk(
+        HTTP_INFRASTRUCTURE_RATE_LIMITED,
+        {"error": RATE_LIMITED_ERROR, "message": "wrong status for a venue verdict"},
+    )
 
+    reject = rest_reject(exc)
+    assert reject.status == HTTP_INFRASTRUCTURE_RATE_LIMITED
+    with pytest.raises(AssertionError, match=f"every venue verdict is HTTP {HTTP_VENUE_VERDICT}"):
+        assert_venue_verdict(reject, "offline infrastructure 429")
+
+
+def test_retry_after_assertion_is_not_vacuous() -> None:
+    """A retryable verdict with NO hint must fail, not pass silently.
+
+    The live bucket tests sleep on the value this returns, so a rejection that
+    forgot ``retryAfterMs`` has to be loud — the alternative is a suite that
+    quietly stops waiting and then reports the next verdict as a bucket that
+    never refilled.
+    """
+    no_hint = _raise_through_sdk(HTTP_VENUE_VERDICT, {"error": RATE_LIMITED_ERROR, "message": "no hint"})
+    with pytest.raises(AssertionError, match="must carry retryAfterMs"):
+        assert_retry_after_plausible(rest_reject(no_hint), 60.0, "offline missing hint")
+
+    implausible = _raise_through_sdk(
+        HTTP_VENUE_VERDICT,
+        {"error": RATE_LIMITED_ERROR, "message": "an hour", "retryAfterMs": 3_600_000},
+    )
+    with pytest.raises(AssertionError, match="implausible retryAfterMs"):
+        assert_retry_after_plausible(rest_reject(implausible), 60.0, "offline implausible hint")
+
+
+def test_a_stray_retry_after_header_is_caught_rather_than_believed() -> None:
+    """The hint lives on the body; a header alongside it is two contracts.
+
+    The venue never sends ``Retry-After``, so a rejection carrying one is a
+    deployment drifting from the spec — and a client reading the header would be
+    honouring a number nothing defines. Both assertions reject it.
+    """
     with_header = _raise_through_sdk(
-        HTTP_FORBIDDEN,
+        HTTP_VENUE_VERDICT,
+        {"error": RATE_LIMITED_ERROR, "message": "two hints", "retryAfterMs": 3000},
+        headers={"Retry-After": "3"},
+    )
+    with pytest.raises(AssertionError, match="never a Retry-After header"):
+        assert_retry_after_plausible(rest_reject(with_header), 60.0, "offline header + body")
+
+    gated_with_header = _raise_through_sdk(
+        HTTP_VENUE_VERDICT,
         {"error": NOT_WHITELISTED_ERROR, "message": "wrongly retryable"},
         headers={"Retry-After": "5"},
     )
-    with pytest.raises(AssertionError, match="must carry no Retry-After"):
-        assert_no_retry_after(rest_reject(with_header), "offline 403 with header")
+    with pytest.raises(AssertionError, match="never answers with a Retry-After header"):
+        assert_no_retry_hint(rest_reject(gated_with_header), "offline access decision with header")
+
+
+def test_no_retry_hint_assertion_is_not_vacuous() -> None:
+    """An access decision that DOES carry ``retryAfterMs`` must fail.
+
+    The gate, eject and cap modules all assert the hint is absent; that is only
+    worth anything if a hint would actually trip it.
+    """
+    clean = _raise_through_sdk(HTTP_VENUE_VERDICT, {"error": NOT_WHITELISTED_ERROR, "message": "no hint"})
+    assert_no_retry_hint(rest_reject(clean), "offline access decision clean")
+
+    hinted = _raise_through_sdk(
+        HTTP_VENUE_VERDICT,
+        {"error": NOT_WHITELISTED_ERROR, "message": "wrongly retryable", "retryAfterMs": 5000},
+    )
+    with pytest.raises(AssertionError, match="must carry no retryAfterMs"):
+        assert_no_retry_hint(rest_reject(hinted), "offline access decision with hint")
 
 
 def _request_error_has_typed_retry_after() -> bool:
@@ -337,7 +438,13 @@ def test_request_error_model_gap_matches_the_helper_strategy() -> None:
 
 
 def test_ws_exec_error_envelope_extraction() -> None:
-    """The ws-exec envelope carries the code and the optional ``retryAfterMs``."""
+    """The ws-exec envelope carries the code and the optional ``retryAfterMs``.
+
+    The envelope contract is unchanged by the 400-only REST rule, and that is
+    the point of the rule: the same code and the same hint reach a client on
+    either transport, so REST's status was the only thing that ever differed
+    and it now says nothing a client needs.
+    """
     frame = {
         "id": "abc123",
         "ok": False,
@@ -347,9 +454,10 @@ def test_ws_exec_error_envelope_extraction() -> None:
     assert reject.code == RATE_LIMITED_ERROR
     assert reject.retry_after_ms == 750
 
-    # The hint is set ONLY alongside RATE_LIMITED: waiting does not free a cap
-    # slot and never clears an access-control verdict, so both must read absent.
-    for code in (OPEN_ORDER_COUNT_EXCEEDED_ERROR, ACCOUNT_SUSPENDED_ERROR, NOT_WHITELISTED_ERROR):
+    # The hint accompanies only the codes a wait actually helps: it never frees
+    # a cap slot, never clears an access decision, and a request that was never
+    # evaluated is retried unchanged rather than after a stated delay.
+    for code in NO_HINT_CODES:
         without_hint = ws_reject({"ok": False, "error": {"error": code, "message": "nope"}}, f"offline ws {code}")
         assert without_hint.code == code
         assert without_hint.retry_after_ms is None
