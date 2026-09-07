@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- All three generated packages regenerated from the specs `3.3.0` tag, which
+  adds two additive, optional groups of response fields. `PerpExecution` gains
+  the Fee v3 fee decomposition — `protocolFeeCredit`, `referrerFeeCredit`,
+  `takerRebateCredit` and `poolFeeCredit`, all rUSD — whose exact sum is the
+  gross `takerFee` whenever they are present. They are present together on a
+  Fee v3 fill and absent together on a pre-Fee v3 execution; the API never
+  synthesizes a partial set, and `takerRebateCredit` is part of the gross taker
+  debit rather than a net credit back to the taker. From `3.2.0`,
+  `MarketSummary` also gains `oraclePrice` (the Stork `*USDMARK` index) and
+  `SpotMarketSummary` gains `throttledMidPrice` (the spot orderbook mid,
+  omitted on an empty or one-sided book).
 - All three generated packages (`sdk/open_api`, `sdk/async_api`,
   `sdk/async_exec_api`) regenerated from the specs `3.1.0` tag:
   `Order.triggered` —
