@@ -7,12 +7,17 @@ Field changes vs the AMM era:
   ``throttledPoolPrice`` → ``throttledMidPrice``.
 """
 
+import asyncio
 import re
 import time
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 import pytest
 
 from sdk.open_api.exceptions import ServiceException
+from sdk.open_api.models.order_status import OrderStatus
+from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.reya_tester import logger
 
@@ -50,18 +55,60 @@ async def test_market_definitions(reya_tester: ReyaTester):
 
 
 @pytest.mark.asyncio
-async def test_market_mark_and_mid_price(reya_tester: ReyaTester):
+async def test_market_mark_and_mid_price(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """A mid-price requires a two-sided book; an empty book legitimately omits it."""
+    reya_tester = perp_maker_tester
     symbol = "ETHRUSDPERP"
     mark_price = await reya_tester.client.get_market_mark_price(symbol)
     assert 0 < float(mark_price) < 10**18
 
-    mid_price = await reya_tester.client.get_market_mid_price(symbol)
-    assert 0 < float(mid_price) < 10**18
+    definition = await reya_tester.get_market_definition(symbol)
+    tick = Decimal(definition.tick_size)
+    mark = Decimal(str(mark_price))
+    bid = (mark * Decimal("0.99") / tick).to_integral_value(rounding=ROUND_FLOOR) * tick
+    ask = (mark * Decimal("1.01") / tick).to_integral_value(rounding=ROUND_CEILING) * tick
+    assert 0 < bid < ask
+    expected_mid = (bid + ask) / 2
+    depth = await reya_tester.data.market_depth(symbol)
+    assert depth is not None and not depth.bids and not depth.asks, "Mid-price test requires a controlled empty book"
 
-    market_summary = await reya_tester.client.markets.get_perp_market_summary(symbol)
-    current_time = int(time.time() * 1000)
-    assert market_summary.prices_updated_at is not None
-    assert market_summary.prices_updated_at > current_time - 60_000
+    orders = []
+    try:
+        for tester, is_buy, price in ((reya_tester, True, bid), (perp_taker_tester, False, ask)):
+            order_id = await tester.orders.create_limit(
+                LimitOrderParameters(
+                    symbol=symbol,
+                    is_buy=is_buy,
+                    limit_px=str(price),
+                    qty=definition.min_order_qty,
+                    time_in_force=TimeInForce.GTC,
+                    post_only=True,
+                )
+            )
+            assert order_id is not None
+            orders.append((tester, order_id))
+            await tester.wait.for_order_creation(order_id=order_id)
+
+        # Mid-price propagation is asynchronous and throttled. Wait for this
+        # book's midpoint, not merely any cached positive value.
+        deadline = time.monotonic() + 10
+        while True:
+            market_summary = await reya_tester.client.markets.get_perp_market_summary(symbol)
+            mid = market_summary.throttled_mid_price
+            if mid is not None and Decimal(mid) == expected_mid:
+                break
+            assert time.monotonic() < deadline, f"Expected midpoint {expected_mid}, got {mid}"
+            await asyncio.sleep(0.1)
+
+        mid_price = await reya_tester.client.get_market_mid_price(symbol)
+        assert Decimal(str(mid_price)) == expected_mid
+        current_time = int(time.time() * 1000)
+        assert market_summary.prices_updated_at is not None
+        assert market_summary.prices_updated_at > current_time - 60_000
+    finally:
+        for tester, order_id in orders:
+            await tester.orders.cancel(order_id=order_id, symbol=symbol, account_id=tester.account_id)
+            await tester.wait.for_order_state(order_id=order_id, expected_status=OrderStatus.CANCELLED)
 
 
 @pytest.mark.asyncio
