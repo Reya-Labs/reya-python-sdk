@@ -26,6 +26,7 @@ from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.market_config import PerpTestConfig, SpotTestConfig
 from tests.helpers.reya_tester import logger
+from tests.helpers.settlement import SettlementProbe
 
 
 async def _skip_if_external_liquidity(market_config: SpotTestConfig | PerpTestConfig, tester: ReyaTester) -> None:
@@ -149,16 +150,19 @@ async def test_self_match_ioc_taker_buy_cancelled(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("settlement_cleanup_guard")
 async def test_cross_account_match_fills_normally(
     market_config: SpotTestConfig | PerpTestConfig,
     market_type: str,
     maker: ReyaTester,
     taker: ReyaTester,
+    settlement_probe: SettlementProbe,
 ) -> None:
     """Sanity: when maker and taker are different accounts, the match goes through."""
     await _skip_if_external_liquidity(market_config, maker)
     await maker.orders.close_all(fail_if_none=False)
     await taker.orders.close_all(fail_if_none=False)
+    await settlement_probe.capture_baseline()
 
     cross_price = str(market_config.price(0.99))
 
@@ -191,3 +195,8 @@ async def test_cross_account_match_fills_normally(
         open_orders = await maker.client.get_open_orders()
         open_ids = {o.order_id for o in open_orders if o.symbol == market_config.symbol}
         assert maker_order_id not in open_ids, f"[{market_type}] cross-account match should consume the maker"
+
+    # FILLED is a matching-engine acknowledgement, not settlement. Wait for
+    # both accounts' exact deltas before fixture cleanup reads their positions;
+    # otherwise a late settlement can leak into the next test's baseline.
+    await settlement_probe.assert_settled(qty=market_config.min_qty, price=cross_price)
