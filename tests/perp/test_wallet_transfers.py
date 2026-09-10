@@ -102,6 +102,8 @@ async def test_get_wallet_transfers_cursor_pagination(reya_tester: ReyaTester):
     # sit above the pair rather than displacing it.
     full = await _transfers(reya_tester, limit=10)
     numbers = [entry.sequence_number for entry in full.data]
+    if first.data[0].sequence_number not in numbers[:-1]:
+        pytest.skip("the wallet settled a page of new entries mid-test; nothing to compare")
     position = numbers.index(first.data[0].sequence_number)
     assert numbers[position : position + 2] == [
         first.data[0].sequence_number,
@@ -113,10 +115,14 @@ async def test_get_wallet_transfers_cursor_pagination(reya_tester: ReyaTester):
 
 @pytest.mark.asyncio
 async def test_get_wallet_transfers_type_filter(reya_tester: ReyaTester):
-    """The type filter returns only the requested labels; a cursor the server did not issue is rejected."""
+    """The type filter returns only the requested labels; UNKNOWN and a foreign cursor are rejected."""
     filtered = await _transfers(reya_tester, types=[TransferType.DEPOSIT, TransferType.WITHDRAWAL])
     for entry in filtered.data:
         assert entry.type in (TransferType.DEPOSIT, TransferType.WITHDRAWAL)
+
+    # The SDK's open-enum sentinel is not a label the server accepts.
+    with pytest.raises(ValueError):
+        await reya_tester.client.get_transfers(types=[TransferType.UNKNOWN])
 
     with pytest.raises(ApiException) as rejected:
         await reya_tester.client.wallet.get_wallet_transfers_with_http_info(

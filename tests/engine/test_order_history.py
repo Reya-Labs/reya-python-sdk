@@ -116,12 +116,19 @@ async def _wait_for_fill_ledger_entries(
             if error.status == 404:
                 return None
             raise
-        entries = [
+        # Same block, same account, same market. Where the link is live the
+        # linked entries win, so another fill of this account in the same
+        # second (a close in the next call, a concurrent session on the
+        # shared devnet accounts) cannot pad the count.
+        candidates = [
             entry
             for entry in page.data
             if entry.timestamp == execution.timestamp
             and entry.account_id == tester.account_id
-            and entry.fill_id in (None, execution.fill_id)
+            and entry.symbol == execution.symbol
+        ]
+        entries = [entry for entry in candidates if entry.fill_id == execution.fill_id] or [
+            entry for entry in candidates if entry.fill_id is None
         ]
         if len(entries) >= expected or asyncio.get_running_loop().time() >= deadline:
             return entries
@@ -130,6 +137,7 @@ async def _wait_for_fill_ledger_entries(
 
 def _assert_fill_link(entries: list[Transfer], fill_id: str) -> bool:
     """True when the entries carry the on-chain fill link; consistent either way."""
+    assert entries, "no ledger entries for this fill"
     linked = {entry.fill_id for entry in entries}
     assert linked in ({None}, {fill_id}), f"fill link must be all-or-nothing per fill, got {linked}"
     return linked == {fill_id}
@@ -311,6 +319,10 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
         taker_ledger = await _wait_for_fill_ledger_entries(taker, execution, expected=expected_taker_entries)
         if taker_ledger is None:
             logger.info("transfers endpoint not deployed here; skipping the ledger assertions")
+        elif not taker_ledger and fee_v3_scenario is None:
+            # The endpoint is served but the ledger is not written here
+            # (LEDGER_ENABLED off); Localnet turns it on and is strict.
+            logger.info("no ledger entries for this fill; the ledger is not enabled here")
         else:
             assert len(taker_ledger) == expected_taker_entries, [entry.type for entry in taker_ledger]
             if not _assert_fill_link(taker_ledger, execution.fill_id):
