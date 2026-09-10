@@ -1150,6 +1150,10 @@ class ReyaTradingClient:
         wallet = self.owner_wallet_address
         if not wallet:
             raise ValueError("No wallet address available.")
+        if types is not None and TransferType.UNKNOWN in types:
+            # UNKNOWN is the SDK's sentinel for a label it does not know yet
+            # (the enum is open); it is not a type the server accepts.
+            raise ValueError("TransferType.UNKNOWN cannot be used as a filter.")
         return await self.wallet.get_wallet_transfers(
             address=wallet,
             limit=limit,

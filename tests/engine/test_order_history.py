@@ -90,17 +90,22 @@ _PERP_FEE_LEG_TYPES = [
 
 async def _wait_for_fill_ledger_entries(
     tester: ReyaTester,
-    fill_id: str,
+    execution: PerpExecution,
     *,
     expected: int,
     timeout_s: float = 15.0,
 ) -> list[Transfer] | None:
-    """The wallet's ledger entries for one fill (PRO-852), newest first.
+    """The wallet's fee-leg ledger entries for one fill (PRO-852), newest first.
 
-    Returns None when the deployment has no transfers endpoint. Returns what
-    it found on timeout, so the caller's assertion fails with context. The
-    ledger trails settlement by the indexer write lag like the executions
-    endpoint, hence the poll.
+    Entries are matched on the fill's block timestamp and the wallet's
+    account: the ``fillId`` link is carried in the on-chain event only from
+    reya-network#752, and a deployment whose chain predates it (Localnet's
+    pinned network, older devnets) labels the legs without linking them.
+    Where the link is live, every matched entry must carry it (asserted by
+    the caller). Returns None when the deployment has no transfers endpoint.
+    Returns what it found on timeout, so the caller's assertion fails with
+    context. The ledger trails settlement by the indexer write lag like the
+    executions endpoint, hence the poll.
     """
     deadline = asyncio.get_running_loop().time() + timeout_s
     entries: list[Transfer] = []
@@ -111,10 +116,23 @@ async def _wait_for_fill_ledger_entries(
             if error.status == 404:
                 return None
             raise
-        entries = [entry for entry in page.data if entry.fill_id == fill_id]
+        entries = [
+            entry
+            for entry in page.data
+            if entry.timestamp == execution.timestamp
+            and entry.account_id == tester.account_id
+            and entry.fill_id in (None, execution.fill_id)
+        ]
         if len(entries) >= expected or asyncio.get_running_loop().time() >= deadline:
             return entries
         await asyncio.sleep(0.25)
+
+
+def _assert_fill_link(entries: list[Transfer], fill_id: str) -> bool:
+    """True when the entries carry the on-chain fill link; consistent either way."""
+    linked = {entry.fill_id for entry in entries}
+    assert linked in ({None}, {fill_id}), f"fill link must be all-or-nothing per fill, got {linked}"
+    return linked == {fill_id}
 
 
 def _ledger_amount(entries: list[Transfer], entry_type: TransferType) -> Decimal | None:
@@ -290,15 +308,15 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
         # from each account's view, linked by fillId (design §4, §5; I1, I2).
         assert execution.fill_id is not None
         expected_taker_entries = 1 + (1 if Decimal(execution.taker_rebate_credit or 0) > 0 else 0)
-        taker_ledger = await _wait_for_fill_ledger_entries(taker, execution.fill_id, expected=expected_taker_entries)
+        taker_ledger = await _wait_for_fill_ledger_entries(taker, execution, expected=expected_taker_entries)
         if taker_ledger is None:
             logger.info("transfers endpoint not deployed here; skipping the ledger assertions")
-        elif not taker_ledger and fee_v3_scenario is None:
-            # A deployment whose on-chain fill link (reya-network#752) has not
-            # shipped labels the legs but cannot link them to this fill.
-            logger.info("no ledger entries linked to this fill; the on-chain fill link is not live here")
         else:
             assert len(taker_ledger) == expected_taker_entries, [entry.type for entry in taker_ledger]
+            if not _assert_fill_link(taker_ledger, execution.fill_id):
+                # The chain here predates reya-network#752: legs are labelled
+                # but not linked to the fill.
+                logger.info("ledger entries matched by block; the on-chain fill link is not live here")
             for entry in taker_ledger:
                 assert entry.account_id == taker.account_id
                 assert entry.asset == "RUSD"
@@ -363,8 +381,9 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
             ) / Decimal(RUSD_SCALE)
             assert all(entry.transaction_hash == indexed.transaction_hash for entry in taker_ledger)
 
-            pool_ledger = await _wait_for_fill_ledger_entries(maker, execution.fill_id, expected=1)
+            pool_ledger = await _wait_for_fill_ledger_entries(maker, execution, expected=1)
             assert pool_ledger, "the pool rebate leg must reach the pool account's wallet"
+            _assert_fill_link(pool_ledger, execution.fill_id)
             assert [entry.type for entry in pool_ledger] == [TransferType.PERP_POOL_REBATE]
             assert pool_ledger[0].account_id == maker.account_id
             assert Decimal(pool_ledger[0].amount) == Decimal(indexed.pool_fee_credit) / Decimal(RUSD_SCALE)

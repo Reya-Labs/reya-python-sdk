@@ -97,19 +97,23 @@ async def test_get_wallet_transfers_cursor_pagination(reya_tester: ReyaTester):
     assert second.data[0].sequence_number < first.data[0].sequence_number, "the next page is strictly older"
 
     # A page may end between the two sides of one leg (same leg, different
-    # side): the cursor must still not repeat or skip either entry.
-    full = await _transfers(reya_tester, limit=2)
-    assert [entry.sequence_number for entry in full.data[:2]] == [
+    # side): the cursor must still not repeat or skip either entry. A larger
+    # page is read after the two singles, so entries that settled meanwhile
+    # sit above the pair rather than displacing it.
+    full = await _transfers(reya_tester, limit=10)
+    numbers = [entry.sequence_number for entry in full.data]
+    position = numbers.index(first.data[0].sequence_number)
+    assert numbers[position : position + 2] == [
         first.data[0].sequence_number,
         second.data[0].sequence_number,
-    ]
+    ], "the two single-entry pages must be consecutive in one larger page"
 
     logger.info("✅ Wallet transfers pagination test completed")
 
 
 @pytest.mark.asyncio
 async def test_get_wallet_transfers_type_filter(reya_tester: ReyaTester):
-    """The type filter returns only the requested labels, and rejects unknown ones."""
+    """The type filter returns only the requested labels; a cursor the server did not issue is rejected."""
     filtered = await _transfers(reya_tester, types=[TransferType.DEPOSIT, TransferType.WITHDRAWAL])
     for entry in filtered.data:
         assert entry.type in (TransferType.DEPOSIT, TransferType.WITHDRAWAL)
