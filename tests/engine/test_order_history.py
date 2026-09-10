@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.order_status import OrderStatus
@@ -22,11 +23,14 @@ from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.transfer import Transfer
+from sdk.open_api.models.transfer_type import TransferType
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.localnet_fee_v3 import RUSD_SCALE, WAD, configured_localnet_fee_v3, wait_for_indexed_fee_v3_row
 from tests.helpers.market_config import PerpTestConfig
 from tests.helpers.order_lifecycle import assert_px_qty, wait_for_taker_perp_execution
+from tests.helpers.reya_tester import logger
 
 _REQUIRED_ORDER_HISTORY_E2E_ENV = (
     "PERP_ACCOUNT_ID_1",
@@ -74,6 +78,49 @@ async def _wait_for_ws_perp_execution(
             return match
         await asyncio.sleep(0.2)
     raise AssertionError(f"No WS perp execution with sequenceNumber={sequence_number} within {timeout_s}s")
+
+
+_PERP_FEE_LEG_TYPES = [
+    TransferType.PERP_TAKER_FEE,
+    TransferType.PERP_REFERRER_REBATE,
+    TransferType.PERP_TAKER_REBATE,
+    TransferType.PERP_POOL_REBATE,
+]
+
+
+async def _wait_for_fill_ledger_entries(
+    tester: ReyaTester,
+    fill_id: str,
+    *,
+    expected: int,
+    timeout_s: float = 15.0,
+) -> list[Transfer] | None:
+    """The wallet's ledger entries for one fill (PRO-852), newest first.
+
+    Returns None when the deployment has no transfers endpoint. Returns what
+    it found on timeout, so the caller's assertion fails with context. The
+    ledger trails settlement by the indexer write lag like the executions
+    endpoint, hence the poll.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    entries: list[Transfer] = []
+    while True:
+        try:
+            page = await tester.client.get_transfers(types=_PERP_FEE_LEG_TYPES)
+        except ApiException as error:
+            if error.status == 404:
+                return None
+            raise
+        entries = [entry for entry in page.data if entry.fill_id == fill_id]
+        if len(entries) >= expected or asyncio.get_running_loop().time() >= deadline:
+            return entries
+        await asyncio.sleep(0.25)
+
+
+def _ledger_amount(entries: list[Transfer], entry_type: TransferType) -> Decimal | None:
+    matching = [entry for entry in entries if entry.type == entry_type]
+    assert len(matching) <= 1, f"one {entry_type.value} entry per fill, got {len(matching)}"
+    return Decimal(matching[0].amount) if matching else None
 
 
 async def _wait_for_history_order(
@@ -239,6 +286,35 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
         for field in _FEE_V3_COMPONENT_FIELDS:
             assert getattr(ws_execution, field) == getattr(execution, field), field
 
+        # PRO-852: the account ledger shows the same fill as fee legs signed
+        # from each account's view, linked by fillId (design §4, §5; I1, I2).
+        assert execution.fill_id is not None
+        expected_taker_entries = 1 + (1 if Decimal(execution.taker_rebate_credit or 0) > 0 else 0)
+        taker_ledger = await _wait_for_fill_ledger_entries(taker, execution.fill_id, expected=expected_taker_entries)
+        if taker_ledger is None:
+            logger.info("transfers endpoint not deployed here; skipping the ledger assertions")
+        elif not taker_ledger and fee_v3_scenario is None:
+            # A deployment whose on-chain fill link (reya-network#752) has not
+            # shipped labels the legs but cannot link them to this fill.
+            logger.info("no ledger entries linked to this fill; the on-chain fill link is not live here")
+        else:
+            assert len(taker_ledger) == expected_taker_entries, [entry.type for entry in taker_ledger]
+            for entry in taker_ledger:
+                assert entry.account_id == taker.account_id
+                assert entry.asset == "RUSD"
+                assert entry.symbol == market_config.symbol
+                assert entry.timestamp == execution.timestamp
+                assert entry.counterparty_account_id is not None, "the fee collector is the counterparty"
+            # The taker pays the gross fee and gets its rebate back as two entries;
+            # the execution fields describe the split, the ledger the movements.
+            assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_FEE) == -Decimal(execution.taker_fee)
+            if expected_taker_entries == 2:
+                assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_REBATE) == Decimal(
+                    execution.taker_rebate_credit or 0
+                )
+            assert _ledger_amount(taker_ledger, TransferType.PERP_REFERRER_REBATE) is None
+            assert _ledger_amount(taker_ledger, TransferType.PERP_POOL_REBATE) is None
+
         if fee_v3_scenario is not None:
             assert execution.fill_id is not None
             indexed = wait_for_indexed_fee_v3_row(execution.fill_id)
@@ -273,6 +349,26 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
             assert indexed.maker_fee_credit is None
             assert indexed.maker_fee_debit is None
             assert indexed.transaction_hash.startswith("0x")
+
+            # Localnet runs the whole stack from source with the ledger on, so
+            # the legs must be present and exact: leg 0 and leg 2 on the taker,
+            # leg 3 on the pool account, which this scenario points at the
+            # maker (leg 1 stays empty: the taker is un-referred).
+            assert taker_ledger, "Localnet must persist the fill's ledger legs"
+            assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_FEE) == -Decimal(indexed.fee) / Decimal(
+                RUSD_SCALE
+            )
+            assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_REBATE) == Decimal(
+                indexed.taker_rebate_credit
+            ) / Decimal(RUSD_SCALE)
+            assert all(entry.transaction_hash == indexed.transaction_hash for entry in taker_ledger)
+
+            pool_ledger = await _wait_for_fill_ledger_entries(maker, execution.fill_id, expected=1)
+            assert pool_ledger, "the pool rebate leg must reach the pool account's wallet"
+            assert [entry.type for entry in pool_ledger] == [TransferType.PERP_POOL_REBATE]
+            assert pool_ledger[0].account_id == maker.account_id
+            assert Decimal(pool_ledger[0].amount) == Decimal(indexed.pool_fee_credit) / Decimal(RUSD_SCALE)
+            assert pool_ledger[0].counterparty_account_id == taker_ledger[0].counterparty_account_id
 
     await _assert_time_window_refetch_contains_order(maker, maker_history_order)
     await _assert_time_window_refetch_contains_order(taker, taker_history_order)

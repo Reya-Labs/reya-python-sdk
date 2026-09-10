@@ -17,18 +17,21 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List
+from sdk.open_api.models.cursor_pagination_meta import CursorPaginationMeta
+from sdk.open_api.models.transfer import Transfer
 from typing import Optional, Set
 from typing_extensions import Self
 
-class ExecutionBustReasonUnmapped(BaseModel):
+class TransferList(BaseModel):
     """
-    ExecutionBustReasonUnmapped
+    TransferList
     """ # noqa: E501
-    reason_name: StrictStr = Field(description="Decoded custom-error name not explicitly modeled by this schema.", alias="reasonName")
-    args: Dict[str, StrictStr] = Field(description="Named ABI inputs, or arg0/arg1 fallback names, encoded as strings to avoid precision loss.")
-    __properties: ClassVar[List[str]] = ["reasonName", "args"]
+    data: List[Transfer]
+    meta: CursorPaginationMeta
+    additional_properties: Dict[str, Any] = {}
+    __properties: ClassVar[List[str]] = ["data", "meta"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -48,7 +51,7 @@ class ExecutionBustReasonUnmapped(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of ExecutionBustReasonUnmapped from a JSON string"""
+        """Create an instance of TransferList from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -60,8 +63,10 @@ class ExecutionBustReasonUnmapped(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
+            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -69,11 +74,26 @@ class ExecutionBustReasonUnmapped(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of each item in data (list)
+        _items = []
+        if self.data:
+            for _item_data in self.data:
+                if _item_data:
+                    _items.append(_item_data.to_dict())
+            _dict['data'] = _items
+        # override the default output from pydantic by calling `to_dict()` of meta
+        if self.meta:
+            _dict['meta'] = self.meta.to_dict()
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of ExecutionBustReasonUnmapped from a dict"""
+        """Create an instance of TransferList from a dict"""
         if obj is None:
             return None
 
@@ -81,9 +101,14 @@ class ExecutionBustReasonUnmapped(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "reasonName": obj.get("reasonName"),
-            "args": obj.get("args")
+            "data": [Transfer.from_dict(_item) for _item in obj["data"]] if obj.get("data") is not None else None,
+            "meta": CursorPaginationMeta.from_dict(obj["meta"]) if obj.get("meta") is not None else None
         })
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 
