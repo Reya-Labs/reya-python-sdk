@@ -175,7 +175,7 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
             await cross()
         halted = await wait_snapshot("halted", lambda s: s["metrics"]["me.settle.trading_halted"] == 1)
         assert halted["block"] == paused["block"], "the local chain did not stay paused"
-        assert halted["pending"], "no real settlement transaction reached Anvil"
+        assert len(halted["pending"]) >= 2, "fills did not produce multiple real settlement transactions"
         assert halted["metrics"]["me.settle.confirmed_nonce_lag"] >= 1
         assert halted["metrics"]["me.risk.in_flight.size"] >= 4
         assert halted["metrics"]["me.broadcast.trading_halted"] == 0
@@ -186,15 +186,20 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         assert cancelled.cancelled_count == 1, cancelled
         await seller.cancel_order(order_id=maker.order_id, symbol=market.symbol, account_id=seller.config.account_id)
 
-        # One block confirms the outstanding transaction. The broadcaster must
-        # submit queued fills while admission remains halted and mining stays off.
+        # A block with limited gas confirms part of the backlog. Settlement must
+        # advance while admission remains halted and further mining stays off.
         pending_hashes = {tx["hash"] for tx in halted["pending"]}
         await control("mine")
         draining = await wait_snapshot(
             "draining_while_halted",
             lambda s: (
                 any(r["transactionHash"] in pending_hashes for r in s["receipts"])
-                and any(tx["hash"] not in pending_hashes for tx in s["pending"])
+                and bool(s["pending"])
+                and s["metrics"]["me.settle.trading_halted"] == 1
+                and 0
+                < s["metrics"]["me.settle.confirmed_nonce_lag"]
+                < halted["metrics"]["me.settle.confirmed_nonce_lag"]
+                and 0 < s["metrics"]["me.risk.in_flight.size"] < halted["metrics"]["me.risk.in_flight.size"]
             ),
             timeout=10,
         )
