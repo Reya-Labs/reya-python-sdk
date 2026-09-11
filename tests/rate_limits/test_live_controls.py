@@ -32,7 +32,10 @@ async def test_publisher_overload_sheds_creates_preserves_cancel_and_reopens(rl_
     resting = await create_resting_order(rl_client, rl_market)
     try:
         await run_hook("overload", wallet, account)
-        # A write issued after the pause ensures there is a head waiting on Redis.
+        # The publisher stops counting the batch once it is in flight. The first
+        # create blocks that batch on Redis; the second leaves a queued head
+        # behind it for the age watermark to observe.
+        await create_resting_order(rl_client, rl_market)
         await create_resting_order(rl_client, rl_market)
         await asyncio.sleep(4)
         reject = await capture_rest_reject(create_resting_order(rl_client, rl_market), "publisher pressure")
