@@ -374,7 +374,9 @@ leave the account ejected.
 
 `test_live_controls.py` pauses Redis writes to age the real ME publisher queue,
 asserts HTTP 400 `CAPACITY_LIMITED_ERROR` without a hint while cancels remain
-available, then requires create admission to recover. It also drives the actual
+available, then requires create admission to recover. Localnet sets the ME Redis
+command timeout to 30 seconds, above the 20-second pause; otherwise the default
+500 ms timeout tests fatal publisher I/O failure before the age guard can trip. It also drives the actual
 eject/un-eject/verify/reconcile scripts, including exit 3 after un-eject verification
 and after an EJECTED-status-only enumeration fault. The separate eject-only fault
 is a DB control mismatch (reconciler exit 5). Normal reconciliation exits 0.
@@ -394,7 +396,7 @@ with `BUN_SOCKET_TRUSTED_PROXY` unset, so the physical peer owns the bucket.
 | `RL_TEST_MM_BULK_CANCEL_PER_MIN`, `RL_TEST_MM_BULK_CANCEL_BURST` | MM bulk-cancel rate and burst |
 | `RL_TEST_MM_COD_CONTROL_PER_MIN`, `RL_TEST_MM_COD_CONTROL_BURST` | MM countdown-control rate and burst |
 | `RL_TEST_MM_OPEN_ORDER_COUNT_CAP`, `RL_TEST_MM_OPEN_ORDER_PER_MARKET_CAP`, `RL_TEST_MM_OPEN_NOTIONAL_CAP` | MM total count, per-market count and quote-notional caps |
-| `RL_TEST_WS_MAX_CONNECTIONS_PER_IP`, `RL_TEST_MD_WS_MAX_CONNECTIONS_PER_IP` | Deployed order-entry/read-side socket caps; required in range 1–32 |
+| `RL_TEST_WS_CONNECTION_CAP`, `RL_TEST_MD_WS_CONNECTION_CAP` | Deployed order-entry/read-side socket caps; required in range 1–32 |
 | `RL_TEST_OVERLOAD_CMD`, `RL_TEST_UNPAUSE_CMD` | Pause Redis writes / release pause |
 | `RL_TEST_VERIFY_EJECT_CMD`, `RL_TEST_RECONCILE_CMD` | Actual verify and reconcile operators |
 | `RL_TEST_STATUS_ONLY_CMD` | Deliberate EJECTED status without account eject rows |
