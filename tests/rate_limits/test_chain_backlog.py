@@ -193,7 +193,9 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         await order(seller, False, 1)
         await cross()  # Reopens automatically, without a control reset or restart.
         await settled(6)
-        final = await snapshot()
+        final = await wait_snapshot(
+            "after_reopen", lambda s: (not s["pending"] and all(value == 0 for value in s["metrics"].values()))
+        )
         assert len(healthy["generation"]) == 1 and all(
             state["generation"] == healthy["generation"] for state in (halted, draining, recovered, final)
         ), "the engine restarted during the halt/recovery cycle"
