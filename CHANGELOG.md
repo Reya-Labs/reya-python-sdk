@@ -17,9 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fills settled after the on-chain fill link shipped, `fill_id` and `symbol`
   joining the entry to its `PerpExecution`. Pages by opaque cursor
   (`meta.next_cursor`, `CursorPaginationMeta`), filters by `type` and
-  `start_time`/`end_time`, and hides zero-amount legs unless
-  `include_zero=True`. `TransferType` is a server-owned vocabulary: a label
-  this SDK predates parses as `UNKNOWN`. The `walletTransfers` WebSocket
+  `start_time`/`end_time`, and never returns zero-amount legs. `TransferType` is a
+  server-owned vocabulary: a label this SDK predates parses as `UNKNOWN`. The `walletTransfers` WebSocket
   channel (`/v2/wallet/{address}/transfers`) carries the same entries.
 - All three generated packages regenerated from the specs `3.3.0` tag, which
   adds two additive, optional groups of response fields. `PerpExecution` gains

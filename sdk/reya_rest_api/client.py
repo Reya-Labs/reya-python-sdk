@@ -1134,7 +1134,6 @@ class ReyaTradingClient:
         start_time: int | None = None,
         end_time: int | None = None,
         types: list[TransferType] | None = None,
-        include_zero: bool | None = None,
     ) -> TransferList:
         """Get the owner wallet's transfer history (account ledger).
 
@@ -1143,9 +1142,7 @@ class ReyaTradingClient:
         fees and rebates, liquidation penalties — newest first, signed from the
         account's point of view. Net deposits only: realized PnL and funding
         never appear. Page with ``cursor=result.meta.next_cursor``; ``types``
-        filters on ``TransferType`` labels and ``include_zero`` reveals the
-        zero-amount legs the chain builds on some liquidations and
-        auto-exchanges.
+        filters on ``TransferType`` labels. Zero-amount legs are never returned.
         """
         wallet = self.owner_wallet_address
         if not wallet:
@@ -1161,7 +1158,6 @@ class ReyaTradingClient:
             start_time=start_time,
             end_time=end_time,
             type=types,
-            include_zero=include_zero,
         )
 
     async def close(self) -> None:

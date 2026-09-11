@@ -59,7 +59,7 @@ def _assert_entry_shape(entry: Transfer, account_ids: set[int]) -> None:
 
 @pytest.mark.asyncio
 async def test_get_wallet_transfers_contract(reya_tester: ReyaTester):
-    """Entries are well-formed, newest first, and hide zero amounts by default."""
+    """Entries are well-formed, newest first, and hide zero amounts."""
     assert reya_tester.owner_wallet_address is not None, "Owner wallet address required"
     accounts = await reya_tester.client.get_accounts()
     account_ids = {account.account_id for account in accounts}
@@ -74,7 +74,7 @@ async def test_get_wallet_transfers_contract(reya_tester: ReyaTester):
     assert len(set(sequence_numbers)) == len(sequence_numbers), "sequence numbers are unique"
     for entry in page.data:
         _assert_entry_shape(entry, account_ids)
-        assert Decimal(entry.amount) != 0, "zero amounts are hidden unless includeZero is passed"
+        assert Decimal(entry.amount) != 0, "zero amounts must not be exposed"
 
     logger.info(f"✅ Wallet transfers contract test completed - {len(page.data)} entries")
 

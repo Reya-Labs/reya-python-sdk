@@ -16,7 +16,7 @@ from pydantic import validate_call, Field, StrictFloat, StrictStr, StrictInt
 from typing import Any, Dict, List, Optional, Tuple, Union
 from typing_extensions import Annotated
 
-from pydantic import Field, StrictBool, StrictStr, field_validator
+from pydantic import Field, StrictStr, field_validator
 from typing import List, Optional
 from typing_extensions import Annotated
 from sdk.open_api.models.account import Account
@@ -2599,7 +2599,6 @@ class WalletDataApi:
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[List[TransferType]], Field(description="Return only entries of these types, as a comma-separated list of `TransferType` values (for example `DEPOSIT,WITHDRAWAL` or `PERP_TAKER_FEE,PERP_TAKER_REBATE`). Omit to return every type.")] = None,
-        include_zero: Annotated[Optional[StrictBool], Field(description="Include entries whose amount is zero. The chain builds some liquidation and auto-exchange legs even when nothing moves; they are hidden by default because they are noise in a history view, but they are needed to follow `netDepositsAfter` exactly.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -2615,7 +2614,7 @@ class WalletDataApi:
     ) -> TransferList:
         """Get wallet transfers
 
-        Returns the transfer history of every account of a wallet: one entry per account side of every on-chain transfer leg — deposits, withdrawals, transfers between accounts, pool stakes and unstakes, spot trades, auto-exchanges, perp fees and rebates, liquidation penalties — labelled by `type` and signed from the account's point of view. A transfer between two accounts of the same wallet therefore appears twice, once negative and once positive.  This is the history of net deposits (cash) only. Realized PnL, funding and ADL cashflows never move net deposits and do not appear; closing a profitable position shows only its fee entry. Read `realBalance` from `accountBalances` and per-position PnL from `positions` and `perpExecutions`; `netDepositsAfter` is not a balance to display on its own.  Entries are returned newest first by `sequenceNumber`, at most `limit` (default and maximum 100) per page. Pagination is by opaque cursor: pass `meta.nextCursor` back as `cursor` to get the next page; walking to the end visits every entry exactly once, with no duplicates and no gaps, even when many entries share one block. `startTime` and `endTime` are optional filters on the block timestamp, not the pagination mechanism. Entries whose amount is zero (some liquidation and auto-exchange legs) are hidden unless `includeZero=true`.  History starts at the environment's backfill start block; earlier movements are absent, not synthesised. Entries never change once returned. 
+        Returns the transfer history of every account of a wallet: one entry per account side of every on-chain transfer leg — deposits, withdrawals, transfers between accounts, pool stakes and unstakes, spot trades, auto-exchanges, perp fees and rebates, liquidation penalties — labelled by `type` and signed from the account's point of view. A transfer between two accounts of the same wallet therefore appears twice, once negative and once positive.  This is the history of net deposits (cash) only. Realized PnL, funding and ADL cashflows never move net deposits and do not appear; closing a profitable position shows only its fee entry. Read `realBalance` from `accountBalances` and per-position PnL from `positions` and `perpExecutions`; `netDepositsAfter` is not a balance to display on its own.  Entries are returned newest first by `sequenceNumber`, at most `limit` (default and maximum 100) per page. Pagination is by opaque cursor: pass `meta.nextCursor` back as `cursor` to get the next page; walking to the end visits every entry exactly once, with no duplicates and no gaps, even when many entries share one block. `startTime` and `endTime` are optional filters on the block timestamp, not the pagination mechanism. Entries whose amount is zero (some liquidation and auto-exchange legs) are never returned.  History starts at the environment's backfill start block; earlier movements are absent, not synthesised. Entries never change once returned. 
 
         :param address: (required)
         :type address: str
@@ -2629,8 +2628,6 @@ class WalletDataApi:
         :type end_time: int
         :param type: Return only entries of these types, as a comma-separated list of `TransferType` values (for example `DEPOSIT,WITHDRAWAL` or `PERP_TAKER_FEE,PERP_TAKER_REBATE`). Omit to return every type.
         :type type: List[TransferType]
-        :param include_zero: Include entries whose amount is zero. The chain builds some liquidation and auto-exchange legs even when nothing moves; they are hidden by default because they are noise in a history view, but they are needed to follow `netDepositsAfter` exactly.
-        :type include_zero: bool
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -2660,7 +2657,6 @@ class WalletDataApi:
             start_time=start_time,
             end_time=end_time,
             type=type,
-            include_zero=include_zero,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -2692,7 +2688,6 @@ class WalletDataApi:
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[List[TransferType]], Field(description="Return only entries of these types, as a comma-separated list of `TransferType` values (for example `DEPOSIT,WITHDRAWAL` or `PERP_TAKER_FEE,PERP_TAKER_REBATE`). Omit to return every type.")] = None,
-        include_zero: Annotated[Optional[StrictBool], Field(description="Include entries whose amount is zero. The chain builds some liquidation and auto-exchange legs even when nothing moves; they are hidden by default because they are noise in a history view, but they are needed to follow `netDepositsAfter` exactly.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -2708,7 +2703,7 @@ class WalletDataApi:
     ) -> ApiResponse[TransferList]:
         """Get wallet transfers
 
-        Returns the transfer history of every account of a wallet: one entry per account side of every on-chain transfer leg — deposits, withdrawals, transfers between accounts, pool stakes and unstakes, spot trades, auto-exchanges, perp fees and rebates, liquidation penalties — labelled by `type` and signed from the account's point of view. A transfer between two accounts of the same wallet therefore appears twice, once negative and once positive.  This is the history of net deposits (cash) only. Realized PnL, funding and ADL cashflows never move net deposits and do not appear; closing a profitable position shows only its fee entry. Read `realBalance` from `accountBalances` and per-position PnL from `positions` and `perpExecutions`; `netDepositsAfter` is not a balance to display on its own.  Entries are returned newest first by `sequenceNumber`, at most `limit` (default and maximum 100) per page. Pagination is by opaque cursor: pass `meta.nextCursor` back as `cursor` to get the next page; walking to the end visits every entry exactly once, with no duplicates and no gaps, even when many entries share one block. `startTime` and `endTime` are optional filters on the block timestamp, not the pagination mechanism. Entries whose amount is zero (some liquidation and auto-exchange legs) are hidden unless `includeZero=true`.  History starts at the environment's backfill start block; earlier movements are absent, not synthesised. Entries never change once returned. 
+        Returns the transfer history of every account of a wallet: one entry per account side of every on-chain transfer leg — deposits, withdrawals, transfers between accounts, pool stakes and unstakes, spot trades, auto-exchanges, perp fees and rebates, liquidation penalties — labelled by `type` and signed from the account's point of view. A transfer between two accounts of the same wallet therefore appears twice, once negative and once positive.  This is the history of net deposits (cash) only. Realized PnL, funding and ADL cashflows never move net deposits and do not appear; closing a profitable position shows only its fee entry. Read `realBalance` from `accountBalances` and per-position PnL from `positions` and `perpExecutions`; `netDepositsAfter` is not a balance to display on its own.  Entries are returned newest first by `sequenceNumber`, at most `limit` (default and maximum 100) per page. Pagination is by opaque cursor: pass `meta.nextCursor` back as `cursor` to get the next page; walking to the end visits every entry exactly once, with no duplicates and no gaps, even when many entries share one block. `startTime` and `endTime` are optional filters on the block timestamp, not the pagination mechanism. Entries whose amount is zero (some liquidation and auto-exchange legs) are never returned.  History starts at the environment's backfill start block; earlier movements are absent, not synthesised. Entries never change once returned. 
 
         :param address: (required)
         :type address: str
@@ -2722,8 +2717,6 @@ class WalletDataApi:
         :type end_time: int
         :param type: Return only entries of these types, as a comma-separated list of `TransferType` values (for example `DEPOSIT,WITHDRAWAL` or `PERP_TAKER_FEE,PERP_TAKER_REBATE`). Omit to return every type.
         :type type: List[TransferType]
-        :param include_zero: Include entries whose amount is zero. The chain builds some liquidation and auto-exchange legs even when nothing moves; they are hidden by default because they are noise in a history view, but they are needed to follow `netDepositsAfter` exactly.
-        :type include_zero: bool
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -2753,7 +2746,6 @@ class WalletDataApi:
             start_time=start_time,
             end_time=end_time,
             type=type,
-            include_zero=include_zero,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -2785,7 +2777,6 @@ class WalletDataApi:
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the matching-engine event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[List[TransferType]], Field(description="Return only entries of these types, as a comma-separated list of `TransferType` values (for example `DEPOSIT,WITHDRAWAL` or `PERP_TAKER_FEE,PERP_TAKER_REBATE`). Omit to return every type.")] = None,
-        include_zero: Annotated[Optional[StrictBool], Field(description="Include entries whose amount is zero. The chain builds some liquidation and auto-exchange legs even when nothing moves; they are hidden by default because they are noise in a history view, but they are needed to follow `netDepositsAfter` exactly.")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -2801,7 +2792,7 @@ class WalletDataApi:
     ) -> RESTResponseType:
         """Get wallet transfers
 
-        Returns the transfer history of every account of a wallet: one entry per account side of every on-chain transfer leg — deposits, withdrawals, transfers between accounts, pool stakes and unstakes, spot trades, auto-exchanges, perp fees and rebates, liquidation penalties — labelled by `type` and signed from the account's point of view. A transfer between two accounts of the same wallet therefore appears twice, once negative and once positive.  This is the history of net deposits (cash) only. Realized PnL, funding and ADL cashflows never move net deposits and do not appear; closing a profitable position shows only its fee entry. Read `realBalance` from `accountBalances` and per-position PnL from `positions` and `perpExecutions`; `netDepositsAfter` is not a balance to display on its own.  Entries are returned newest first by `sequenceNumber`, at most `limit` (default and maximum 100) per page. Pagination is by opaque cursor: pass `meta.nextCursor` back as `cursor` to get the next page; walking to the end visits every entry exactly once, with no duplicates and no gaps, even when many entries share one block. `startTime` and `endTime` are optional filters on the block timestamp, not the pagination mechanism. Entries whose amount is zero (some liquidation and auto-exchange legs) are hidden unless `includeZero=true`.  History starts at the environment's backfill start block; earlier movements are absent, not synthesised. Entries never change once returned. 
+        Returns the transfer history of every account of a wallet: one entry per account side of every on-chain transfer leg — deposits, withdrawals, transfers between accounts, pool stakes and unstakes, spot trades, auto-exchanges, perp fees and rebates, liquidation penalties — labelled by `type` and signed from the account's point of view. A transfer between two accounts of the same wallet therefore appears twice, once negative and once positive.  This is the history of net deposits (cash) only. Realized PnL, funding and ADL cashflows never move net deposits and do not appear; closing a profitable position shows only its fee entry. Read `realBalance` from `accountBalances` and per-position PnL from `positions` and `perpExecutions`; `netDepositsAfter` is not a balance to display on its own.  Entries are returned newest first by `sequenceNumber`, at most `limit` (default and maximum 100) per page. Pagination is by opaque cursor: pass `meta.nextCursor` back as `cursor` to get the next page; walking to the end visits every entry exactly once, with no duplicates and no gaps, even when many entries share one block. `startTime` and `endTime` are optional filters on the block timestamp, not the pagination mechanism. Entries whose amount is zero (some liquidation and auto-exchange legs) are never returned.  History starts at the environment's backfill start block; earlier movements are absent, not synthesised. Entries never change once returned. 
 
         :param address: (required)
         :type address: str
@@ -2815,8 +2806,6 @@ class WalletDataApi:
         :type end_time: int
         :param type: Return only entries of these types, as a comma-separated list of `TransferType` values (for example `DEPOSIT,WITHDRAWAL` or `PERP_TAKER_FEE,PERP_TAKER_REBATE`). Omit to return every type.
         :type type: List[TransferType]
-        :param include_zero: Include entries whose amount is zero. The chain builds some liquidation and auto-exchange legs even when nothing moves; they are hidden by default because they are noise in a history view, but they are needed to follow `netDepositsAfter` exactly.
-        :type include_zero: bool
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -2846,7 +2835,6 @@ class WalletDataApi:
             start_time=start_time,
             end_time=end_time,
             type=type,
-            include_zero=include_zero,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -2873,7 +2861,6 @@ class WalletDataApi:
         start_time,
         end_time,
         type,
-        include_zero,
         _request_auth,
         _content_type,
         _headers,
@@ -2918,10 +2905,6 @@ class WalletDataApi:
         if type is not None:
             
             _query_params.append(('type', type))
-            
-        if include_zero is not None:
-            
-            _query_params.append(('includeZero', include_zero))
             
         # process the header parameters
         # process the form parameters
