@@ -65,14 +65,28 @@ async def _started_client(credentials: rl_config.AccountCredentials) -> ReyaTrad
     return client
 
 
+def pytest_generate_tests(metafunc):
+    """Run shared bucket/cap behavior against both configured tiers."""
+    if (
+        metafunc.module.__name__.endswith(("test_gcra_buckets", "test_open_order_caps"))
+        and "rl_client" in metafunc.fixturenames
+    ):
+        metafunc.parametrize("rl_tier", ["standard", "mm"], indirect=True, scope="session")
+
+
 @pytest.fixture(scope="session")
-def rl_suite_config() -> rl_config.RateLimitSuiteConfig:
+def rl_tier(request) -> str:
+    return getattr(request, "param", "standard")
+
+
+@pytest.fixture(scope="session")
+def rl_suite_config(rl_tier: str) -> rl_config.RateLimitSuiteConfig:  # pylint: disable=redefined-outer-name
     """Every environment knob, resolved once per session."""
-    return rl_config.load_suite_config()
+    return rl_config.load_suite_config(rl_tier)
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
-async def rl_standard_client_provider() -> AsyncIterator[Callable[[], Awaitable[ReyaTradingClient | None]]]:
+async def rl_standard_client_provider() -> AsyncIterator[Callable[[str], Awaitable[ReyaTradingClient | None]]]:
     """Lazily build (once) the Standard-tier client, or hand back ``None``.
 
     A provider rather than the client itself, for two reasons:
@@ -87,33 +101,33 @@ async def rl_standard_client_provider() -> AsyncIterator[Callable[[], Awaitable[
     """
     built: dict[str, ReyaTradingClient] = {}
 
-    async def provide() -> ReyaTradingClient | None:
-        credentials = rl_config.standard_credentials()
+    async def provide(tier: str = "standard") -> ReyaTradingClient | None:
+        credentials = rl_config.mm_credentials() if tier == "mm" else rl_config.standard_credentials()
         if credentials is None or not rl_config.RATE_LIMITS_ENABLED:
             return None
-        if "client" not in built:
-            built["client"] = await _started_client(credentials)
+        if tier not in built:
+            built[tier] = await _started_client(credentials)
             logger.info(
                 "rate-limit suite standard account: id=%s wallet=%s",
                 credentials.account_id,
                 credentials.wallet_address,
             )
-        return built["client"]
+        return built[tier]
 
     try:
         yield provide
     finally:
-        client = built.get("client")
-        if client is not None:
+        for client in built.values():
             await client.close()
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
 async def rl_client(  # pylint: disable=redefined-outer-name
-    rl_standard_client_provider: Callable[[], Awaitable[ReyaTradingClient | None]],
+    rl_standard_client_provider: Callable[[str], Awaitable[ReyaTradingClient | None]],
+    rl_tier: str,
 ) -> ReyaTradingClient:
     """REST client for the whitelisted, Standard-tier account under test."""
-    client = await rl_standard_client_provider()
+    client = await rl_standard_client_provider(rl_tier)
     if client is None:
         pytest.skip(f"rate-limit suite needs a Standard-tier account: {rl_config.standard_credentials_env_hint()}")
     return client
@@ -121,7 +135,7 @@ async def rl_client(  # pylint: disable=redefined-outer-name
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
 async def rl_non_whitelisted_client() -> AsyncIterator[ReyaTradingClient]:
-    """REST client for an account the deployment did NOT seed into ``rl_whitelist``."""
+    """REST client for an account the deployment did NOT seed into ``rl_wallet_status``."""
     credentials = rl_config.non_whitelisted_credentials()
     if credentials is None:
         pytest.skip(
@@ -300,7 +314,7 @@ def rl_eject_hook(  # pylint: disable=redefined-outer-name
         RL_TEST_UNEJECT_CMD="<cmd with {wallet} and/or {account_id}>"
 
     Both must be set or the eject tests skip. Because the transaction also
-    deletes the ``rl_whitelist`` row, a refusal it produces may come from either
+    deletes the ``rl_wallet_status`` row, a refusal it produces may come from either
     layer — see ``rl_eject_only_hook`` for the isolating variant.
     """
     if not (rl_suite_config.eject_cmd and rl_suite_config.uneject_cmd):
@@ -337,7 +351,7 @@ def rl_eject_only_hook(  # pylint: disable=redefined-outer-name
 
     return _EjectHook(
         eject_cmd=str(rl_suite_config.eject_only_cmd),
-        uneject_cmd=str(rl_suite_config.uneject_cmd),
+        uneject_cmd=os.environ.get("RL_TEST_RESTORE_EJECT_ONLY_CMD") or str(rl_suite_config.uneject_cmd),
         timeout_s=rl_suite_config.timing.eject_timeout_s,
         label="eject-only",
     )
@@ -347,7 +361,8 @@ def rl_eject_only_hook(  # pylint: disable=redefined-outer-name
 async def rl_isolation(  # pylint: disable=redefined-outer-name
     request,
     rl_suite_config: rl_config.RateLimitSuiteConfig,
-    rl_standard_client_provider: Callable[[], Awaitable[ReyaTradingClient | None]],
+    rl_standard_client_provider: Callable[[str], Awaitable[ReyaTradingClient | None]],
+    rl_tier: str,
 ) -> AsyncIterator[None]:
     """Per-test isolation for the LIVE rate-limit tests.
 
@@ -359,7 +374,7 @@ async def rl_isolation(  # pylint: disable=redefined-outer-name
         yield
         return
 
-    client = await rl_standard_client_provider()
+    client = await rl_standard_client_provider(rl_tier)
     if client is None:
         yield
         return

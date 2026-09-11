@@ -4,7 +4,7 @@ Every knob below is read from the environment at import time with a default
 that matches the Standard-tier shape of the Rate-Limit v1 design. The suite is
 deliberately configuration-driven rather than load-generating: the localnet
 deployment is expected to expose SMALL Standard-tier limits so a handful of
-requests trips them, and to seed the standard test wallets into ``rl_whitelist``
+requests trips them, and to seed the standard test wallets into ``rl_wallet_status``
 (heavy wallets into ``rl_market_makers``).
 
 See ``tests/rate_limits/README.md`` for the full knob contract — that file and
@@ -50,7 +50,7 @@ HTTP_VENUE_VERDICT = 400
 HTTP_INFRASTRUCTURE_RATE_LIMITED = 429
 
 #: An ejected account may be rejected by the edge (it was removed from
-#: ``rl_whitelist`` in the same transaction) or by the matching engine (the
+#: ``rl_wallet_status`` in the same transaction) or by the matching engine (the
 #: ``rl_ejected_accounts`` admission check). Tests accept either code and
 #: record which one the deployment actually produced.
 EJECT_REJECT_CODES = (NOT_WHITELISTED_ERROR, ACCOUNT_SUSPENDED_ERROR)
@@ -217,13 +217,18 @@ def standard_credentials() -> AccountCredentials | None:
     return _resolve_credentials(_STANDARD_ENV) or _resolve_credentials(_STANDARD_FALLBACK_ENV)
 
 
+def mm_credentials() -> AccountCredentials | None:
+    """An explicitly provisioned MM identity; never guess a funded trader."""
+    return _resolve_credentials(("RL_TEST_MM_ACCOUNT_ID", "RL_TEST_MM_PRIVATE_KEY", "RL_TEST_MM_WALLET_ADDRESS"))
+
+
 def standard_credentials_env_hint() -> str:
     return f"{' / '.join(_STANDARD_ENV)} (or {' / '.join(_STANDARD_FALLBACK_ENV)})"
 
 
 def non_whitelisted_credentials() -> AccountCredentials | None:
     """An account the localnet deployment deliberately did NOT seed into
-    ``rl_whitelist``. No fallback: guessing here would silently turn the
+    ``rl_wallet_status``. No fallback: guessing here would silently turn the
     whitelist-gate test into a false pass on a whitelisted wallet."""
     return _resolve_credentials(_NON_WHITELISTED_ENV)
 
@@ -338,23 +343,26 @@ class RateLimitSuiteConfig:
         return min(self.timing.max_burst_attempts, burst + refill_slack + 20)
 
 
-def load_suite_config() -> RateLimitSuiteConfig:
+def load_suite_config(tier: str = "standard") -> RateLimitSuiteConfig:
     """Resolve every knob from the environment (defaults documented in README)."""
+    prefix = "RL_TEST_MM" if tier == "mm" else "RL_TEST_STANDARD"
     limits = StandardTierLimits(
-        place_per_min=_env_int("RL_TEST_STANDARD_PLACE_PER_MIN", 60),
-        place_burst=_env_int("RL_TEST_STANDARD_PLACE_BURST", 5),
-        cancel_per_min=_env_int("RL_TEST_STANDARD_CANCEL_PER_MIN", 120),
-        cancel_burst=_env_int("RL_TEST_STANDARD_CANCEL_BURST", 10),
-        bulk_cancel_per_min=_env_int("RL_TEST_STANDARD_BULK_CANCEL_PER_MIN", 10),
-        bulk_cancel_burst=_env_int("RL_TEST_STANDARD_BULK_CANCEL_BURST", 5),
-        cod_control_per_min=_env_int("RL_TEST_COD_CONTROL_PER_MIN", 100),
-        cod_control_burst=_env_int("RL_TEST_COD_CONTROL_BURST", 10),
+        place_per_min=_env_int(f"{prefix}_PLACE_PER_MIN", 60),
+        place_burst=_env_int(f"{prefix}_PLACE_BURST", 5),
+        cancel_per_min=_env_int(f"{prefix}_CANCEL_PER_MIN", 120),
+        cancel_burst=_env_int(f"{prefix}_CANCEL_BURST", 10),
+        bulk_cancel_per_min=_env_int(f"{prefix}_BULK_CANCEL_PER_MIN", 10),
+        bulk_cancel_burst=_env_int(f"{prefix}_BULK_CANCEL_BURST", 5),
+        cod_control_per_min=_env_int(
+            "RL_TEST_MM_COD_CONTROL_PER_MIN" if tier == "mm" else "RL_TEST_COD_CONTROL_PER_MIN", 100
+        ),
+        cod_control_burst=_env_int("RL_TEST_MM_COD_CONTROL_BURST" if tier == "mm" else "RL_TEST_COD_CONTROL_BURST", 10),
         # 8, mirroring the Localnet chart: strictly below 2 markets x the
         # per-market cap below, so an account-total probe can hold a market under
         # its own cap. A fallback of 10 would be exactly the unattributable case.
-        open_order_count_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP", 8),
-        open_order_per_market_cap=_env_int("RL_TEST_STANDARD_OPEN_ORDER_PER_MARKET_CAP", 5),
-        open_notional_cap=_env_decimal("RL_TEST_STANDARD_OPEN_NOTIONAL_CAP", "5000"),
+        open_order_count_cap=_env_int(f"{prefix}_OPEN_ORDER_COUNT_CAP", 8),
+        open_order_per_market_cap=_env_int(f"{prefix}_OPEN_ORDER_PER_MARKET_CAP", 5),
+        open_notional_cap=_env_decimal(f"{prefix}_OPEN_NOTIONAL_CAP", "5000"),
     )
 
     # A GCRA cell refills at the sustained rate, so a fully-drained burst is
