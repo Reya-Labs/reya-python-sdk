@@ -18,11 +18,11 @@ def require_hook(action: str) -> str:
     return template
 
 
-async def run_hook(action: str, wallet: str, account_id: int, expected: int = 0) -> str:
+async def run_hook(action: str, wallet: str, account_id: int, expected: int = 0, *, timeout_s: int = 90) -> str:
     template = require_hook(action)
     argv = shlex.split(template.format(wallet=wallet, account_id=account_id))
     result = await asyncio.to_thread(
-        subprocess.run, argv, capture_output=True, text=True, check=False, timeout=90  # nosec B603
+        subprocess.run, argv, capture_output=True, text=True, check=False, timeout=timeout_s  # nosec B603
     )
     output = result.stdout + result.stderr
     assert result.returncode == expected, f"{action}: expected exit {expected}, got {result.returncode}: {output}"
