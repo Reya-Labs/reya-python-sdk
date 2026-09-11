@@ -59,6 +59,14 @@ def assert_running_net_deposits(entries: list[Transfer], baseline: Decimal) -> D
     return baseline
 
 
+def assert_fill_links(entries: list[Transfer], fill_id: str, symbol: str) -> None:
+    """Localnet must expose the deployed MatchOrder payload on every fee leg."""
+    assert entries, "no fee legs to check for fill links"
+    for entry in entries:
+        assert entry.fill_id == fill_id, f"fee leg {entry.sequence_number}: fillId {entry.fill_id!r} != {fill_id!r}"
+        assert entry.symbol == symbol, f"fee leg {entry.sequence_number}: symbol {entry.symbol!r} != {symbol!r}"
+
+
 async def wait_for_transaction_transfers(tester: ReyaTester, transaction_hash: str, expected: int) -> list[Transfer]:
     deadline = asyncio.get_running_loop().time() + 30
     while True:

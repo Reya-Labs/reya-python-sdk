@@ -34,6 +34,7 @@ from tests.helpers.market_config import PerpTestConfig
 from tests.helpers.order_lifecycle import assert_px_qty, wait_for_taker_perp_execution
 from tests.helpers.reya_tester import logger
 from tests.helpers.wallet_transfers import (
+    assert_fill_links,
     assert_net_deposits,
     assert_running_net_deposits,
     assert_transfer_snapshot,
@@ -105,10 +106,10 @@ async def _wait_for_fill_ledger_entries(
     expected: int,
     timeout_s: float = 15.0,
 ) -> list[Transfer] | None:
-    """Match Localnet legs by the indexed transaction, including pre-#752 chains.
+    """Match Localnet legs by transaction independently of their fill links.
 
     Other environments retain the existing optional-endpoint behavior. Localnet
-    requires the endpoint and every expected leg, even before fill links ship.
+    requires every expected leg, then independently asserts its fillId and symbol.
     """
     if tester.chain_id == 31337:
         assert execution.fill_id is not None
@@ -379,7 +380,7 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
             logger.info("transfers endpoint not deployed here; skipping the ledger assertions")
         elif not taker_ledger and fee_v3_scenario is None:
             # The endpoint is served but the ledger is not written here
-            # (LEDGER_ENABLED off); Localnet turns it on and is strict.
+            # on an older release; Localnet requires the ledger and fill links.
             logger.info("no ledger entries for this fill; the ledger is not enabled here")
         else:
             assert len(taker_ledger) == expected_taker_entries, [entry.type for entry in taker_ledger]
@@ -448,6 +449,7 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
             # leg 3 on the pool account, which this scenario points at the
             # maker. The referred variant also credits leg 1 to a spot account.
             assert taker_ledger, "Localnet must persist the fill's ledger legs"
+            assert_fill_links(taker_ledger, execution.fill_id, market_config.symbol)
             assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_FEE) == -Decimal(indexed.fee) / Decimal(
                 RUSD_SCALE
             )
@@ -458,7 +460,7 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
 
             pool_ledger = await _wait_for_fill_ledger_entries(maker, execution, expected=1)
             assert pool_ledger, "the pool rebate leg must reach the pool account's wallet"
-            _assert_fill_link(pool_ledger, execution.fill_id)
+            assert_fill_links(pool_ledger, execution.fill_id, market_config.symbol)
             assert [entry.type for entry in pool_ledger] == [TransferType.PERP_POOL_REBATE]
             assert pool_ledger[0].account_id == maker.account_id
             assert Decimal(pool_ledger[0].amount) == Decimal(indexed.pool_fee_credit) / Decimal(RUSD_SCALE)
@@ -478,7 +480,7 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
                 assert referrer is not None and referrer_ws is not None and referrer_baseline is not None
                 referrer_ledger = await _wait_for_fill_ledger_entries(referrer, execution, expected=1)
                 assert referrer_ledger, "the referrer rebate must reach the referrer's spot wallet"
-                _assert_fill_link(referrer_ledger, execution.fill_id)
+                assert_fill_links(referrer_ledger, execution.fill_id, market_config.symbol)
                 entry = referrer_ledger[0]
                 assert entry.type == TransferType.PERP_REFERRER_REBATE
                 assert entry.account_id == referrer.account_id

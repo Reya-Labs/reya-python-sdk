@@ -12,6 +12,7 @@ from sdk.open_api.models.transfer import Transfer
 from tests.helpers import ReyaTester
 from tests.helpers.wallet_transfers import (
     WalletTransfersSocket,
+    assert_fill_links,
     assert_running_net_deposits,
     localnet_url,
     wait_for_transaction_transfers,
@@ -110,3 +111,22 @@ def test_localnet_endpoint_guard_rejects_remote_or_credentialed_urls(monkeypatch
     monkeypatch.setenv("REYA_API_URL", url)
     with pytest.raises(RuntimeError):
         localnet_url("REYA_API_URL", "http")
+
+
+@pytest.mark.parametrize(
+    "fill_id,symbol", [(None, "BTCRUSDPERP"), ("43", "BTCRUSDPERP"), ("42", None), ("42", "ETHRUSDPERP")]
+)
+def test_fill_links_reject_missing_or_wrong_payload(fill_id, symbol):
+    row = entry().model_copy(update={"fill_id": fill_id, "symbol": symbol})
+    with pytest.raises(AssertionError):
+        assert_fill_links([row], "42", "BTCRUSDPERP")
+
+
+def test_fill_links_require_actual_legs():
+    with pytest.raises(AssertionError):
+        assert_fill_links([], "42", "BTCRUSDPERP")
+
+
+def test_fill_links_accept_exact_payload():
+    row = entry().model_copy(update={"fill_id": "42", "symbol": "BTCRUSDPERP"})
+    assert_fill_links([row], "42", "BTCRUSDPERP")
