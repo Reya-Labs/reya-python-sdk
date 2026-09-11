@@ -24,6 +24,7 @@ sdk/open_api/models/cancel_reason.py
 sdk/open_api/models/candle_history_data.py
 sdk/open_api/models/create_order_request.py
 sdk/open_api/models/create_order_response.py
+sdk/open_api/models/cursor_pagination_meta.py
 sdk/open_api/models/depth.py
 sdk/open_api/models/depth_base.py
 sdk/open_api/models/depth_snapshot.py
@@ -98,5 +99,8 @@ sdk/open_api/models/spot_market_definition.py
 sdk/open_api/models/spot_market_summary.py
 sdk/open_api/models/tier_type.py
 sdk/open_api/models/time_in_force.py
+sdk/open_api/models/transfer.py
+sdk/open_api/models/transfer_list.py
+sdk/open_api/models/transfer_type.py
 sdk/open_api/models/wallet_configuration.py
 sdk/open_api/rest.py

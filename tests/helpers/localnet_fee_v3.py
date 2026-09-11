@@ -15,12 +15,15 @@ from dataclasses import dataclass
 
 from web3 import Web3
 
+from tests.helpers.wallet_transfers import localnet_url
+
 WAD = 10**18
 RUSD_SCALE = 10**6
 
 _TAKER_FEE_RATE = 10**15  # 10 bps
 _TAKER_REBATE_RATE = 2 * 10**17  # 20%
-_POOL_REBATE_RATE = 25 * 10**16  # 25% of the post-taker-rebate remainder
+_POOL_REBATE_RATE = 25 * 10**16  # 25% of the post-referrer-rebate remainder
+_REFERRER_REBATE_RATE = 3 * 10**17  # 30% of the post-taker-rebate remainder
 _FEE_V3_TEST_TIER_ID = 9001
 
 _FEE_TIER_COMPONENTS = [
@@ -88,6 +91,30 @@ _FEE_CONFIGURATION_ABI: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "getReferrerRebateParameter",
+        "stateMutability": "view",
+        "inputs": [{"name": "refereeAccountOwner", "type": "address"}],
+        "outputs": [{"name": "rate", "type": "uint256"}, {"name": "accountId", "type": "uint128"}],
+    },
+    {
+        "type": "function",
+        "name": "setReferralMapping",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "refereeAccountOwner", "type": "address"},
+            {"name": "referrerAccountOwner", "type": "address"},
+        ],
+        "outputs": [],
+    },
+    {
+        "type": "function",
+        "name": "setAccountOwnerCustomAffiliateRateFeeConfig",
+        "stateMutability": "nonpayable",
+        "inputs": [{"name": "accountOwner", "type": "address"}, {"name": "customAffiliateRate", "type": "uint256"}],
+        "outputs": [],
+    },
+    {
+        "type": "function",
         "name": "setAccountOwnerTierIdFeeConfig",
         "stateMutability": "nonpayable",
         "inputs": [
@@ -116,6 +143,7 @@ class FeeV3Scenario:
     taker_fee_rate: int = _TAKER_FEE_RATE
     taker_rebate_rate: int = _TAKER_REBATE_RATE
     pool_rebate_rate: int = _POOL_REBATE_RATE
+    referrer_rebate_rate: int = 0
 
 
 @dataclass(frozen=True)
@@ -162,6 +190,8 @@ def configured_localnet_fee_v3(
     *,
     taker_owner: str,
     pool_account_id: int,
+    referrer_owner: str | None = None,
+    referrer_account_id: int | None = None,
 ) -> Iterator[FeeV3Scenario | None]:
     """Install deterministic non-zero fee-v3 state on Localnet and restore it.
 
@@ -172,7 +202,7 @@ def configured_localnet_fee_v3(
         yield None
         return
 
-    rpc_url = _required_env("NEXT_PUBLIC_LOCALNET_RPC_URL")
+    rpc_url = localnet_url("NEXT_PUBLIC_LOCALNET_RPC_URL", "http")
     proxy_address = Web3.to_checksum_address(_required_env("PASSIVE_PERP_PROXY_ADDRESS"))
     configurator_private_key = _required_env("PERP_PRIVATE_KEY_2")
     taker_owner_address = Web3.to_checksum_address(taker_owner)
@@ -202,6 +232,14 @@ def configured_localnet_fee_v3(
     if referrer != Web3.to_checksum_address("0x0000000000000000000000000000000000000000"):
         raise RuntimeError("Localnet fee-v3 test requires an un-referred taker for an isolated waterfall")
 
+    referrer_address = Web3.to_checksum_address(referrer_owner) if referrer_owner else None
+    previous_custom_rate = 0
+    if referrer_address is not None:
+        if referrer_address == taker_owner_address or referrer_account_id is None:
+            raise ValueError("A distinct referrer owner and its spot account ID are required")
+        previous_custom_rate = int(contract.functions.getAccountOwnerFeeConfiguration(referrer_address).call()[5])
+    applied_referral = False
+    applied_custom_rate = False
     applied_account_tier = False
     applied_og_status = False
 
@@ -219,13 +257,30 @@ def configured_localnet_fee_v3(
         )
         applied_og_status = True
 
+        if referrer_address is not None:
+            _send_transaction(
+                w3,
+                configurator_private_key,
+                contract.functions.setAccountOwnerCustomAffiliateRateFeeConfig(referrer_address, _REFERRER_REBATE_RATE),
+            )
+            applied_custom_rate = True
+            _send_transaction(
+                w3,
+                configurator_private_key,
+                contract.functions.setReferralMapping(taker_owner_address, referrer_address),
+            )
+            applied_referral = True
+            resolved_rate, resolved_account = contract.functions.getReferrerRebateParameter(taker_owner_address).call()
+            if (int(resolved_rate), int(resolved_account)) != (_REFERRER_REBATE_RATE, referrer_account_id):
+                raise RuntimeError("Localnet referral must resolve to the expected rate and referrer spot account")
+
         resolved_fee, resolved_rebate = contract.functions.getAccountOwnerFeeParameters(taker_owner_address).call()
         if (int(resolved_fee), int(resolved_rebate)) != (_TAKER_FEE_RATE, _TAKER_REBATE_RATE):
             raise RuntimeError(
                 "Localnet fee-v3 configuration did not resolve to the deterministic taker fee/rebate rates"
             )
 
-        yield FeeV3Scenario()
+        yield FeeV3Scenario(referrer_rebate_rate=_REFERRER_REBATE_RATE if referrer_address else 0)
     finally:
         cleanup_errors: list[Exception] = []
 
@@ -235,6 +290,12 @@ def configured_localnet_fee_v3(
             except Exception as error:  # pylint: disable=broad-exception-caught
                 cleanup_errors.append(error)
 
+        if applied_referral:
+            restore(contract.functions.setReferralMapping(taker_owner_address, referrer))
+        if applied_custom_rate:
+            restore(
+                contract.functions.setAccountOwnerCustomAffiliateRateFeeConfig(referrer_address, previous_custom_rate)
+            )
         if applied_og_status:
             restore(contract.functions.setAccountOwnerOgStatusFeeConfig(taker_owner_address, previous_og_status))
         if applied_account_tier:

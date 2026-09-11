@@ -42,6 +42,8 @@ from sdk.open_api.models.perp_execution_list import PerpExecutionList
 from sdk.open_api.models.position import Position
 from sdk.open_api.models.spot_execution_list import SpotExecutionList
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.transfer_list import TransferList
+from sdk.open_api.models.transfer_type import TransferType
 from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig, get_config
@@ -1123,6 +1125,40 @@ class ReyaTradingClient:
         if not wallet:
             raise ValueError("No wallet address available.")
         return await self.wallet.get_wallet_execution_busts(address=wallet)
+
+    async def get_transfers(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        types: list[TransferType] | None = None,
+    ) -> TransferList:
+        """Get the owner wallet's transfer history (account ledger).
+
+        One entry per account side of every on-chain transfer leg — deposits,
+        withdrawals, transfers, pool stakes, spot trades, auto-exchanges, perp
+        fees and rebates, liquidation penalties — newest first, signed from the
+        account's point of view. Net deposits only: realized PnL and funding
+        never appear. Page with ``cursor=result.meta.next_cursor``; ``types``
+        filters on ``TransferType`` labels. Zero-amount legs are never returned.
+        """
+        wallet = self.owner_wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available.")
+        if types is not None and TransferType.UNKNOWN in types:
+            # UNKNOWN is the SDK's sentinel for a label it does not know yet
+            # (the enum is open); it is not a type the server accepts.
+            raise ValueError("TransferType.UNKNOWN cannot be used as a filter.")
+        return await self.wallet.get_wallet_transfers(
+            address=wallet,
+            limit=limit,
+            cursor=cursor,
+            start_time=start_time,
+            end_time=end_time,
+            type=types,
+        )
 
     async def close(self) -> None:
         if hasattr(self._api_client, "rest_client") and self._api_client.rest_client:

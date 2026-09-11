@@ -16,7 +16,7 @@ UNKNOWN_MEMBER = "UNKNOWN"
 # over. The order-entry vocabularies (OrderType, TimeInForce) are deliberately
 # absent: a request the client cannot encode must keep failing loudly.
 OPEN_VOCABULARY_ENUMS: dict[str, tuple[str, ...]] = {
-    "async_api": ("cancel_reason", "execution_type", "order_status"),
+    "async_api": ("cancel_reason", "execution_type", "order_status", "transfer_type"),
     "async_exec_api": ("cancel_reason", "order_status", "request_error_code", "ws_exec_error_code"),
 }
 

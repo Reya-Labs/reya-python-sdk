@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Wallet transfer history (account ledger, PRO-852), regenerated from the
+  specs `3.4.1`: `GET /v2/wallet/{address}/transfers` as
+  `WalletDataApi.get_wallet_transfers` and `ReyaTradingClient.get_transfers`,
+  returning `TransferList` — one `Transfer` per account side of every
+  on-chain transfer leg (deposits, withdrawals, transfers, pool stakes, spot
+  trades, auto-exchanges, perp fees and rebates, liquidation penalties),
+  newest first, signed from the account's view, with `net_deposits_after`
+  (net deposits, not `real_balance`), a `TransferType` label and, for perp
+  fills settled after the on-chain fill link shipped, `fill_id` and `symbol`
+  joining the entry to its `PerpExecution`. Pages by opaque cursor
+  (`meta.next_cursor`, `CursorPaginationMeta`), filters by `type` and
+  `start_time`/`end_time`, and never returns zero-amount legs. `TransferType` is a
+  server-owned vocabulary: a label this SDK predates parses as `UNKNOWN`. The `walletTransfers` WebSocket
+  channel (`/v2/wallet/{address}/transfers`) carries the same entries; subscribe
+  through `socket.wallet.transfers(address)`. Live callbacks receive typed
+  `WalletTransferUpdatePayload` messages.
 - All three generated packages regenerated from the specs `3.3.0` tag, which
   adds two additive, optional groups of response fields. `PerpExecution` gains
   the Fee v3 fee decomposition — `protocolFeeCredit`, `referrerFeeCredit`,
