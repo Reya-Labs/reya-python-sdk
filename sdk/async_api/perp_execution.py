@@ -24,7 +24,7 @@ class PerpExecution(BaseModel):
   type: ExecutionType = Field(description='''Type of execution. MARKET_CLOSE is the terminal execution used to close residual positions when a market is force-closed.''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
-  fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')
+  fill_id: Optional[str] = Field(description='''Stable fill identifier. Use it to correlate the execution with the fill range reported by order responses and order updates.''', default=None, alias='''fillId''')
   taker_realized_pnl: Optional[str] = Field(default=None, alias='''takerRealizedPnl''')
   maker_realized_pnl: Optional[str] = Field(default=None, alias='''makerRealizedPnl''')
   taker_price_variation_pnl: Optional[str] = Field(default=None, alias='''takerPriceVariationPnl''')
