@@ -71,9 +71,10 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         return json.loads(await control("snapshot"))
 
     async def wait_entry_ready():
-        # Deployment readiness precedes the API's next TCP reconnect attempt.
-        # Probe an idempotent risk-off operation before beginning the cycle.
-        deadline = asyncio.get_running_loop().time() + 30
+        # Deployment readiness precedes the API's next TCP reconnect attempt:
+        # the client's capped 30s backoff has up to 1.5x jitter (45s). Allow that
+        # full interval and probe an idempotent risk-off operation before trading.
+        deadline = asyncio.get_running_loop().time() + 60
         while True:
             try:
                 await buyer.mass_cancel(symbol=market.symbol, account_id=account)
