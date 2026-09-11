@@ -14,7 +14,10 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from urllib.parse import urlsplit
 
-from websocket import WebSocketTimeoutException, create_connection
+from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+    WebSocketTimeoutException,
+    create_connection,
+)
 
 from sdk.open_api.models.transfer import Transfer
 from tests.helpers import ReyaTester

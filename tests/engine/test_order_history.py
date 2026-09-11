@@ -221,8 +221,8 @@ def _assert_filled_order_projection(
     assert order.fill_count >= 1
 
 
-@pytest_asyncio.fixture
-async def localnet_transfer_observers(
+@pytest_asyncio.fixture(name="localnet_transfer_observers")
+async def _localnet_transfer_observers(
     perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester, with_referrer: bool
 ):
     """Subscribe before placing the fill; always close every observer on failure."""
