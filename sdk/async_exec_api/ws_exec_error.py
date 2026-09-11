@@ -8,7 +8,7 @@ class WsExecError(BaseModel):
   - `MALFORMED_JSON` — the frame was not valid JSON.
   - `UNKNOWN_TYPE` — the frame `type` is not a recognised operation.
   - `DUPLICATE_REQUEST_ID` — a frame reused an in-flight `id`.
-  - `SERVER_SHUTTING_DOWN` — the server is draining and rejected the frame (reconnect to another instance).
+  - `SERVER_SHUTTING_DOWN` — the server is shutting down and rejected the request; reconnect before retrying.
   - `TOO_MANY_INFLIGHT` — the connection exceeded its per-connection in-flight request cap; retry after awaiting outstanding responses.
   - `INTERNAL` — an unexpected server-side framing error.
   ''')
