@@ -9,8 +9,11 @@ from decimal import Decimal
 from urllib.parse import urlsplit
 
 import pytest
+import pytest_asyncio
 
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.reya_rest_api import ReyaTradingClient
+from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.rate_limits import rl_config
 from tests.rate_limits.rl_actions import create_resting_order, ensure_flat, resolve_market, wire
@@ -20,14 +23,40 @@ from tests.rate_limits.rl_hooks import require_hook, run_hook
 pytestmark = [pytest.mark.rate_limits, rl_config.requires_rate_limits]
 
 
-async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
-    maker_tester_session, taker_tester_session, rl_suite_config, record_property
-):
+@pytest_asyncio.fixture(name="chain_clients", loop_scope="session")
+async def _chain_clients():
     for action in ("prepare", "pause", "snapshot", "mine", "resume", "restore"):
         require_hook(f"chain_{action}")
     assert os.environ.get("CHAIN_ID") == "31337", "this fault test requires Localnet"
     assert urlsplit(os.environ["REYA_API_URL"]).hostname in ("127.0.0.1", "localhost", "::1")
-    seller, buyer = maker_tester_session.client, taker_tester_session.client
+    # Function-scoped REST clients leave no background WebSocket connections
+    # that would consume the later per-IP connection-cap tests' budget.
+    clients = [
+        ReyaTradingClient(
+            config=TradingConfig(
+                api_url=os.environ["REYA_API_URL"],
+                chain_id=31337,
+                owner_wallet_address=os.environ[f"SPOT_WALLET_ADDRESS_{index}"],
+                private_key=os.environ[f"SPOT_PRIVATE_KEY_{index}"],
+                account_id=int(os.environ[f"SPOT_ACCOUNT_ID_{index}"]),
+                orders_gateway_address=os.environ["REYA_ORDERS_GATEWAY"],
+                dex_id_override=int(os.environ["REYA_DEX_ID"]) if os.environ.get("REYA_DEX_ID") else None,
+            )
+        )
+        for index in (1, 2)
+    ]
+    try:
+        for client in clients:
+            await client.start()
+        yield clients
+    finally:
+        await asyncio.gather(*(client.close() for client in clients))
+
+
+async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
+    chain_clients, rl_suite_config, record_property
+):
+    seller, buyer = chain_clients
     market = await resolve_market(buyer, rl_suite_config.symbol)
     qty, price = market.min_qty, market.oracle_price
     wallet, account = buyer.config.owner_wallet_address, buyer.config.account_id
@@ -87,6 +116,14 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         assert Decimal(response.cum_qty) == qty, response
         return response
 
+    async def assert_halted(label):
+        reject = await capture_rest_reject(create_resting_order(buyer, market), label)
+        assert reject.code == "TRADING_HALTED_ERROR", reject.describe()
+        assert "settlement confirmation is lagging" in (reject.message or ""), reject.describe()
+        assert_venue_verdict(reject, label)
+        assert_no_retry_hint(reject, label)
+        observations[label] = reject.describe()
+
     try:
         await control("prepare")
         await ensure_flat(buyer, rl_suite_config, market.symbol)
@@ -123,12 +160,7 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         assert halted["metrics"]["me.risk.in_flight.size"] >= 4
         assert halted["metrics"]["me.broadcast.trading_halted"] == 0
         assert halted["metrics"]["me.indexer.trading_halted"] == 0
-        reject = await capture_rest_reject(create_resting_order(buyer, market), "chain backlog")
-        assert reject.code == "TRADING_HALTED_ERROR", reject.describe()
-        assert "settlement confirmation is lagging" in (reject.message or ""), reject.describe()
-        assert_venue_verdict(reject, "chain backlog")
-        assert_no_retry_hint(reject, "chain backlog")
-        observations["reject"] = reject.describe()
+        await assert_halted("backlog_reject")
         await buyer.cancel_order(order_id=cancel_one, symbol=market.symbol, account_id=account)
         cancelled = await buyer.mass_cancel(symbol=market.symbol, account_id=account)
         assert cancelled.cancelled_count == 1, cancelled
@@ -149,6 +181,7 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         assert draining["block"] == paused["block"] + 1
         assert draining["metrics"]["me.settle.trading_halted"] == 1
         assert all(int(r["status"], 16) == 1 for r in draining["receipts"])
+        await assert_halted("draining_reject")
 
         await control("resume")
         recovered = await wait_snapshot(
@@ -161,7 +194,7 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         await cross()  # Reopens automatically, without a control reset or restart.
         await settled(6)
         final = await snapshot()
-        assert healthy["generation"] and all(
+        assert len(healthy["generation"]) == 1 and all(
             state["generation"] == healthy["generation"] for state in (halted, draining, recovered, final)
         ), "the engine restarted during the halt/recovery cycle"
     finally:
