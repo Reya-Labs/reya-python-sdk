@@ -13,10 +13,9 @@ Usage:
 """
 
 # This is a verification harness: every test branch's REJECTED path is
-# expected to surface as *some* exception (an ApiException on the venue's 400,
-# a transport error, a validation error, etc.). Narrowing each ``except`` would
-# only accumulate noise here — the intent is "any failure counts as a
-# rejection".
+# expected to surface as *some* exception (ApiException 400/429, transport
+# error, validation error, etc.). Narrowing each ``except`` would only
+# accumulate noise here — the intent is "any failure counts as a rejection".
 # pylint: disable=broad-exception-caught
 
 import asyncio

@@ -17,7 +17,7 @@ class SpotExecution(BaseModel):
   type: ExecutionType = Field(description='''Type of execution. MARKET_CLOSE is the terminal execution used to close residual positions when a market is force-closed.''')
   timestamp: int = Field()
   sequence_number: int = Field(alias='''sequenceNumber''')
-  fill_id: Optional[str] = Field(description='''Matching-engine fill nonce — a stable identifier to join this execution to its ME fill (PRO-182).''', default=None, alias='''fillId''')
+  fill_id: Optional[str] = Field(description='''Stable fill identifier. Use it to correlate the execution with the fill range reported by order responses and order updates.''', default=None, alias='''fillId''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
