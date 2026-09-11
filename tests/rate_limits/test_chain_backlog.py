@@ -151,7 +151,11 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
         await create_resting_order(buyer, market)
         await control("pause")
         paused = await snapshot()
-        for _ in range(4):
+        await cross()
+        # Pin one transaction in Anvil before producing the remaining fills;
+        # otherwise a fast burst could be coalesced into one settlement batch.
+        await wait_snapshot("first_pending", lambda s: bool(s["pending"]), timeout=3)
+        for _ in range(3):
             await cross()
         halted = await wait_snapshot("halted", lambda s: s["metrics"]["me.settle.trading_halted"] == 1)
         assert halted["block"] == paused["block"], "the local chain did not stay paused"
