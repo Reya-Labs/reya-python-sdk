@@ -11,13 +11,14 @@ from urllib.parse import urlsplit
 import pytest
 import pytest_asyncio
 
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.reya_rest_api import ReyaTradingClient
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters
 from tests.rate_limits import rl_config
 from tests.rate_limits.rl_actions import create_resting_order, ensure_flat, resolve_market, wire
-from tests.rate_limits.rl_errors import assert_no_retry_hint, assert_venue_verdict, capture_rest_reject
+from tests.rate_limits.rl_errors import assert_no_retry_hint, assert_venue_verdict, capture_rest_reject, rest_reject
 from tests.rate_limits.rl_hooks import require_hook, run_hook
 
 pytestmark = [pytest.mark.rate_limits, rl_config.requires_rate_limits]
@@ -68,6 +69,20 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
 
     async def snapshot():
         return json.loads(await control("snapshot"))
+
+    async def wait_entry_ready():
+        # Deployment readiness precedes the API's next TCP reconnect attempt.
+        # Probe an idempotent risk-off operation before beginning the cycle.
+        deadline = asyncio.get_running_loop().time() + 30
+        while True:
+            try:
+                await buyer.mass_cancel(symbol=market.symbol, account_id=account)
+                return
+            except ApiException as exc:
+                reject = rest_reject(exc)
+                assert reject.code == "UNAVAILABLE_MATCHING_ENGINE_ERROR", reject.describe()
+                assert asyncio.get_running_loop().time() < deadline, reject.describe()
+                await asyncio.sleep(0.5)
 
     async def wait_snapshot(label, predicate, timeout=30):
         deadline = asyncio.get_running_loop().time() + timeout
@@ -126,6 +141,7 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
 
     try:
         await control("prepare")
+        await wait_entry_ready()
         await ensure_flat(buyer, rl_suite_config, market.symbol)
         await ensure_flat(seller, rl_suite_config, market.symbol)
         healthy = await wait_snapshot(
@@ -211,3 +227,4 @@ async def test_chain_backlog_halts_creates_allows_cancel_and_drain_then_reopens(
             await ensure_flat(seller, rl_suite_config, market.symbol)
         finally:
             await control("restore")
+            await wait_entry_ready()
