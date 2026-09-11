@@ -1,8 +1,8 @@
 """Strict REST/WS ledger assertions for controlled Localnet transactions.
 
-The SDK does not yet dispatch the transfers WS channel, so observe its public
-wire contract directly with websocket-client. No live frame is synthesized from
-REST, and the subscription must be acknowledged before the producer runs.
+Observe the public wire contract directly with websocket-client, independently
+of SDK dispatch. No live frame is synthesized from REST, and the subscription
+must be acknowledged before the producer runs.
 """
 
 from __future__ import annotations

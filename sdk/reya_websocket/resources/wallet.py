@@ -24,6 +24,7 @@ class WalletResource:
         self._execution_busts = WalletExecutionBustsResource(socket)
         self._balances = WalletBalancesResource(socket)
         self._accounts = WalletAccountsResource(socket)
+        self._transfers = WalletTransfersResource(socket)
         self._order_changes = WalletOrderChangesResource(socket)
 
     def positions(self, address: str) -> "WalletPositionsSubscription":
@@ -80,6 +81,10 @@ class WalletResource:
             A subscription object for account creation and removal updates.
         """
         return self._accounts.for_wallet(address)
+
+    def transfers(self, address: str) -> "WalletTransfersSubscription":
+        """Get transfer ledger updates for a wallet address."""
+        return self._transfers.for_wallet(address)
 
     def execution_busts(self, address: str) -> "WalletExecutionBustsSubscription":
         """Get execution busts (failed fills) for a specific wallet address.
@@ -431,4 +436,32 @@ class WalletAccountsSubscription:
 
     def unsubscribe(self) -> None:
         """Unsubscribe from account-discovery updates."""
+        self.socket.send_unsubscribe(channel=self.path)
+
+
+class WalletTransfersResource(SubscribableParameterizedResource):
+    """Resource for wallet transfer ledger updates."""
+
+    def __init__(self, socket: "ReyaSocket") -> None:
+        super().__init__(socket, "/v2/wallet/{address}/transfers")
+
+    def for_wallet(self, address: str) -> "WalletTransfersSubscription":
+        """Create a transfer ledger subscription for a wallet."""
+        return WalletTransfersSubscription(self.socket, address)
+
+
+class WalletTransfersSubscription:
+    """Manages transfer ledger updates for a wallet."""
+
+    def __init__(self, socket: "ReyaSocket", address: str) -> None:
+        self.socket = socket
+        self.address = address
+        self.path = f"/v2/wallet/{address}/transfers"
+
+    def subscribe(self) -> None:
+        """Subscribe to the initial snapshot and live transfer updates."""
+        self.socket.send_subscribe(channel=self.path)
+
+    def unsubscribe(self) -> None:
+        """Unsubscribe from transfer ledger updates."""
         self.socket.send_unsubscribe(channel=self.path)

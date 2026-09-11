@@ -73,3 +73,37 @@ def test_referral_configuration_restores_state(monkeypatch, failure):
         functions.setAccountOwnerTierIdFeeConfig.return_value,
     ]
     assert len(sent) == (7 if failure == "mapping" else 8)
+
+
+@pytest.mark.parametrize(
+    "rpc_url",
+    [
+        "http://remote-fork.invalid:8545",
+        "http://127.0.0.1.example.invalid:8545",
+        "http://user:password@127.0.0.1:8545",
+        "https://127.0.0.1:8545",
+        "ws://localhost:8545",
+        "",
+    ],
+)
+def test_rejects_non_loopback_rpc_before_constructing_provider(monkeypatch, rpc_url):
+    monkeypatch.setenv("CHAIN_ID", "31337")
+    monkeypatch.setenv("NEXT_PUBLIC_LOCALNET_RPC_URL", rpc_url)
+    provider = MagicMock()
+    send = MagicMock()
+    monkeypatch.setattr(fees.Web3, "HTTPProvider", provider)
+    monkeypatch.setattr(fees, "_send_transaction", send)
+    with pytest.raises(RuntimeError, match="loopback Localnet http endpoint"):
+        with fees.configured_localnet_fee_v3(taker_owner=TAKER, pool_account_id=1):
+            pytest.fail("invalid RPC must not enter the configuration context")
+    provider.assert_not_called()
+    send.assert_not_called()
+
+
+def test_non_localnet_configuration_is_a_noop(monkeypatch):
+    monkeypatch.setenv("CHAIN_ID", "89346162")
+    provider = MagicMock()
+    monkeypatch.setattr(fees.Web3, "HTTPProvider", provider)
+    with fees.configured_localnet_fee_v3(taker_owner=TAKER, pool_account_id=1) as scenario:
+        assert scenario is None
+    provider.assert_not_called()

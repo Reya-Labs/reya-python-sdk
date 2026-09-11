@@ -38,6 +38,7 @@ from sdk.async_api.unsubscribed_message_payload import UnsubscribedMessagePayloa
 from sdk.async_api.wallet_execution_bust_update_payload import WalletExecutionBustUpdatePayload
 from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
+from sdk.async_api.wallet_transfer_update_payload import WalletTransferUpdatePayload
 from sdk.reya_websocket.config import WebSocketConfig, get_config
 from sdk.reya_websocket.resources.market import MarketResource
 from sdk.reya_websocket.resources.prices import PricesResource
@@ -74,6 +75,7 @@ WebSocketMessage = Union[
     WalletExecutionBustUpdatePayload,  # /v2/wallet/{address}/executionBusts
     AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
     AccountUpdatePayload,  # /v2/wallet/{address}/accounts
+    WalletTransferUpdatePayload,  # /v2/wallet/{address}/transfers
     # Price channels
     AssetOraclePricesUpdatePayload,  # /v2/assetOraclePrices
 ]
@@ -231,6 +233,8 @@ class ReyaSocket(WebSocketApp):
                 return AccountBalanceUpdatePayload
             elif channel.endswith("/accounts"):
                 return AccountUpdatePayload
+            elif channel.endswith("/transfers"):
+                return WalletTransferUpdatePayload
 
         return None
 

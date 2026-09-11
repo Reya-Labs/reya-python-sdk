@@ -22,3 +22,9 @@ class TransferType(Enum):
   INSURANCE_FUND_COVERAGE = "INSURANCE_FUND_COVERAGE"
   POOL_MERGE = "POOL_MERGE"
   OTHER = "OTHER"
+  UNKNOWN = "UNKNOWN"
+
+  @classmethod
+  def _missing_(cls, value: object) -> "TransferType":
+    """Resolve a member added by the server since this SDK was generated."""
+    return cls.UNKNOWN

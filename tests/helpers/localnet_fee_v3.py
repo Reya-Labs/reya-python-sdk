@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 from web3 import Web3
 
+from tests.helpers.wallet_transfers import localnet_url
+
 WAD = 10**18
 RUSD_SCALE = 10**6
 
@@ -200,7 +202,7 @@ def configured_localnet_fee_v3(
         yield None
         return
 
-    rpc_url = _required_env("NEXT_PUBLIC_LOCALNET_RPC_URL")
+    rpc_url = localnet_url("NEXT_PUBLIC_LOCALNET_RPC_URL", "http")
     proxy_address = Web3.to_checksum_address(_required_env("PASSIVE_PERP_PROXY_ADDRESS"))
     configurator_private_key = _required_env("PERP_PRIVATE_KEY_2")
     taker_owner_address = Web3.to_checksum_address(taker_owner)

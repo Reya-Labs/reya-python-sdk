@@ -34,6 +34,7 @@ from pydantic import TypeAdapter
 from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.async_api.execution_type import ExecutionType as WsExecutionType
 from sdk.async_api.order_status import OrderStatus as WsOrderStatus
+from sdk.async_api.transfer_type import TransferType as WsTransferType
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
 from sdk.async_exec_api.ws_exec_error_code import WsExecErrorCode
@@ -46,12 +47,15 @@ from sdk.open_api.models.request_error_code import RequestErrorCode
 from sdk.open_api.models.server_error_code import ServerErrorCode
 from sdk.open_api.models.tier_type import TierType
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.transfer_type import TransferType
 
 pytestmark = pytest.mark.offline
 
 UNKNOWN_WIRE_VALUE = "A_MEMBER_THIS_SDK_HAS_NEVER_SEEN"
 
 SERVER_OWNED = [
+    pytest.param(TransferType, id="open_api.TransferType"),
+    pytest.param(WsTransferType, id="async_api.TransferType"),
     pytest.param(AccountType, id="open_api.AccountType"),
     pytest.param(CancelReason, id="open_api.CancelReason"),
     pytest.param(ExecutionType, id="open_api.ExecutionType"),
