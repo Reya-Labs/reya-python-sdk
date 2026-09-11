@@ -5,8 +5,8 @@ caps, reactive eject) across REST and ws-exec.
 
 The suite is **configuration-driven, not load-generating**. It never tries to
 out-run a production-sized limit; it expects the target deployment (localnet) to
-expose **small Standard-tier limits** so a handful of requests trips them, and to
-seed the standard test wallets into `rl_whitelist` (heavy wallets into
+expose **small Standard- and MM-tier limits** so a handful of requests trips them, and to
+seed the standard test wallets into `rl_wallet_status` (heavy wallets into
 `rl_market_makers`).
 
 ## Layout
@@ -80,58 +80,29 @@ Two consequences the suite pins:
 
 Retry policy is therefore keyed on the code, and `rl_config.retry_policy()`
 encodes it: retry after `retryAfterMs` for `RATE_LIMITED_ERROR`, back off and
-retry after it for `CAPACITY_LIMITED_ERROR`, retry unchanged after a short delay
+retry with jitter for `CAPACITY_LIMITED_ERROR` (the pressure guard supplies no hint), retry unchanged after a short delay
 for the `UNAVAILABLE_*` pair (the request was never evaluated), and do not
 auto-retry the caps or the access decisions at all.
 
-## Gate scope (design ruling, 2026-07-31)
+## Gate scope
 
-The whitelist gate covers **create and modify only**. Cancel, cancelAll and
-cancelAllAfter are **not** gated, and the ME's ejected-account check rejects
-creates/modifies rather than cancels. Risk-off always flows: a de-whitelisted or
-ejected owner must still be able to unwind its book and keep its dead-man's
-switch alive, and its resting orders are removed by the ME sweep rather than by
-denying it the ability to cancel.
+Ordinary creates and all modifies require a WHITELISTED owner. The supported
+removal operation atomically changes its `rl_wallet_status` row to EJECTED and
+inserts the owned accounts into `rl_ejected_accounts`. Cancels and countdown
+disarms remain available. Countdown arms and refreshes are refused while EJECTED.
 
-The split for ejected accounts is **almost** the same, with one deliberate
-exception. The ME refuses an ejected account's **create and modify** (both
-risk-increasing) with `ACCOUNT_SUSPENDED_ERROR`, while its cancels and
-mass-cancel stay open and its resting orders are removed by the ME sweep. The
-dead-man's switch, however, **splits by direction** — this is design option (b),
-which both layers ship:
+An authenticated EJECTED owner may still submit a perp `LIMIT` with
+`timeInForce: IOC` and `reduceOnly: true`. Signature, signer/account permission,
+normal place-budget, validation and risk checks all apply. The exception cannot
+rest and does not apply to never-whitelisted wallets or spot orders. Ordinary
+creates and modifies receive `NOT_WHITELISTED_ERROR` at the edge or
+`ACCOUNT_SUSPENDED_ERROR` at the ME during poll convergence.
 
-| cancelAllAfter on an ejected account | Verdict |
-| --- | --- |
-| **arm / refresh** (`timeoutMs > 0`) | refused **`ACCOUNT_SUSPENDED_ERROR`** (on the venue's `400`) |
-| **disarm** (`timeoutMs = 0`) | always allowed |
+The never-whitelisted identity tests cancel-all-after arm/refresh/disarm without
+an eject row. It represents an absent launch-list entry, not an operator removal.
 
-The reasoning: an ejected account's book is being swept flat every tick anyway,
-so letting it arm a fresh deadline is a loose end; a blocked *disarm*, by
-contrast, would let a false-positive countdown flatten a book the operator is
-already unwinding. A **de-whitelisted but not ejected** account keeps arm and
-refresh — removal is graceful offboarding, not suspension.
-
-`test_eject_flow.py` pins both halves. On the **default** eject hook that arm leg
-is also the only place `ACCOUNT_SUSPENDED_ERROR` is attributable: on
-create/modify the eject transaction also deletes the `rl_whitelist` row, so the
-edge's whitelist verdict normally wins the race and answers
-`NOT_WHITELISTED_ERROR` instead, and cancelAllAfter is never whitelist-gated so
-nothing else can answer there. With `RL_TEST_EJECT_ONLY_CMD` wired the create
-path becomes attributable too — see *ME-verdict isolation* below.
-
-**The published API description matches this** (verified against
-`reya-api-specs` @ `feat/rate-limits-v1-specs` d1c4fb5). `POST /v2/cancelAllAfter`
-states that arming or refreshing from a suspended account is refused
-`ACCOUNT_SUSPENDED_ERROR` while disarming never is; the AsyncAPI passages
-promising that a suspended account could still arm were retracted earlier on the
-same branch. The spec also states the complementary rule this suite pins in
-`test_whitelist_gate.py`: *"Mere removal from the allowlist does not gate it: a
-removed wallet whose account is not suspended may still arm, refresh and
-disarm."*
-
-The SDK's own pinned `specs/` submodule is older (3.3.0), which is why the
-generated `RequestErrorCode` still lacks six of the seven v1 codes — see
-§ Findings. That is a submodule bump, not a spec gap.
+The SDK's pinned generated models predate these codes; the raw error helper
+preserves them until model regeneration (see Findings).
 
 The suite encodes this asymmetry directly — `assert_not_whitelist_gated`
 (`rl_actions.py`) accepts any outcome for a risk-off op *except* an access
@@ -143,11 +114,11 @@ tell an access decision from an order-not-found.
 
 ## Eject sweep scope (design ruling, 2026-08)
 
-The eject sweep clears **resting** orders and deliberately **retains armed
-stop-loss / take-profit orders**. Ejecting an account does not close its
+The eject sweep clears **ordinary resting** orders and deliberately retains
+**armed stop-loss / take-profit orders and fired SL/TP children**. Ejecting an account does not close its
 positions, so cancelling its protective stops would leave it unprotected in
 exactly the situation the eject was meant to de-risk. The invariant is "an
-ejected account holds no resting liquidity", **not** "an ejected account has an
+ejected account holds no ordinary resting liquidity", **not** "an ejected account has an
 empty book".
 
 **Retention is a property of the SWEEP, not of mass-cancel.** The ME's cancel
@@ -216,7 +187,7 @@ What that leg deliberately does **not** assert is the FIRE emptying a book, and
 the reason is structural rather than a shortcut: a de-whitelisted account can
 never build a book to sacrifice, because creating is precisely what the gate
 refuses. The wiring exposes no de-whitelist-only control channel either — the
-eject hook removes the whitelist row and ejects in one transaction, and
+eject hook marks the wallet EJECTED and inserts eject rows in one transaction, and
 `RL_TEST_EJECT_ONLY_CMD` is the opposite half (ejected while still whitelisted)
 — so "de-whitelisted, not suspended, holding resting orders" is unreachable by
 construction. The fire's effect on a book is therefore pinned on the Standard
@@ -240,14 +211,15 @@ means a deployment whose ejected-set check did nothing at all would still pass
 the eject flow, on the edge's whitelist verdict alone.
 
 `RL_TEST_EJECT_ONLY_CMD` inserts the same `rl_ejected_accounts` rows and leaves
-the `rl_whitelist` row in place. The edge then admits the request and the only
+the `rl_wallet_status` row WHITELISTED. The edge then admits the request and the only
 thing that can refuse it is the matching engine, so
 `test_eject_without_de_whitelisting_pins_the_matching_engines_own_verdict`
 requires exactly `ACCOUNT_SUSPENDED_ERROR` — a `NOT_WHITELISTED_ERROR` there
-means the hook removed the whitelist row after all and the test proves nothing.
-Un-ejecting uses the same `RL_TEST_UNEJECT_CMD` (deleting the eject rows and
-re-asserting the whitelist row, a no-op restore here), and the test then waits
-for a create to be accepted again rather than assuming the hook worked.
+means the hook changed the WHITELISTED status after all and the test proves nothing.
+Repair uses `RL_TEST_RESTORE_EJECT_ONLY_CMD`: first perform a full eject, then
+un-eject. The normal un-eject operator refuses an already-WHITELISTED wallet,
+so it cannot repair this deliberately inconsistent fault by itself. The test
+waits for a create to be accepted again after repair.
 
 ## Observation scope
 
@@ -275,7 +247,7 @@ a wallet-scoped post-check.
 | `RL_TEST_ACCOUNT_ID` | `SPOT_ACCOUNT_ID_1` | Whitelisted, **Standard-tier** account the bucket/cap/eject tests drive |
 | `RL_TEST_PRIVATE_KEY` | `SPOT_PRIVATE_KEY_1` | its signing key |
 | `RL_TEST_WALLET_ADDRESS` | `SPOT_WALLET_ADDRESS_1` | its **owner** wallet (the whitelist/eject key) |
-| `RL_TEST_NON_WHITELISTED_ACCOUNT_ID` | *(none)* | An account the deployment deliberately did **not** seed into `rl_whitelist`. No fallback — guessing would turn the gate test into a false pass |
+| `RL_TEST_NON_WHITELISTED_ACCOUNT_ID` | *(none)* | An account the deployment deliberately did **not** seed into `rl_wallet_status`. No fallback — guessing would turn the gate test into a false pass |
 | `RL_TEST_NON_WHITELISTED_PRIVATE_KEY` | *(none)* | its signing key |
 | `RL_TEST_NON_WHITELISTED_WALLET_ADDRESS` | *(none)* | its owner wallet |
 | `RL_TEST_TRIGGER_ACCOUNT_ID` | *(none)* | The **perp** account that arms protective stops (eject retention + the count-cap trigger exemption). No fallback: inheriting the spot Standard identity is what let the retention probe arm against a mis-wired account and still go green. Must be owned by the **same wallet** as the Standard account, since the eject hook ejects by owner wallet |
@@ -283,8 +255,9 @@ a wallet-scoped post-check.
 | `RL_TEST_TRIGGER_WALLET_ADDRESS` | *(none)* | its owner wallet |
 | `RL_TEST_UNKNOWN_ACCOUNT_ID` | `999999999` | An `accountId` that resolves to **no owner**, for the §3 `unknown_owner → NOT_WHITELISTED` row. Point it at an id the deployment has definitely never issued; it is signed with the non-whitelisted key so a wrong value can never be a whitelisted wallet's account |
 
-The account under test must **not** be in `rl_market_makers`, or the MM tier's
-much larger limits will make the burst tests time out on their attempt bound.
+The Standard account must **not** be in `rl_market_makers`. The separate MM
+identity must be present there. Bucket and cap tests run for both tiers, using
+the corresponding deployment limits.
 
 ### Market
 
@@ -312,7 +285,7 @@ and pacing only — **no test asserts GCRA arithmetic**.
 | `RL_TEST_STANDARD_CANCEL_BURST` | `10` | `cancel` burst tolerance |
 | `RL_TEST_STANDARD_BULK_CANCEL_PER_MIN` | `10` | `bulk-cancel` rate (mass-cancel / CoD fire) |
 | `RL_TEST_STANDARD_BULK_CANCEL_BURST` | `5` | `bulk-cancel` burst tolerance |
-| `RL_TEST_COD_CONTROL_PER_MIN` | `100` | `cod-control` rate (arm / refresh / disarm) — flat across tiers by design |
+| `RL_TEST_COD_CONTROL_PER_MIN` | `100` | `cod-control` rate (arm / refresh / disarm) for Standard; MM may override it |
 | `RL_TEST_COD_CONTROL_BURST` | `10` | `cod-control` burst tolerance |
 | `RL_TEST_STANDARD_OPEN_ORDER_COUNT_CAP` | `8` | resting-order count cap, **account total**; the localnet wiring exports the value matching the ME's localnet env, so the default is only a fallback (it mirrors the chart's `8`) |
 | `RL_TEST_STANDARD_OPEN_ORDER_PER_MARKET_CAP` | `5` | resting-order count cap **per market**. Two bounds, both enforced by skips: strictly **below** the account total (or `test_per_market_open_order_count_cap` skips — the caps would be indistinguishable) and `markets x this` strictly **above** the account total (or the account-total probes skip — see below). Export both **as deployed**, never `min()`-collapsed |
@@ -379,9 +352,9 @@ by the localnet harness, plus an optional third. `RL_TEST_EJECT_CMD` +
 
 | Variable | Meaning |
 | --- | --- |
-| `RL_TEST_EJECT_CMD` | Command that ejects a wallet (one DB transaction: delete the `rl_whitelist` row, insert `rl_ejected_accounts` rows) |
-| `RL_TEST_EJECT_ONLY_CMD` | **Optional, additive.** Inserts the same `rl_ejected_accounts` rows but **leaves the `rl_whitelist` row in place**, so the edge gate still admits the request and only the ME can refuse it. Unset ⇒ the ME-verdict isolation test skips; the pair above stays the default everywhere else |
-| `RL_TEST_UNEJECT_CMD` | Command that reverses either of the above (delete the eject rows, then re-insert the whitelist row — the P03 tool enforces that order; re-inserting is a no-op restore after an eject-only) |
+| `RL_TEST_EJECT_CMD` | Command that ejects a wallet (one serialized DB transaction: mark the wallet EJECTED, insert `rl_ejected_accounts` rows) |
+| `RL_TEST_EJECT_ONLY_CMD` | **Optional, additive.** Inserts the same `rl_ejected_accounts` rows but **leaves the `rl_wallet_status` row WHITELISTED**, so the edge gate still admits the request and only the ME can refuse it. Unset ⇒ the ME-verdict isolation test skips; the pair above stays the default everywhere else |
+| `RL_TEST_UNEJECT_CMD` | Command that requires an existing EJECTED wallet, marks it WHITELISTED and deletes its eject rows in one serialized transaction. Absent or already-WHITELISTED wallets return nonzero |
 
 Both templates may use `{wallet}` and `{account_id}` placeholders. They are
 formatted, then `shlex.split` and run **without a shell**, so no shell
@@ -396,6 +369,41 @@ export RL_TEST_UNEJECT_CMD='/path/to/localnet/rl-uneject.sh {wallet}'
 A non-zero exit fails the test with the command's stderr attached. The test
 always attempts the un-eject in a `finally`, so a mid-test failure does not
 leave the account ejected.
+
+### Live control and transport probes
+
+`test_live_controls.py` pauses Redis writes to age the real ME publisher queue,
+asserts HTTP 400 `CAPACITY_LIMITED_ERROR` without a hint while cancels remain
+available, then requires create admission to recover. It also drives the actual
+eject/un-eject/verify/reconcile scripts, including exit 3 after un-eject verification
+and after an EJECTED-status-only enumeration fault. The separate eject-only fault
+is a DB control mismatch (reconciler exit 5). Normal reconciliation exits 0.
+A tier probe drains Standard, proves MM is independent, then promotes the Standard
+account and observes the larger allowance after polling; cleanup demotes it.
+
+`test_ws_connection_caps.py` opens the configured N connections on each socket,
+requires HTTP 429 for N+1 (also with forged XFF and Envoy headers), closes one,
+and requires a new connection to succeed. Localnet runs bun-socket in nginx mode
+with `BUN_SOCKET_TRUSTED_PROXY` unset, so the physical peer owns the bucket.
+
+| Variable | Meaning |
+| --- | --- |
+| `RL_TEST_MM_ACCOUNT_ID`, `RL_TEST_MM_PRIVATE_KEY`, `RL_TEST_MM_WALLET_ADDRESS` | Separate funded and whitelisted MM credential triple; no Standard fallback |
+| `RL_TEST_MM_PLACE_PER_MIN`, `RL_TEST_MM_PLACE_BURST` | MM place rate and burst |
+| `RL_TEST_MM_CANCEL_PER_MIN`, `RL_TEST_MM_CANCEL_BURST` | MM single-cancel rate and burst |
+| `RL_TEST_MM_BULK_CANCEL_PER_MIN`, `RL_TEST_MM_BULK_CANCEL_BURST` | MM bulk-cancel rate and burst |
+| `RL_TEST_MM_COD_CONTROL_PER_MIN`, `RL_TEST_MM_COD_CONTROL_BURST` | MM countdown-control rate and burst |
+| `RL_TEST_MM_OPEN_ORDER_COUNT_CAP`, `RL_TEST_MM_OPEN_ORDER_PER_MARKET_CAP`, `RL_TEST_MM_OPEN_NOTIONAL_CAP` | MM total count, per-market count and quote-notional caps |
+| `RL_TEST_WS_MAX_CONNECTIONS_PER_IP`, `RL_TEST_MD_WS_MAX_CONNECTIONS_PER_IP` | Deployed order-entry/read-side socket caps; required in range 1–32 |
+| `RL_TEST_OVERLOAD_CMD`, `RL_TEST_UNPAUSE_CMD` | Pause Redis writes / release pause |
+| `RL_TEST_VERIFY_EJECT_CMD`, `RL_TEST_RECONCILE_CMD` | Actual verify and reconcile operators |
+| `RL_TEST_STATUS_ONLY_CMD` | Deliberate EJECTED status without account eject rows |
+| `RL_TEST_PROMOTE_CMD`, `RL_TEST_DEMOTE_CMD` | Add/remove the account's MM row |
+| `RL_TEST_RESTORE_EJECT_ONLY_CMD` | Repair the eject-only isolation fault via full eject followed by un-eject |
+
+Control templates accept `{wallet}` and `{account_id}`, use no shell, and are
+required by their selected live probes. `make localnet-rl-wiring` in off-chain
+exports all of them, both tier limits and both per-IP caps from the running stack.
 
 ## Findings (SDK)
 
@@ -458,13 +466,9 @@ All three are additive — `WsExecConnectionClosedError` subclasses
 `WsExecProtocolError`, so existing handlers keep working, and
 `WsExecOperationError` gained a keyword argument with a default.
 
-### Still read off the raw envelope
+### Wire parity
 
-`test_ws_exec_parity.py` keeps using the raw harness even though finding 4 is
-fixed: `retryAfterMs` cannot appear on ANY real ws-exec reject at these commits,
-because the edge's generated ME stub predates the field (its `ErrorCode` enum
-stops at 90) and `extractRetryAfterMs` therefore returns `undefined` for every
-decoded response. The parity module asserts the codes; it asserts the hint is
-*absent* on the cap and access-control rejects, and only checks plausibility on
-`RATE_LIMITED_ERROR` if a value ever shows up. Live coverage of a retry-hint
-VALUE is blocked on the off-chain protos submodule bump.
+`test_ws_exec_parity.py` uses the raw harness to inspect the relayer envelope
+independently of SDK parsing. The current off-chain proto pin includes the
+admission enums and retry field: rate-limit responses must carry a positive,
+plausible hint; cap and access-control responses must omit it.

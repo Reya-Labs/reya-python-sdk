@@ -96,7 +96,7 @@ async def test_ws_exec_place_bucket_envelope(
 ) -> None:
     """Burst creates over ws-exec → RATE_LIMITED_ERROR envelope (+ retryAfterMs).
 
-    ``retryAfterMs`` is asserted only for plausibility when present: the edge
+    ``retryAfterMs`` must be present and plausible. The edge
     may serve the verdict from its negative-verdict cache, which recomputes the
     remaining milliseconds rather than echoing the ME's original stamp.
     """
@@ -125,10 +125,10 @@ async def test_ws_exec_place_bucket_envelope(
     logger.info("ws-exec place bucket after %d accepted creates: %s", accepted, reject.describe())
     assert reject.code == RATE_LIMITED_ERROR, f"expected {RATE_LIMITED_ERROR}; got {reject.describe()}"
 
-    if reject.retry_after_ms is not None:
-        assert (
-            0 < reject.retry_after_ms <= rl_suite_config.timing.retry_after_max_s * 1000
-        ), f"implausible retryAfterMs on the ws-exec envelope: {reject.describe()}"
+    assert reject.retry_after_ms is not None, f"missing retryAfterMs: {reject.describe()}"
+    assert (
+        0 < reject.retry_after_ms <= rl_suite_config.timing.retry_after_max_s * 1000
+    ), f"implausible retryAfterMs on the ws-exec envelope: {reject.describe()}"
 
 
 async def test_ws_exec_count_cap_envelope(

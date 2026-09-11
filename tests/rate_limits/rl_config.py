@@ -49,7 +49,7 @@ HTTP_VENUE_VERDICT = 400
 #: and never means an account-level verdict.
 HTTP_INFRASTRUCTURE_RATE_LIMITED = 429
 
-#: An ejected account may be rejected by the edge (it was removed from
+#: An ejected account may be rejected by the edge (it was marked EJECTED in
 #: ``rl_wallet_status`` in the same transaction) or by the matching engine (the
 #: ``rl_ejected_accounts`` admission check). Tests accept either code and
 #: record which one the deployment actually produced.
@@ -70,7 +70,7 @@ class RetryPolicy(Enum):
 
     #: Wait at least ``retryAfterMs``, then retry.
     AFTER_HINT = "after-hint"
-    #: Back off — the venue is shedding load — and retry after ``retryAfterMs``.
+    #: Back off with jitter — the pressure guard has no exact retry instant.
     BACK_OFF = "back-off"
     #: The request was never evaluated: retry it unchanged after a short delay,
     #: with no hint to wait out and nothing to re-sign.
