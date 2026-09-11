@@ -55,7 +55,11 @@ pytestmark = [pytest.mark.e2e, pytest.mark.cod]
 
 # The ME scans armed countdowns on a ~500ms tick; allow that plus clock skew
 # and request latency before declaring a fire missed (or a non-fire proven).
-FIRE_MARGIN_S = 3.0
+# 3.0 flaked on loaded WSL2 dev runners: a fire's CANCELLED event measured at
+# +7.8s of a 5s countdown, with the REST openOrders view trailing the WS event
+# past the 8.0s deadline. 5.0 absorbs that indexer lag; a missed fire is still
+# caught (the countdown itself is 5s, a real miss overshoots by >>2s).
+FIRE_MARGIN_S = 5.0
 # triggerAt is stamped on the ME clock; this window absorbs client↔ME clock
 # skew + round-trip latency. Dev runners (esp. WSL2) drift several seconds from
 # the NTP-synced cluster — measured up to ~2.7s here — so 2s was too tight and
