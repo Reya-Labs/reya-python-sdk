@@ -7,7 +7,13 @@ import os
 from urllib.parse import urlsplit
 
 import pytest
-from websocket import WebSocketBadStatusException, create_connection  # type: ignore[attr-defined]
+
+# Full-repository lint resolves the examples/websocket package for this import;
+# use the same narrow exception as sdk/reya_websocket/socket.py.
+from websocket import (  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+    WebSocketBadStatusException,
+    create_connection,
+)
 
 from tests.rate_limits.rl_config import requires_rate_limits
 
