@@ -10,11 +10,14 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from contextlib import AsyncExitStack
 from decimal import Decimal
 
 import pytest
+import pytest_asyncio
 
 from sdk.async_api.perp_execution import PerpExecution as AsyncPerpExecution
+from sdk.open_api.exceptions import ApiException
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_history_list import OrderHistoryList
 from sdk.open_api.models.order_status import OrderStatus
@@ -22,11 +25,23 @@ from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.perp_execution import PerpExecution
 from sdk.open_api.models.side import Side
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.transfer import Transfer
+from sdk.open_api.models.transfer_type import TransferType
 from sdk.reya_rest_api.models import LimitOrderParameters
 from tests.helpers import ReyaTester
 from tests.helpers.localnet_fee_v3 import RUSD_SCALE, WAD, configured_localnet_fee_v3, wait_for_indexed_fee_v3_row
 from tests.helpers.market_config import PerpTestConfig
 from tests.helpers.order_lifecycle import assert_px_qty, wait_for_taker_perp_execution
+from tests.helpers.reya_tester import logger
+from tests.helpers.wallet_transfers import (
+    assert_fill_links,
+    assert_net_deposits,
+    assert_running_net_deposits,
+    assert_transfer_snapshot,
+    net_deposits,
+    wait_for_transaction_transfers,
+    wallet_transfers_socket,
+)
 
 _REQUIRED_ORDER_HISTORY_E2E_ENV = (
     "PERP_ACCOUNT_ID_1",
@@ -74,6 +89,73 @@ async def _wait_for_ws_perp_execution(
             return match
         await asyncio.sleep(0.2)
     raise AssertionError(f"No WS perp execution with sequenceNumber={sequence_number} within {timeout_s}s")
+
+
+_PERP_FEE_LEG_TYPES = [
+    TransferType.PERP_TAKER_FEE,
+    TransferType.PERP_REFERRER_REBATE,
+    TransferType.PERP_TAKER_REBATE,
+    TransferType.PERP_POOL_REBATE,
+]
+
+
+async def _wait_for_fill_ledger_entries(
+    tester: ReyaTester,
+    execution: PerpExecution,
+    *,
+    expected: int,
+    timeout_s: float = 15.0,
+) -> list[Transfer] | None:
+    """Match Localnet legs by transaction independently of their fill links.
+
+    Other environments retain the existing optional-endpoint behavior. Localnet
+    requires every expected leg, then independently asserts its fillId and symbol.
+    """
+    if tester.chain_id == 31337:
+        assert execution.fill_id is not None
+        indexed = await asyncio.to_thread(wait_for_indexed_fee_v3_row, execution.fill_id)
+        return await wait_for_transaction_transfers(tester, indexed.transaction_hash, expected)
+
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    entries: list[Transfer] = []
+    while True:
+        try:
+            page = await tester.client.get_transfers(types=_PERP_FEE_LEG_TYPES)
+        except ApiException as error:
+            if error.status == 404:
+                return None
+            raise
+        # Same block, same account, same market. Where the link is live the
+        # linked entries win, so another fill of this account in the same
+        # second (a close in the next call, a concurrent session on the
+        # shared devnet accounts) cannot pad the count.
+        candidates = [
+            entry
+            for entry in page.data
+            if entry.timestamp == execution.timestamp
+            and entry.account_id == tester.account_id
+            and entry.symbol == execution.symbol
+        ]
+        entries = [entry for entry in candidates if entry.fill_id == execution.fill_id] or [
+            entry for entry in candidates if entry.fill_id is None
+        ]
+        if len(entries) >= expected or asyncio.get_running_loop().time() >= deadline:
+            return entries
+        await asyncio.sleep(0.25)
+
+
+def _assert_fill_link(entries: list[Transfer], fill_id: str) -> bool:
+    """True when the entries carry the on-chain fill link; consistent either way."""
+    assert entries, "no ledger entries for this fill"
+    linked = {entry.fill_id for entry in entries}
+    assert linked in ({None}, {fill_id}), f"fill link must be all-or-nothing per fill, got {linked}"
+    return linked == {fill_id}
+
+
+def _ledger_amount(entries: list[Transfer], entry_type: TransferType) -> Decimal | None:
+    matching = [entry for entry in entries if entry.type == entry_type]
+    assert len(matching) <= 1, f"one {entry_type.value} entry per fill, got {len(matching)}"
+    return Decimal(matching[0].amount) if matching else None
 
 
 async def _wait_for_history_order(
@@ -139,11 +221,52 @@ def _assert_filled_order_projection(
     assert order.fill_count >= 1
 
 
+@pytest_asyncio.fixture(name="localnet_transfer_observers")
+async def _localnet_transfer_observers(
+    perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester, with_referrer: bool
+):
+    """Subscribe before placing the fill; always close every observer on failure."""
+    if perp_taker_tester.chain_id != 31337:
+        yield None
+        return
+    async with AsyncExitStack() as stack:
+        taker_ws = await stack.enter_async_context(wallet_transfers_socket(perp_taker_tester))
+        pool_ws = await stack.enter_async_context(wallet_transfers_socket(perp_maker_tester))
+        referrer = None
+        referrer_ws = None
+        if with_referrer:
+            assert all(
+                os.environ.get(f"SPOT_{field}_1") for field in ("ACCOUNT_ID", "PRIVATE_KEY", "WALLET_ADDRESS")
+            ), "Localnet referrer requires spot account 1"
+            referrer = ReyaTester(spot_account_number=1)
+            stack.push_async_callback(referrer.close)
+            await referrer.client.start()
+            assert referrer.account_id >= 10**10
+            assert referrer.account_id not in (perp_maker_tester.account_id, perp_taker_tester.account_id)
+            referrer_ws = await stack.enter_async_context(wallet_transfers_socket(referrer))
+        yield taker_ws, pool_ws, referrer, referrer_ws
+
+
+@pytest.mark.parametrize(
+    "with_referrer",
+    [
+        pytest.param(False, id="unreferred"),
+        pytest.param(
+            True,
+            id="referred",
+            marks=pytest.mark.skipif(
+                os.environ.get("CHAIN_ID") != "31337", reason="referral configuration is Localnet-only"
+            ),
+        ),
+    ],
+)
 @pytest.mark.asyncio
 async def test_perp_order_history_records_maker_and_taker_fill_e2e(
     perp_market_config: PerpTestConfig,
     perp_maker_tester: ReyaTester,
     perp_taker_tester: ReyaTester,
+    localnet_transfer_observers,
+    with_referrer: bool,
 ) -> None:
     """Crossing maker/taker GTC fill should appear in wallet orderHistory."""
     market_config = perp_market_config
@@ -155,7 +278,14 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
     await taker.orders.close_all(fail_if_none=False)
 
     if market_config.has_any_external_liquidity:
+        assert taker.chain_id != 31337, "Localnet fee-leg evidence requires a controlled maker/taker book"
         pytest.skip("external liquidity present — orderHistory assertions require a controlled maker/taker fill")
+
+    taker_baseline = await net_deposits(taker) if localnet_transfer_observers else None
+    pool_baseline = await net_deposits(maker) if localnet_transfer_observers else None
+
+    referrer = localnet_transfer_observers[2] if localnet_transfer_observers else None
+    referrer_baseline = await net_deposits(referrer) if referrer else None
 
     cross_px = str(market_config.price(0.99))
     qty = market_config.min_qty
@@ -164,6 +294,8 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
     with configured_localnet_fee_v3(
         taker_owner=taker.owner_wallet_address,
         pool_account_id=maker.account_id,
+        referrer_owner=referrer.owner_wallet_address if referrer else None,
+        referrer_account_id=referrer.account_id if referrer else None,
     ) as fee_v3_scenario:
         maker_order_id = await maker.orders.create_limit(
             LimitOrderParameters(
@@ -239,18 +371,56 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
         for field in _FEE_V3_COMPONENT_FIELDS:
             assert getattr(ws_execution, field) == getattr(execution, field), field
 
+        # PRO-852: the account ledger shows the same fill as fee legs signed
+        # from each account's view, linked by fillId (design §4, §5; I1, I2).
+        assert execution.fill_id is not None
+        expected_taker_entries = 1 + (1 if Decimal(execution.taker_rebate_credit or 0) > 0 else 0)
+        taker_ledger = await _wait_for_fill_ledger_entries(taker, execution, expected=expected_taker_entries)
+        if taker_ledger is None:
+            logger.info("transfers endpoint not deployed here; skipping the ledger assertions")
+        elif not taker_ledger and fee_v3_scenario is None:
+            # The endpoint is served but the ledger is not written here
+            # on an older release; Localnet requires the ledger and fill links.
+            logger.info("no ledger entries for this fill; the ledger is not enabled here")
+        else:
+            assert len(taker_ledger) == expected_taker_entries, [entry.type for entry in taker_ledger]
+            if not _assert_fill_link(taker_ledger, execution.fill_id):
+                # The chain here predates reya-network#752: legs are labelled
+                # but not linked to the fill.
+                logger.info("ledger entries matched by block; the on-chain fill link is not live here")
+            for entry in taker_ledger:
+                assert entry.account_id == taker.account_id
+                assert entry.asset == "RUSD"
+                if entry.fill_id is not None:
+                    assert entry.symbol == market_config.symbol
+                assert entry.timestamp == execution.timestamp
+                assert entry.counterparty_account_id is not None, "the fee collector is the counterparty"
+            # The taker pays the gross fee and gets its rebate back as two entries;
+            # the execution fields describe the split, the ledger the movements.
+            assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_FEE) == -Decimal(execution.taker_fee)
+            if expected_taker_entries == 2:
+                assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_REBATE) == Decimal(
+                    execution.taker_rebate_credit or 0
+                )
+            assert _ledger_amount(taker_ledger, TransferType.PERP_REFERRER_REBATE) is None
+            assert _ledger_amount(taker_ledger, TransferType.PERP_POOL_REBATE) is None
+
         if fee_v3_scenario is not None:
             assert execution.fill_id is not None
-            indexed = wait_for_indexed_fee_v3_row(execution.fill_id)
+            indexed = await asyncio.to_thread(wait_for_indexed_fee_v3_row, execution.fill_id)
             assert indexed.account_id == taker.account_id
             assert indexed.counterparty_account_id == maker.account_id
             assert indexed.fee > 0
-            assert indexed.referrer_fee_credit == 0
 
             expected_taker_rebate = indexed.fee * fee_v3_scenario.taker_rebate_rate // WAD
             remaining_after_taker = indexed.fee - expected_taker_rebate
-            expected_pool_credit = remaining_after_taker * fee_v3_scenario.pool_rebate_rate // WAD
-            expected_protocol_credit = remaining_after_taker - expected_pool_credit
+            expected_referrer_credit = remaining_after_taker * fee_v3_scenario.referrer_rebate_rate // WAD
+            remaining_after_referrer = remaining_after_taker - expected_referrer_credit
+            expected_pool_credit = remaining_after_referrer * fee_v3_scenario.pool_rebate_rate // WAD
+            expected_protocol_credit = remaining_after_referrer - expected_pool_credit
+            assert indexed.referrer_fee_credit == expected_referrer_credit
+            if with_referrer:
+                assert expected_referrer_credit > 0
 
             assert indexed.taker_rebate_credit == expected_taker_rebate
             assert indexed.pool_fee_credit == expected_pool_credit
@@ -273,6 +443,57 @@ async def test_perp_order_history_records_maker_and_taker_fill_e2e(
             assert indexed.maker_fee_credit is None
             assert indexed.maker_fee_debit is None
             assert indexed.transaction_hash.startswith("0x")
+
+            # Localnet runs the whole stack from source with the ledger on, so
+            # the legs must be present and exact: leg 0 and leg 2 on the taker,
+            # leg 3 on the pool account, which this scenario points at the
+            # maker. The referred variant also credits leg 1 to a spot account.
+            assert taker_ledger, "Localnet must persist the fill's ledger legs"
+            assert_fill_links(taker_ledger, execution.fill_id, market_config.symbol)
+            assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_FEE) == -Decimal(indexed.fee) / Decimal(
+                RUSD_SCALE
+            )
+            assert _ledger_amount(taker_ledger, TransferType.PERP_TAKER_REBATE) == Decimal(
+                indexed.taker_rebate_credit
+            ) / Decimal(RUSD_SCALE)
+            assert all(entry.transaction_hash == indexed.transaction_hash for entry in taker_ledger)
+
+            pool_ledger = await _wait_for_fill_ledger_entries(maker, execution, expected=1)
+            assert pool_ledger, "the pool rebate leg must reach the pool account's wallet"
+            assert_fill_links(pool_ledger, execution.fill_id, market_config.symbol)
+            assert [entry.type for entry in pool_ledger] == [TransferType.PERP_POOL_REBATE]
+            assert pool_ledger[0].account_id == maker.account_id
+            assert Decimal(pool_ledger[0].amount) == Decimal(indexed.pool_fee_credit) / Decimal(RUSD_SCALE)
+            assert pool_ledger[0].counterparty_account_id == taker_ledger[0].counterparty_account_id
+
+            assert localnet_transfer_observers is not None
+            assert taker_baseline is not None and pool_baseline is not None
+            taker_ws, pool_ws, _, referrer_ws = localnet_transfer_observers
+            await taker_ws.assert_live_matches(taker_ledger)
+            await pool_ws.assert_live_matches(pool_ledger)
+            await assert_net_deposits(taker, assert_running_net_deposits(taker_ledger, taker_baseline))
+            await assert_net_deposits(maker, assert_running_net_deposits(pool_ledger, pool_baseline))
+            await assert_transfer_snapshot(taker, taker_ledger)
+            await assert_transfer_snapshot(maker, pool_ledger)
+
+            if with_referrer:
+                assert referrer is not None and referrer_ws is not None and referrer_baseline is not None
+                referrer_ledger = await _wait_for_fill_ledger_entries(referrer, execution, expected=1)
+                assert referrer_ledger, "the referrer rebate must reach the referrer's spot wallet"
+                assert_fill_links(referrer_ledger, execution.fill_id, market_config.symbol)
+                entry = referrer_ledger[0]
+                assert entry.type == TransferType.PERP_REFERRER_REBATE
+                assert entry.account_id == referrer.account_id
+                assert entry.asset == "RUSD"
+                assert entry.timestamp == execution.timestamp
+                assert entry.counterparty_account_id == taker_ledger[0].counterparty_account_id
+                assert entry.transaction_hash == indexed.transaction_hash
+                assert Decimal(entry.amount) == Decimal(expected_referrer_credit) / Decimal(RUSD_SCALE)
+                if entry.fill_id is not None:
+                    assert entry.symbol == market_config.symbol
+                await referrer_ws.assert_live_matches(referrer_ledger)
+                await assert_net_deposits(referrer, assert_running_net_deposits(referrer_ledger, referrer_baseline))
+                await assert_transfer_snapshot(referrer, referrer_ledger)
 
     await _assert_time_window_refetch_contains_order(maker, maker_history_order)
     await _assert_time_window_refetch_contains_order(taker, taker_history_order)
