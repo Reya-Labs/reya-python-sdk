@@ -146,7 +146,7 @@ def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
         "trigger_px": "1500",
         "limit_px": "1450",
         "qty": None,
-        "post_only": False,
+        "post_only": None,
         "expires_after": None,
         "time_in_force": TimeInForce.GTC,
     }
@@ -203,11 +203,18 @@ def test_modify_trigger_order_rejects_qty(client: ReyaTradingClient, order_type:
 
 
 @pytest.mark.modify
-def test_modify_trigger_rejects_post_only(client: ReyaTradingClient) -> None:
-    """A trigger create is never post-only, so a modify restating one signs a
-    shape the matching engine must reject."""
-    with pytest.raises(ValueError, match="post_only on TP/SL"):
-        client.build_modify_order_payload(_trigger_modify_params(post_only=True))
+@pytest.mark.parametrize("order_type", [OrderType.STOP_LOSS, OrderType.TAKE_PROFIT])
+@pytest.mark.parametrize("field", ["post_only", "reduce_only"])
+@pytest.mark.parametrize("value", [False, True, 0, "false"])
+def test_modify_trigger_rejects_explicit_flags_before_nonce(
+    client: ReyaTradingClient, order_type: OrderType, field: str, value: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_nonce() -> int:
+        pytest.fail("Invalid trigger request consumed a nonce")
+
+    monkeypatch.setattr(client, "_get_next_nonce", unexpected_nonce)
+    with pytest.raises(ValueError, match=field + " on TP/SL"):
+        client.build_modify_order_payload(_trigger_modify_params(order_type=order_type, **{field: value}))
 
 
 @pytest.mark.modify
