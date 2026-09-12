@@ -1,27 +1,27 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
-from pydantic import model_serializer, model_validator, BaseModel, Field
-from sdk.async_exec_api.order_type import OrderType
+from pydantic import field_validator, model_serializer, model_validator, BaseModel, Field
 from sdk.async_exec_api.time_in_force import TimeInForce
-class ModifyOrderRequest(BaseModel): 
+from sdk.async_exec_api.trigger_order_type import TriggerOrderType
+class TriggerModifyOrderRequest(BaseModel): 
   order_id: Optional[str] = Field(description='''Reya-assigned order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, restates the resting order's immutable client id.''', default=None, alias='''orderId''')
   client_order_id: Optional[str] = Field(description='''Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. If `orderId` is present, this field restates the resting order's immutable client id for signing; omit it when the resting order has no client id. Do not send a placeholder value. The modification cannot assign a new `clientOrderId`.''', default=None, alias='''clientOrderId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   account_id: int = Field(alias='''accountId''')
   exchange_id: int = Field(alias='''exchangeId''')
   is_buy: bool = Field(description='''Order side. Immutable — restate the resting order's value. Combined with `qty`, sets the signed `OrderDetails.quantity` (int256). A mismatch is rejected with `INPUT_VALIDATION_ERROR`.''', alias='''isBuy''')
-  order_type: OrderType = Field(description='''Order type aligned with the on-chain `OrderDetails.orderType` enum: LIMIT = limit order, STOP_LOSS = stop-loss trigger order, TAKE_PROFIT = take-profit trigger order.''', alias='''orderType''')
   time_in_force: TimeInForce = Field(description='''Order time in force (IOC = Immediate or Cancel, GTC = Good Till Cancel, GTT = Good Till Time)''', alias='''timeInForce''')
   trigger_px: Optional[str] = Field(default=None, alias='''triggerPx''')
-  reduce_only: Optional[bool] = Field(description='''Signed OrderDetails.reduceOnly. Required and immutable on LIMIT modifications. Omit for STOP_LOSS/TAKE_PROFIT, including false: the SDK and server reconstruct the fixed signed value false; omission never inherits stored state.''', default=None, alias='''reduceOnly''')
   limit_px: str = Field(alias='''limitPx''')
   qty: Optional[str] = Field(default=None)
-  post_only: Optional[bool] = Field(description='''Post-modify maker-only flag, required for LIMIT. Omit for STOP_LOSS/TAKE_PROFIT, including false: the SDK and server reconstruct the fixed signed value false. A post-only LIMIT modification that would cross is rejected with POST_ONLY_WOULD_CROSS_ERROR and leaves the order unchanged.''', default=None, alias='''postOnly''')
   expires_after: Optional[int] = Field(default=None, alias='''expiresAfter''')
   signature: str = Field(description='''Fresh EIP-712 signature over the full post-modify order state — the same `Order` envelope as `createOrder`, with the modified values substituted into `OrderDetails`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.''')
   nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required for every modification; replayed nonces are rejected with `INVALID_NONCE_ERROR`.''')
   signer_wallet: str = Field(alias='''signerWallet''')
   deadline: int = Field()
+  order_type: TriggerOrderType = Field(alias='''orderType''')
+  reduce_only: Optional[Any] = Field(description='''Must be omitted for TP/SL, including false. The signed value is reconstructed as false.''', default=None, alias='''reduceOnly''')
+  post_only: Optional[Any] = Field(description='''Must be omitted for TP/SL, including false. The signed value is reconstructed as false.''', default=None, alias='''postOnly''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')
@@ -42,13 +42,13 @@ class ModifyOrderRequest(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['order_id', 'client_order_id', 'symbol', 'account_id', 'exchange_id', 'is_buy', 'order_type', 'time_in_force', 'trigger_px', 'reduce_only', 'limit_px', 'qty', 'post_only', 'expires_after', 'signature', 'nonce', 'signer_wallet', 'deadline', 'additional_properties']
+    known_object_properties = ['order_id', 'client_order_id', 'symbol', 'account_id', 'exchange_id', 'is_buy', 'time_in_force', 'trigger_px', 'limit_px', 'qty', 'expires_after', 'signature', 'nonce', 'signer_wallet', 'deadline', 'order_type', 'reduce_only', 'post_only', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['orderId', 'clientOrderId', 'symbol', 'accountId', 'exchangeId', 'isBuy', 'orderType', 'timeInForce', 'triggerPx', 'reduceOnly', 'limitPx', 'qty', 'postOnly', 'expiresAfter', 'signature', 'nonce', 'signerWallet', 'deadline', 'additionalProperties']
+    known_json_properties = ['orderId', 'clientOrderId', 'symbol', 'accountId', 'exchangeId', 'isBuy', 'timeInForce', 'triggerPx', 'limitPx', 'qty', 'expiresAfter', 'signature', 'nonce', 'signerWallet', 'deadline', 'orderType', 'reduceOnly', 'postOnly', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
@@ -56,3 +56,8 @@ class ModifyOrderRequest(BaseModel):
     data['additional_properties'] = additional_properties
     return data
 
+
+  @field_validator('reduce_only', 'post_only', mode='before')
+  @classmethod
+  def reject_forbidden_fields(cls, value):
+    raise ValueError('These fields must be omitted: reduceOnly, postOnly')

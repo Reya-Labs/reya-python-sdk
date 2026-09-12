@@ -30,6 +30,7 @@ from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.execution_bust_list import ExecutionBustList
+from sdk.open_api.models.limit_modify_order_request import LimitModifyOrderRequest
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse
@@ -44,6 +45,7 @@ from sdk.open_api.models.spot_execution_list import SpotExecutionList
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.open_api.models.transfer_list import TransferList
 from sdk.open_api.models.transfer_type import TransferType
+from sdk.open_api.models.trigger_modify_order_request import TriggerModifyOrderRequest
 from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig, get_config
@@ -916,7 +918,10 @@ class ReyaTradingClient:
         signature over the full post-modify state.
         """
         payload, _nonce = self.build_modify_order_payload(params)
-        return await self.orders.modify_order(ModifyOrderRequest(**payload))
+        # oneOf models use an actual_instance wrapper. Passing payload as
+        # kwargs to that wrapper silently constructs an empty request.
+        request_type = LimitModifyOrderRequest if payload["orderType"] == "LIMIT" else TriggerModifyOrderRequest
+        return await self.orders.modify_order(ModifyOrderRequest(request_type(**payload)))
 
     def build_modify_order_payload(self, params: ModifyOrderParameters) -> tuple[dict, int]:
         """Build the camelCase wire payload for a modifyOrder request and

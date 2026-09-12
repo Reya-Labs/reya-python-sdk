@@ -24,6 +24,7 @@ from decimal import Decimal
 import pytest
 
 from sdk.open_api.models.cancel_all_after_request import CancelAllAfterRequest
+from sdk.open_api.models.limit_modify_order_request import LimitModifyOrderRequest
 from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
@@ -569,7 +570,8 @@ def test_modify_payload_round_trips_generated_model(client: ReyaTradingClient) -
     orderId kept as a string (StrictStr per the OpenAPI model) and the four
     post-modify fields + targeting + signerWallet surviving serialization."""
     payload, _nonce = client.build_modify_order_payload(_modify_params())
-    body = ModifyOrderRequest(**payload).to_dict()
+    body = ModifyOrderRequest(LimitModifyOrderRequest(**payload)).to_dict()
+    assert isinstance(body, dict)
 
     # to_dict drops None optionals: triggerPx (None for LIMIT) disappears;
     # clientOrderId is absent because this order has none; orderId stays.
@@ -605,7 +607,8 @@ def test_modify_payload_client_order_id_targeting_wire_shape(client: ReyaTrading
     payload, _nonce = client.build_modify_order_payload(_modify_params(order_id=None, client_order_id=777))
     assert "orderId" not in payload
     assert payload["clientOrderId"] == "777"
-    body = ModifyOrderRequest(**payload).to_dict()
+    body = ModifyOrderRequest(LimitModifyOrderRequest(**payload)).to_dict()
+    assert isinstance(body, dict)
     assert "orderId" not in body
     assert body["clientOrderId"] == "777"
 
@@ -617,7 +620,8 @@ def test_modify_payload_order_id_targeting_with_restated_client_order_id(client:
     payload, _nonce = client.build_modify_order_payload(_modify_params(client_order_id=777))
     assert payload["orderId"] == "63552420354981888"
     assert payload["clientOrderId"] == "777"
-    body = ModifyOrderRequest(**payload).to_dict()
+    body = ModifyOrderRequest(LimitModifyOrderRequest(**payload)).to_dict()
+    assert isinstance(body, dict)
     assert body["orderId"] == "63552420354981888"
     assert body["clientOrderId"] == "777"
 

@@ -20,40 +20,50 @@ import json
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
 from typing_extensions import Annotated
-from sdk.open_api.models.order_type import OrderType
+from sdk.open_api.models.limit_order_type import LimitOrderType
 from sdk.open_api.models.time_in_force import TimeInForce
 from typing import Optional, Set
 from typing_extensions import Self
 
-class CreateOrderRequest(BaseModel):
+class LimitModifyOrderRequest(BaseModel):
     """
-    Create an order with an EIP-712 signature, nonce, and deadline. Field descriptions define signed values and order-class requirements. See POST /v2/createOrder for execution and protective-stop behavior.
+    LimitModifyOrderRequest
     """ # noqa: E501
-    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
+    order_id: Optional[StrictStr] = Field(default=None, description="Reya-assigned order ID of the order to modify. If present, this is the canonical lookup key; `clientOrderId`, when also present, restates the resting order's immutable client id.", alias="orderId")
+    client_order_id: Optional[StrictStr] = Field(default=None, description="Restated client-provided order ID, as a decimal string (`uint64`). Used as the lookup key only when `orderId` is absent, and then it must be non-zero. If `orderId` is present, this field restates the resting order's immutable client id for signing; omit it when the resting order has no client id. Do not send a placeholder value. The modification cannot assign a new `clientOrderId`.", alias="clientOrderId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
-    is_buy: StrictBool = Field(description="Whether this is a buy order. Combined with `qty`, determines the signed `OrderDetails.quantity` (int256): positive for buy/long, negative for sell/short.", alias="isBuy")
-    limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")
-    qty: Optional[Annotated[str, Field(strict=True)]] = None
-    order_type: OrderType = Field(alias="orderType")
+    exchange_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="exchangeId")
+    is_buy: StrictBool = Field(description="Order side. Immutable — restate the resting order's value. Combined with `qty`, sets the signed `OrderDetails.quantity` (int256). A mismatch is rejected with `INPUT_VALIDATION_ERROR`.", alias="isBuy")
     time_in_force: TimeInForce = Field(alias="timeInForce")
     trigger_px: Optional[Annotated[str, Field(strict=True)]] = Field(default=None, alias="triggerPx")
-    reduce_only: Optional[StrictBool] = Field(default=None, description="Reduce-only intent. Required only for perp IOC orders. Omit this field for every other order class: perp GTC/GTT, STOP_LOSS/TAKE_PROFIT, and all spot orders. Sending the field, including `false`, for those order classes is rejected with `INPUT_VALIDATION_ERROR`. Omitted values map to `false` in the signed on-chain `OrderDetails.reduceOnly` field.", alias="reduceOnly")
-    post_only: Optional[StrictBool] = Field(default=None, description="Post-only (maker-only) intent for LIMIT GTC/GTT orders; rejected on IOC. Omit for STOP_LOSS/TAKE_PROFIT, including false: triggers sign OrderDetails.postOnly=false. A post-only LIMIT that would cross is rejected with POST_ONLY_WOULD_CROSS_ERROR.", alias="postOnly")
-    signature: StrictStr = Field(description="EIP-712 signature over the `Order(uint256 verifyingChainId, uint256 deadline, OrderDetails order)` envelope. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.")
-    nonce: StrictStr = Field(description="Monotonically increasing per-signer nonce. Maps to on-chain `OrderDetails.nonce`.")
+    limit_px: Annotated[str, Field(strict=True)] = Field(alias="limitPx")
+    qty: Optional[Annotated[str, Field(strict=True)]] = None
+    expires_after: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="expiresAfter")
+    signature: StrictStr = Field(description="Fresh EIP-712 signature over the full post-modify order state — the same `Order` envelope as `createOrder`, with the modified values substituted into `OrderDetails`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.")
+    nonce: StrictStr = Field(description="Monotonically increasing per-signer nonce. A fresh nonce is required for every modification; replayed nonces are rejected with `INVALID_NONCE_ERROR`.")
     signer_wallet: Annotated[str, Field(strict=True)] = Field(alias="signerWallet")
     deadline: Annotated[int, Field(strict=True, ge=0)]
-    expires_after: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="expiresAfter")
-    client_order_id: Optional[StrictStr] = Field(default=None, description="Client-provided correlation ID, signed as OrderDetails.clientOrderId (uint64). Omit when unused; otherwise send a non-zero decimal string to preserve precision.", alias="clientOrderId")
-    additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["exchangeId", "symbol", "accountId", "isBuy", "limitPx", "qty", "orderType", "timeInForce", "triggerPx", "reduceOnly", "postOnly", "signature", "nonce", "signerWallet", "deadline", "expiresAfter", "clientOrderId"]
+    order_type: LimitOrderType = Field(alias="orderType")
+    reduce_only: StrictBool = Field(description="Signed OrderDetails.reduceOnly. Required and immutable on LIMIT modifications. Omit for STOP_LOSS/TAKE_PROFIT, including false: the SDK and server reconstruct the fixed signed value false; omission never inherits stored state.", alias="reduceOnly")
+    post_only: StrictBool = Field(description="Post-modify maker-only flag, required for LIMIT. Omit for STOP_LOSS/TAKE_PROFIT, including false: the SDK and server reconstruct the fixed signed value false. A post-only LIMIT modification that would cross is rejected with POST_ONLY_WOULD_CROSS_ERROR and leaves the order unchanged.", alias="postOnly")
+    __properties: ClassVar[List[str]] = ["orderId", "clientOrderId", "symbol", "accountId", "exchangeId", "isBuy", "timeInForce", "triggerPx", "limitPx", "qty", "expiresAfter", "signature", "nonce", "signerWallet", "deadline", "orderType", "reduceOnly", "postOnly"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
         """Validates the regular expression"""
         if not re.match(r"^[A-Za-z0-9]+$", value):
             raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
+        return value
+
+    @field_validator('trigger_px')
+    def trigger_px_validate_regular_expression(cls, value):
+        """Validates the regular expression"""
+        if value is None:
+            return value
+
+        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
+            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
     @field_validator('limit_px')
@@ -71,16 +81,6 @@ class CreateOrderRequest(BaseModel):
 
         if not re.match(r"^\d+(\.\d+)?([eE][+-]?\d+)?$", value):
             raise ValueError(r"must validate the regular expression /^\d+(\.\d+)?([eE][+-]?\d+)?$/")
-        return value
-
-    @field_validator('trigger_px')
-    def trigger_px_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if value is None:
-            return value
-
-        if not re.match(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$", value):
-            raise ValueError(r"must validate the regular expression /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/")
         return value
 
     @field_validator('signer_wallet')
@@ -108,7 +108,7 @@ class CreateOrderRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of CreateOrderRequest from a JSON string"""
+        """Create an instance of LimitModifyOrderRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -120,10 +120,8 @@ class CreateOrderRequest(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
-        * Fields in `self.additional_properties` are added to the output dict.
         """
         excluded_fields: Set[str] = set([
-            "additional_properties",
         ])
 
         _dict = self.model_dump(
@@ -131,16 +129,11 @@ class CreateOrderRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # puts key-value pairs in additional_properties in the top level
-        if self.additional_properties is not None:
-            for _key, _value in self.additional_properties.items():
-                _dict[_key] = _value
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of CreateOrderRequest from a dict"""
+        """Create an instance of LimitModifyOrderRequest from a dict"""
         if obj is None:
             return None
 
@@ -148,29 +141,25 @@ class CreateOrderRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "exchangeId": obj.get("exchangeId"),
+            "orderId": obj.get("orderId"),
+            "clientOrderId": obj.get("clientOrderId"),
             "symbol": obj.get("symbol"),
             "accountId": obj.get("accountId"),
+            "exchangeId": obj.get("exchangeId"),
             "isBuy": obj.get("isBuy"),
-            "limitPx": obj.get("limitPx"),
-            "qty": obj.get("qty"),
-            "orderType": obj.get("orderType"),
             "timeInForce": obj.get("timeInForce"),
             "triggerPx": obj.get("triggerPx"),
-            "reduceOnly": obj.get("reduceOnly"),
-            "postOnly": obj.get("postOnly"),
+            "limitPx": obj.get("limitPx"),
+            "qty": obj.get("qty"),
+            "expiresAfter": obj.get("expiresAfter"),
             "signature": obj.get("signature"),
             "nonce": obj.get("nonce"),
             "signerWallet": obj.get("signerWallet"),
             "deadline": obj.get("deadline"),
-            "expiresAfter": obj.get("expiresAfter"),
-            "clientOrderId": obj.get("clientOrderId")
+            "orderType": obj.get("orderType"),
+            "reduceOnly": obj.get("reduceOnly"),
+            "postOnly": obj.get("postOnly")
         })
-        # store additional fields in additional_properties
-        for _key in obj.keys():
-            if _key not in cls.__properties:
-                _obj.additional_properties[_key] = obj.get(_key)
-
         return _obj
 
 
