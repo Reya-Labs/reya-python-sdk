@@ -50,6 +50,11 @@ class ModifyOrderParameters:
     sentinel (sign from `is_buy`; protect the whole position) and omits `qty`
     from the wire, exactly like a trigger create.
 
+    For trigger modifies, pass `post_only=None` and leave `reduce_only` unset
+    (or None). Both JSON fields are omitted and signed as False; explicit False
+    is rejected. LIMIT modifies require `post_only`
+    and default `reduce_only` to False.
+
     On a trigger modify only `limit_px` and `trigger_px` move; `time_in_force`
     and `expires_after` are restated immutables, so changing the fired child's
     TIF or the shared expiry means cancelling the trigger and creating a new one.
@@ -59,13 +64,13 @@ class ModifyOrderParameters:
     is_buy: bool
     limit_px: str
     qty: Optional[str]
-    post_only: bool
+    post_only: Optional[bool]
     expires_after: Optional[int]
     time_in_force: TimeInForce
     order_id: Optional[int] = None
     client_order_id: Optional[int] = None
     trigger_px: Optional[str] = None
-    reduce_only: bool = False
+    reduce_only: Optional[bool] = None
     deadline: Optional[int] = None
     nonce: Optional[int] = None
     order_type: OrderType = OrderType.LIMIT

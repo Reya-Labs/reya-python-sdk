@@ -23,6 +23,8 @@ sdk/open_api/models/cancel_order_response.py
 sdk/open_api/models/cancel_reason.py
 sdk/open_api/models/candle_history_data.py
 sdk/open_api/models/create_order_request.py
+sdk/open_api/models/create_order_request1.py
+sdk/open_api/models/create_order_request1_any_of.py
 sdk/open_api/models/create_order_response.py
 sdk/open_api/models/depth.py
 sdk/open_api/models/depth_base.py
@@ -71,13 +73,16 @@ sdk/open_api/models/execution_type.py
 sdk/open_api/models/fee_tier_parameters.py
 sdk/open_api/models/global_fee_parameters.py
 sdk/open_api/models/level.py
+sdk/open_api/models/limit_order_type.py
 sdk/open_api/models/market_definition.py
 sdk/open_api/models/market_summary.py
 sdk/open_api/models/mass_cancel_request.py
 sdk/open_api/models/mass_cancel_response.py
 sdk/open_api/models/modify_order_request.py
-sdk/open_api/models/modify_order_request1_all_of_not.py
-sdk/open_api/models/modify_order_request1_all_of_not1.py
+sdk/open_api/models/modify_order_request1.py
+sdk/open_api/models/modify_order_request1_any_of.py
+sdk/open_api/models/modify_order_request1_any_of_all_of_not.py
+sdk/open_api/models/modify_order_request1_any_of_all_of_not1.py
 sdk/open_api/models/modify_order_response.py
 sdk/open_api/models/order.py
 sdk/open_api/models/order_history_list.py
@@ -98,5 +103,6 @@ sdk/open_api/models/spot_market_definition.py
 sdk/open_api/models/spot_market_summary.py
 sdk/open_api/models/tier_type.py
 sdk/open_api/models/time_in_force.py
+sdk/open_api/models/trigger_order_type.py
 sdk/open_api/models/wallet_configuration.py
 sdk/open_api/rest.py

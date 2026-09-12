@@ -400,10 +400,11 @@ def test_reduce_only_on_spot_rejected(client: ReyaTradingClient) -> None:
         )
 
 
-def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient) -> None:
+@pytest.mark.parametrize("reduce_only", [False, True])
+def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient, reduce_only: bool) -> None:
     """reduce_only / close-on-trigger TP/SL isn't supported yet — an explicit
     reduce_only on a trigger order is rejected rather than signed + sent."""
-    with pytest.raises(ValueError, match="reduce_only on TP/SL trigger orders is not supported"):
+    with pytest.raises(ValueError, match="reduce_only on TP/SL trigger orders must be omitted"):
         client.build_create_trigger_order_payload(
             TriggerOrderParameters(
                 symbol=PERP_SYMBOL,
@@ -412,7 +413,7 @@ def test_reduce_only_on_trigger_rejected(client: ReyaTradingClient) -> None:
                 trigger_type=OrderType.STOP_LOSS,
                 limit_px="990",
                 time_in_force=TimeInForce.GTC,
-                reduce_only=True,
+                reduce_only=reduce_only,
             )
         )
 
@@ -488,7 +489,7 @@ def _trigger_modify_params(**overrides: Any) -> ModifyOrderParameters:
         "trigger_px": "1500",
         "limit_px": "1450",
         "qty": None,
-        "post_only": False,
+        "post_only": None,
         "expires_after": None,
         "time_in_force": TimeInForce.GTC,
     }
@@ -673,7 +674,7 @@ def test_modify_payload_carries_order_type(client: ReyaTradingClient) -> None:
 @pytest.mark.modify
 def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
     """Exhaustive key-set for a STOP_LOSS modify body: it is the LIMIT-modify key
-    set MINUS ``qty`` and ``expiresAfter`` PLUS ``triggerPx`` — qty and expiry
+    set MINUS ``qty``, ``expiresAfter``, ``reduceOnly`` and ``postOnly`` PLUS ``triggerPx`` — qty and expiry
     ABSENT, triggerPx present, every immutable present. The per-field
     ``test_modify_payload_carries_order_type``
     checks values but not the full key set, so a stray surviving ``qty`` (the
@@ -693,9 +694,7 @@ def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
         "orderType",
         "timeInForce",
         "triggerPx",
-        "reduceOnly",
         "limitPx",
-        "postOnly",
         "signature",
         "nonce",
         "signerWallet",
@@ -708,8 +707,8 @@ def test_modify_trigger_payload_wire_key_set(client: ReyaTradingClient) -> None:
     assert payload["orderType"] == "STOP_LOSS"
     assert payload["timeInForce"] == "GTC"
     assert payload["isBuy"] is True
-    assert payload["reduceOnly"] is False
-    assert payload["postOnly"] is False
+    assert "reduceOnly" not in payload
+    assert "postOnly" not in payload
     assert payload["limitPx"] == "1450"
     assert "expiresAfter" not in payload
 
@@ -790,13 +789,13 @@ def test_modify_params_positional_3_0_14_signature_still_binds(client: ReyaTradi
         False,  # is_buy
         "1450",  # limit_px
         None,  # qty=None positionally → omit-qty trigger modify
-        False,  # post_only
+        None,  # post_only omitted for a trigger
         0,  # expires_after (GTC omits expiry)
         TimeInForce.GTC,  # time_in_force
         63552420354981888,  # order_id
         None,  # client_order_id
         "1500",  # trigger_px
-        False,  # reduce_only
+        None,  # reduce_only omitted for a trigger
         1745000300,  # deadline
         1700000000000005,  # nonce
         order_type=OrderType.STOP_LOSS,

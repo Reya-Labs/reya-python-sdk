@@ -242,7 +242,8 @@ def _base_trigger_modify_request_payload() -> dict[str, Any]:
     quantity restates 0 = protect the whole position)."""
     payload = _base_modify_request_payload()
     payload.update({"orderType": "STOP_LOSS", "triggerPx": "2400"})
-    del payload["qty"]
+    for field in ("qty", "reduceOnly", "postOnly"):
+        del payload[field]
     return payload
 
 
@@ -332,7 +333,8 @@ def test_rest_create_order_request_accepts_trigger_without_qty() -> None:
     assert request is not None
     assert request.qty is None
     serialized = request.to_dict()
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["timeInForce"] == "GTC"
 
 
@@ -341,7 +343,8 @@ def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
 
     assert request.qty is None
     serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["timeInForce"] == "GTC"
 
 
@@ -366,7 +369,8 @@ def test_rest_modify_order_request_accepts_trigger_without_qty() -> None:
     assert request is not None
     assert request.qty is None
     serialized = request.to_dict()
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["triggerPx"] == "2400"
 
 
@@ -375,7 +379,8 @@ def test_ws_exec_modify_order_request_accepts_trigger_without_qty() -> None:
 
     assert request.qty is None
     serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["triggerPx"] == "2400"
 
 

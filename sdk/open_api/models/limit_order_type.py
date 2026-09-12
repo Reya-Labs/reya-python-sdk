@@ -18,20 +18,19 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class Side(str, Enum):
+class LimitOrderType(str, Enum):
     """
-    Order side (B = Buy/Bid, A = Ask/Sell)
+    LimitOrderType
     """
 
     """
     allowed enum values
     """
-    B = 'B'
-    A = 'A'
+    LIMIT = 'LIMIT'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of Side from a JSON string"""
+        """Create an instance of LimitOrderType from a JSON string"""
         return cls(json.loads(json_str))
 
 
