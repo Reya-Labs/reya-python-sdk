@@ -680,12 +680,11 @@ def test_trigger_modify_builder_signature_parity(offline_client: ReyaTradingClie
             is_buy=True,
             limit_px=str(TRIGGER_LIMIT_PX),
             qty=None,  # trigger modify omits qty; sign_order derives the ±sentinel
-            post_only=False,
+            post_only=None,
             expires_after=None,  # GTC → expiresAfter 0
             time_in_force=TimeInForce.GTC,
             client_order_id=TRIGGER_CLIENT_ORDER_ID,  # target + restated signed id
             trigger_px=str(TRIGGER_TRIGGER_PX),
-            reduce_only=False,
             deadline=TRIGGER_DEADLINE,
             nonce=TRIGGER_NONCE,
             order_type=OrderType.STOP_LOSS,

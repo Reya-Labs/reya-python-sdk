@@ -30,6 +30,7 @@ from sdk.open_api.models.cancel_order_response import CancelOrderResponse
 from sdk.open_api.models.create_order_request import CreateOrderRequest
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.execution_bust_list import ExecutionBustList
+from sdk.open_api.models.limit_modify_order_request import LimitModifyOrderRequest
 from sdk.open_api.models.market_definition import MarketDefinition
 from sdk.open_api.models.mass_cancel_request import MassCancelRequest
 from sdk.open_api.models.mass_cancel_response import MassCancelResponse
@@ -44,6 +45,7 @@ from sdk.open_api.models.spot_execution_list import SpotExecutionList
 from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.open_api.models.transfer_list import TransferList
 from sdk.open_api.models.transfer_type import TransferType
+from sdk.open_api.models.trigger_modify_order_request import TriggerModifyOrderRequest
 from sdk.open_api.models.wallet_configuration import WalletConfiguration
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig, get_config
@@ -632,12 +634,10 @@ class ReyaTradingClient:
         _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, now_s)
         client_order_id = params.client_order_id if params.client_order_id is not None else 0
 
-        # reduce-only is server-rejected on non-IOC orders, and a stop closes by
-        # construction, so it signs `reduceOnly=false`. Reject an explicit
-        # reduce_only rather than sign+send a field the validator forbids; the
-        # wire omits `reduceOnly` entirely for triggers.
-        if params.reduce_only:
-            raise ValueError("reduce_only on TP/SL trigger orders is not supported yet")
+        # Triggers sign reduceOnly=false and omit it from JSON for every TIF.
+        # Reject even an explicit False before claiming a nonce.
+        if params.reduce_only is not None:
+            raise ValueError("reduce_only on TP/SL trigger orders must be omitted, including False")
 
         limit_price = _require_price(params.limit_px, "limit_px")
         trigger_price = _require_price(params.trigger_px, "trigger_px")
@@ -913,11 +913,15 @@ class ReyaTradingClient:
         values. `order_type` defaults to LIMIT; a STOP_LOSS/TAKE_PROFIT modify
         reprices a trigger and requires `trigger_px`. LIMIT modifies omit
         `trigger_px`.
-        Both groups go into the fresh EIP-712 signature over the full
-        post-modify state.
+        Triggers omit both Boolean flags from JSON; the signer reconstructs
+        them as False. All signed fields still go into the fresh EIP-712
+        signature over the full post-modify state.
         """
         payload, _nonce = self.build_modify_order_payload(params)
-        return await self.orders.modify_order(ModifyOrderRequest(**payload))
+        # oneOf models use an actual_instance wrapper. Passing payload as
+        # kwargs to that wrapper silently constructs an empty request.
+        request_type = LimitModifyOrderRequest if payload["orderType"] == "LIMIT" else TriggerModifyOrderRequest
+        return await self.orders.modify_order(ModifyOrderRequest(request_type(**payload)))
 
     def build_modify_order_payload(self, params: ModifyOrderParameters) -> tuple[dict, int]:
         """Build the camelCase wire payload for a modifyOrder request and
@@ -953,16 +957,15 @@ class ReyaTradingClient:
         deadline = params.deadline if params.deadline is not None else _default_deadline(now_s, expires_after)
         _reject_zero_deadline(deadline)
         if is_trigger:
-            # A trigger create is never post-only or reduce-only, so a modify
-            # restating either is a signature the ME must reject. Catching it
-            # here matters because the nonce is minted and burnt further down:
-            # sending it costs the caller a nonce for a guaranteed rejection.
-            if params.post_only:
-                raise ValueError("post_only on TP/SL trigger orders is not supported")
-            if params.reduce_only:
-                raise ValueError("reduce_only on TP/SL trigger orders is not supported yet")
+            # Fixed Boolean flags are absent from trigger JSON and signed false.
+            # Reject explicit fields before claiming a nonce.
+            if params.post_only is not None:
+                raise ValueError("post_only on TP/SL trigger orders must be omitted, including False")
+            if params.reduce_only is not None:
+                raise ValueError("reduce_only on TP/SL trigger orders must be omitted, including False")
             _require_trigger_expiry_coupling(time_in_force, expires_after, deadline, on_modify=True)
         else:
+            _require_strict_bool("post_only", params.post_only)
             _require_limit_expiry_coupling(time_in_force, expires_after, deadline)
             # Only a resting order can be modified, and neither of these shapes
             # ever rests: reduce-only is perp-IOC-only, and IOC is cancelled the
@@ -1027,11 +1030,11 @@ class ReyaTradingClient:
             trigger_price=trigger_price,
             time_in_force=int(time_in_force_int),
             client_order_id=signed_client_order_id,
-            reduce_only=params.reduce_only,
+            reduce_only=False if is_trigger else bool(params.reduce_only),
             expires_after=expires_after,
             nonce=nonce,
             deadline=deadline,
-            post_only=params.post_only,
+            post_only=False if is_trigger else bool(params.post_only),
         )
 
         payload = {
@@ -1047,10 +1050,10 @@ class ReyaTradingClient:
             "orderType": order_type.value,
             "timeInForce": time_in_force.value,
             "triggerPx": _wire_price(trigger_price) if params.trigger_px is not None else None,
-            "reduceOnly": params.reduce_only,
+            "reduceOnly": None if is_trigger else bool(params.reduce_only),
             "limitPx": _wire_price(limit_price),
             "qty": params.qty,
-            "postOnly": params.post_only,
+            "postOnly": None if is_trigger else params.post_only,
             "expiresAfter": expires_after,
             "signature": signature,
             "nonce": str(nonce),

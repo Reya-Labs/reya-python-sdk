@@ -40,10 +40,11 @@ from sdk.async_exec_api.cancel_order_request import CancelOrderRequest as WsCanc
 from sdk.async_exec_api.cancel_order_response import CancelOrderResponse as WsCancelOrderResponse
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsCreateOrderRequest
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsCreateOrderResponse
+from sdk.async_exec_api.limit_modify_order_request import LimitModifyOrderRequest as WsLimitModifyOrderRequest
 from sdk.async_exec_api.mass_cancel_request import MassCancelRequest as WsMassCancelRequest
 from sdk.async_exec_api.mass_cancel_response import MassCancelResponse as WsMassCancelResponse
-from sdk.async_exec_api.modify_order_request import ModifyOrderRequest as WsModifyOrderRequest
 from sdk.async_exec_api.modify_order_response import ModifyOrderResponse as WsModifyOrderResponse
+from sdk.async_exec_api.trigger_modify_order_request import TriggerModifyOrderRequest as WsTriggerModifyOrderRequest
 from sdk.reya_rest_api.client import ReyaTradingClient
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
 
@@ -397,7 +398,8 @@ class ReyaWsExecClient:
         """Modify a resting order in place. Same arg semantics as
         :meth:`ReyaTradingClient.modify_order`."""
         payload, _nonce = self._rest.build_modify_order_payload(params)
-        req = WsModifyOrderRequest(**payload)
+        request_type = WsLimitModifyOrderRequest if payload["orderType"] == "LIMIT" else WsTriggerModifyOrderRequest
+        req = request_type(**payload)
         envelope = await self._send_and_await("modifyOrder", req)
         return WsModifyOrderResponse.model_validate(envelope)
 

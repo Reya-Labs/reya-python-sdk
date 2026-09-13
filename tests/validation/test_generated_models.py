@@ -29,10 +29,11 @@ from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
 from sdk.async_exec_api.create_order_response import CreateOrderResponse as WsExecCreateOrderResponse
-from sdk.async_exec_api.modify_order_request import ModifyOrderRequest as WsExecModifyOrderRequest
+from sdk.async_exec_api.limit_modify_order_request import LimitModifyOrderRequest as WsExecLimitModifyOrderRequest
 from sdk.async_exec_api.modify_order_response import ModifyOrderResponse as WsExecModifyOrderResponse
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
+from sdk.async_exec_api.trigger_modify_order_request import TriggerModifyOrderRequest as WsExecTriggerModifyOrderRequest
 from sdk.open_api import AssetOraclePrice as RestAssetOraclePrice
 from sdk.open_api import CancelReason as RestCancelReason
 from sdk.open_api import CreateOrderRequest as RestCreateOrderRequest
@@ -242,7 +243,8 @@ def _base_trigger_modify_request_payload() -> dict[str, Any]:
     quantity restates 0 = protect the whole position)."""
     payload = _base_modify_request_payload()
     payload.update({"orderType": "STOP_LOSS", "triggerPx": "2400"})
-    del payload["qty"]
+    for field in ("qty", "reduceOnly", "postOnly"):
+        del payload[field]
     return payload
 
 
@@ -332,7 +334,8 @@ def test_rest_create_order_request_accepts_trigger_without_qty() -> None:
     assert request is not None
     assert request.qty is None
     serialized = request.to_dict()
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["timeInForce"] == "GTC"
 
 
@@ -341,7 +344,8 @@ def test_ws_exec_create_order_request_accepts_trigger_without_qty() -> None:
 
     assert request.qty is None
     serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["timeInForce"] == "GTC"
 
 
@@ -349,12 +353,15 @@ def test_rest_modify_order_request_accepts_omitted_expires_after() -> None:
     request = RestModifyOrderRequest.from_dict(_base_modify_request_payload())
 
     assert request is not None
-    assert request.expires_after is None
-    assert "expiresAfter" not in request.to_dict()
+    assert request.actual_instance is not None
+    assert request.actual_instance.expires_after is None
+    serialized = request.to_dict()
+    assert isinstance(serialized, dict)
+    assert "expiresAfter" not in serialized
 
 
 def test_ws_exec_modify_order_request_accepts_omitted_expires_after() -> None:
-    request = WsExecModifyOrderRequest.model_validate(_base_modify_request_payload())
+    request = WsExecLimitModifyOrderRequest.model_validate(_base_modify_request_payload())
 
     assert request.expires_after is None
     assert "expiresAfter" not in request.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -364,18 +371,22 @@ def test_rest_modify_order_request_accepts_trigger_without_qty() -> None:
     request = RestModifyOrderRequest.from_dict(_base_trigger_modify_request_payload())
 
     assert request is not None
-    assert request.qty is None
+    assert request.actual_instance is not None
+    assert request.actual_instance.qty is None
     serialized = request.to_dict()
-    assert "qty" not in serialized
+    assert isinstance(serialized, dict)
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["triggerPx"] == "2400"
 
 
 def test_ws_exec_modify_order_request_accepts_trigger_without_qty() -> None:
-    request = WsExecModifyOrderRequest.model_validate(_base_trigger_modify_request_payload())
+    request = WsExecTriggerModifyOrderRequest.model_validate(_base_trigger_modify_request_payload())
 
     assert request.qty is None
     serialized = request.model_dump(mode="json", by_alias=True, exclude_none=True)
-    assert "qty" not in serialized
+    for field in ("qty", "reduceOnly", "postOnly"):
+        assert field not in serialized
     assert serialized["triggerPx"] == "2400"
 
 

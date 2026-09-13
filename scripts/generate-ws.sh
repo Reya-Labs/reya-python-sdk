@@ -133,6 +133,7 @@ python3 "$SCRIPT_DIR/postprocess-ws-models.py" "$TRADING_OUT_DIR"
 if [[ -f "$EXEC_SPEC_SRC" ]]; then
   generate_async_api "$EXEC_SPEC_SRC" "$EXEC_OUT_DIR" "sdk.async_exec_api"
   python3 "$SCRIPT_DIR/postprocess-ws-models.py" "$EXEC_OUT_DIR"
+  python3 "$SCRIPT_DIR/postprocess-forbidden-fields.py" "$TRADING_JSON_SRC" "$EXEC_OUT_DIR"
 else
   echo "⚠️  Skipping ws-exec codegen — $EXEC_SPEC_SRC not present (specs submodule may be on an older pointer)."
 fi

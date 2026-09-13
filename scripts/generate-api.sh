@@ -76,6 +76,7 @@ test -d "$GENERATION_DIR/sdk/open_api"
 test -f "$GENERATION_DIR/sdk/__init__.py"
 test -d "$GENERATION_DIR/.openapi-generator"
 python3 "$SCRIPT_DIR/postprocess-openapi.py" "$GENERATION_DIR/sdk/open_api"
+python3 "$SCRIPT_DIR/postprocess-forbidden-fields.py" "$SPECS_DIR/trading-schemas.json" "$GENERATION_DIR/sdk/open_api/models"
 
 # Replace all tracked generator outputs only after generation, spec validation,
 # and post-processing succeed. The EXIT trap restores each old target if any
