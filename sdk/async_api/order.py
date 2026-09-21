@@ -16,6 +16,7 @@ class Order(BaseModel):
   qty: Optional[str] = Field(default=None)
   exec_qty: Optional[str] = Field(default=None, alias='''execQty''')
   cum_qty: Optional[str] = Field(default=None, alias='''cumQty''')
+  avg_fill_px: Optional[str] = Field(default=None, alias='''avgFillPx''')
   first_fill_id: Optional[str] = Field(description='''Identifier of the first fill this update represents. Together with fillCount it identifies the fills as a contiguous ID range [firstFillId, firstFillId + fillCount - 1]. For a taker update, the first fill of its matching round; for a maker update, its single fill. Present only on fill updates; absent for non-fill updates and resting-order snapshots.''', default=None, alias='''firstFillId''')
   fill_count: Optional[int] = Field(default=None, alias='''fillCount''')
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
@@ -52,13 +53,13 @@ class Order(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'sequence_number', 'client_order_id', 'qty', 'exec_qty', 'cum_qty', 'first_fill_id', 'fill_count', 'side', 'limit_px', 'order_type', 'trigger_px', 'triggered', 'time_in_force', 'expires_after', 'reduce_only', 'post_only', 'status', 'created_at', 'last_update_at', 'cancel_reason', 'cancel_reason_message', 'additional_properties']
+    known_object_properties = ['exchange_id', 'symbol', 'account_id', 'order_id', 'sequence_number', 'client_order_id', 'qty', 'exec_qty', 'cum_qty', 'avg_fill_px', 'first_fill_id', 'fill_count', 'side', 'limit_px', 'order_type', 'trigger_px', 'triggered', 'time_in_force', 'expires_after', 'reduce_only', 'post_only', 'status', 'created_at', 'last_update_at', 'cancel_reason', 'cancel_reason_message', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'sequenceNumber', 'clientOrderId', 'qty', 'execQty', 'cumQty', 'firstFillId', 'fillCount', 'side', 'limitPx', 'orderType', 'triggerPx', 'triggered', 'timeInForce', 'expiresAfter', 'reduceOnly', 'postOnly', 'status', 'createdAt', 'lastUpdateAt', 'cancelReason', 'cancelReasonMessage', 'additionalProperties']
+    known_json_properties = ['exchangeId', 'symbol', 'accountId', 'orderId', 'sequenceNumber', 'clientOrderId', 'qty', 'execQty', 'cumQty', 'avgFillPx', 'firstFillId', 'fillCount', 'side', 'limitPx', 'orderType', 'triggerPx', 'triggered', 'timeInForce', 'expiresAfter', 'reduceOnly', 'postOnly', 'status', 'createdAt', 'lastUpdateAt', 'cancelReason', 'cancelReasonMessage', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):

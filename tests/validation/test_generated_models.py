@@ -171,14 +171,17 @@ def test_request_error_code_uses_error_suffix_convention() -> None:
     suffixed_codes = {
         "SYMBOL_NOT_FOUND_ERROR",
         "NO_ACCOUNTS_FOUND_ERROR",
-        "NO_PRICES_FOUND_FOR_SYMBOL_ERROR",
         "ORDER_NOT_FOUND_ERROR",
+        "SERVICE_UNAVAILABLE_ERROR",
+        "ORDER_OUTCOME_UNKNOWN_ERROR",
     }
     unsuffixed_codes = {
         "SYMBOL_NOT_FOUND",
         "NO_ACCOUNTS_FOUND",
         "NO_PRICES_FOUND_FOR_SYMBOL",
         "ORDER_NOT_FOUND",
+        "SERVICE_UNAVAILABLE",
+        "ORDER_OUTCOME_UNKNOWN",
     }
 
     rest_codes = {code.value for code in RestRequestErrorCode}
