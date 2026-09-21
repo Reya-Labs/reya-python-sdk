@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import random
 import threading
 import time
@@ -69,7 +68,8 @@ DEFAULT_MAX_SPREAD_PCT = Decimal("0.01")  # ±1% from reference price (configura
 MAX_ORDER_QTY = Decimal("0.01")  # Maximum order quantity
 NUM_LEVELS = 10  # Number of price levels on each side
 REFRESH_INTERVAL = 5  # Seconds between quote adjustments
-STATE_REFRESH_CYCLES = 30  # Refresh state from REST every N cycles to handle WS disconnects
+STATE_REFRESH_CYCLES = 6  # Refresh price, balances and orders from REST every 30s
+MAX_PRICE_AGE_S = 45  # Cancel quotes after one missed REST refresh plus slack
 MIN_BASE_BALANCE = Decimal("0.1")  # Minimum ETH balance - stop MM if below this
 
 # Resting depth is posted as GTT (Good-Till-Time): it rests like GTC but the
@@ -118,20 +118,42 @@ class MarketMakerState:
 
     # Dynamic state (updated via WebSocket)
     reference_price: Decimal = Decimal("0")
+    last_price_update_monotonic: float = 0.0
     base_balance: Decimal = Decimal("0")  # ETH
     quote_balance: Decimal = Decimal("0")  # RUSD
     open_orders: dict[str, OpenOrder] = field(default_factory=dict)
+    stale_orders_cancelled: bool = False
 
     # Lock for thread-safe access
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def update_price(self, price: Decimal) -> None:
+    def update_price(self, price: Decimal, observed_at_monotonic: float | None = None) -> None:
         """Update reference price (thread-safe)."""
         with self._lock:
             old_price = self.reference_price
             self.reference_price = price
+            self.last_price_update_monotonic = (
+                observed_at_monotonic if observed_at_monotonic is not None else time.monotonic()
+            )
+            self.stale_orders_cancelled = False
             if old_price != price:
                 logger.debug(f"📊 Price updated: ${old_price} → ${price}")
+
+    def price_age_seconds(self, now_monotonic: float | None = None) -> float:
+        """Age of the latest REST or WebSocket reference-price observation."""
+        with self._lock:
+            if self.last_price_update_monotonic == 0:
+                return float("inf")
+            now = now_monotonic if now_monotonic is not None else time.monotonic()
+            return max(0.0, now - self.last_price_update_monotonic)
+
+    def needs_stale_order_cancel(self) -> bool:
+        with self._lock:
+            return not self.stale_orders_cancelled
+
+    def mark_stale_orders_cancelled(self) -> None:
+        with self._lock:
+            self.stale_orders_cancelled = True
 
     def update_balance(self, asset: str, balance: Decimal) -> None:
         """Update balance for an asset (thread-safe)."""
@@ -154,7 +176,7 @@ class MarketMakerState:
         with self._lock:
             remaining_qty = qty - cum_qty
 
-            if status in ("FILLED", "CANCELLED"):
+            if status in ("FILLED", "CANCELLED", "REJECTED", "EXPIRED"):
                 if order_id in self.open_orders:
                     del self.open_orders[order_id]
                     logger.debug(f"📋 Order {order_id} removed (status: {status})")
@@ -188,7 +210,7 @@ class MarketMakerState:
             if old_count != new_count:
                 logger.info(f"🔄 State synced: {old_count} → {new_count} orders")
 
-    def get_snapshot(self) -> tuple[Decimal, Decimal, Decimal, list[OpenOrder], list[OpenOrder]]:
+    def get_snapshot(self) -> tuple[Decimal, Decimal, Decimal, float, list[OpenOrder], list[OpenOrder]]:
         """Get a consistent snapshot of current state (thread-safe)."""
         with self._lock:
             bids = [o for o in self.open_orders.values() if o.is_buy]
@@ -199,6 +221,7 @@ class MarketMakerState:
                 self.reference_price,
                 self.base_balance,
                 self.quote_balance,
+                self.last_price_update_monotonic,
                 bids,
                 asks,
             )
@@ -452,21 +475,19 @@ async def fetch_initial_state(
     summary = await client.markets.get_spot_market_summary(state.oracle_symbol)
     if summary.oracle_price is None:
         raise RuntimeError(f"Spot market summary for {state.oracle_symbol} missing oraclePrice")
-    state.reference_price = round_to_tick(Decimal(summary.oracle_price), market_params.tick_size)
+    state.update_price(round_to_tick(Decimal(summary.oracle_price), market_params.tick_size))
 
     # Fetch account balances
     logger.info("   Fetching account balances...")
     balances = await client.get_account_balances()
     for balance in balances:
         if balance.account_id == account_id:
-            if balance.asset == market_params.base_asset:
-                state.base_balance = Decimal(balance.real_balance)
-            elif balance.asset == market_params.quote_asset:
-                state.quote_balance = Decimal(balance.real_balance)
+            state.update_balance(balance.asset, Decimal(balance.real_balance))
 
     # Fetch open orders
     logger.info("   Fetching open orders...")
     open_orders = await client.get_open_orders()
+    fresh_orders: dict[str, OpenOrder] = {}
     for order in open_orders:
         if order.symbol != state.symbol:
             continue
@@ -476,20 +497,37 @@ async def fetch_initial_state(
         remaining_qty = qty - cum_qty
         is_buy = order.side.value == "B"
 
-        state.open_orders[order.order_id] = OpenOrder(
+        fresh_orders[order.order_id] = OpenOrder(
             order_id=order.order_id,
             price=Decimal(order.limit_px),
             qty=remaining_qty,
             is_buy=is_buy,
         )
+    state.sync_orders(fresh_orders)
 
 
 async def refresh_state_from_rest(
     client: ReyaTradingClient,
     state: MarketMakerState,
-) -> None:
-    """Refresh order state from REST API to handle WebSocket disconnections or stale state."""
+) -> bool:
+    """Refresh price, balances and orders when WebSocket events are missed."""
     try:
+        market_params = state.market_params
+        account_id = state.account_id
+        if not market_params or not account_id:
+            raise RuntimeError("Market params and account_id must be set before refreshing state")
+
+        summary = await client.markets.get_spot_market_summary(state.oracle_symbol)
+        if summary.oracle_price is None:
+            raise RuntimeError(f"Spot market summary for {state.oracle_symbol} missing oraclePrice")
+        reference_price = round_to_tick(Decimal(summary.oracle_price), market_params.tick_size)
+
+        balances = await client.get_account_balances()
+        refreshed_balances: dict[str, Decimal] = {}
+        for balance in balances:
+            if balance.account_id == account_id:
+                refreshed_balances[balance.asset] = Decimal(balance.real_balance)
+
         open_orders = await client.get_open_orders()
         fresh_orders: dict[str, OpenOrder] = {}
 
@@ -509,9 +547,17 @@ async def refresh_state_from_rest(
                 is_buy=is_buy,
             )
 
+        # Only mark the price fresh after the complete snapshot succeeds. This
+        # lets the stale-price guard fail closed if balances or orders cannot be
+        # reconciled while WebSocket events are unavailable.
+        state.update_price(reference_price)
+        for asset, balance_amount in refreshed_balances.items():
+            state.update_balance(asset, balance_amount)
         state.sync_orders(fresh_orders)
+        return True
     except RECOVERABLE_EXC as e:
         logger.warning(f"Failed to refresh state from REST: {e}")
+        return False
 
 
 async def place_single_order(
@@ -736,10 +782,20 @@ async def adjust_orders(
         return
 
     # Get consistent snapshot of current state
-    reference_price, base_balance, quote_balance, bids, asks = state.get_snapshot()
-
-    if reference_price == Decimal("0"):
-        logger.warning(f"[{cycle:04d}] No reference price available, skipping adjustment")
+    reference_price, base_balance, quote_balance, last_price_update, bids, asks = state.get_snapshot()
+    price_age = float("inf") if last_price_update == 0 else max(0.0, time.monotonic() - last_price_update)
+    if reference_price == Decimal("0") or price_age > MAX_PRICE_AGE_S:
+        logger.warning(
+            f"[{cycle:04d}] Reference price is unavailable or stale "
+            f"(age={price_age:.1f}s, limit={MAX_PRICE_AGE_S}s); cancelling quotes"
+        )
+        if state.needs_stale_order_cancel():
+            try:
+                await client.mass_cancel(symbol=state.symbol, account_id=account_id)
+                state.sync_orders({})
+                state.mark_stale_orders_cancelled()
+            except RECOVERABLE_EXC as error:
+                logger.warning(f"[{cycle:04d}] Failed to cancel stale quotes: {error}")
         return
 
     # Calculate available balance
@@ -922,12 +978,9 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal):
         logger.info("   Press Ctrl+C to stop")
         logger.info("%s\n", "=" * 60)
 
-        # Set up WebSocket
-        ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
         ws_handler = WebSocketHandler(state)
 
         websocket = ReyaSocket(
-            url=ws_url,
             on_open=ws_handler.on_open,
             on_message=ws_handler.on_message,
             on_error=ws_handler.on_error,
@@ -961,6 +1014,11 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal):
             order_count = await place_orders(
                 client, symbol, bid_prices, ask_prices, market_params, available_base, available_quote
             )
+            # Do not depend on order-change events to learn about our own writes.
+            # A REST snapshot prevents a disconnected stream from refilling the
+            # same "missing" levels every cycle.
+            if not await refresh_state_from_rest(client, state):
+                raise RuntimeError("Initial REST reconciliation failed after placing the depth ladder")
 
             bid_str = ", ".join(f"${b}" for b in bid_prices)
             ask_str = ", ".join(f"${a}" for a in ask_prices)
