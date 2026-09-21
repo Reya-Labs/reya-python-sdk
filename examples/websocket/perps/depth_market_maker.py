@@ -42,7 +42,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import random
 import threading
 import time
@@ -83,7 +82,8 @@ DEFAULT_ORACLE_SYMBOL = "ETHRUSDPERP"
 DEFAULT_MAX_SPREAD_PCT = Decimal("0.01")  # ±1% from reference price
 NUM_LEVELS = 5  # bids/asks per side — kept low for a low-volume devnet env
 REFRESH_INTERVAL = 5  # seconds between quote adjustments
-STATE_REFRESH_CYCLES = 30  # refresh state from REST every N cycles
+STATE_REFRESH_CYCLES = 6  # refresh price, balances and orders from REST every 30s
+MAX_PRICE_AGE_S = 45  # cancel quotes after one missed REST refresh plus slack
 MIN_COLLATERAL = Decimal("100")  # halt MM if rUSD collateral falls below this
 
 # Fraction of rUSD collateral budgeted across all open orders. The remainder
@@ -142,17 +142,39 @@ class MarketMakerState:
 
     # Dynamic state (updated via WebSocket)
     reference_price: Decimal = Decimal("0")
+    last_price_update_monotonic: float = 0.0
     collateral_balance: Decimal = Decimal("0")  # rUSD
     open_orders: dict[str, OpenOrder] = field(default_factory=dict)
+    stale_orders_cancelled: bool = False
 
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def update_price(self, price: Decimal) -> None:
+    def update_price(self, price: Decimal, observed_at_monotonic: float | None = None) -> None:
         with self._lock:
             old = self.reference_price
             self.reference_price = price
+            self.last_price_update_monotonic = (
+                observed_at_monotonic if observed_at_monotonic is not None else time.monotonic()
+            )
+            self.stale_orders_cancelled = False
             if old != price:
                 logger.debug(f"📊 Price updated: ${old} → ${price}")
+
+    def price_age_seconds(self, now_monotonic: float | None = None) -> float:
+        """Age of the latest REST or WebSocket reference-price observation."""
+        with self._lock:
+            if self.last_price_update_monotonic == 0:
+                return float("inf")
+            now = now_monotonic if now_monotonic is not None else time.monotonic()
+            return max(0.0, now - self.last_price_update_monotonic)
+
+    def needs_stale_order_cancel(self) -> bool:
+        with self._lock:
+            return not self.stale_orders_cancelled
+
+    def mark_stale_orders_cancelled(self) -> None:
+        with self._lock:
+            self.stale_orders_cancelled = True
 
     def update_collateral(self, balance: Decimal) -> None:
         with self._lock:
@@ -166,7 +188,7 @@ class MarketMakerState:
     ) -> None:
         with self._lock:
             remaining_qty = qty - cum_qty
-            if status in ("FILLED", "CANCELLED"):
+            if status in ("FILLED", "CANCELLED", "REJECTED", "EXPIRED"):
                 if order_id in self.open_orders:
                     del self.open_orders[order_id]
                     logger.debug(f"📋 Order {order_id} removed (status: {status})")
@@ -191,12 +213,12 @@ class MarketMakerState:
             if old_count != len(fresh_orders):
                 logger.info(f"🔄 State synced: {old_count} → {len(fresh_orders)} orders")
 
-    def get_snapshot(self) -> tuple[Decimal, Decimal, list[OpenOrder], list[OpenOrder]]:
+    def get_snapshot(self) -> tuple[Decimal, Decimal, float, list[OpenOrder], list[OpenOrder]]:
         """Atomic snapshot of current state for the adjustment loop."""
         with self._lock:
             bids = sorted((o for o in self.open_orders.values() if o.is_buy), key=lambda o: o.price, reverse=True)
             asks = sorted((o for o in self.open_orders.values() if not o.is_buy), key=lambda o: o.price)
-            return self.reference_price, self.collateral_balance, bids, asks
+            return self.reference_price, self.collateral_balance, self.last_price_update_monotonic, bids, asks
 
 
 # ---------------------------------------------------------------------------
@@ -438,16 +460,17 @@ async def fetch_initial_state(client: ReyaTradingClient, state: MarketMakerState
 
     logger.info(f"   Fetching mark price for {state.oracle_symbol}...")
     mark_price = await client.get_market_mark_price(state.oracle_symbol)
-    state.reference_price = round_to_tick(Decimal(mark_price), market_params.tick_size)
+    state.update_price(round_to_tick(Decimal(mark_price), market_params.tick_size))
 
     logger.info("   Fetching account balances...")
     balances = await client.get_account_balances()
     for balance in balances:
         if balance.account_id == account_id and balance.asset == COLLATERAL_ASSET:
-            state.collateral_balance = Decimal(balance.real_balance)
+            state.update_collateral(Decimal(balance.real_balance))
 
     logger.info("   Fetching open orders...")
     open_orders = await client.get_open_orders()
+    fresh: dict[str, OpenOrder] = {}
     for order in open_orders:
         if order.symbol != state.symbol:
             continue
@@ -455,14 +478,29 @@ async def fetch_initial_state(client: ReyaTradingClient, state: MarketMakerState
         cum_qty = Decimal(order.cum_qty) if order.cum_qty else Decimal("0")
         remaining_qty = qty - cum_qty
         is_buy = order.side.value == "B"
-        state.open_orders[order.order_id] = OpenOrder(
+        fresh[order.order_id] = OpenOrder(
             order_id=order.order_id, price=Decimal(order.limit_px), qty=remaining_qty, is_buy=is_buy
         )
+    state.sync_orders(fresh)
 
 
-async def refresh_state_from_rest(client: ReyaTradingClient, state: MarketMakerState) -> None:
-    """Re-sync open orders from REST (defends against WS gaps / missed events)."""
+async def refresh_state_from_rest(client: ReyaTradingClient, state: MarketMakerState) -> bool:
+    """Re-sync price, collateral and orders when WebSocket events are missed."""
     try:
+        market_params = state.market_params
+        account_id = state.account_id
+        if not market_params or not account_id:
+            raise RuntimeError("Market params and account_id must be set before refreshing state")
+
+        mark_price = await client.get_market_mark_price(state.oracle_symbol)
+        reference_price = round_to_tick(Decimal(mark_price), market_params.tick_size)
+
+        balances = await client.get_account_balances()
+        collateral_balance: Decimal | None = None
+        for balance in balances:
+            if balance.account_id == account_id and balance.asset == COLLATERAL_ASSET:
+                collateral_balance = Decimal(balance.real_balance)
+
         open_orders = await client.get_open_orders()
         fresh: dict[str, OpenOrder] = {}
         for order in open_orders:
@@ -475,9 +513,18 @@ async def refresh_state_from_rest(client: ReyaTradingClient, state: MarketMakerS
             fresh[order.order_id] = OpenOrder(
                 order_id=order.order_id, price=Decimal(order.limit_px), qty=remaining_qty, is_buy=is_buy
             )
+
+        # Only mark the price fresh after the complete snapshot succeeds. This
+        # lets the stale-price guard fail closed if balances or orders cannot be
+        # reconciled while WebSocket events are unavailable.
+        state.update_price(reference_price)
+        if collateral_balance is not None:
+            state.update_collateral(collateral_balance)
         state.sync_orders(fresh)
+        return True
     except RECOVERABLE_EXC as e:
         logger.warning(f"Failed to refresh state from REST: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -683,9 +730,20 @@ async def adjust_orders(client: ReyaTradingClient, state: MarketMakerState, cycl
     if not market_params or not account_id:
         return
 
-    reference_price, collateral_balance, bids, asks = state.get_snapshot()
-    if reference_price == Decimal("0"):
-        logger.warning(f"[{cycle:04d}] No reference price available, skipping")
+    reference_price, collateral_balance, last_price_update, bids, asks = state.get_snapshot()
+    price_age = float("inf") if last_price_update == 0 else max(0.0, time.monotonic() - last_price_update)
+    if reference_price == Decimal("0") or price_age > MAX_PRICE_AGE_S:
+        logger.warning(
+            f"[{cycle:04d}] Reference price is unavailable or stale "
+            f"(age={price_age:.1f}s, limit={MAX_PRICE_AGE_S}s); cancelling quotes"
+        )
+        if state.needs_stale_order_cancel():
+            try:
+                await client.mass_cancel(symbol=state.symbol, account_id=account_id)
+                state.sync_orders({})
+                state.mark_stale_orders_cancelled()
+            except RECOVERABLE_EXC as error:
+                logger.warning(f"[{cycle:04d}] Failed to cancel stale quotes: {error}")
         return
 
     available_margin = compute_available_margin(collateral_balance, bids + asks, market_params)
@@ -850,10 +908,8 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal) -> None
         logger.info("   Press Ctrl+C to stop")
         logger.info("%s\n", "=" * 60)
 
-        ws_url = os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/")
         ws_handler = WebSocketHandler(state)
         websocket = ReyaSocket(
-            url=ws_url,
             on_open=ws_handler.on_open,
             on_message=ws_handler.on_message,
             on_error=ws_handler.on_error,
@@ -880,6 +936,11 @@ async def main(symbol: str, oracle_symbol: str, max_spread_pct: Decimal) -> None
             order_count = await place_initial_ladder(
                 client, symbol, bid_prices, ask_prices, market_params, available_margin
             )
+            # Do not depend on order-change events to learn about our own writes.
+            # A REST snapshot prevents a disconnected stream from refilling the
+            # same "missing" levels every cycle.
+            if not await refresh_state_from_rest(client, state):
+                raise RuntimeError("Initial REST reconciliation failed after placing the depth ladder")
             logger.info(f"✅ Initial setup complete: {order_count} orders")
             logger.info(f"   Bids: {', '.join(f'${b}' for b in bid_prices)}")
             logger.info(f"   Asks: {', '.join(f'${a}' for a in ask_prices)}\n")

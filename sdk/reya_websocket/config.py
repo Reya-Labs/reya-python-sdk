@@ -5,6 +5,15 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+MAINNET_CHAIN_ID = 1729
+MAINNET_WS_URL = "wss://ws.reya.xyz/"
+DEVNET_WS_URL = "wss://websocket-devnet.reya-cronos.network/"
+
+
+def default_websocket_url(chain_id: int) -> str:
+    """Return the market-data WebSocket endpoint for a chain."""
+    return MAINNET_WS_URL if chain_id == MAINNET_CHAIN_ID else DEVNET_WS_URL
+
 
 @dataclass
 class WebSocketConfig:
@@ -24,9 +33,10 @@ class WebSocketConfig:
     def from_env(cls) -> "WebSocketConfig":
         """Create a config instance from environment variables."""
         load_dotenv()
+        chain_id = int(os.environ.get("CHAIN_ID", str(MAINNET_CHAIN_ID)))
 
         return cls(
-            url=os.environ.get("REYA_WS_URL", "wss://ws.reya.xyz/"),
+            url=os.environ.get("REYA_WS_URL", default_websocket_url(chain_id)),
             connection_timeout=int(os.environ.get("REYA_WS_CONNECTION_TIMEOUT", "30")),
             enable_compression=os.environ.get("REYA_WS_ENABLE_COMPRESSION", "True").lower() == "true",
             ssl_verify=os.environ.get("REYA_WS_SSL_VERIFY", "True").lower() == "true",
