@@ -7,14 +7,15 @@ from decimal import Decimal
 
 import pytest
 
+from sdk.async_api.order import Order as AsyncOrder
 from sdk.open_api import RequestError, RequestErrorCode, TimeInForce
-from sdk.open_api.exceptions import ApiException, BadRequestException
+from sdk.open_api.exceptions import BadRequestException
+from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.create_order_response import CreateOrderResponse
 from sdk.open_api.models.order import Order
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.position import Position
-from sdk.open_api.models.side import Side
 from sdk.reya_rest_api.config import REYA_DEX_ID
 from sdk.reya_rest_api.models import LimitOrderParameters, TriggerOrderParameters
 from tests.helpers import ReyaTester
@@ -23,21 +24,14 @@ from tests.helpers.price_helpers import format_price, quantize_price
 from tests.helpers.reya_tester import limit_order_params_to_order, logger, trigger_order_params_to_order
 from tests.helpers.reya_tester.matchers import ExecutionMatcher
 
-# The SL/TP backbone arms, tracks, modifies, and cancels trigger orders but does
-# NOT fire them — evaluation, the fired child, OCO, and auto-cancel-on-close all
-# arrive with the firing release. Tests split into two groups:
-#
-#   _FIRE_SKIP        — assert on-chain firing semantics (price-crossed → fired,
-#                       position-closed/flipped → auto-cancelled). Skipped until
-#                       firing ships.
-# Pure create→OPEN→cancel round-trips and cancel-not-found work against the
-# backbone and run on exact-source Localnet today; non-Localnet environments
-# skip until that backbone is deployed there.
-_FIRE_SKIP = "requires trigger firing; backbone arms but does not fire"
-_IN_CROSS_SKIP = (
-    "requires trigger firing; backbone arms but does not fire. "
-    "backbone semantics: already-crossed triggers simply arm — no immediate execution"
-)
+# The engine arms a trigger on admission and evaluates it on each mark-price
+# tick: a trigger that is already crossed when armed fires on the next tick,
+# not at admission. The fired child keeps the trigger's order id, reports
+# `triggered=True`, and fills like an ordinary order, so every firing test
+# rests the maker liquidity the child needs before arming. Position-driven
+# cancellation (close, flip, a crossed trigger with no position) follows the
+# indexed on-chain position, so those waits are longer than a local fill's.
+# All of these run on exact-source Localnet only.
 _LOCALNET_CHAIN_ID = 31337
 
 
@@ -294,239 +288,6 @@ async def test_success_sl_order_create_cancel(
     logger.info("SL order cancel test completed successfully")
 
 
-# Constants for conditional order retry logic
-CO_MAX_RETRIES = 5
-CO_TIMEOUT_PER_ATTEMPT = 30
-
-
-async def _cancel_order_if_open(reya_tester: ReyaTester, order_id: str | None, symbol: str = "ETHRUSDPERP") -> None:
-    """Cancel an order if it's still open. Silently ignores errors."""
-    if order_id is None:
-        return
-    try:
-        ws_order = reya_tester.ws.orders.get(str(order_id))
-        if ws_order and ws_order.status.value == "OPEN":
-            await reya_tester.client.cancel_order(
-                symbol=symbol,
-                account_id=reya_tester.account_id,
-                order_id=order_id,
-            )
-            await reya_tester.wait.for_order_state(order_id, OrderStatus.CANCELLED, timeout=10)
-    except (ApiException, OSError, RuntimeError, asyncio.TimeoutError):
-        pass  # Intentionally ignore errors during cleanup - order may already be cancelled/filled
-
-
-# Note: the CO bot may not be active on testnet
-@pytest.mark.skip(reason=_IN_CROSS_SKIP)
-@pytest.mark.asyncio
-async def test_tp_in_cross_executes_immediately(reya_tester: ReyaTester):
-    """TP order executes immediately when trigger condition is already met (in-cross).
-
-    Setup: SHORT position at ~1.0x market
-    TP trigger: 1.1x (above market) - condition "price <= 1.1x" is already TRUE
-
-    Note: This tests the CO bot's in-cross detection, not a semantically correct TP.
-    A real TP for a short would have trigger BELOW entry (profit when price drops).
-
-    Verifies:
-    1. TP order executes immediately when in-cross
-    2. Trade is consistent between REST and WS (same sequence number)
-    3. Position is closed after execution
-    """
-    symbol = "ETHRUSDPERP"
-    market_price = await reya_tester.data.current_price()
-    qty = "0.01"
-
-    # SETUP: Create short position
-    async with reya_tester.perp_trade() as ctx:
-        limit_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px=str(float(market_price) * 0.99),
-            is_buy=False,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=False,
-        )
-        await reya_tester.orders.create_limit(limit_order_params)
-        expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_order)
-        logger.info(f"Position created with trade seq={result.sequence_number}")
-
-    await reya_tester.check.no_open_orders()
-
-    # RETRY LOOP: CO bot may be slow
-    last_error: Exception | None = None
-    for attempt in range(1, CO_MAX_RETRIES + 1):
-        logger.info(f"🔄 TP execution attempt {attempt}/{CO_MAX_RETRIES}")
-
-        # Verify position exists before placing CO
-        if await reya_tester.data.position(symbol) is None:
-            raise AssertionError(f"Position closed before placing TP (attempt {attempt})")
-
-        async with reya_tester.perp_trade() as ctx:
-            tp_params = _trigger_params(
-                symbol=symbol,
-                is_buy=True,
-                trigger_px=str(float(market_price) * 1.1),
-                trigger_type=OrderType.TAKE_PROFIT,
-            )
-            tp_order = await reya_tester.orders.create_trigger(tp_params)
-            logger.info(f"Created TP order: {tp_order.order_id}")
-
-            try:
-                # PerpTradeContext handles all verification:
-                # - Waits for WS execution matching criteria
-                # - Fetches same trade from REST by sequence number
-                # - Verifies sequence numbers match
-                # - Waits for position to close
-                expected_tp = trigger_order_params_to_order(tp_params, reya_tester.account_id)
-                result = await ctx.wait_for_closing_execution(expected_tp, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
-                logger.info(f"✅ TP executed with trade seq={result.sequence_number}")
-
-                # Verify execution fields match expected order
-                await reya_tester.check.order_execution(result.rest_execution, expected_tp, qty)
-                await reya_tester.check.position_not_open(symbol)
-                return  # SUCCESS
-
-            except RuntimeError as e:
-                last_error = e
-                logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
-                await _cancel_order_if_open(reya_tester, tp_order.order_id)
-                continue
-
-    raise AssertionError(f"TP order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
-
-
-@pytest.mark.skip(reason=_IN_CROSS_SKIP)
-@pytest.mark.asyncio
-async def test_sl_in_cross_executes_immediately(reya_tester: ReyaTester):
-    """SL order executes immediately when trigger condition is already met (in-cross).
-
-    Setup: SHORT position at ~0.9x market
-    SL trigger: 0.9x (at entry) - condition "price >= 0.9x" is already TRUE
-
-    Note: This tests the CO bot's in-cross detection. The SL is at entry price,
-    so it triggers immediately (current price ~1.0x >= 0.9x trigger).
-
-    Verifies:
-    1. SL order executes immediately when in-cross
-    2. Trade is consistent between REST and WS (same sequence number)
-    3. Position is closed after execution
-    """
-    symbol = "ETHRUSDPERP"
-    market_price = await reya_tester.data.current_price()
-    qty = "0.01"
-
-    # SETUP: Create short position
-    async with reya_tester.perp_trade() as ctx:
-        limit_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px=str(float(market_price) * 0.9),
-            is_buy=False,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=False,
-        )
-        await reya_tester.orders.create_limit(limit_order_params)
-        expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_order)
-        logger.info(f"Position created with trade seq={result.sequence_number}")
-
-    await reya_tester.check.no_open_orders()
-
-    # RETRY LOOP: CO bot may be slow
-    last_error: Exception | None = None
-    for attempt in range(1, CO_MAX_RETRIES + 1):
-        logger.info(f"🔄 SL execution attempt {attempt}/{CO_MAX_RETRIES}")
-
-        # Verify position exists before placing CO
-        if await reya_tester.data.position(symbol) is None:
-            raise AssertionError(f"Position closed before placing SL (attempt {attempt})")
-
-        async with reya_tester.perp_trade() as ctx:
-            sl_params = _trigger_params(
-                symbol=symbol,
-                is_buy=True,
-                trigger_px=str(float(market_price) * 0.9),
-                trigger_type=OrderType.STOP_LOSS,
-            )
-            sl_order = await reya_tester.orders.create_trigger(sl_params)
-            logger.info(f"Created SL order: {sl_order.order_id}")
-
-            try:
-                expected_sl = trigger_order_params_to_order(sl_params, reya_tester.account_id)
-                result = await ctx.wait_for_closing_execution(expected_sl, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
-                logger.info(f"✅ SL executed with trade seq={result.sequence_number}")
-
-                await reya_tester.check.order_execution(result.rest_execution, expected_sl, qty)
-                await reya_tester.check.position_not_open(symbol)
-                return  # SUCCESS
-
-            except RuntimeError as e:
-                last_error = e
-                logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
-                await _cancel_order_if_open(reya_tester, sl_order.order_id)
-                continue
-
-    raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
-
-
-@pytest.mark.skip(reason=_FIRE_SKIP)
-@pytest.mark.asyncio
-async def test_failure_sltp_when_no_position(reya_tester: ReyaTester):
-    """SL/TP orders are immediately cancelled when no position exists.
-
-    Setup: No position
-    Action: Submit SL and TP orders
-
-    Verifies:
-    1. SL order is immediately cancelled (not filled, not left open)
-    2. TP order is immediately cancelled (not filled, not left open)
-    3. No executions occur
-    """
-    symbol = "ETHRUSDPERP"
-
-    # SETUP - capture sequence number BEFORE any actions
-    last_sequence_before = await reya_tester.get_last_perp_execution_sequence_number()
-
-    market_price = await reya_tester.data.current_price()
-    await reya_tester.check.position_not_open(symbol)
-
-    # SUBMIT SL
-    sl_params = _trigger_params(
-        symbol=symbol,
-        is_buy=False,  # on short position
-        trigger_px=str(float(market_price) * 0.9),  # in the money
-        trigger_type=OrderType.STOP_LOSS,
-    )
-    order_response_sl: CreateOrderResponse = await reya_tester.orders.create_trigger(sl_params)
-    # ENSURE IT WAS NOT FILLED NOR STILL OPENED
-    assert order_response_sl.order_id is not None
-    cancelled_or_rejected_order_id = await reya_tester.wait.for_order_state(
-        order_response_sl.order_id, OrderStatus.CANCELLED
-    )
-    assert cancelled_or_rejected_order_id == order_response_sl.order_id, "SL order should not be opened"
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check_no_order_execution_since(last_sequence_before)
-
-    # SUBMIT TP
-    tp_params = _trigger_params(
-        symbol=symbol,
-        is_buy=False,  # on short position
-        trigger_px=str(float(market_price) * 0.9),  # in the money
-        trigger_type=OrderType.TAKE_PROFIT,
-    )
-    order_response_tp: CreateOrderResponse = await reya_tester.orders.create_trigger(tp_params)
-    # ENSURE IT WAS NOT FILLED NOR STILL OPENED
-    assert order_response_tp.order_id is not None
-    cancelled_or_rejected_order_id = await reya_tester.wait.for_order_state(
-        order_response_tp.order_id, OrderStatus.CANCELLED
-    )
-    assert cancelled_or_rejected_order_id == order_response_tp.order_id, "TP order should not be opened"
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check_no_order_execution_since(last_sequence_before)
-
-
 @pytest.mark.asyncio
 async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     """Cancelling a non-existent order returns proper error.
@@ -563,366 +324,296 @@ async def test_failure_cancel_when_order_is_not_found(reya_tester: ReyaTester):
     logger.info("✅ Cancel non-existent order returns proper error")
 
 
-@pytest.mark.skip(reason=_FIRE_SKIP)
+FIRE_TIMEOUT = 30
+POSITION_EVENT_TIMEOUT = 60
+
+
+async def _require_flat(taker: ReyaTester, symbol: str) -> None:
+    baseline = await taker.positions.signed_qty(symbol)
+    if baseline != 0:
+        pytest.skip(f"account not flat (baseline {baseline}) — protective triggers act on the whole position")
+
+
+async def _prices(taker: ReyaTester, symbol: str) -> tuple[Decimal, Decimal]:
+    market_price = Decimal(str(await taker.data.current_price(symbol)))
+    tick_size = Decimal(str((await taker.data.market_definition(symbol)).tick_size))
+    return market_price, tick_size
+
+
+def _px(market_price: Decimal, factor: str, tick_size: Decimal) -> str:
+    return format_price(quantize_price(market_price * Decimal(factor), tick_size))
+
+
+async def _open_localnet_position(
+    maker: ReyaTester, taker: ReyaTester, symbol: str, is_long: bool, qty: str = "0.01"
+) -> tuple[Decimal, Decimal]:
+    """Open a taker position against a resting maker order on an empty book."""
+    market_price, tick_size = await _prices(taker, symbol)
+    await skip_if_external_liquidity(maker.data, symbol, float(market_price), reason_prefix="_open_localnet_position")
+    maker_order_id = await maker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=symbol,
+            is_buy=not is_long,
+            limit_px=_px(market_price, "0.99" if is_long else "1.01", tick_size),
+            qty=qty,
+            time_in_force=TimeInForce.GTC,
+        )
+    )
+    assert maker_order_id is not None
+    await maker.wait.for_order_creation(maker_order_id)
+    await taker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=symbol,
+            is_buy=is_long,
+            limit_px=_px(market_price, "1.05" if is_long else "0.95", tick_size),
+            qty=qty,
+            time_in_force=TimeInForce.IOC,
+            reduce_only=False,
+        )
+    )
+    expected = Decimal(qty) if is_long else -Decimal(qty)
+    await _wait_for_position(taker, symbol, expected)
+    return market_price, tick_size
+
+
+async def _wait_for_position(taker: ReyaTester, symbol: str, expected: Decimal) -> None:
+    deadline = asyncio.get_running_loop().time() + POSITION_EVENT_TIMEOUT
+    current = await taker.positions.signed_qty(symbol)
+    while current != expected:
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError(f"{symbol} position stayed {current}, expected {expected}")
+        await asyncio.sleep(0.5)
+        current = await taker.positions.signed_qty(symbol)
+
+
+async def _rest_maker(maker: ReyaTester, symbol: str, is_buy: bool, limit_px: str, qty: str = "0.01") -> str:
+    """Rest the liquidity a fired child (or a manual close) will cross."""
+    order_id = await maker.orders.create_limit(
+        LimitOrderParameters(symbol=symbol, is_buy=is_buy, limit_px=limit_px, qty=qty, time_in_force=TimeInForce.GTC)
+    )
+    assert order_id is not None
+    await maker.wait.for_order_creation(order_id)
+    return order_id
+
+
+async def _arm(taker: ReyaTester, params: TriggerOrderParameters) -> str:
+    response: CreateOrderResponse = await taker.orders.create_trigger(params)
+    assert response.order_id is not None
+    assert response.status == OrderStatus.OPEN, f"a trigger is armed on admission, got {response.status}"
+    await taker.wait.for_order_creation(order_id=response.order_id)
+    return str(response.order_id)
+
+
+async def _await_order(
+    taker: ReyaTester, order_id: str, status: OrderStatus, timeout: int, cancel_reason: CancelReason | None = None
+) -> AsyncOrder:
+    """Wait for the order's terminal status, then read the WS order change for its details."""
+    await taker.wait.for_order_state(order_id, status, timeout=timeout)
+    order = taker.ws.orders.get(order_id)
+    assert order is not None, f"no order change observed for {order_id}"
+    if cancel_reason is not None:
+        observed = order.cancel_reason.value if order.cancel_reason is not None else None
+        assert observed == cancel_reason.value, f"{order_id}: cancelReason {observed} != {cancel_reason.value}"
+    return order
+
+
+async def _assert_fired_and_filled(taker: ReyaTester, order_id: str) -> None:
+    order = await _await_order(taker, order_id, OrderStatus.FILLED, FIRE_TIMEOUT)
+    assert order.triggered is True, f"{order_id} filled without reporting triggered=True"
+
+
 @pytest.mark.asyncio
-async def test_sltp_cancelled_when_position_closed(reya_tester: ReyaTester):
-    """SL/TP orders are cancelled when position is manually closed.
+async def test_tp_in_cross_fires_on_next_mark(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """A take-profit already crossed when armed fires on the next mark tick and closes the short.
 
-    Setup: LONG position with SL and TP orders (both not in-cross)
-    Action: Manually close position with market order
-
-    Verifies:
-    1. Position opens correctly
-    2. SL and TP orders are created
-    3. Manual close executes and closes position
-    4. Both SL and TP orders are automatically cancelled
+    A short's TP buys when the mark falls to its trigger, so a trigger above the
+    mark is already crossed. The child buys at the trigger, crossing a resting ask.
     """
-    symbol = "ETHRUSDPERP"
-    market_price = await reya_tester.data.current_price()
-    qty = "0.01"
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _open_localnet_position(perp_maker_tester, taker, symbol, is_long=False)
+    trigger_px = _px(market_price, "1.02", tick_size)
+    await _rest_maker(perp_maker_tester, symbol, is_buy=False, limit_px=trigger_px)
 
-    # SETUP: Create long position
-    async with reya_tester.perp_trade() as ctx:
-        limit_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px=str(float(market_price) * 1.01),
-            is_buy=True,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=False,
-        )
-        await reya_tester.orders.create_limit(limit_order_params)
-        expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_order)
-        logger.info(f"Position created with trade seq={result.sequence_number}")
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=qty,
-        expected_side=Side.B,
+    tp_id = await _arm(
+        taker, _trigger_params(symbol, is_buy=True, trigger_px=trigger_px, trigger_type=OrderType.TAKE_PROFIT)
     )
 
-    # Create SL order (not in-cross: below market for long)
-    sl_params = _trigger_params(
-        symbol=symbol,
-        is_buy=False,
-        trigger_px=str(float(market_price) * 0.95),
-        trigger_type=OrderType.STOP_LOSS,
-    )
-    sl_response = await reya_tester.orders.create_trigger(sl_params)
-    logger.info(f"Created SL order: {sl_response.order_id}")
-
-    # Create TP order (not in-cross: above market for long)
-    tp_params = _trigger_params(
-        symbol=symbol,
-        is_buy=False,
-        trigger_px=str(float(market_price) * 1.05),
-        trigger_type=OrderType.TAKE_PROFIT,
-    )
-    tp_response = await reya_tester.orders.create_trigger(tp_params)
-    logger.info(f"Created TP order: {tp_response.order_id}")
-
-    await reya_tester.wait.for_order_creation(order_id=sl_response.order_id, timeout=10)
-    await reya_tester.wait.for_order_creation(order_id=tp_response.order_id, timeout=10)
-
-    # Manually close position
-    async with reya_tester.perp_trade() as ctx:
-        close_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px="0",
-            is_buy=False,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=True,
-        )
-        await reya_tester.orders.create_limit(close_order_params)
-        expected_close = limit_order_params_to_order(close_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_closing_execution(expected_close, qty, timeout=10)
-        logger.info(f"Position closed with trade seq={result.sequence_number}")
-
-    await reya_tester.check.position_not_open(symbol)
-
-    # Verify both SL and TP orders are cancelled
-    await reya_tester.wait.for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10)
-    await reya_tester.wait.for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10)
-    await reya_tester.check.no_open_orders()
-    logger.info("✅ SL and TP orders cancelled when position was closed")
+    await _assert_fired_and_filled(taker, tp_id)
+    await _wait_for_position(taker, symbol, Decimal(0))
 
 
-@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
-async def test_sltp_cancelled_when_position_flipped(reya_tester: ReyaTester):
-    """SL/TP orders are cancelled when position is flipped (long to short).
+async def test_sl_in_cross_fires_on_next_mark(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """A stop-loss already crossed when armed fires on the next mark tick and closes the short.
 
-    Setup: LONG position with SL and TP orders (both not in-cross)
-    Action: Flip position by selling 2x the position size
-
-    Verifies:
-    1. Long position opens correctly
-    2. SL and TP orders are created
-    3. Position flips to short after selling 2x size
-    4. Both SL and TP orders are automatically cancelled
+    A short's SL buys when the mark rises to its trigger, so a trigger below the
+    mark is already crossed. The child buys at the trigger, crossing a resting ask.
     """
-    symbol = "ETHRUSDPERP"
-    market_price = await reya_tester.data.current_price()
-    qty = "0.01"
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _open_localnet_position(perp_maker_tester, taker, symbol, is_long=False)
+    trigger_px = _px(market_price, "0.98", tick_size)
+    await _rest_maker(perp_maker_tester, symbol, is_buy=False, limit_px=trigger_px)
 
-    # SETUP: Create long position
-    async with reya_tester.perp_trade() as ctx:
-        limit_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px=str(float(market_price) * 1.01),
-            is_buy=True,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=False,
-        )
-        await reya_tester.orders.create_limit(limit_order_params)
-        expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_order)
-        logger.info(f"Long position created with trade seq={result.sequence_number}")
-
-    await reya_tester.check.no_open_orders()
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=qty,
-        expected_side=Side.B,
+    sl_id = await _arm(
+        taker, _trigger_params(symbol, is_buy=True, trigger_px=trigger_px, trigger_type=OrderType.STOP_LOSS)
     )
 
-    # Create SL order (not in-cross: below market for long)
-    sl_params = _trigger_params(
-        symbol=symbol,
-        is_buy=False,
-        trigger_px=str(float(market_price) * 0.95),
-        trigger_type=OrderType.STOP_LOSS,
-    )
-    sl_response = await reya_tester.orders.create_trigger(sl_params)
-    logger.info(f"Created SL order: {sl_response.order_id}")
-
-    # Create TP order (not in-cross: above market for long)
-    tp_params = _trigger_params(
-        symbol=symbol,
-        is_buy=False,
-        trigger_px=str(float(market_price) * 1.05),
-        trigger_type=OrderType.TAKE_PROFIT,
-    )
-    tp_response = await reya_tester.orders.create_trigger(tp_params)
-    logger.info(f"Created TP order: {tp_response.order_id}")
-
-    await reya_tester.wait.for_order_creation(order_id=sl_response.order_id, timeout=10)
-    await reya_tester.wait.for_order_creation(order_id=tp_response.order_id, timeout=10)
-
-    # Flip position by selling 2x (0.01 long -> 0.01 short)
-    async with reya_tester.perp_trade() as ctx:
-        flip_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px="0",
-            is_buy=False,
-            time_in_force=TimeInForce.IOC,
-            qty="0.02",
-            reduce_only=False,
-        )
-        await reya_tester.orders.create_limit(flip_order_params)
-        expected_flip = limit_order_params_to_order(flip_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_flip, expected_qty="0.02")
-        logger.info(f"Position flipped with trade seq={result.sequence_number}")
-
-    # Verify position is now short
-    await reya_tester.check.position(
-        symbol=symbol,
-        expected_exchange_id=REYA_DEX_ID,
-        expected_account_id=reya_tester.account_id,
-        expected_qty=qty,
-        expected_side=Side.A,
-    )
-
-    # Verify both SL and TP orders are cancelled
-    await reya_tester.wait.for_order_state(sl_response.order_id, OrderStatus.CANCELLED, timeout=10)
-    await reya_tester.wait.for_order_state(tp_response.order_id, OrderStatus.CANCELLED, timeout=10)
-    await reya_tester.check.no_open_orders()
-    logger.info("✅ SL and TP orders cancelled when position was flipped")
+    await _assert_fired_and_filled(taker, sl_id)
+    await _wait_for_position(taker, symbol, Decimal(0))
 
 
-@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
-async def test_sl_execution_cancels_tp(reya_tester: ReyaTester):
-    """SL executes (in-cross) and cancels the TP order.
+async def test_sltp_without_a_position(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """Protection is admitted before its position exists; a crossed leg with nothing to close retires the pair.
 
-    Setup: LONG position with both SL and TP orders
-    SL trigger: At entry price (in-cross for long SL)
-    TP trigger: Above market (not in-cross)
-
-    Verifies:
-    1. SL order executes correctly when in-cross
-    2. Trade is consistent between REST and WS (same sequence number)
-    3. TP order gets cancelled when position closes
+    An uncrossed stop stays armed across mark ticks, waiting for a position. A
+    crossed sibling fires, finds no position to protect, and the engine cancels
+    both legs of the pair POSITION_CLOSED.
     """
-    symbol = "ETHRUSDPERP"
-    market_price = await reya_tester.data.current_price()
-    qty = "0.01"
+    del perp_maker_tester  # only here so the baseline restore runs
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _prices(taker, symbol)
+    sequence_before = await taker.get_last_perp_execution_sequence_number()
 
-    # SETUP: Create long position
-    async with reya_tester.perp_trade() as ctx:
-        limit_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px=str(float(market_price) * 1.01),
-            is_buy=True,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=False,
-        )
-        await reya_tester.orders.create_limit(limit_order_params)
-        expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_order)
-        logger.info(f"Position created with trade seq={result.sequence_number}")
+    # Would close a long: the SL sells on a fall to 0.5x, which is not crossed.
+    sl_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "0.5", tick_size), trigger_type=OrderType.STOP_LOSS
+        ),
+    )
+    await asyncio.sleep(5)  # several mark ticks
+    sl = taker.ws.orders.get(sl_id)
+    assert sl is not None and sl.status.value == "OPEN", f"uncrossed pre-armed SL should stay armed, got {sl}"
 
-    await reya_tester.check.no_open_orders()
+    # The TP sells on a rise to 0.98x, which is already crossed.
+    tp_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "0.98", tick_size), trigger_type=OrderType.TAKE_PROFIT
+        ),
+    )
 
-    # RETRY LOOP: CO bot may be slow
-    last_error: Exception | None = None
-    for attempt in range(1, CO_MAX_RETRIES + 1):
-        logger.info(f"🔄 SL execution attempt {attempt}/{CO_MAX_RETRIES}")
-
-        # Verify position exists before placing CO
-        if await reya_tester.data.position(symbol) is None:
-            raise AssertionError(f"Position closed before placing SL (attempt {attempt})")
-
-        async with reya_tester.perp_trade() as ctx:
-            # Create SL order (in cross - should trigger)
-            sl_params = _trigger_params(
-                symbol=symbol,
-                is_buy=False,
-                trigger_px=str(float(market_price) * 1.01),
-                trigger_type=OrderType.STOP_LOSS,
-            )
-            sl_order = await reya_tester.orders.create_trigger(sl_params)
-            logger.info(f"Created SL order: {sl_order.order_id}")
-
-            # Create TP order (not in cross - should be cancelled when SL executes)
-            tp_params = _trigger_params(
-                symbol=symbol,
-                is_buy=False,
-                trigger_px=str(float(market_price) * 1.10),
-                trigger_type=OrderType.TAKE_PROFIT,
-            )
-            tp_order = await reya_tester.orders.create_trigger(tp_params)
-            logger.info(f"Created TP order: {tp_order.order_id}")
-
-            try:
-                # Wait for SL execution
-                expected_sl = trigger_order_params_to_order(sl_params, reya_tester.account_id)
-                result = await ctx.wait_for_closing_execution(expected_sl, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
-                logger.info(f"✅ SL executed with trade seq={result.sequence_number}")
-
-                await reya_tester.check.order_execution(result.rest_execution, expected_sl, qty)
-                await reya_tester.check.position_not_open(symbol)
-
-                # Verify TP order gets cancelled
-                await reya_tester.wait.for_order_state(tp_order.order_id, OrderStatus.CANCELLED, timeout=10)
-                await reya_tester.check.no_open_orders()
-                logger.info("✅ TP order cancelled when SL executed")
-                return  # SUCCESS
-
-            except RuntimeError as e:
-                last_error = e
-                logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
-                await _cancel_order_if_open(reya_tester, sl_order.order_id)
-                await _cancel_order_if_open(reya_tester, tp_order.order_id)
-                continue
-
-    raise AssertionError(f"SL order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
+    for order_id in (tp_id, sl_id):
+        await _await_order(taker, order_id, OrderStatus.CANCELLED, FIRE_TIMEOUT, CancelReason.POSITION_CLOSED)
+    await taker.check_no_order_execution_since(sequence_before)
 
 
-@pytest.mark.skip(reason=_FIRE_SKIP)
 @pytest.mark.asyncio
-async def test_tp_execution_cancels_sl(reya_tester: ReyaTester):
-    """TP executes (in-cross) and cancels the SL order.
+async def test_sltp_cancelled_when_position_closed(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """Closing the position retires both armed legs with POSITION_CLOSED once the close is indexed."""
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _open_localnet_position(perp_maker_tester, taker, symbol, is_long=True)
+    sl_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "0.5", tick_size), trigger_type=OrderType.STOP_LOSS
+        ),
+    )
+    tp_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "2", tick_size), trigger_type=OrderType.TAKE_PROFIT
+        ),
+    )
 
-    Setup: LONG position with both SL and TP orders
-    SL trigger: Below market (not in-cross)
-    TP trigger: Below market (in-cross for long TP)
-
-    Verifies:
-    1. TP order executes correctly when in-cross
-    2. Trade is consistent between REST and WS (same sequence number)
-    3. SL order gets cancelled when position closes
-    """
-    symbol = "ETHRUSDPERP"
-    market_price = await reya_tester.data.current_price()
-    qty = "0.01"
-
-    # SETUP: Create long position
-    async with reya_tester.perp_trade() as ctx:
-        limit_order_params = LimitOrderParameters(
-            symbol=symbol,
-            limit_px=str(float(market_price) * 1.01),
-            is_buy=True,
-            time_in_force=TimeInForce.IOC,
-            qty=qty,
-            reduce_only=False,
+    close_px = _px(market_price, "0.99", tick_size)
+    await _rest_maker(perp_maker_tester, symbol, is_buy=True, limit_px=close_px)
+    await taker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=symbol, is_buy=False, limit_px=close_px, qty="0.01", time_in_force=TimeInForce.IOC, reduce_only=True
         )
-        await reya_tester.orders.create_limit(limit_order_params)
-        expected_order = limit_order_params_to_order(limit_order_params, reya_tester.account_id)
-        result = await ctx.wait_for_execution(expected_order)
-        logger.info(f"Position created with trade seq={result.sequence_number}")
+    )
+    await _wait_for_position(taker, symbol, Decimal(0))
 
-    await reya_tester.check.no_open_orders()
+    for order_id in (sl_id, tp_id):
+        await _await_order(taker, order_id, OrderStatus.CANCELLED, POSITION_EVENT_TIMEOUT, CancelReason.POSITION_CLOSED)
 
-    # RETRY LOOP: CO bot may be slow
-    last_error: Exception | None = None
-    for attempt in range(1, CO_MAX_RETRIES + 1):
-        logger.info(f"🔄 TP execution attempt {attempt}/{CO_MAX_RETRIES}")
 
-        # Verify position exists before placing CO
-        if await reya_tester.data.position(symbol) is None:
-            raise AssertionError(f"Position closed before placing TP (attempt {attempt})")
+@pytest.mark.asyncio
+async def test_sltp_cancelled_when_position_flipped(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """Flipping long to short retires both of the long's armed legs with POSITION_CLOSED."""
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _open_localnet_position(perp_maker_tester, taker, symbol, is_long=True)
+    sl_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "0.5", tick_size), trigger_type=OrderType.STOP_LOSS
+        ),
+    )
+    tp_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "2", tick_size), trigger_type=OrderType.TAKE_PROFIT
+        ),
+    )
 
-        async with reya_tester.perp_trade() as ctx:
-            # Create SL order (not in cross - should be cancelled when TP executes)
-            sl_params = _trigger_params(
-                symbol=symbol,
-                is_buy=False,
-                trigger_px=str(float(market_price) * 0.90),
-                trigger_type=OrderType.STOP_LOSS,
-            )
-            sl_order = await reya_tester.orders.create_trigger(sl_params)
-            logger.info(f"Created SL order: {sl_order.order_id}")
+    flip_px = _px(market_price, "0.99", tick_size)
+    await _rest_maker(perp_maker_tester, symbol, is_buy=True, limit_px=flip_px, qty="0.02")
+    await taker.orders.create_limit(
+        LimitOrderParameters(
+            symbol=symbol, is_buy=False, limit_px=flip_px, qty="0.02", time_in_force=TimeInForce.IOC, reduce_only=False
+        )
+    )
+    await _wait_for_position(taker, symbol, Decimal("-0.01"))
 
-            # Create TP order (in cross - should trigger)
-            tp_params = _trigger_params(
-                symbol=symbol,
-                is_buy=False,
-                trigger_px=str(float(market_price) * 0.99),
-                trigger_type=OrderType.TAKE_PROFIT,
-            )
-            tp_order = await reya_tester.orders.create_trigger(tp_params)
-            logger.info(f"Created TP order: {tp_order.order_id}")
+    for order_id in (sl_id, tp_id):
+        await _await_order(taker, order_id, OrderStatus.CANCELLED, POSITION_EVENT_TIMEOUT, CancelReason.POSITION_CLOSED)
 
-            try:
-                # Wait for TP execution
-                expected_tp = trigger_order_params_to_order(tp_params, reya_tester.account_id)
-                result = await ctx.wait_for_closing_execution(expected_tp, qty, timeout=CO_TIMEOUT_PER_ATTEMPT)
-                logger.info(f"✅ TP executed with trade seq={result.sequence_number}")
 
-                await reya_tester.check.order_execution(result.rest_execution, expected_tp, qty)
-                await reya_tester.check.position_not_open(symbol)
+@pytest.mark.asyncio
+async def test_sl_fire_cancels_tp(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """A long's crossed SL fires and closes the position; its TP sibling is cancelled OCO_SIBLING_FIRED."""
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _open_localnet_position(perp_maker_tester, taker, symbol, is_long=True)
+    tp_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "2", tick_size), trigger_type=OrderType.TAKE_PROFIT
+        ),
+    )
+    # A long's SL sells when the mark falls to its trigger: above the mark is already crossed.
+    sl_px = _px(market_price, "1.02", tick_size)
+    await _rest_maker(perp_maker_tester, symbol, is_buy=True, limit_px=sl_px)
+    sl_id = await _arm(taker, _trigger_params(symbol, is_buy=False, trigger_px=sl_px, trigger_type=OrderType.STOP_LOSS))
 
-                # Verify SL order gets cancelled
-                await reya_tester.wait.for_order_state(sl_order.order_id, OrderStatus.CANCELLED, timeout=10)
-                await reya_tester.check.no_open_orders()
-                logger.info("✅ SL order cancelled when TP executed")
-                return  # SUCCESS
+    await _assert_fired_and_filled(taker, sl_id)
+    await _await_order(taker, tp_id, OrderStatus.CANCELLED, FIRE_TIMEOUT, CancelReason.OCO_SIBLING_FIRED)
+    await _wait_for_position(taker, symbol, Decimal(0))
 
-            except RuntimeError as e:
-                last_error = e
-                logger.warning(f"⚠️ Attempt {attempt} failed: {e}")
-                await _cancel_order_if_open(reya_tester, sl_order.order_id)
-                await _cancel_order_if_open(reya_tester, tp_order.order_id)
-                continue
 
-    raise AssertionError(f"TP order failed after {CO_MAX_RETRIES} attempts. Last error: {last_error}")
+@pytest.mark.asyncio
+async def test_tp_fire_cancels_sl(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
+    """A long's crossed TP fires and closes the position; its SL sibling is cancelled OCO_SIBLING_FIRED."""
+    taker, symbol = perp_taker_tester, "ETHRUSDPERP"
+    _require_exact_source_localnet(taker)
+    await _require_flat(taker, symbol)
+    market_price, tick_size = await _open_localnet_position(perp_maker_tester, taker, symbol, is_long=True)
+    sl_id = await _arm(
+        taker,
+        _trigger_params(
+            symbol, is_buy=False, trigger_px=_px(market_price, "0.5", tick_size), trigger_type=OrderType.STOP_LOSS
+        ),
+    )
+    # A long's TP sells when the mark rises to its trigger: below the mark is already crossed.
+    tp_px = _px(market_price, "0.98", tick_size)
+    await _rest_maker(perp_maker_tester, symbol, is_buy=True, limit_px=tp_px)
+    tp_id = await _arm(
+        taker, _trigger_params(symbol, is_buy=False, trigger_px=tp_px, trigger_type=OrderType.TAKE_PROFIT)
+    )
+
+    await _assert_fired_and_filled(taker, tp_id)
+    await _await_order(taker, sl_id, OrderStatus.CANCELLED, FIRE_TIMEOUT, CancelReason.OCO_SIBLING_FIRED)
+    await _wait_for_position(taker, symbol, Decimal(0))
