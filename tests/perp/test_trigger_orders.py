@@ -468,24 +468,31 @@ async def test_sl_in_cross_fires_on_next_mark(perp_maker_tester: ReyaTester, per
 
 @pytest.mark.asyncio
 async def test_sltp_without_a_position(perp_maker_tester: ReyaTester, perp_taker_tester: ReyaTester):
-    """Protection is admitted before its position exists; a crossed leg with nothing to close is cancelled.
+    """Protection is admitted before its position exists; a crossed leg with nothing to close retires the pair.
 
-    An uncrossed stop stays armed waiting for a position. A crossed one fires,
-    finds no position to protect and is cancelled POSITION_CLOSED.
+    An uncrossed stop stays armed across mark ticks, waiting for a position. A
+    crossed sibling fires, finds no position to protect, and the engine cancels
+    both legs of the pair POSITION_CLOSED.
     """
     del perp_maker_tester  # only here so the baseline restore runs
     taker, symbol = perp_taker_tester, "ETHRUSDPERP"
     _require_exact_source_localnet(taker)
     await _require_flat(taker, symbol)
     market_price, tick_size = await _prices(taker, symbol)
+    sequence_before = await taker.get_last_perp_execution_sequence_number()
 
-    # Would close a long: SL sells on a fall to 0.5x (not crossed), TP sells on a rise to 0.98x (crossed).
+    # Would close a long: the SL sells on a fall to 0.5x, which is not crossed.
     sl_id = await _arm(
         taker,
         _trigger_params(
             symbol, is_buy=False, trigger_px=_px(market_price, "0.5", tick_size), trigger_type=OrderType.STOP_LOSS
         ),
     )
+    await asyncio.sleep(5)  # several mark ticks
+    sl = taker.ws.orders.get(sl_id)
+    assert sl is not None and sl.status.value == "OPEN", f"uncrossed pre-armed SL should stay armed, got {sl}"
+
+    # The TP sells on a rise to 0.98x, which is already crossed.
     tp_id = await _arm(
         taker,
         _trigger_params(
@@ -493,12 +500,9 @@ async def test_sltp_without_a_position(perp_maker_tester: ReyaTester, perp_taker
         ),
     )
 
-    await _await_order(taker, tp_id, OrderStatus.CANCELLED, FIRE_TIMEOUT, CancelReason.POSITION_CLOSED)
-    await taker.check_no_order_execution_since(await taker.get_last_perp_execution_sequence_number())
-    sl = taker.ws.orders.get(sl_id)
-    assert sl is not None and sl.status.value == "OPEN", f"uncrossed pre-armed SL should stay armed, got {sl}"
-    await taker.client.cancel_order(symbol=symbol, account_id=taker.account_id, order_id=sl_id)
-    await _await_order(taker, sl_id, OrderStatus.CANCELLED, 10, CancelReason.USER_CANCEL)
+    for order_id in (tp_id, sl_id):
+        await _await_order(taker, order_id, OrderStatus.CANCELLED, FIRE_TIMEOUT, CancelReason.POSITION_CLOSED)
+    await taker.check_no_order_execution_since(sequence_before)
 
 
 @pytest.mark.asyncio
