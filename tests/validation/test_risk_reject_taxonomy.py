@@ -3,8 +3,8 @@
 Three layers are involved, and only the third is this repo's:
 
 1. The matching engine rejects with a numeric protobuf ``ErrorCode``. Two
-   ranges are covered here: the pre-trade risk range 71-85 (81 retired and
-   reserved), and the trigger/near-expiry codes 86-91 (86 retired and reserved)
+   ranges are covered here: the pre-trade risk range 71-85 (81 and 84
+   retired), and the trigger/near-expiry codes 86-91 (86 retired and reserved)
    plus the later trigger arms 99-100.
 2. The API layer translates that number into the public ``RequestErrorCode``
    taxonomy string. That translation is the *only* place the numbers appear in
@@ -61,9 +61,9 @@ ENGINE_REJECT_WIRE_CODES = [
     (80, "OI_BUDGET_EXCEEDED", "OPEN_INTEREST_BUDGET_ERROR"),
     (82, "INVALID_REDUCE_ONLY", "INPUT_VALIDATION_ERROR"),
     (83, "SPOT_ROUNDED_AMOUNT_INVALID", "PRICE_QTY_BOUNDS_ERROR"),
-    # Both of these are initial-margin failures with a narrower cause, and the
-    # spec folds them onto the same member; the free-text message distinguishes.
-    (84, "TAKER_RECOVERY_NOT_RISK_REDUCING", "ACCOUNT_BELOW_INITIAL_MARGIN_ERROR"),
+    # An initial-margin failure with the settlement reserve as the binding
+    # constraint; the spec folds it onto the same member as 72, and the
+    # free-text message distinguishes.
     (85, "TAKER_SETTLEMENT_RESERVE_FAILED", "ACCOUNT_BELOW_INITIAL_MARGIN_ERROR"),
     # Trigger and near-expiry rejects. The spec is explicit that these are not
     # risk failures — they are admission rules on the request itself — but they
@@ -102,7 +102,9 @@ TRIGGER_AND_EXPIRY_REQUEST_ERROR_CODES = {
 }
 
 # Wire code 81 was retired and must not be reused; the engine pins this too.
-RETIRED_ENGINE_RISK_WIRE_CODE = 81
+# 84 (TAKER_RECOVERY_NOT_RISK_REDUCING) was retired by reya-chain #272, which
+# admits strict reduce-only takers on the liquidation-margin precondition alone.
+RETIRED_ENGINE_RISK_WIRE_CODES = {81, 84}
 
 # 86 was TRIGGER_REQUIRES_GTC and is `reserved` in the proto now that an armed
 # trigger chooses its fired child's TIF. Pinned so it is never reused.
@@ -153,14 +155,14 @@ def test_rest_and_ws_exec_request_error_codes_do_not_drift() -> None:
     assert {code.value for code in RestRequestErrorCode} == {code.value for code in WsExecRequestErrorCode}
 
 
-def test_engine_risk_wire_codes_are_contiguous_apart_from_the_retired_one() -> None:
+def test_engine_risk_wire_codes_are_contiguous_apart_from_the_retired_ones() -> None:
     """A new engine risk code should not land here without a taxonomy decision."""
     covered = sorted({wire_code for wire_code, _, _ in ENGINE_REJECT_WIRE_CODES if wire_code <= 85})
 
     assert covered[0] == 71
     assert covered[-1] == 85
-    assert RETIRED_ENGINE_RISK_WIRE_CODE not in covered
-    assert covered == [code for code in range(71, 86) if code != RETIRED_ENGINE_RISK_WIRE_CODE]
+    assert not RETIRED_ENGINE_RISK_WIRE_CODES & set(covered)
+    assert covered == [code for code in range(71, 86) if code not in RETIRED_ENGINE_RISK_WIRE_CODES]
 
 
 def test_trigger_and_expiry_wire_codes_cover_exactly_the_reachable_ones() -> None:
