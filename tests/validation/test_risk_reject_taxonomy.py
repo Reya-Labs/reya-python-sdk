@@ -61,9 +61,15 @@ ENGINE_REJECT_WIRE_CODES = [
     (80, "OI_BUDGET_EXCEEDED", "OPEN_INTEREST_BUDGET_ERROR"),
     (82, "INVALID_REDUCE_ONLY", "INPUT_VALIDATION_ERROR"),
     (83, "SPOT_ROUNDED_AMOUNT_INVALID", "PRICE_QTY_BOUNDS_ERROR"),
-    # Both of these are initial-margin failures with a narrower cause, and the
-    # spec folds them onto the same member; the free-text message distinguishes.
+    # 84 is retired at the source: since reya-chain #272 (matching-engine-server
+    # v4.5.18) a strict reduce-only taker is admitted on the liquidation-margin
+    # precondition alone, so no engine path emits it. It stays declared (not
+    # `reserved`) in the proto and mapped off-chain, so it stays here, like 73,
+    # and its number cannot be reused.
     (84, "TAKER_RECOVERY_NOT_RISK_REDUCING", "ACCOUNT_BELOW_INITIAL_MARGIN_ERROR"),
+    # An initial-margin failure with the settlement reserve as the binding
+    # constraint; the spec folds it onto the same member as 72, and the
+    # free-text message distinguishes.
     (85, "TAKER_SETTLEMENT_RESERVE_FAILED", "ACCOUNT_BELOW_INITIAL_MARGIN_ERROR"),
     # Trigger and near-expiry rejects. The spec is explicit that these are not
     # risk failures — they are admission rules on the request itself — but they
