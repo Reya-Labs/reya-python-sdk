@@ -50,10 +50,13 @@ import aiohttp
 import pytest
 
 from sdk.open_api.exceptions import ApiException
+from sdk.open_api.models.limit_modify_order_request import LimitModifyOrderRequest
+from sdk.open_api.models.limit_order_type import LimitOrderType
 from sdk.open_api.models.modify_order_request import ModifyOrderRequest
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.time_in_force import TimeInForce
+from sdk.open_api.models.trigger_modify_order_request import TriggerModifyOrderRequest
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.models.orders import ModifyOrderParameters
 from tests.helpers import ReyaTester
@@ -127,27 +130,31 @@ def _raw_modify_request(
         deadline=deadline,
         post_only=post_only,
     )
+    # ModifyOrderRequest is a oneOf wrapper since specs 3.6.1: keyword arguments leave its
+    # actual_instance empty, so build the LIMIT variant and wrap it, as the SDK client does.
     return ModifyOrderRequest(
-        orderId=str(order_id) if order_id is not None else None,
-        clientOrderId=str(client_order_id) if client_order_id is not None else None,
-        symbol=market_config.symbol,
-        accountId=tester.account_id,
-        # Restated immutables (full-restate) — exactly the values signed above,
-        # so the signature stays valid and input validation is what rejects.
-        exchangeId=resolved_exchange_id,
-        isBuy=is_buy,
-        orderType=OrderType.LIMIT,
-        timeInForce=time_in_force,
-        triggerPx=trigger_px,
-        reduceOnly=reduce_only,
-        limitPx=limit_px,
-        qty=qty,
-        postOnly=post_only,
-        expiresAfter=expires_after,
-        signature=signature,
-        nonce=str(resolved_nonce),
-        signerWallet=tester.client.signer_wallet_address,
-        deadline=deadline,
+        LimitModifyOrderRequest(
+            orderId=str(order_id) if order_id is not None else None,
+            clientOrderId=str(client_order_id) if client_order_id is not None else None,
+            symbol=market_config.symbol,
+            accountId=tester.account_id,
+            # Restated immutables (full-restate) — exactly the values signed above,
+            # so the signature stays valid and input validation is what rejects.
+            exchangeId=resolved_exchange_id,
+            isBuy=is_buy,
+            orderType=LimitOrderType.LIMIT,
+            timeInForce=time_in_force,
+            triggerPx=trigger_px,
+            reduceOnly=reduce_only,
+            limitPx=limit_px,
+            qty=qty,
+            postOnly=post_only,
+            expiresAfter=expires_after,
+            signature=signature,
+            nonce=str(resolved_nonce),
+            signerWallet=tester.client.signer_wallet_address,
+            deadline=deadline,
+        )
     )
 
 
@@ -412,7 +419,8 @@ async def test_tampered_signature(market_config: SpotTestConfig | PerpTestConfig
 
     try:
         with pytest.raises(ApiException) as exc_info:
-            await maker.client.orders.modify_order(ModifyOrderRequest(**payload))
+            request_type = LimitModifyOrderRequest if payload["orderType"] == "LIMIT" else TriggerModifyOrderRequest
+            await maker.client.orders.modify_order(ModifyOrderRequest(request_type(**payload)))
         error_msg = str(exc_info.value)
         assert (
             "UNAUTHORIZED_SIGNATURE_ERROR" in error_msg

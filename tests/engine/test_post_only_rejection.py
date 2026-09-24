@@ -202,13 +202,13 @@ async def test_post_only_on_trigger_order_rejected(perp_maker_tester: ReyaTester
     except ApiException as e:
         error_msg = str(e)
         # Request-shape validation pins this exact case: the off-chain order
-        # validator pushes 'postOnly is not supported for TP/SL orders',
+        # validator pushes 'postOnly must not be set for TP/SL orders' (off-chain #3019),
         # surfaced as INPUT_VALIDATION_ERROR. Pinning the message keeps an
         # unrelated rejection (rate limit, kill switch, balance) from
         # false-passing without exercising the postOnly/trigger rule.
         assert "INPUT_VALIDATION_ERROR" in error_msg, f"Expected INPUT_VALIDATION_ERROR, got: {error_msg[:200]}"
         assert (
-            "postOnly is not supported for TP/SL orders" in error_msg
+            "postOnly must not be set for TP/SL orders" in error_msg
         ), f"Expected the TP/SL postOnly message, got: {error_msg[:200]}"
         logger.info(f"✅ postOnly on a TP trigger rejected: {error_msg[:120]}")
 
