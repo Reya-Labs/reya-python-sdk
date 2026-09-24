@@ -112,8 +112,9 @@ PERP_GTC_LIMIT_PX = "100"
 PERP_SELL_LIMIT_PX = "1"
 
 # Trigger prices for TP / SL conditional orders. Set well outside any plausible
-# fill range so they never fire during the test window.
-PERP_TP_TRIGGER_PX = "1000000"
+# fill range so they never fire during the test window. The TP stays below the
+# engine's MAX_PRICE (2^49 E9, about 562,950), which refuses a higher price.
+PERP_TP_TRIGGER_PX = "500000"
 PERP_SL_TRIGGER_PX = "1"
 
 RECV_TIMEOUT_S = 15.0
@@ -917,21 +918,11 @@ async def test_spot_ioc_no_cross(spot_ws, harness):  # pylint: disable=redefined
 #     (perpOB-6 "Bug 11"), deployed.
 # Both run unmarked as real coverage.
 #
-# TP/SL triggers are a server-side facade, not a live feature yet — skip (not
-# xfail) so we don't pretend to cover them. Also blocked by PRO-154 (1e18
-# expiresAfter ABI overflow on settle) and PRO-150 (TP/SL design).
-_SLTP_FACADE_SKIP = pytest.mark.skip(
-    reason="TP/SL is a server-side facade, not a live feature yet (PRO-150 design; "
-    "PRO-154 1e18 expiresAfter ABI overflow blocks it) — skip until SLTP is real"
-)
-
-
 async def test_perp_limit_gtc_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 6: perp LIMIT GTC rests, then cancel."""
     await flow_perp_create_limit_gtc_and_cancel(perp_ws, qty=harness.perp_qty)
 
 
-@_SLTP_FACADE_SKIP
 async def test_perp_trigger_take_profit_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 7: perp TAKE_PROFIT trigger order, then cancel."""
     await flow_perp_create_trigger_and_cancel(
@@ -939,7 +930,6 @@ async def test_perp_trigger_take_profit_and_cancel(perp_ws, harness):  # pylint:
     )
 
 
-@_SLTP_FACADE_SKIP
 async def test_perp_trigger_stop_loss_and_cancel(perp_ws, harness):  # pylint: disable=redefined-outer-name
     """Flow 8: perp STOP_LOSS trigger order, then cancel."""
     await flow_perp_create_trigger_and_cancel(perp_ws, OrderType.STOP_LOSS, PERP_SL_TRIGGER_PX, harness.perp_qty, "SL")
