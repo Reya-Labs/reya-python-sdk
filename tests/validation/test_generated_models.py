@@ -888,7 +888,7 @@ _FEE_V3_COMPONENT_FIELDS = ("protocolFeeCredit", "referrerFeeCredit", "takerReba
 
 
 def _fee_v3_perp_execution_payload() -> dict[str, Any]:
-    """A Fee v3 ORDER_MATCH (PRO-853): takerFee is the exact sum of the four
+    """A Fee v3 ORDER_MATCH: takerFee is the exact sum of the four
     settlement buckets and the legacy makerFee is absent."""
     return {
         "exchangeId": 2,

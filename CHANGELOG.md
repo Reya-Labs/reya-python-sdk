@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Wallet transfer history (account ledger, PRO-852), regenerated from the
+- Wallet transfer history (account ledger), regenerated from the
   specs `3.4.1`: `GET /v2/wallet/{address}/transfers` as
   `WalletDataApi.get_wallet_transfers` and `ReyaTradingClient.get_transfers`,
   returning `TransferList` — one `Transfer` per account side of every
@@ -58,9 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ModifyOrderParameters(...)` call that was valid in 3.0.14 still binds
   unchanged; the default keeps LIMIT modifies byte-identical, and the trigger
   create/cancel wire contract is unchanged (omit `qty`; the signed quantity is
-  the ±int256.max full-position sentinel, sign from `is_buy`). The live trigger
-  create/modify/cancel e2e tests are staged (skipped) until the SL/TP backbone
-  matching engine is deployed to devnet1.
+  the ±int256.max full-position sentinel, sign from `is_buy`).
 - Server-extended enums degrade instead of breaking: `CancelReason`,
   `OrderStatus`, `RequestErrorCode`, `WsExecErrorCode`, `ExecutionType`,
   `AccountType` and `TierType` gain an `UNKNOWN` member that a value this SDK
@@ -120,9 +118,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are restate-immutable on an armed trigger: restating the armed values is
   admitted, and a change that lands on an impossible shape is refused
   client-side with a message pointing at cancel-and-recreate.
-- The ws-exec quickstart now defaults to the current devnet endpoint, exposes
-  offline-testable URL/order builders, and links to the actual pytest live
-  suite instead of the removed `tests/ws_exec/mvp.py` harness.
+- The ws-exec quickstart now defaults to the current devnet endpoint and exposes
+  offline-testable URL/order builders.
 - **BREAKING (server-driven, SDK-passthrough): `start_time` / `end_time` on
   market-data executions, busts, and candle endpoints are now interpreted by
   the server as Unix-milliseconds since epoch (not sequence numbers).** The

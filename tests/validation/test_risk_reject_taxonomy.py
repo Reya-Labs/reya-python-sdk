@@ -102,8 +102,8 @@ TRIGGER_AND_EXPIRY_REQUEST_ERROR_CODES = {
 }
 
 # Wire code 81 was retired and must not be reused; the engine pins this too.
-# 84 (TAKER_RECOVERY_NOT_RISK_REDUCING) was retired by reya-chain #272, which
-# admits strict reduce-only takers on the liquidation-margin precondition alone.
+# 84 (TAKER_RECOVERY_NOT_RISK_REDUCING) was retired: the engine now admits
+# strict reduce-only takers on the liquidation-margin precondition alone.
 RETIRED_ENGINE_RISK_WIRE_CODES = {81, 84}
 
 # 86 was TRIGGER_REQUIRES_GTC and is `reserved` in the proto now that an armed

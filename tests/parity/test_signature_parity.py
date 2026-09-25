@@ -38,7 +38,7 @@ CHAIN_ID = 89346162  # cronos / devnet1
 ORDERS_GATEWAY = "0x7Ec89E555c771D2B5939aBE5C4E4291852633D4D"
 
 # Hex produced by tests/parity/sign_ts.mjs against the canonical TS sign impl
-# (ethers v6 signTypedData with the orderTypes from the off-chain monorepo).
+# (ethers v6 signTypedData with the canonical order types).
 EXPECTED_SIGNATURES = {
     "order": (
         "0x8b7d36f622ad44815d66a6f75678f40c99cdb965088bcc857b53db5f8a7b272d"

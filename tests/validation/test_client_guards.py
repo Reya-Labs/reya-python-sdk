@@ -178,7 +178,7 @@ def test_modify_with_client_order_id_zero_rejected(client: ReyaTradingClient) ->
 
 @pytest.mark.modify
 def test_modify_parameters_rejects_resting_client_order_id_alias() -> None:
-    """PRO-438 collapsed modify IDs to one client_order_id field."""
+    """Modify uses one client_order_id field; the old alias is rejected."""
     with pytest.raises(TypeError, match="resting_client_order_id"):
         _modify_params(resting_client_order_id=42)
 
