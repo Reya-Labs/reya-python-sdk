@@ -13,11 +13,8 @@ install:	## Install dependencies from poetry.lock, including the dev extra (pyte
 install-types:	## Find and install additional types for mypy
 	poetry run mypy --install-types --non-interactive ./
 
-E2E_TEST_PATHS ?= tests/engine tests/spot tests/perp tests/api_contract tests/ws_exec
-PYTEST_ARGS ?=
-
-e2e:	## Run the live integration suite against the configured environment
-	poetry run pytest $(E2E_TEST_PATHS) -ra --tb=short $(PYTEST_ARGS)
+test:	## Run the offline test suite (no network or .env needed)
+	poetry run pytest tests
 
 poetry-download:	## Download and install poetry
 	curl -sSL https://install.python-poetry.org | python -

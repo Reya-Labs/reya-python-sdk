@@ -28,7 +28,7 @@ OPEN_VOCABULARY_ENUMS = (
     "request_error_code",
     "server_error_code",
     "tier_type",
-    # Account ledger labels (PRO-852): the server adds a label when the chain
+    # Account ledger labels: the server adds a label when the chain
     # gains an emit site; OTHER covers legs it cannot label, UNKNOWN covers
     # labels this SDK predates.
     "transfer_type",

@@ -33,7 +33,7 @@ from sdk.reya_rest_api.auth.signatures import OrderTypeInt, TimeInForceInt
 from sdk.reya_rest_api.client import _SPOT_MARKET_ID_OFFSET
 from sdk.reya_rest_api.config import TradingConfig
 from sdk.reya_rest_api.models.orders import LimitOrderParameters, ModifyOrderParameters, TriggerOrderParameters
-from tests.helpers.offline_clock import OFFLINE_CLOCK_S
+from tests.offline_clock import OFFLINE_CLOCK_S
 
 pytestmark = pytest.mark.offline
 
