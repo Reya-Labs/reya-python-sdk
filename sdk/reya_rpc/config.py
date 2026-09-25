@@ -27,7 +27,7 @@ def get_network_addresses(chain_id: int) -> dict:
         }
     elif chain_id == 89346162:
         return {
-            "rpc_url": "https://rpc.reya-cronos.gelato.digital",
+            "rpc_url": "https://rpc-reya-cronos.t.conduit.xyz",
             "passive_pool_account_id": 2,
             "exchange_id": 1,
             "core_address": "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72",
