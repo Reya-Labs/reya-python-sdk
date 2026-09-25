@@ -165,26 +165,12 @@ asyncio_default_test_loop_scope = "session"
 
 # Test markers for categorization
 markers = [
-    "spot: Spot trading tests (ETHRUSD, BTCRUSD)",
-    "perp: Perpetual trading tests (ETHRUSDPERP, BTCRUSDPERP)",
-    "market_data: Market data endpoint tests",
-    "maker_taker: Tests requiring two accounts (maker and taker)",
-    "websocket: Tests that verify WebSocket events",
-    "e2e: Full end-to-end flow tests",
     "ioc: Immediate-Or-Cancel order tests",
-    "gtc: Good-Till-Cancelled order tests",
     "trigger: Trigger order tests (SL/TP)",
-    "cancel: Order cancellation tests",
-    "balance: Balance verification tests",
-    "validation: API validation tests (signature, nonce, deadline, etc.)",
-    "error: Error handling tests",
-    "rest_api: REST API endpoint tests",
+    "websocket: Tests that verify WebSocket events",
     "cod: Cancel-on-disconnect (cancelAllAfter dead-man's-switch) tests",
     "modify: In-place order modification (modifyOrder) tests",
     "post_only: Post-only (maker-only) order tests",
     "gtt: Good-Till-Time (auto-expiring resting order) tests",
-    "offline: No-network tests (parity golden vectors + client guards) — safe without devnet/.env",
-    "localnet: Market-data pipeline tests that need the local k3d stack (batching, depth continuity, 1012/1013 resync/backpressure). Some require LOCALNET_KUBECONFIG to restart the ME.",
-    "strict_spot_prerequisites: Internal marker for tests that must fail on missing spot prerequisites",
-    "strict_ws_exec_prerequisites: Internal marker for tests that must fail on missing ws-exec prerequisites",
+    "offline: No-network tests (parity golden vectors + client guards)",
 ]
