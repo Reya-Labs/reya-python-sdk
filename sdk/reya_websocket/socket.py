@@ -17,24 +17,28 @@ from pydantic import BaseModel, ValidationError
 from websocket import WebSocket, WebSocketApp  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 
 from sdk.async_api.account_balance_update_payload import AccountBalanceUpdatePayload
+from sdk.async_api.account_update_payload import AccountUpdatePayload
+from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.error_message_payload import ErrorMessagePayload
 from sdk.async_api.market_depth_update_payload import MarketDepthUpdatePayload
+from sdk.async_api.market_execution_bust_update_payload import MarketExecutionBustUpdatePayload
 from sdk.async_api.market_perp_execution_update_payload import MarketPerpExecutionUpdatePayload
-from sdk.async_api.market_spot_execution_bust_update_payload import MarketSpotExecutionBustUpdatePayload
 from sdk.async_api.market_spot_execution_update_payload import MarketSpotExecutionUpdatePayload
 from sdk.async_api.market_summary_update_payload import MarketSummaryUpdatePayload
 from sdk.async_api.markets_summary_update_payload import MarketsSummaryUpdatePayload
 from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
+from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.ping_message_payload import PingMessagePayload
 from sdk.async_api.pong_message_payload import PongMessagePayload
 from sdk.async_api.position_update_payload import PositionUpdatePayload
-from sdk.async_api.price_update_payload import PriceUpdatePayload
-from sdk.async_api.prices_update_payload import PricesUpdatePayload
+from sdk.async_api.spot_market_summary_update_payload import SpotMarketSummaryUpdatePayload
+from sdk.async_api.spot_markets_summary_update_payload import SpotMarketsSummaryUpdatePayload
 from sdk.async_api.subscribed_message_payload import SubscribedMessagePayload
 from sdk.async_api.unsubscribed_message_payload import UnsubscribedMessagePayload
+from sdk.async_api.wallet_execution_bust_update_payload import WalletExecutionBustUpdatePayload
 from sdk.async_api.wallet_perp_execution_update_payload import WalletPerpExecutionUpdatePayload
-from sdk.async_api.wallet_spot_execution_bust_update_payload import WalletSpotExecutionBustUpdatePayload
 from sdk.async_api.wallet_spot_execution_update_payload import WalletSpotExecutionUpdatePayload
+from sdk.async_api.wallet_transfer_update_payload import WalletTransferUpdatePayload
 from sdk.reya_websocket.config import WebSocketConfig, get_config
 from sdk.reya_websocket.resources.market import MarketResource
 from sdk.reya_websocket.resources.prices import PricesResource
@@ -51,25 +55,29 @@ WebSocketMessage = Union[
     PingMessagePayload,
     PongMessagePayload,
     SubscribedMessagePayload,
+    OrderChangesSubscribedPayload,
     UnsubscribedMessagePayload,
     ErrorMessagePayload,
     # Market channels
-    MarketsSummaryUpdatePayload,  # /v2/markets/summary
-    MarketSummaryUpdatePayload,  # /v2/market/{symbol}/summary
+    MarketsSummaryUpdatePayload,  # /v2/perpMarkets/summary
+    MarketSummaryUpdatePayload,  # /v2/perpMarket/{symbol}/summary
+    SpotMarketsSummaryUpdatePayload,  # /v2/spotMarkets/summary
+    SpotMarketSummaryUpdatePayload,  # /v2/spotMarket/{symbol}/summary
     MarketPerpExecutionUpdatePayload,  # /v2/market/{symbol}/perpExecutions
     MarketSpotExecutionUpdatePayload,  # /v2/market/{symbol}/spotExecutions
-    MarketSpotExecutionBustUpdatePayload,  # /v2/market/{symbol}/spotExecutionBusts
+    MarketExecutionBustUpdatePayload,  # /v2/market/{symbol}/executionBusts
     MarketDepthUpdatePayload,  # /v2/market/{symbol}/depth
     # Wallet channels
     PositionUpdatePayload,  # /v2/wallet/{address}/positions
     OrderChangeUpdatePayload,  # /v2/wallet/{address}/orderChanges
     WalletPerpExecutionUpdatePayload,  # /v2/wallet/{address}/perpExecutions
     WalletSpotExecutionUpdatePayload,  # /v2/wallet/{address}/spotExecutions
-    WalletSpotExecutionBustUpdatePayload,  # /v2/wallet/{address}/spotExecutionBusts
+    WalletExecutionBustUpdatePayload,  # /v2/wallet/{address}/executionBusts
     AccountBalanceUpdatePayload,  # /v2/wallet/{address}/accountBalances
+    AccountUpdatePayload,  # /v2/wallet/{address}/accounts
+    WalletTransferUpdatePayload,  # /v2/wallet/{address}/transfers
     # Price channels
-    PricesUpdatePayload,  # /v2/prices
-    PriceUpdatePayload,  # /v2/prices/{symbol}
+    AssetOraclePricesUpdatePayload,  # /v2/assetOraclePrices
 ]
 
 
@@ -88,9 +96,10 @@ class ReyaSocket(WebSocketApp):
         "ping": PingMessagePayload,
         "pong": PongMessagePayload,
         # All markets summary (exact match)
-        "/v2/markets/summary": MarketsSummaryUpdatePayload,
-        # All prices (exact match)
-        "/v2/prices": PricesUpdatePayload,
+        "/v2/perpMarkets/summary": MarketsSummaryUpdatePayload,
+        "/v2/spotMarkets/summary": SpotMarketsSummaryUpdatePayload,
+        # Asset oracle prices (exact match)
+        "/v2/assetOraclePrices": AssetOraclePricesUpdatePayload,
     }
 
     def __init__(
@@ -126,24 +135,30 @@ class ReyaSocket(WebSocketApp):
 
         # Initialize thread attribute
         self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._lifecycle_lock = threading.Lock()
+        self._is_running = False
 
-        # Store user callback for wrapping
+        # Store user callbacks for wrapping
         self._user_on_message = on_message
+        self._open_callback = on_open or self._default_on_open
 
         # Default handlers if none provided
-        if on_open is None:
-            on_open = self._default_on_open
         if on_error is None:
             on_error = self._default_on_error
         if on_close is None:
             on_close = self._default_on_close
 
-        # Track subscriptions
+        # Track subscription intent so it can be restored after reconnecting.
         self.active_subscriptions: set[str] = set()
+        self._subscription_payloads: dict[str, str] = {}
+        self._subscription_lock = threading.RLock()
+        self._sent_subscriptions_this_connection: set[str] = set()
+        self._received_message_this_run = False
 
         super().__init__(
             url=url,
-            on_open=on_open,
+            on_open=self._handle_open,
             on_message=self._wrap_message_handler(),
             on_error=on_error,
             on_close=on_close,
@@ -165,6 +180,8 @@ class ReyaSocket(WebSocketApp):
 
             # Parse into typed model (raises WebSocketDataError on failure)
             typed_message = self._parse_message(raw)
+            if not isinstance(typed_message, ErrorMessagePayload):
+                self._received_message_this_run = True
 
             # Call user callback or default with typed message
             if self._user_on_message is not None:
@@ -188,17 +205,19 @@ class ReyaSocket(WebSocketApp):
             return self.CHANNEL_PAYLOAD_MAP[channel]
 
         # Pattern matching for parameterized channels
-        if "/v2/market/" in channel:
-            if channel.endswith("/summary"):
-                return MarketSummaryUpdatePayload
-            elif channel.endswith("/perpExecutions"):
+        if "/v2/perpMarket/" in channel and channel.endswith("/summary"):
+            return MarketSummaryUpdatePayload
+        elif "/v2/market/" in channel:
+            if channel.endswith("/perpExecutions"):
                 return MarketPerpExecutionUpdatePayload
             elif channel.endswith("/spotExecutions"):
                 return MarketSpotExecutionUpdatePayload
-            elif channel.endswith("/spotExecutionBusts"):
-                return MarketSpotExecutionBustUpdatePayload
+            elif channel.endswith("/executionBusts"):
+                return MarketExecutionBustUpdatePayload
             elif channel.endswith("/depth"):
                 return MarketDepthUpdatePayload
+        elif "/v2/spotMarket/" in channel and channel.endswith("/summary"):
+            return SpotMarketSummaryUpdatePayload
         elif "/v2/wallet/" in channel:
             if channel.endswith("/positions"):
                 return PositionUpdatePayload
@@ -208,12 +227,14 @@ class ReyaSocket(WebSocketApp):
                 return WalletPerpExecutionUpdatePayload
             elif channel.endswith("/spotExecutions"):
                 return WalletSpotExecutionUpdatePayload
-            elif channel.endswith("/spotExecutionBusts"):
-                return WalletSpotExecutionBustUpdatePayload
+            elif channel.endswith("/executionBusts"):
+                return WalletExecutionBustUpdatePayload
             elif channel.endswith("/accountBalances"):
                 return AccountBalanceUpdatePayload
-        elif "/v2/prices/" in channel and channel != "/v2/prices":
-            return PriceUpdatePayload
+            elif channel.endswith("/accounts"):
+                return AccountUpdatePayload
+            elif channel.endswith("/transfers"):
+                return WalletTransferUpdatePayload
 
         return None
 
@@ -236,23 +257,27 @@ class ReyaSocket(WebSocketApp):
 
         try:
             if message_type == "ping":
-                return PingMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, PingMessagePayload.model_validate(message))
 
             elif message_type == "pong":
-                return PongMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, PongMessagePayload.model_validate(message))
 
             elif message_type == "subscribed":
+                channel = message.get("channel", "")
+                if isinstance(channel, str) and channel.endswith("/orderChanges"):
+                    return cast(WebSocketMessage, OrderChangesSubscribedPayload.model_validate(message))
+
                 # Handle case where server returns contents as empty list instead of dict
                 # Convert list to None to match the expected model type
                 if "contents" in message and isinstance(message["contents"], list):
                     message = {**message, "contents": None}
-                return SubscribedMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, SubscribedMessagePayload.model_validate(message))
 
             elif message_type == "unsubscribed":
-                return UnsubscribedMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, UnsubscribedMessagePayload.model_validate(message))
 
             elif message_type == "error":
-                return ErrorMessagePayload.model_validate(message)
+                return cast(WebSocketMessage, ErrorMessagePayload.model_validate(message))
 
             elif message_type == "channel_data":
                 channel = message.get("channel", "")
@@ -290,10 +315,14 @@ class ReyaSocket(WebSocketApp):
             channel: The channel to subscribe to.
             **kwargs: Additional subscription parameters.
         """
-        self.active_subscriptions.add(channel)
         message = {"type": "subscribe", "channel": channel, **kwargs}
+        payload = json.dumps(message)
         logger.info(f"Subscribing to {channel}")
-        self.send(json.dumps(message))
+        with self._subscription_lock:
+            self.active_subscriptions.add(channel)
+            self._subscription_payloads[channel] = payload
+            self.send(payload)
+            self._sent_subscriptions_this_connection.add(channel)
 
     def send_unsubscribe(self, channel: str, **kwargs) -> None:
         """Send an unsubscription message.
@@ -302,12 +331,42 @@ class ReyaSocket(WebSocketApp):
             channel: The channel to unsubscribe from.
             **kwargs: Additional unsubscription parameters.
         """
-        if channel in self.active_subscriptions:
-            self.active_subscriptions.remove(channel)
-
         message = {"type": "unsubscribe", "channel": channel, **kwargs}
         logger.info(f"Unsubscribing from {channel}")
-        self.send(json.dumps(message))
+        with self._subscription_lock:
+            self.active_subscriptions.discard(channel)
+            self._subscription_payloads.pop(channel, None)
+            self.send(json.dumps(message))
+
+    def _handle_open(self, ws: WebSocket) -> None:
+        """Run the open callback and restore pending subscriptions."""
+        try:
+            # Preserve WebSocketApp's lifecycle semantics: user callbacks run
+            # for both the initial connection and every subsequent reconnect.
+            self._open_callback(ws)
+        finally:
+            self._restore_subscriptions()
+
+    def _restore_subscriptions(self) -> None:
+        """Replay subscriptions not already sent by the reconnect callback."""
+        with self._subscription_lock:
+            payloads = [
+                (channel, payload)
+                for channel, payload in self._subscription_payloads.items()
+                if channel not in self._sent_subscriptions_this_connection
+            ]
+
+            if payloads:
+                logger.info(f"Checking {len(payloads)} WebSocket subscription(s) for restoration")
+
+        for channel, payload in payloads:
+            with self._subscription_lock:
+                if self._subscription_payloads.get(channel) != payload:
+                    continue
+                if channel in self._sent_subscriptions_this_connection:
+                    continue
+                self.send(payload)
+                self._sent_subscriptions_this_connection.add(channel)
 
     def connect(self, sslopt=None, blocking=False) -> None:
         """Connect to the WebSocket server.
@@ -329,27 +388,80 @@ class ReyaSocket(WebSocketApp):
             else:
                 sslopt = {"cert_reqs": ssl.CERT_NONE}
 
-        logger.info(f"Connecting to {self.url}")
+        thread = None
+        with self._lifecycle_lock:
+            if self._is_running:
+                raise RuntimeError("WebSocket connection is already running")
 
+            self._is_running = True
+            self._stop_event.clear()
+            if not blocking:
+                thread = threading.Thread(target=self._run_connection, args=(sslopt,), daemon=True)
+                self._thread = thread
+
+        logger.info(f"Connecting to {self.url}")
         if blocking:
-            # Run the WebSocket directly (blocking)
-            self.run_forever(
-                sslopt=sslopt,
-                ping_interval=self.config.ping_interval,
-                ping_timeout=self.config.ping_timeout,
-            )
+            self._run_connection(sslopt)
         else:
-            # Run the WebSocket in a thread (non-blocking)
-            self._thread = threading.Thread(
-                target=self.run_forever,
-                kwargs={
-                    "sslopt": sslopt,
-                    "ping_interval": self.config.ping_interval,
-                    "ping_timeout": self.config.ping_timeout,
-                },
+            try:
+                assert thread is not None
+                thread.start()
+            except BaseException:
+                with self._lifecycle_lock:
+                    self._is_running = False
+                raise
+
+    def _run_connection(self, sslopt) -> None:
+        """Own one blocking or background connection lifecycle."""
+        try:
+            self._run_forever_with_reconnect(sslopt)
+        finally:
+            with self._lifecycle_lock:
+                self._is_running = False
+
+    def _run_forever_with_reconnect(self, sslopt) -> None:
+        """Run the socket, reconnecting with bounded exponential backoff."""
+        failed_attempts = 0
+
+        while not self._stop_event.is_set():
+            self._received_message_this_run = False
+            with self._subscription_lock:
+                self._sent_subscriptions_this_connection.clear()
+
+            try:
+                self.run_forever(
+                    sslopt=sslopt,
+                    ping_interval=self.config.ping_interval,
+                    ping_timeout=self.config.ping_timeout,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception("WebSocket connection loop failed")
+
+            if self._stop_event.is_set():
+                return
+
+            if self._received_message_this_run:
+                failed_attempts = 0
+
+            if failed_attempts >= self.config.reconnect_attempts:
+                logger.error(
+                    f"WebSocket reconnect attempts exhausted after {self.config.reconnect_attempts} attempt(s)"
+                )
+                return
+
+            failed_attempts += 1
+            delay = self.config.reconnect_delay * (2 ** (failed_attempts - 1))
+            logger.info(
+                f"Reconnecting WebSocket in {delay} second(s) "
+                f"(attempt {failed_attempts}/{self.config.reconnect_attempts})"
             )
-            self._thread.daemon = True
-            self._thread.start()
+            if self._stop_event.wait(delay):
+                return
+
+    def close(self, **kwargs) -> None:
+        """Stop reconnecting and close the active WebSocket connection."""
+        self._stop_event.set()
+        super().close(**kwargs)
 
     def _default_on_open(self, _ws):
         """Default handler for connection open events."""

@@ -65,13 +65,13 @@ def handle_wallet_spot_executions_data(payload: WalletSpotExecutionUpdatePayload
 
     for i, execution in enumerate(payload.data[:5]):
         logger.info(f"    Execution {i + 1}: {execution.symbol}")
-        logger.info(f"      ├─ Account ID: {execution.account_id}")
+        logger.info(f"      ├─ Taker Account ID: {execution.taker_account_id}")
         logger.info(f"      ├─ Side: {execution.side.value}")
         logger.info(f"      ├─ Quantity: {execution.qty}")
         logger.info(f"      ├─ Price: {execution.price}")
-        logger.info(f"      ├─ Fee: {execution.fee}")
+        logger.info(f"      ├─ Taker Fee: {execution.taker_fee}")
         logger.info(f"      ├─ Type: {execution.type.value}")
-        logger.info(f"      └─ Order ID: {execution.order_id}")
+        logger.info(f"      └─ Taker Order ID: {execution.taker_order_id}")
 
     if len(payload.data) > 5:
         logger.info(f"    ... and {len(payload.data) - 5} more executions")

@@ -17,37 +17,37 @@ from sdk.reya_rest_api import ReyaTradingClient
 
 
 async def main():
-    """Run the example to get price information asynchronously."""
+    """Run the example to get asset oracle price information asynchronously."""
     # Load environment variables
     load_dotenv()
 
     # Create a client instance with configuration from environment variables
     async with ReyaTradingClient() as client:
-        # Get all prices
-        print("\n--- Getting all prices ---")
+        print("\n--- Getting asset oracle prices ---")
 
-        prices = await client.markets.get_prices()
-        print(f"Retrieved {len(prices)} price entries")
+        prices = await client.markets.get_asset_oracle_prices()
+        print(f"Retrieved {len(prices)} asset oracle price entries")
 
         # Print some sample price entries
         prices_dict = {}
         if prices:
             print("\nSample price entries:")
             for price in prices:
-                prices_dict[price.symbol] = price
-                print(f"{price.symbol}: {price.oracle_price}")
+                prices_dict[price.asset] = price
+                print(f"{price.asset}: {price.oracle_price}")
 
-        # Extract a specific price from the prices response instead of making a separate API call
-        # Choose an existing key from the response
-        if "ETHRUSDPERP" in prices_dict:
-            eth_price = prices_dict["ETHRUSDPERP"]
-            print("\n--- ETH/USD Mark Price ---")
-            print(f"Price data for ETHRUSDPERP: {eth_price}")
-            if eth_price.oracle_price:
-                # Convert from string to float and adjust decimal places if needed
-                oracle_price_wei = eth_price.oracle_price
-                oracle_price = float(oracle_price_wei) / 10**18  # Assuming 18 decimals
-                print(f"Oracle price in USD: ${oracle_price:.2f}")
+        eth_price = prices_dict.get("ETH") or prices_dict.get("WETH")
+        sample_price = eth_price or next(iter(prices_dict.values()), None)
+        if sample_price is not None:
+            print(f"\n--- {sample_price.asset} oracle price ---")
+            print(f"Oracle price data for {sample_price.asset}: {sample_price}")
+            oracle_price = float(sample_price.oracle_price)
+            print(f"Oracle price in USD: ${oracle_price:.2f}")
+
+        print("\n--- Getting perp market mark/mid prices ---")
+        market_summary = await client.markets.get_perp_market_summary("ETHRUSDPERP")
+        print(f"ETHRUSDPERP mark price: {market_summary.mark_price}")
+        print(f"ETHRUSDPERP throttled mid price: {market_summary.throttled_mid_price}")
 
 
 if __name__ == "__main__":

@@ -6,4 +6,4 @@ from sdk.async_exec_api.create_order_request import CreateOrderRequest
 class CreateOrderRequestMessagePayload(BaseModel): 
   type: CreateOrderMessageType = Field(description='''Message type for createOrder request and response''')
   id: str = Field(description='''Client-chosen correlation identifier; must be unique across in-flight requests on the connection.''')
-  payload: CreateOrderRequest = Field()
+  payload: CreateOrderRequest = Field(description='''Create an order with an EIP-712 signature, nonce, and deadline. Field descriptions define signed values and order-class requirements. See POST /v2/createOrder for execution and protective-stop behavior.''')

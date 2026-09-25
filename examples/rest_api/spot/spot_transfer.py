@@ -23,6 +23,8 @@ Usage:
         --qty 5
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
@@ -56,15 +58,6 @@ ASSET_TO_SYMBOL = {
     "REYA": "REYARUSD",
 }
 
-# Mapping from asset to oracle symbol (perp symbol) for fetching oracle prices
-ASSET_TO_ORACLE_SYMBOL = {
-    "ETH": "ETHRUSDPERP",
-    "WETH": "ETHRUSDPERP",
-    "BTC": "BTCRUSDPERP",
-    "WBTC": "BTCRUSDPERP",
-    "REYA": "REYA",
-}
-
 # Fallback prices for assets without a live oracle feed
 ASSET_FALLBACK_PRICES: dict[str, Decimal] = {
     "REYA": Decimal("0.10"),
@@ -72,6 +65,14 @@ ASSET_FALLBACK_PRICES: dict[str, Decimal] = {
 
 ORDER_SETTLEMENT_RETRIES = 3
 ORDER_SETTLEMENT_DELAY = 1.0
+
+
+def asset_oracle_asset(asset: str) -> str:
+    """Normalize wrapped spot aliases to the asset oracle feed name."""
+    normalized_asset = asset.upper()
+    if normalized_asset in {"WETH", "WBTC"}:
+        return normalized_asset[1:]
+    return normalized_asset
 
 
 async def get_account_balance(client: ReyaTradingClient, account_id: int, asset: str) -> Decimal:
@@ -85,9 +86,8 @@ async def get_account_balance(client: ReyaTradingClient, account_id: int, asset:
 
 async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
     """
-    Fetch the current oracle price for an asset from the v2/prices API.
+    Fetch the current oracle price for an asset from the v2/assetOraclePrices API.
 
-    The oracle price is fetched from the corresponding perp market (e.g., ETHRUSDPERP for ETH).
     This ensures transfers happen at a price within the ±5% circuit breaker limit.
 
     Args:
@@ -100,21 +100,15 @@ async def get_oracle_price(client: ReyaTradingClient, asset: str) -> Decimal:
     Raises:
         SystemExit: If oracle price cannot be fetched
     """
-    oracle_symbol = ASSET_TO_ORACLE_SYMBOL.get(asset.upper())
-
-    if not oracle_symbol:
-        logger.error(f"❌ No oracle symbol mapping for {asset}. Supported: {list(ASSET_TO_ORACLE_SYMBOL.keys())}")
-        sys.exit(1)
+    price_asset = asset_oracle_asset(asset)
 
     try:
-        price_data = await client.markets.get_price(symbol=oracle_symbol)
-        # Pydantic models have no ``__bool__``, so guard on the field directly.
-        if price_data.oracle_price:
-            oracle_price = Decimal(price_data.oracle_price)
-            logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
-            return oracle_price
+        price_data = await client.get_asset_oracle_price(price_asset)
+        oracle_price = Decimal(price_data.oracle_price)
+        logger.info(f"📈 Fetched oracle price for {asset}: ${oracle_price:.2f}")
+        return oracle_price
     except (OSError, RuntimeError, ApiException) as e:
-        logger.warning(f"⚠️ Failed to fetch oracle price for {oracle_symbol}: {e}")
+        logger.warning(f"⚠️ Failed to fetch oracle price for {price_asset}: {e}")
 
     # Fall back to configured price if oracle is unavailable. ``is not None``
     # so a legitimate ``Decimal('0')`` sentinel (e.g. a free-transfer asset)
@@ -254,15 +248,15 @@ async def execute_spot_transfer(
         order_fully_matched = True
         logger.info("        ✓ Sell order fully matched")
 
-    # Get transaction hash from spot executions. IOC orders may return
-    # ``order_id=None`` per the CreateOrderResponse spec — gate the loop so
-    # we don't false-match on the first historical execution with no order id.
+    # Get transaction hash from spot executions. IOC orders may return no
+    # order id on the create response — gate the loop so we don't false-match
+    # on the first historical execution with no taker order id.
     tx_hash = None
     if buy_order_id is not None:
         try:
             spot_executions = await receiver_client.get_spot_executions()
             for execution in spot_executions.data:
-                if execution.order_id == buy_order_id:
+                if execution.taker_order_id == buy_order_id:
                     tx_hash = execution.additional_properties.get("transactionHash")
                     if not tx_hash:
                         tx_hash = execution.additional_properties.get("txHash")

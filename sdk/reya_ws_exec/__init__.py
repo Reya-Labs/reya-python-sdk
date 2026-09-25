@@ -13,10 +13,18 @@ envelopes. Per-wallet nonce state is shared with ``ReyaTradingClient`` so
 REST and WS-exec calls from the same process cannot collide on nonces.
 """
 
-from sdk.reya_ws_exec.client import ReyaWsExecClient, WsExecOperationError, WsExecProtocolError
+from sdk.reya_ws_exec.client import (
+    WS_CLOSE_MSG_RATE_EXCEEDED,
+    ReyaWsExecClient,
+    WsExecConnectionClosedError,
+    WsExecOperationError,
+    WsExecProtocolError,
+)
 
 __all__ = [
+    "WS_CLOSE_MSG_RATE_EXCEEDED",
     "ReyaWsExecClient",
+    "WsExecConnectionClosedError",
     "WsExecOperationError",
     "WsExecProtocolError",
 ]

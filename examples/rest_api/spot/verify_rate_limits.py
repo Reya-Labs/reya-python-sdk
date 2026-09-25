@@ -20,7 +20,6 @@ Usage:
 
 import asyncio
 import logging
-import time
 
 from dotenv import load_dotenv
 
@@ -146,7 +145,7 @@ async def test_b_open_order_count_cap():
     logger.info("Waiting 65s for rate limit window to reset after cleanup...")
     await asyncio.sleep(65)
 
-    expires_after = int(time.time()) + 300  # 5 min expiry
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
 
     # Place 3 GTC orders — all should succeed
     logger.info("Placing 3 GTC orders (should all succeed)...")
@@ -208,7 +207,7 @@ async def test_b_open_order_count_cap():
         await asyncio.sleep(65)
 
         logger.info("Placing new GTC order after cancel (should succeed — 2 resting, cap is 3)...")
-        expires_after = int(time.time()) + 300
+        expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
         params = LimitOrderParameters(
             symbol=SYMBOL,
             is_buy=True,
@@ -269,7 +268,7 @@ async def test_c_rate_limit_shared_across_operations():
     logger.info("Waiting 65s for rate limit window to reset...")
     await asyncio.sleep(65)
 
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
     order_ids = []
 
     # Step 1: Place 2 GTC orders (2/5 rate limit, 2/3 cap)
@@ -417,7 +416,7 @@ async def test_d_mass_cancel_separate_bucket():
     logger.info("Waiting 65s for both rate limit windows to reset...")
     await asyncio.sleep(65)
 
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
 
     # Step 1: Place 2 GTC orders
     logger.info("")
@@ -451,7 +450,7 @@ async def test_d_mass_cancel_separate_bucket():
     # Step 3: Place 2 GTC orders
     logger.info("")
     logger.info("Step 3: Placing 2 GTC orders...")
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
     for i in range(1, 3):
         params = LimitOrderParameters(
             symbol=SYMBOL,
@@ -581,7 +580,7 @@ async def test_e_whitelisted_higher_cap():
     logger.info("Wallet 1 (regular) — cap should be 3")
     logger.info("-" * 60)
 
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
 
     logger.info("Placing 3 GTC orders (should all succeed)...")
     for i in range(1, 4):
@@ -624,7 +623,7 @@ async def test_e_whitelisted_higher_cap():
     logger.info("Wallet 2 (whitelisted) — cap should be 5")
     logger.info("-" * 60)
 
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
 
     logger.info("Placing 5 GTC orders (should all succeed — whitelisted cap is 5)...")
     for i in range(1, 6):
@@ -711,7 +710,7 @@ async def test_f_open_notional_cap():
     logger.info("Waiting 65s for rate limit window to reset...")
     await asyncio.sleep(65)
 
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
 
     # Step 1: Place GTC buy at $1 for qty 2000 → notional = $2000 (under $3k cap)
     logger.info("")
@@ -838,7 +837,7 @@ async def test_g_premium_wallet():
     logger.info("Waiting 65s for rate limit windows to reset...")
     await asyncio.sleep(65)
 
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
 
     # Step 1+2: place 6 GTC orders, each notional = $1 × 1000 = $1000
     # Totals: 6 orders (above regular count cap 3) and $6k notional
@@ -981,7 +980,7 @@ async def test_h_premium_mass_cancel():
 
     mass_cancels_accepted = 0
     for i in range(1, 5):
-        expires_after = int(time.time()) + 300
+        expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
         params = LimitOrderParameters(
             symbol=SYMBOL,
             is_buy=True,
@@ -1033,7 +1032,7 @@ async def test_h_premium_mass_cancel():
     # Step 3: independent order bucket — place another GTC order
     logger.info("")
     logger.info("Step 3: Placing one more GTC order (order bucket should still have headroom — 4/7)")
-    expires_after = int(time.time()) + 300
+    expires_after = 0  # true GTC: rests until cancelled (probe cancels explicitly)
     params = LimitOrderParameters(
         symbol=SYMBOL,
         is_buy=True,

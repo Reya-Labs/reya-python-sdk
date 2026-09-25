@@ -112,11 +112,13 @@ def handle_wallet_executions_data(payload: WalletPerpExecutionUpdatePayload) -> 
     # Showcase individual execution data structure
     for i, execution in enumerate(payload.data[:5]):  # Show first 5 executions
         logger.info(f"    Execution {i + 1}: {execution.symbol}")
-        logger.info(f"      ├─ Account ID: {execution.account_id}")
+        logger.info(f"      ├─ Taker Account ID: {execution.taker_account_id}")
+        logger.info(f"      ├─ Maker Account ID: {execution.maker_account_id}")
         logger.info(f"      ├─ Side: {execution.side.value}")
         logger.info(f"      ├─ Quantity: {execution.qty}")
         logger.info(f"      ├─ Price: {execution.price}")
-        logger.info(f"      ├─ Fee: {execution.fee}")
+        logger.info(f"      ├─ Taker Fee: {execution.taker_fee}")
+        logger.info(f"      ├─ Maker Fee: {execution.maker_fee}")
         logger.info(f"      └─ Type: {execution.type.value}")
 
     if len(payload.data) > 5:

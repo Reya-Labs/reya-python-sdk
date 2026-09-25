@@ -6,5 +6,5 @@ from sdk.async_api.market_summary import MarketSummary
 class MarketSummaryUpdatePayload(BaseModel): 
   type: ChannelDataMessageType = Field(description='''Message type for channel data updates''')
   timestamp: float = Field(description='''Update timestamp (milliseconds)''')
-  channel: str = Field(description='''Channel pattern for specific market summary updates''')
+  channel: str = Field(description='''Channel pattern for specific perp market summary updates.''')
   data: MarketSummary = Field()

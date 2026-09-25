@@ -49,7 +49,7 @@ async def main() -> None:
     wallet_address = wallet.address
 
     # Determine API URL based on chain
-    api_url = "https://api.reya.xyz/v2" if chain_id == MAINNET_CHAIN_ID else "https://api-cronos.reya.xyz/v2"
+    api_url = "https://api.reya.xyz/v2" if chain_id == MAINNET_CHAIN_ID else "https://api-devnet.reya-cronos.network/v2"
 
     print("=" * 60)
     print("CANCEL ORDER BY ID")

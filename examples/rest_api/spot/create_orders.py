@@ -2,11 +2,13 @@
 """
 Create Orders - Creates a buy and sell order at extreme prices.
 
-This script demonstrates how to place GTC limit orders that will sit in the order book:
+This script demonstrates how to place resting limit orders that sit in the order book:
 1. BUY order at $10 (far below market - will not fill immediately)
 2. SELL order at $1,000,000 (far above market - will not fill immediately)
 
-Both orders are for 0.001 ETH.
+Both orders are for 0.001 ETH. The time-in-force is derived from
+``ORDER_EXPIRY_SECONDS``: an expiry makes them GTT (rest, then auto-expire at
+``expires_after``); ``None`` makes them GTC (rest until explicitly cancelled).
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
@@ -40,7 +42,10 @@ SPOT_SYMBOL = "WETHRUSD"
 TRADE_QTY = "0.0001"
 BUY_PRICE = "1"  # $1 - safely below any realistic ETH bid, will rest
 SELL_PRICE = "1000000"  # $1M - safely above any realistic ETH ask, will rest
-ORDER_EXPIRY_SECONDS = 120  # Orders expire after 120s; set to None for the SDK default (24h on spot GTC)
+# An expiry makes the orders GTT (auto-expire after this many seconds); it must
+# be longer than the ~60s signature deadline. Set to None for a true GTC order
+# that rests until you cancel it.
+ORDER_EXPIRY_SECONDS = 120
 
 # =============================================================================
 # LOGGING SETUP
@@ -94,10 +99,12 @@ async def main() -> None:
     logger.info(f"Buy Price: ${BUY_PRICE}")
     logger.info(f"Sell Price: ${SELL_PRICE}")
     logger.info(f"Account ID: {account_id}")
+    # An expiry => GTT (rest, then auto-expire); no expiry => GTC (rest forever).
+    order_tif = TimeInForce.GTT if ORDER_EXPIRY_SECONDS else TimeInForce.GTC
     if ORDER_EXPIRY_SECONDS:
-        logger.info(f"Order Expiry: {ORDER_EXPIRY_SECONDS}s per order")
+        logger.info(f"Time-in-force: GTT (auto-expires {ORDER_EXPIRY_SECONDS}s after placement)")
     else:
-        logger.info("Order Expiry: default (24h)")
+        logger.info("Time-in-force: GTC (rests until cancelled)")
     logger.info("=" * 60)
 
     def expires_now() -> int | None:
@@ -114,32 +121,32 @@ async def main() -> None:
         await client.start()
         logger.info("✅ Client initialized")
 
-        # Place GTC BUY order
+        # Place BUY order
         logger.info("-" * 60)
-        logger.info(f"📈 Placing GTC BUY order: {TRADE_QTY} ETH @ ${BUY_PRICE}")
+        logger.info(f"📈 Placing {order_tif.value} BUY order: {TRADE_QTY} ETH @ ${BUY_PRICE}")
 
         buy_params = LimitOrderParameters(
             symbol=SPOT_SYMBOL,
             is_buy=True,
             qty=TRADE_QTY,
             limit_px=BUY_PRICE,
-            time_in_force=TimeInForce.GTC,
+            time_in_force=order_tif,
             expires_after=expires_now(),
         )
 
         buy_response = await client.create_limit_order(buy_params)
         logger.info(f"✅ BUY order placed: Order ID = {buy_response.order_id}")
 
-        # Place GTC SELL order
+        # Place SELL order
         logger.info("-" * 60)
-        logger.info(f"📉 Placing GTC SELL order: {TRADE_QTY} ETH @ ${SELL_PRICE}")
+        logger.info(f"📉 Placing {order_tif.value} SELL order: {TRADE_QTY} ETH @ ${SELL_PRICE}")
 
         sell_params = LimitOrderParameters(
             symbol=SPOT_SYMBOL,
             is_buy=False,
             qty=TRADE_QTY,
             limit_px=SELL_PRICE,
-            time_in_force=TimeInForce.GTC,
+            time_in_force=order_tif,
             expires_after=expires_now(),
         )
 
