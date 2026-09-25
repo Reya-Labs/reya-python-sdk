@@ -86,32 +86,21 @@ poetry run python -m examples.websocket.exec.ws_exec
 The sample creates and then cancels one spot order. It does not claim to test
 the whole protocol surface.
 
-## Live regression coverage
+## Offline coverage
 
-The actual live pytest suite is
-[`tests/ws_exec/test_ws_exec.py`](../../../tests/ws_exec/test_ws_exec.py). It
-covers ping, spot/perp create, cancel by order/client id, symbol/account-wide
-cancel, IOC behavior, and high-signal protocol errors. Dedicated engine suites
-cover operations omitted from that file:
+The ws-exec client's payload builders and client-side guards are covered by
+offline tests that need no network or credentials:
 
-- [`tests/engine/test_modify_ws_exec.py`](../../../tests/engine/test_modify_ws_exec.py)
-  for modify;
-- [`tests/engine/test_cod_ws_exec.py`](../../../tests/engine/test_cod_ws_exec.py)
-  for `cancelAllAfter`;
-- [`tests/engine/test_gtt_ws_exec.py`](../../../tests/engine/test_gtt_ws_exec.py)
-  for GTT expiry;
-- [`tests/engine/test_post_only_ws_exec.py`](../../../tests/engine/test_post_only_ws_exec.py)
-  for post-only behavior.
+- [`tests/validation/test_ws_exec_order_guards.py`](../../../tests/validation/test_ws_exec_order_guards.py)
+  for order guards;
+- [`tests/parity/test_modify_request_union.py`](../../../tests/parity/test_modify_request_union.py)
+  for the modify request shape.
 
-Run the main ws-exec file with:
+Run them with:
 
 ```bash
-poetry run pytest tests/ws_exec/test_ws_exec.py -ra --tb=short
+poetry run pytest tests/validation/test_ws_exec_order_guards.py tests/parity/test_modify_request_union.py
 ```
-
-These are live integration tests. They require the environment and credentials
-described by `.env.example`; missing prerequisites fail explicitly rather than
-silently skipping coverage.
 
 ## Deadline versus order lifetime
 

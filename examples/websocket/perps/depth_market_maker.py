@@ -17,13 +17,9 @@ shutdown. Adaptations vs the spot bot:
 - WS executions: ``ws.wallet.perp_executions(wallet)`` instead of
   ``spot_executions``.
 
-Primary motivation: devnet1 has no resident MM, so the perp orderbook for
-ETHRUSDPERP is empty almost all the time. The candle task only emits when
-both bid and ask are present (no mark-price fallback by design — see
-``packages/api/src/tasks/oracle-updates/candles.task.ts:43`` in the off-chain
-monorepo), so no candles get written, and the SDK suite's ``test_candles``
-returns empty arrays. This bot maintains a thin two-sided depth ladder so
-the candle service has continuous mid prices to record.
+Useful on a quiet test market: a thin two-sided depth ladder gives you a book
+to trade against, and candles are only recorded while both a bid and an ask
+are present.
 
 Requirements:
 - CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)

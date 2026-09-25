@@ -42,9 +42,9 @@ def test_ws_exec_example_defaults_to_current_devnet(monkeypatch: pytest.MonkeyPa
 
 
 def test_ws_exec_example_accepts_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("REYA_WS_EXEC_URL", "wss://ws-exec-staging.reya.xyz")
+    monkeypatch.setenv("REYA_WS_EXEC_URL", "wss://ws-exec.example.invalid")
 
-    assert _EXAMPLE.resolve_ws_exec_url() == "wss://ws-exec-staging.reya.xyz"
+    assert _EXAMPLE.resolve_ws_exec_url() == "wss://ws-exec.example.invalid"
 
 
 def test_ws_exec_example_order_builds_offline() -> None:

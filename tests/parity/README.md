@@ -1,8 +1,8 @@
 # EIP-712 signature parity (TS ↔ Py)
 
 Confirms the Python `sign_order` / `sign_cancel_order` / `sign_mass_cancel`
-helpers produce byte-identical signatures to the canonical TypeScript impl in
-[`reya-off-chain-monorepo/packages/common/src/transactions/sign.ts`](https://github.com/Reya-Labs/reya-off-chain-monorepo/blob/feat/perpOB/packages/common/src/transactions/sign.ts).
+helpers produce byte-identical signatures to Reya's canonical TypeScript
+signing implementation (ethers v6 `signTypedData`).
 
 ## How it works
 

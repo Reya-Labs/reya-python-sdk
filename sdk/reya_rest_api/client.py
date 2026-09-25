@@ -977,7 +977,7 @@ class ReyaTradingClient:
                 raise ValueError("IOC orders never rest, so there is no resting IOC order to modify")
         _require_settlement_headroom(expires_after, self._config.settlement_headroom_s, now_s)
 
-        # Single-field PRO-438 contract: client_order_id is both the lookup key
+        # Single-field contract: client_order_id is both the lookup key
         # when order_id is absent and the restated immutable signed into
         # OrderDetails.clientOrderId. With order_id targeting, omit it for a
         # no-tag resting order.
