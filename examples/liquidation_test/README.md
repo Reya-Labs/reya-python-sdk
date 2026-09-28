@@ -2,8 +2,9 @@
 
 Prepare two fresh rUSD-only perp accounts owned by the same wallet, then open
 one long and one short near liquidation margin. All commands are read-only
-unless `open --execute` is supplied. Account creation and funding commands
-**only emit unsigned transactions** for the owner to review and submit.
+unless `open --execute` or `setup --execute` is supplied. The `create` and `fund` subcommands
+**only emit unsigned transactions** for the owner to review and submit; the
+separate `setup --execute` command automates the complete setup locally.
 
 Core still checks liquidation margin at settlement after ME admission is
 bypassed. This tool therefore requires a **positive USD buffer above LMR**;
@@ -39,6 +40,53 @@ OrdersGateway authorization permits order signing. Funding requires the
 owner or a separately authorized Core account user; gateway permission alone
 is insufficient. The commands below emit transactions with the owner as sender.
 
+## One-command account setup (operator runs locally)
+
+This creates **two new perp accounts**, initializes each account's collateral
+pool through Core market 1 (ETH; no position is opened), and transfers all
+available rUSD from account 135145 into those two accounts in equal halves.
+It reads token-native `getCollateralInfo.realBalance`, not net deposits or a
+USD-valued estimate. Any odd micro-rUSD remains in the source.
+
+The workstation virtual environment is already prepared. Run:
+
+```bash
+cd /workspace/daniel_reya_xyz/dev/reya-python-sdk-liquidation-test
+.venv/bin/python -m examples.liquidation_test.setup \
+  --source-account 135145 \
+  --trade-env-file /workspace/daniel_reya_xyz/dev/reya-python-sdk/.git/reya-prod.env \
+  --state-dir /home/daniel_reya_xyz/.local/state/reya-liquidation-setup-135145 \
+  --execute
+```
+
+**This sends five mainnet transactions**: create and activate each account,
+then one atomic transaction containing the two equal funding transfers. It
+prompts privately in your terminal for the **owner wallet's private key**.
+The existing trading delegate key cannot activate fresh accounts or fund them.
+The owner wallet needs native gas. The key is never saved or accepted as a
+command-line argument. Do not paste it into chat. The existing production env
+is used only to verify that the trading delegate can subsequently trade for
+this owner. The script does not alter permissions or open any positions.
+
+Remove `--execute` for read-only preflight and the expected split. The command
+stops if the source has positions/open orders, collateral other than rUSD,
+stale Core prices, or unavailable account APIs. Before funding, both new
+accounts must be empty and their collateral pools must match the source.
+`--activation-market-id` changes the initialization market if needed; it does
+not select or trade the eventual position market.
+
+The output reports `long_account`, `short_account`, `rusd_per_account`, and the
+state file. Use those IDs and balance with the `open` command below.
+
+For interruption or timeout, **rerun exactly the same command with the same
+state directory**. The state records transaction hashes before broadcasting,
+recovers account IDs from receipts, and never sends a recorded transaction
+again. It resumes incomplete setup and checks completed funding without
+repeating it. Keep the state directory after completion. An ambiguous send
+that was never mined, or a reverted transaction, needs manual reconciliation;
+starting a new state directory can create duplicates. Avoid other activity on
+the owner wallet or these accounts during setup.
+
 ## Account preparation (operator submits transactions)
 
 Create two new perp accounts so existing collateral and exposure remain isolated:
@@ -51,7 +99,10 @@ Submit both unsigned transactions from the owner wallet (with distinct wallet
 nonces), wait for receipts, and get the two new IDs from creation events or
 `inspect`. Transaction objects include a human-readable `description`; remove
 that field before passing them to a wallet RPC. The wallet supplies gas and nonce.
-Never guess the new account IDs from the global counter.
+Never guess the new account IDs from the global counter. Before `fund`, also
+initialize each fresh account with the owner-signed Core call
+`activateFirstMarketForAccount(accountId, 1)`; `setup --execute` handles this
+automatically. Market 1 associates the ETH collateral pool without a trade.
 
 Choose `SOURCE_ID`, `LONG_ID`, `SHORT_ID`, and `COLLATERAL_PER_ACCOUNT` yourself:
 
