@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from eth_abi import decode
+from web3.exceptions import ContractCustomError
 
 from examples.liquidation_test import __main__ as cli
 from examples.liquidation_test.readiness import OWNER, Readiness, signer_from_env
@@ -252,3 +253,14 @@ async def test_settlement_requires_position_and_core_exposure(monkeypatch):
     monkeypatch.setattr(cli.asyncio, "sleep", AsyncMock())
     with pytest.raises(ValueError, match="Settlement was not confirmed"):
         await cli.wait_settled(read, {"account_id": 2, "symbol": "ETHRUSDPERP", "side": "LONG", "qty": "1"}, 1)
+
+
+def test_stale_core_oracle_stops_with_clear_message():
+    read = funding_reader()
+    read.assert_owned_perp = Mock()
+    read.web3 = Mock()
+    read.core.functions.getUsdNodeMarginInfo.return_value.call.side_effect = ContractCustomError(
+        "stale", data="0xb12dbe62" + "00" * 32
+    )
+    with pytest.raises(ValueError, match="Core oracle price is stale"):
+        Readiness.margin(read, 1)

@@ -11,6 +11,7 @@ from dotenv import dotenv_values
 from eth_abi import encode
 from eth_account import Account
 from web3 import Web3
+from web3.exceptions import ContractCustomError
 
 from examples.liquidation_test.sizing import decimal, positive
 from sdk.reya_rest_api.config import MAINNET_ORDERS_GATEWAY
@@ -84,7 +85,15 @@ class Readiness:
     def margin(self, account_id: int) -> dict:
         self.assert_owned_perp(account_id)
         block = self.web3.eth.block_number
-        values = self.core.functions.getUsdNodeMarginInfo(account_id).call(block_identifier=block)
+        try:
+            values = self.core.functions.getUsdNodeMarginInfo(account_id).call(block_identifier=block)
+        except ContractCustomError as error:
+            # Oracle-manager INodeModule.StalePriceDetected(bytes32).
+            if str(error.data).startswith("0xb12dbe62"):
+                raise ValueError(
+                    "Core oracle price is stale; wait for current prices before sizing or funding"
+                ) from None
+            raise
         return {
             "account_id": account_id,
             "block": block,
