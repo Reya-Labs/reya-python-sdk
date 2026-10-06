@@ -164,8 +164,13 @@ jobs:
           fi
 
           # Extract first 3 components from specs tag (remove 'v' prefix if present)
-          SPECS_TAG_CLEAN=$(echo "$SPECS_TAG" | sed 's/^v//')
-          SPECS_VERSION_PREFIX=$(echo "$SPECS_TAG_CLEAN" | cut -d. -f1-3)
+          # Review tags such as 3.6.3-rwa-launch.3 share the stable version prefix.
+          # Validate the whole spelling before stripping the prerelease suffix.
+          if [[ ! "$SPECS_TAG" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unsupported specs tag: $SPECS_TAG"
+            exit 1
+          fi
+          SPECS_VERSION_PREFIX="${BASH_REMATCH[1]}"
           echo "SPECS_VERSION_PREFIX: $SPECS_VERSION_PREFIX"
           echo "SPECS_VERSION_PREFIX=$SPECS_VERSION_PREFIX" >> $GITHUB_ENV
 
@@ -262,7 +267,11 @@ jobs:
               PATCH_DIFF=$((CURR_PATCH - BASE_PATCH))
               BUILD_DIFF=$((CURR_BUILD - BASE_BUILD))
               
-              if [ "$MAJOR_DIFF" -gt 1 ] || [ "$MINOR_DIFF" -gt 1 ] || [ "$PATCH_DIFF" -gt 1 ] || [ "$BUILD_DIFF" -gt 1 ]; then
+              # An SDK can skip spec releases when adopting a new tagged contract.
+              # Permit that exact alignment, but keep the increment limit otherwise.
+              if [ "$SPECS_TAG_CHANGED" = "true" ] && [ "$SDK_VERSION_PREFIX" = "$SPECS_VERSION_PREFIX" ] && [ "$CURR_BUILD" = "0" ]; then
+                echo "Version aligns with the updated tagged specs: $SPECS_VERSION_PREFIX"
+              elif [ "$MAJOR_DIFF" -gt 1 ] || [ "$MINOR_DIFF" -gt 1 ] || [ "$PATCH_DIFF" -gt 1 ] || [ "$BUILD_DIFF" -gt 1 ]; then
                 echo "❌ ERROR: Version bump is too large!"
                 echo "Previous: $BASE_SDK_VERSION"
                 echo "Current: $SDK_VERSION"
