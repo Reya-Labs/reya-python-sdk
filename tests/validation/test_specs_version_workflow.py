@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import shutil
+
+# Tests execute only shell snippets from the checked-in workflow.
+import subprocess  # nosec B404
 from pathlib import Path
 from textwrap import dedent
 
@@ -13,13 +16,21 @@ pytestmark = pytest.mark.offline
 WORKFLOW = (Path(__file__).parents[2] / ".github/workflows/version-consistency.yml").read_text()
 
 
-def test_review_and_stable_tags_extract_the_same_version(tmp_path: Path) -> None:
+@pytest.fixture(name="bash_path")
+def fixture_bash_path() -> str:
+    executable = shutil.which("bash")
+    assert executable is not None, "Bash is required to test the version workflow"
+    return executable
+
+
+def test_review_and_stable_tags_extract_the_same_version(tmp_path: Path, bash_path: str) -> None:
     start = WORKFLOW.index('          if [[ ! "$SPECS_TAG" =~')
     end = WORKFLOW.index('          echo "SPECS_VERSION_PREFIX:', start)
     script = dedent(WORKFLOW[start:end]) + '\nprintf "%s" "$SPECS_VERSION_PREFIX"\n'
     for tag in ["3.6.3", "v3.6.3", "3.6.3-rwa-launch.3"]:
-        result = subprocess.run(
-            ["bash", "-eu", "-c", script],
+        # Script is repository code; test inputs are passed through the environment.
+        result = subprocess.run(  # nosec B603
+            [bash_path, "-eu", "-c", script],
             env={**os.environ, "SPECS_TAG": tag, "GITHUB_ENV": str(tmp_path / "env")},
             capture_output=True,
             text=True,
@@ -27,8 +38,9 @@ def test_review_and_stable_tags_extract_the_same_version(tmp_path: Path) -> None
         )
         assert result.stdout == "3.6.3"
     for tag in ["main", "3.6", "3.6.3.4", "3.6.3-", "3.6.3;exit 0"]:
-        result = subprocess.run(
-            ["bash", "-eu", "-c", script],
+        # Script is repository code; test inputs are passed through the environment.
+        result = subprocess.run(  # nosec B603
+            [bash_path, "-eu", "-c", script],
             env={**os.environ, "SPECS_TAG": tag},
             capture_output=True,
             text=True,
@@ -49,12 +61,13 @@ def test_review_and_stable_tags_extract_the_same_version(tmp_path: Path) -> None
     ],
 )
 def test_version_jump_requires_exact_new_spec_alignment(
-    version: str, changed: str, prefix: str, accepted: bool
+    version: str, changed: str, prefix: str, accepted: bool, bash_path: str
 ) -> None:
     section = WORKFLOW.split("      - name: Validate version progression (for manual changes)\n", 1)[1]
     script = dedent(section.split("        run: |\n", 1)[1].split("      - name:", 1)[0])
-    result = subprocess.run(
-        ["bash", "-eu", "-c", script],
+    # Script is repository code; test inputs are passed through the environment.
+    result = subprocess.run(  # nosec B603
+        [bash_path, "-eu", "-c", script],
         env={
             **os.environ,
             "BASE_SDK_VERSION": "3.6.1.0",

@@ -60,9 +60,9 @@ async def test_api_only_market_remains_in_signing_map() -> None:
     market = MarketDefinition.from_dict({**market_payload(), "uiVisible": False})
     client = ReyaTradingClient.__new__(ReyaTradingClient)
     # No session, key, environment file or network is needed to exercise startup.
-    client._resources = cast(
+    client._resources = cast(  # pylint: disable=protected-access
         Any,
-        SimpleNamespace(  # pylint: disable=protected-access
+        SimpleNamespace(
             reference=SimpleNamespace(
                 get_perp_market_definitions=AsyncMock(return_value=[market]),
                 get_spot_market_definitions=AsyncMock(return_value=[]),
