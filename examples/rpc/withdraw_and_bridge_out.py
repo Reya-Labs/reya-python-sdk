@@ -5,7 +5,7 @@ This script demonstrates how to withdraw rUSD from a margin account
 and bridge it out from Reya Network to Arbitrum.
 
 Requirements:
-- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- CHAIN_ID: 1729 (reya_rpc supports Reya Network mainnet only)
 - PERP_ACCOUNT_ID_1: Your Reya margin account ID
 - PERP_PRIVATE_KEY_1: Your Ethereum private key
 

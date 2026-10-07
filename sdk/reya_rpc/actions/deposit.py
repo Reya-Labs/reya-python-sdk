@@ -7,6 +7,7 @@ from eth_abi import encode
 from sdk.reya_rpc.types import CommandType
 from sdk.reya_rpc.utils.collateral_token import resolve_collateral_token
 from sdk.reya_rpc.utils.execute_core_commands import execute_core_commands
+from sdk.reya_rpc.utils.transaction_utils import sign_and_send
 
 
 @dataclass
@@ -43,16 +44,13 @@ def deposit(config: dict, params: DepositParams):
     """
 
     # Retrieve relevant fields from config
-    w3 = config["w3"]
-    account = config["w3account"]
     core = config["w3contracts"]["core"]
 
     # Resolve the collateral token before approving or spending anything
     token = resolve_collateral_token(config, params.token_address)
 
     # Execute the transaction to approve the collateral token to be spent by the core contract
-    tx_hash = token.functions.approve(core.address, params.amount).transact({"from": account.address})
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    tx_receipt = sign_and_send(config, token.functions.approve(core.address, params.amount))
     print(f"Approved {token.address} to core: {tx_receipt['transactionHash'].hex()}")
 
     # Encode deposit parameters for the contract call

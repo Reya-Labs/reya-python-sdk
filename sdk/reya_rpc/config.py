@@ -10,37 +10,20 @@ from sdk.reya_rpc.exceptions import InvalidChainIdError
 
 
 def get_network_addresses(chain_id: int) -> dict:
-    """Get network-specific contract addresses."""
+    """Get network-specific contract addresses. Only Reya Network mainnet is supported."""
     if chain_id == 1729:
         return {
             "rpc_url": "https://rpc.reya.network",
-            "passive_pool_account_id": 2,
-            "exchange_id": 1,
             "core_address": "0xA763B6a5E09378434406C003daE6487FbbDc1a80",
-            "multicall_address": "0xED28d27dFcA47AD2513C9f2e2d3C098C2eA5A47F",
-            "oracle_adapter_address": "0x32edABC058C1207fE0Ec5F8557643c28E4FF379e",
-            "passive_perp_address": "0x27E5cb712334e101B3c232eB0Be198baaa595F5F",
             "passive_pool_address": "0xB4B77d6180cc14472A9a7BDFF01cc2459368D413",
             "rusd_address": "0xa9F32a851B1800742e47725DA54a09A7Ef2556A3",
             "periphery_address": "0xCd2869d1eb1BC8991Bc55de9E9B779e912faF736",
             "usdc_address": "0x3B860c0b53f2e8bd5264AA7c3451d41263C933F2",
         }
-    elif chain_id == 89346162:
-        return {
-            "rpc_url": "https://rpc-reya-cronos.t.conduit.xyz",
-            "passive_pool_account_id": 2,
-            "exchange_id": 1,
-            "core_address": "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72",
-            "multicall_address": "0x5abde4F0aF8Eaf3c9967f7fA126E59A103357b5C",
-            "oracle_adapter_address": "0xc501A2356703CD351703D68963c6F4136120f7CF",
-            "passive_perp_address": "0x9EC177fed042eF2307928BE2F5CDbf663B20244B",
-            "passive_pool_address": "0x9A3A664987b88790A6FDC1632e3b607813fd94fF",
-            "rusd_address": "0x9DE724e7b3facF87Ce39465D3D712717182e3e55",
-            "periphery_address": "0x94ccAe812f1647696754412082dd6684C2366A7f",
-            "usdc_address": "0xfA27c7c6051344263533cc365274d9569b0272A8",
-        }
-    else:
-        raise InvalidChainIdError("Invalid chain id! It's neither 1729 (Reya Network) nor 89346162 (Reya Cronos).")
+    raise InvalidChainIdError(
+        f"reya_rpc supports only Reya Network mainnet (chain id 1729), got {chain_id}. "
+        "To fund accounts on the 89346162 testnet, follow docs/spot-account-topup.md in the SDK repository."
+    )
 
 
 def load_contract_abis() -> dict:
@@ -54,15 +37,6 @@ def load_contract_abis() -> dict:
 
     with open(os.path.join(abis_dir, "CoreProxy.json"), encoding="utf-8") as f:
         abis["core_abi"] = json.load(f)
-
-    with open(os.path.join(abis_dir, "Multicall.json"), encoding="utf-8") as f:
-        abis["multicall_abi"] = json.load(f)
-
-    with open(os.path.join(abis_dir, "OracleAdapterProxy.json"), encoding="utf-8") as f:
-        abis["oracle_adapter_abi"] = json.load(f)
-
-    with open(os.path.join(abis_dir, "PassivePerpProxy.json"), encoding="utf-8") as f:
-        abis["passive_perp_abi"] = json.load(f)
 
     with open(os.path.join(abis_dir, "PassivePoolProxy.json"), encoding="utf-8") as f:
         abis["passive_pool_abi"] = json.load(f)
@@ -98,9 +72,6 @@ def get_config() -> dict:
 
     # Create contract instances
     w3core = w3.eth.contract(address=network_config["core_address"], abi=abis["core_abi"])
-    w3multicall = w3.eth.contract(address=network_config["multicall_address"], abi=abis["multicall_abi"])
-    w3oracle_adapter = w3.eth.contract(address=network_config["oracle_adapter_address"], abi=abis["oracle_adapter_abi"])
-    w3passive_perp = w3.eth.contract(address=network_config["passive_perp_address"], abi=abis["passive_perp_abi"])
     w3passive_pool = w3.eth.contract(address=network_config["passive_pool_address"], abi=abis["passive_pool_abi"])
     w3periphery = w3.eth.contract(address=network_config["periphery_address"], abi=abis["periphery_abi"])
     w3rusd = w3.eth.contract(address=network_config["rusd_address"], abi=abis["erc20_abi"])
@@ -108,16 +79,11 @@ def get_config() -> dict:
 
     return {
         "chain_id": chain_id,
-        "exchange_id": network_config["exchange_id"],
-        "passive_pool_account_id": network_config["passive_pool_account_id"],
         "private_key": private_key,
         "w3": w3,
         "w3account": w3account,
         "w3contracts": {
             "core": w3core,
-            "multicall": w3multicall,
-            "oracle_adapter": w3oracle_adapter,
-            "passive_perp": w3passive_perp,
             "passive_pool": w3passive_pool,
             "periphery": w3periphery,
             "rusd": w3rusd,

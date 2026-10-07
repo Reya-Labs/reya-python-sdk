@@ -2,6 +2,7 @@ from hexbytes import HexBytes
 from web3 import Web3
 
 from sdk.reya_rpc.exceptions import TransactionReceiptError
+from sdk.reya_rpc.utils.transaction_utils import sign_and_send
 
 
 def create_account(config: dict):
@@ -16,14 +17,12 @@ def create_account(config: dict):
     """
 
     # Retrieve relevant fields from config
-    w3 = config["w3"]
     core = config["w3contracts"]["core"]
     account = config["w3account"]
 
     # Execute the transaction to create a new margin account
-    tx_hash = core.functions.createAccount(account.address).transact({"from": account.address})
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Created account: {tx_receipt.transactionHash.hex()}")
+    tx_receipt = sign_and_send(config, core.functions.createAccount(account.address))
+    print(f"Created account: {tx_receipt['transactionHash'].hex()}")
 
     # Extract logs from the transaction receipt
     logs = tx_receipt["logs"]

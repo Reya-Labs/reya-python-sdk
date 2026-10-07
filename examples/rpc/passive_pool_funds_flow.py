@@ -5,7 +5,7 @@ This script demonstrates how to stake rUSD into the passive pool
 and subsequently unstake to retrieve rUSD.
 
 Requirements:
-- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- CHAIN_ID: 1729 (reya_rpc supports Reya Network mainnet only)
 - PERP_PRIVATE_KEY_1: Your Ethereum private key
 
 Usage:
