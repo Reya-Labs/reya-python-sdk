@@ -19,7 +19,7 @@ make check-safety           # Security checks
 poetry shell
 python -m examples.rest_api.wallet_example
 python -m examples.websocket.market_monitoring
-python -m examples.rpc.trade_execution
+python -m examples.rpc.ma_funds_flow    # sdk.reya_rpc: mainnet only
 ```
 
 ## Tests
@@ -35,7 +35,7 @@ python -m examples.rpc.trade_execution
 ## Networks
 - Mainnet: chain_id=1729
 - Testnet: chain_id=89346162
-- Contract addresses in sdk/reya_rpc/config.py
+- `sdk/reya_rpc` (on-chain actions) supports mainnet only; contract addresses in sdk/reya_rpc/config.py
 
 ## Code Quality
 - Line length: 120 chars (Black, isort, Pylint)

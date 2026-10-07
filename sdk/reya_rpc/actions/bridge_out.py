@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from sdk.reya_rpc.exceptions import NetworkConfigurationError
 from sdk.reya_rpc.utils.bridge_utils import calculate_socket_fees
+from sdk.reya_rpc.utils.transaction_utils import sign_and_send
 
 
 @dataclass
@@ -55,40 +56,6 @@ def bridge_out_to_arbitrum(config: dict, params: BridgeOutParams):
     )
 
 
-def bridge_out_to_arbitrum_sepolia(config: dict, params: BridgeOutParams):
-    """
-    Bridges rUSD from Reya Cronos to Arbitrum Sepolia.
-
-    Args:
-        config (dict): Configuration dictionary containing Web3 contract instances and IDs. Check out config.py for more details.
-        params (BridgeOutParams): Bridging parameters including rUSD amount and maximum fee limit.
-
-    Returns:
-        dict: Contains transaction receipt of the bridging transaction.
-    """
-
-    # Define Arbitrum-specific parameters
-    connector_address = "0x41CC670dae3f91160f6B64AF46e939223E5C99F9"
-    controller_address = "0xf565F766EcafEE809EBaF0c71dCd60ad5EfE0F9e"
-    socket_msg_gas_limit = 20_000_000
-    arbitrum_chain_id = 421614
-    chain_id = config["chain_id"]
-
-    # Ensure Reya Network is correctly configured
-    if not chain_id == 89346162:
-        raise NetworkConfigurationError("Bridging function requires setup for Reya Cronos")
-
-    # Call the general bridge function with Arbitrum parameters
-    return bridge_out(
-        config=config,
-        params=params,
-        dest_chain_id=arbitrum_chain_id,
-        connector_address=connector_address,
-        controller_address=controller_address,
-        socket_msg_gas_limit=socket_msg_gas_limit,
-    )
-
-
 def _calculate_bridge_out_fees(
     controller_address: str,
     connector_address: str,
@@ -110,26 +77,22 @@ def _calculate_bridge_out_fees(
 
 def _approve_rusd_spending(config: dict, params: BridgeOutParams):
     """Approve rUSD to be spent by the periphery contract."""
-    w3 = config["w3"]
-    account = config["w3account"]
     periphery = config["w3contracts"]["periphery"]
     rusd = config["w3contracts"]["rusd"]
 
-    tx_hash = rusd.functions.approve(periphery.address, params.amount).transact({"from": account.address})
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Approved rUSD to periphery: {tx_receipt.transactionHash.hex()}")
+    tx_receipt = sign_and_send(config, rusd.functions.approve(periphery.address, params.amount))
+    print(f"Approved rUSD to periphery: {tx_receipt['transactionHash'].hex()}")
 
 
 def _execute_bridge_out_withdrawal(
     config: dict, params: BridgeOutParams, dest_chain_id: int, socket_msg_gas_limit: int, socket_fees: int
 ):
     """Execute the bridge out withdrawal transaction."""
-    w3 = config["w3"]
     account = config["w3account"]
     periphery = config["w3contracts"]["periphery"]
     rusd = config["w3contracts"]["rusd"]
 
-    tx_hash = periphery.functions.withdraw(
+    withdrawal = periphery.functions.withdraw(
         (
             params.amount,
             rusd.address,
@@ -137,10 +100,9 @@ def _execute_bridge_out_withdrawal(
             dest_chain_id,
             account.address,
         )
-    ).transact({"from": account.address, "value": socket_fees})
-
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Initiated bridge out: {tx_receipt.transactionHash.hex()}")
+    )
+    tx_receipt = sign_and_send(config, withdrawal, value=socket_fees)
+    print(f"Initiated bridge out: {tx_receipt['transactionHash'].hex()}")
     return tx_receipt
 
 

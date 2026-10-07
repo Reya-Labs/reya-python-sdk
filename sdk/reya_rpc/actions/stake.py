@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from sdk.reya_rpc.utils.transaction_utils import extract_share_balance_updated_event
+from sdk.reya_rpc.utils.transaction_utils import extract_share_balance_updated_event, sign_and_send
 
 
 @dataclass
@@ -24,22 +24,22 @@ def stake(config: dict, params: StakingParams):
     """
 
     # Retrieve relevant fields from config
-    w3 = config["w3"]
     account = config["w3account"]
     passive_pool = config["w3contracts"]["passive_pool"]
     rusd = config["w3contracts"]["rusd"]
 
     # Execute the transaction to approve rUSD to be spent by the passive pool contract
-    tx_hash = rusd.functions.approve(passive_pool.address, params.token_amount).transact({"from": account.address})
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Approved rUSD to core: {tx_receipt.transactionHash.hex()}")
+    tx_receipt = sign_and_send(config, rusd.functions.approve(passive_pool.address, params.token_amount))
+    print(f"Approved rUSD to core: {tx_receipt['transactionHash'].hex()}")
 
     # Stake rUSD in the passive pool
-    tx_hash = passive_pool.functions.addLiquidity(
-        1, account.address, params.token_amount, params.min_shares, (1, account.address)
-    ).transact({"from": account.address})
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Staked in passive pool: {tx_receipt.transactionHash.hex()}")
+    tx_receipt = sign_and_send(
+        config,
+        passive_pool.functions.addLiquidity(
+            1, account.address, params.token_amount, params.min_shares, (1, account.address)
+        ),
+    )
+    print(f"Staked in passive pool: {tx_receipt['transactionHash'].hex()}")
 
     # Extract event data using shared utility
     shares_delta, _ = extract_share_balance_updated_event(tx_receipt, passive_pool)
