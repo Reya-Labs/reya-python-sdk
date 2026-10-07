@@ -41,12 +41,12 @@ def sign_and_send(config: dict[str, Any], contract_function: Any, value: int = 0
     return cast(TxReceipt, w3.eth.wait_for_transaction_receipt(tx_hash))
 
 
-def extract_share_balance_updated_event(tx_receipt: Any, passive_perp: Any) -> tuple[int, int]:
+def extract_share_balance_updated_event(tx_receipt: Any, passive_pool: Any) -> tuple[int, int]:
     """Extract ShareBalanceUpdated event from transaction receipt.
 
     Args:
         tx_receipt: Transaction receipt containing logs
-        passive_perp: Passive perp contract instance
+        passive_pool: Passive pool contract instance
 
     Returns:
         tuple: (shares_delta, balance_delta) extracted from the event
@@ -70,7 +70,7 @@ def extract_share_balance_updated_event(tx_receipt: Any, passive_perp: Any) -> t
         raise TransactionReceiptError("Failed to decode transaction receipt for stake/unstake operation")
 
     # Decode event log to extract share and balance information
-    event = passive_perp.events.ShareBalanceUpdated().process_log(filtered_logs[0])
+    event = passive_pool.events.ShareBalanceUpdated().process_log(filtered_logs[0])
     shares_delta = int(event["args"]["sharesDelta"])
     balance_delta = int(event["args"]["balanceDelta"])
 

@@ -30,7 +30,7 @@ def stake(config: dict, params: StakingParams):
 
     # Execute the transaction to approve rUSD to be spent by the passive pool contract
     tx_receipt = sign_and_send(config, rusd.functions.approve(passive_pool.address, params.token_amount))
-    print(f"Approved rUSD to core: {tx_receipt['transactionHash'].hex()}")
+    print(f"Approved rUSD to passive pool: {tx_receipt['transactionHash'].hex()}")
 
     # Stake rUSD in the passive pool
     tx_receipt = sign_and_send(
