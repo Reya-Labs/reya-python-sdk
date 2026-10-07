@@ -9,7 +9,7 @@ Flow:
 3. Deposit rUSD from Wallet B into destination account
 
 Requirements:
-- CHAIN_ID: The chain ID (1729 for mainnet, 89346162 for testnet)
+- CHAIN_ID: 1729 (reya_rpc supports Reya Network mainnet only)
 - PERP_PRIVATE_KEY_1: Private key for Wallet A (source wallet)
 - PERP_PRIVATE_KEY_2: Private key for Wallet B (destination wallet)
 

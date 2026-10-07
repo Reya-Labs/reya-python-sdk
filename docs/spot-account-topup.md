@@ -1,18 +1,20 @@
-# Spot Account Top-Up Process (Cronos Testnet)
+# Spot Account Top-Up Process (devnet1)
 
-How to create and fund spot accounts on the Reya Cronos testnet using Foundry's `cast` tool.
+How to create and fund spot accounts on devnet1, the perpOB testnet, using Foundry's `cast` tool.
+
+devnet1 runs on chain `89346162` and reuses that chain's rUSD and WETH tokens, but has its own Core Proxy. Use the Core Proxy below; a Core address from older docs or configs funds a different deployment.
 
 ## Prerequisites
 
 - **Foundry** installed (`cast` CLI available)
-- Wallet(s) with private keys holding rUSD and WETH tokens on Reya Cronos
+- Wallet(s) with private keys holding rUSD and WETH tokens on chain `89346162`
 - Wallet(s) must have native gas tokens (ETH) for transaction fees
 
-## Contract Addresses (Cronos Testnet)
+## Contract Addresses (devnet1)
 
 | Contract | Address | Decimals |
 |----------|---------|----------|
-| Core Proxy | `0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72` | — |
+| Core Proxy | `0xC33D0A4FC05aF98447126f1680cA7316de29e5d4` | — |
 | rUSD | `0x9DE724e7b3facF87Ce39465D3D712717182e3e55` | 6 |
 | WETH | `0x2CF56315ACC7E791B1A0135c09d8D5C8dBCD2F14` | 18 |
 
@@ -110,13 +112,6 @@ cast send <CORE_PROXY> \
 | rUSD | 50 | `50000000` |
 | WETH | 0.2 | `200000000000000000` |
 | WETH | 0.1 | `100000000000000000` |
-
-## Current Test Accounts (as of 2025-03-18)
-
-| | Wallet | Spot Account ID | Deposited |
-|---|--------|-----------------|-----------|
-| Taker (Wallet 1) | `0x228fb32CE7b0c8164DaaB3b5379cDb9EbE3028Ac` | `10000000156` | 500 rUSD + 0.2 WETH |
-| Maker (Wallet 2) | `0x51ffbaac55e4b9e155214578d4f2eb84e8d44b34` | `10000000158` | 500 rUSD + 0.2 WETH |
 
 ## Notes
 
