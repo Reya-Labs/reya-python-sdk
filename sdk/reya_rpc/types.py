@@ -5,7 +5,6 @@ class CommandType(Enum):
     Deposit = 0
     Withdraw = 1
     DutchLiquidation = 2
-    MatchOrder = 3
     TransferBetweenMarginAccounts = 4
 
 

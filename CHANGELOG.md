@@ -150,7 +150,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `end_time_ms` parameter names so the unit is in the symbol — tracked
   in the spec repo.
 
+### Removed
+- `sdk.reya_rpc` dropped helpers that cannot work any more. `trade`/`TradeParams`
+  and `examples/rpc/trade_execution.py` sent the legacy AMM `MatchOrder` core
+  command, which mainnet stopped accepting at the 28 Sep cutover;
+  `CommandType.MatchOrder` goes with them. `update_oracle_prices` and its
+  example are gone too. Config that only those helpers read is removed:
+  `get_config()` no longer returns `exchange_id`, `passive_pool_account_id` or
+  the `multicall`, `oracle_adapter` and `passive_perp` contracts, and
+  `load_contract_abis()` no longer loads their ABIs.
+- `sdk.reya_rpc` no longer supports chain `89346162`. Its addresses pointed at
+  the retired Cronos deployment, not devnet1, so `get_network_addresses` and
+  `get_config` now raise `InvalidChainIdError` for any chain other than 1729,
+  and `bridge_in_from_arbitrum_sepolia` / `bridge_out_to_arbitrum_sepolia` are
+  removed. To fund devnet1 accounts, use the `cast` steps in
+  `docs/spot-account-topup.md`, which now lists devnet1's Core.
+
 ### Fixed
+- `create_account`, `stake`, `unstake`, `bridge_out_to_arbitrum` and the approve
+  step of `deposit` called web3 `.transact()`, which only works when the RPC
+  node holds the key, so they failed against any public RPC. They now sign
+  locally with the configured key, like `withdraw` and `transfer` already did,
+  through the shared `sign_and_send` helper.
 - Trigger admission lost its price ceiling when the `limit_px` sentinel was
   deleted: the client accepted any positive price at all. Both `limit_px` and
   `trigger_px` are checked against the matching engine's price domain again —
