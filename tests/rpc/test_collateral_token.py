@@ -20,7 +20,7 @@ withdraw_module = import_module("sdk.reya_rpc.actions.withdraw")
 
 RUSD_ADDRESS = "0x9DE724e7b3facF87Ce39465D3D712717182e3e55"
 LOCAL_COLLATERAL_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-CORE_ADDRESS = "0xC6fB022962e1426F4e0ec9D2F8861c57926E9f72"
+CORE_ADDRESS = "0xA763B6a5E09378434406C003daE6487FbbDc1a80"
 ACCOUNT_ID = 42
 MALFORMED_ADDRESS = "not-an-address"
 AMOUNT = 100_000_000
@@ -47,6 +47,7 @@ class _Harness:
         self.w3.eth.contract.side_effect = self._mint
 
         self.config: dict = {
+            "chain_id": 1729,
             "w3": self.w3,
             "w3account": MagicMock(address="0x000000000000000000000000000000000000dEaD"),
             "w3contracts": {"core": core, "rusd": self.rusd},
