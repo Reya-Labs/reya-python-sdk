@@ -292,10 +292,9 @@ The repository includes example scripts demonstrating how to use the SDK:
     - `examples/websocket/wallet_monitoring.py` - Monitoring wallet positions and orders
     - `examples/consume_data_feed.py` - Working with the WebSocket data feed
 
-- **Action Examples**
-    - `examples/bridge_in_and_deposit.py` - Bridge in and deposit funds
-    - `examples/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
-    - `examples/update_oracle_prices.py` - Update oracle prices
+- **On-chain Action Examples** (`sdk.reya_rpc`, Reya Network mainnet only)
+    - `examples/rpc/bridge_in_and_deposit.py` - Bridge in and deposit funds
+    - `examples/rpc/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
 
 ### Running Examples
 
