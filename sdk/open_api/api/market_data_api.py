@@ -1922,7 +1922,7 @@ class MarketDataApi:
     ) -> MarketSummary:
         """Get perp market summary
 
-        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
+        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. The funding rate is indicative; no position pays it until the market is `TRADING`. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1991,7 +1991,7 @@ class MarketDataApi:
     ) -> ApiResponse[MarketSummary]:
         """Get perp market summary
 
-        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
+        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. The funding rate is indicative; no position pays it until the market is `TRADING`. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -2060,7 +2060,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp market summary
 
-        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
+        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. The funding rate is indicative; no position pays it until the market is `TRADING`. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -2187,7 +2187,7 @@ class MarketDataApi:
     ) -> List[MarketSummary]:
         """Get perp market summaries
 
-        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all `TRADING` perp markets. Recalculated every 0.5s
+        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all listed perp markets. Recalculated every 0.5s  Includes `PREOPEN` markets once their summary is computed; check each row's `status` (see `/perpMarket/{symbol}/summary`). 
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2252,7 +2252,7 @@ class MarketDataApi:
     ) -> ApiResponse[List[MarketSummary]]:
         """Get perp market summaries
 
-        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all `TRADING` perp markets. Recalculated every 0.5s
+        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all listed perp markets. Recalculated every 0.5s  Includes `PREOPEN` markets once their summary is computed; check each row's `status` (see `/perpMarket/{symbol}/summary`). 
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2317,7 +2317,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp market summaries
 
-        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all `TRADING` perp markets. Recalculated every 0.5s
+        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all listed perp markets. Recalculated every 0.5s  Includes `PREOPEN` markets once their summary is computed; check each row's `status` (see `/perpMarket/{symbol}/summary`). 
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
