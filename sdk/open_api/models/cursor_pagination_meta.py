@@ -29,7 +29,7 @@ class CursorPaginationMeta(BaseModel):
     """ # noqa: E501
     limit: Annotated[int, Field(strict=True, ge=0)]
     count: Annotated[int, Field(strict=True, ge=0)]
-    next_cursor: Optional[StrictStr] = Field(default=None, description="Opaque cursor for the next page. Pass it unchanged as cursor; omitted when no further page is available. See the transfers endpoint's Pagination section for traversal rules.", alias="nextCursor")
+    next_cursor: Optional[StrictStr] = Field(default=None, description="Opaque cursor for the next page; omitted when no further matching entries are available. See the cursor query parameter for traversal rules.", alias="nextCursor")
     additional_properties: Dict[str, Any] = {}
     __properties: ClassVar[List[str]] = ["limit", "count", "nextCursor"]
 

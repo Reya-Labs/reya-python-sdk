@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from typing_extensions import Annotated
 from typing import Optional, Set
@@ -31,8 +31,9 @@ class PaginationMeta(BaseModel):
     count: Annotated[int, Field(strict=True, ge=0)]
     end_time: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="endTime")
     start_time: Optional[Annotated[int, Field(strict=True, ge=0)]] = Field(default=None, alias="startTime")
+    next_cursor: Optional[StrictStr] = Field(default=None, description="Opaque continuation cursor; omitted when no further matching entries are available. See the cursor query parameter for traversal rules.", alias="nextCursor")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["limit", "count", "endTime", "startTime"]
+    __properties: ClassVar[List[str]] = ["limit", "count", "endTime", "startTime", "nextCursor"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -95,7 +96,8 @@ class PaginationMeta(BaseModel):
             "limit": obj.get("limit"),
             "count": obj.get("count"),
             "endTime": obj.get("endTime"),
-            "startTime": obj.get("startTime")
+            "startTime": obj.get("startTime"),
+            "nextCursor": obj.get("nextCursor")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

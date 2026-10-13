@@ -890,6 +890,8 @@ class MarketDataApi:
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -905,7 +907,7 @@ class MarketDataApi:
     ) -> ExecutionBustList:
         """Get execution busts for market
 
-        Returns up to 100 execution busts (failed fills) for a given market, covering both spot and perp markets. Clients can distinguish spot vs perp entries from the `symbol` suffix (`*RUSDPERP` for perp, `*RUSD` for spot). 
+        Returns execution busts (failed fills) for the market, newest first by `sequenceNumber`. Use the `cursor` parameter to advance pages. Clients can distinguish spot vs perp entries from the `symbol` suffix (`*RUSDPERP` for perp, `*RUSD` for spot). 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -913,6 +915,10 @@ class MarketDataApi:
         :type start_time: int
         :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -939,6 +945,8 @@ class MarketDataApi:
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -967,6 +975,8 @@ class MarketDataApi:
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -982,7 +992,7 @@ class MarketDataApi:
     ) -> ApiResponse[ExecutionBustList]:
         """Get execution busts for market
 
-        Returns up to 100 execution busts (failed fills) for a given market, covering both spot and perp markets. Clients can distinguish spot vs perp entries from the `symbol` suffix (`*RUSDPERP` for perp, `*RUSD` for spot). 
+        Returns execution busts (failed fills) for the market, newest first by `sequenceNumber`. Use the `cursor` parameter to advance pages. Clients can distinguish spot vs perp entries from the `symbol` suffix (`*RUSDPERP` for perp, `*RUSD` for spot). 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -990,6 +1000,10 @@ class MarketDataApi:
         :type start_time: int
         :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1016,6 +1030,8 @@ class MarketDataApi:
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1044,6 +1060,8 @@ class MarketDataApi:
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1059,7 +1077,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get execution busts for market
 
-        Returns up to 100 execution busts (failed fills) for a given market, covering both spot and perp markets. Clients can distinguish spot vs perp entries from the `symbol` suffix (`*RUSDPERP` for perp, `*RUSD` for spot). 
+        Returns execution busts (failed fills) for the market, newest first by `sequenceNumber`. Use the `cursor` parameter to advance pages. Clients can distinguish spot vs perp entries from the `symbol` suffix (`*RUSDPERP` for perp, `*RUSD` for spot). 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1067,6 +1085,10 @@ class MarketDataApi:
         :type start_time: int
         :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1093,6 +1115,8 @@ class MarketDataApi:
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1116,6 +1140,8 @@ class MarketDataApi:
         symbol,
         start_time,
         end_time,
+        limit,
+        cursor,
         _request_auth,
         _content_type,
         _headers,
@@ -1147,6 +1173,14 @@ class MarketDataApi:
         if end_time is not None:
             
             _query_params.append(('endTime', end_time))
+            
+        if limit is not None:
+            
+            _query_params.append(('limit', limit))
+            
+        if cursor is not None:
+            
+            _query_params.append(('cursor', cursor))
             
         # process the header parameters
         # process the form parameters
@@ -1191,6 +1225,8 @@ class MarketDataApi:
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[StrictStr], Field(description="Filter perp executions by their exact response type. Omit to return executions of all types.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1206,7 +1242,7 @@ class MarketDataApi:
     ) -> PerpExecutionList:
         """Get perp executions for market
 
-        Returns up to 100 perp executions for a given market.
+        Returns perp executions for the market, newest first by `sequenceNumber`. Executions recorded before sequence numbers were introduced are not returned. Use the `cursor` parameter to advance pages without repeating or skipping executions at timestamp boundaries. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1216,6 +1252,10 @@ class MarketDataApi:
         :type end_time: int
         :param type: Filter perp executions by their exact response type. Omit to return executions of all types.
         :type type: str
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1243,6 +1283,8 @@ class MarketDataApi:
             start_time=start_time,
             end_time=end_time,
             type=type,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1272,6 +1314,8 @@ class MarketDataApi:
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[StrictStr], Field(description="Filter perp executions by their exact response type. Omit to return executions of all types.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1287,7 +1331,7 @@ class MarketDataApi:
     ) -> ApiResponse[PerpExecutionList]:
         """Get perp executions for market
 
-        Returns up to 100 perp executions for a given market.
+        Returns perp executions for the market, newest first by `sequenceNumber`. Executions recorded before sequence numbers were introduced are not returned. Use the `cursor` parameter to advance pages without repeating or skipping executions at timestamp boundaries. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1297,6 +1341,10 @@ class MarketDataApi:
         :type end_time: int
         :param type: Filter perp executions by their exact response type. Omit to return executions of all types.
         :type type: str
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1324,6 +1372,8 @@ class MarketDataApi:
             start_time=start_time,
             end_time=end_time,
             type=type,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1353,6 +1403,8 @@ class MarketDataApi:
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
         type: Annotated[Optional[StrictStr], Field(description="Filter perp executions by their exact response type. Omit to return executions of all types.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1368,7 +1420,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp executions for market
 
-        Returns up to 100 perp executions for a given market.
+        Returns perp executions for the market, newest first by `sequenceNumber`. Executions recorded before sequence numbers were introduced are not returned. Use the `cursor` parameter to advance pages without repeating or skipping executions at timestamp boundaries. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1378,6 +1430,10 @@ class MarketDataApi:
         :type end_time: int
         :param type: Filter perp executions by their exact response type. Omit to return executions of all types.
         :type type: str
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1405,6 +1461,8 @@ class MarketDataApi:
             start_time=start_time,
             end_time=end_time,
             type=type,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1429,6 +1487,8 @@ class MarketDataApi:
         start_time,
         end_time,
         type,
+        limit,
+        cursor,
         _request_auth,
         _content_type,
         _headers,
@@ -1464,6 +1524,14 @@ class MarketDataApi:
         if type is not None:
             
             _query_params.append(('type', type))
+            
+        if limit is not None:
+            
+            _query_params.append(('limit', limit))
+            
+        if cursor is not None:
+            
+            _query_params.append(('cursor', cursor))
             
         # process the header parameters
         # process the form parameters
@@ -1507,6 +1575,8 @@ class MarketDataApi:
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1522,7 +1592,7 @@ class MarketDataApi:
     ) -> SpotExecutionList:
         """Get spot executions for market
 
-        Returns up to 100 spot executions for a given market.
+        Returns spot executions for the market, newest first by `sequenceNumber`. Executions recorded before sequence numbers were introduced are not returned. Use the `cursor` parameter to advance pages without repeating or skipping executions at timestamp boundaries. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1530,6 +1600,10 @@ class MarketDataApi:
         :type start_time: int
         :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1556,6 +1630,8 @@ class MarketDataApi:
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1584,6 +1660,8 @@ class MarketDataApi:
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1599,7 +1677,7 @@ class MarketDataApi:
     ) -> ApiResponse[SpotExecutionList]:
         """Get spot executions for market
 
-        Returns up to 100 spot executions for a given market.
+        Returns spot executions for the market, newest first by `sequenceNumber`. Executions recorded before sequence numbers were introduced are not returned. Use the `cursor` parameter to advance pages without repeating or skipping executions at timestamp boundaries. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1607,6 +1685,10 @@ class MarketDataApi:
         :type start_time: int
         :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1633,6 +1715,8 @@ class MarketDataApi:
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1661,6 +1745,8 @@ class MarketDataApi:
         symbol: Annotated[str, Field(strict=True, description="Trading symbol (e.g., BTCRUSDPERP)")],
         start_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or after this time (inclusive lower bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`.")] = None,
         end_time: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.")] = None,
+        limit: Annotated[Optional[Annotated[int, Field(strict=True, ge=0)]], Field(description="Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.")] = None,
+        cursor: Annotated[Optional[StrictStr], Field(description="Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. ")] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1676,7 +1762,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get spot executions for market
 
-        Returns up to 100 spot executions for a given market.
+        Returns spot executions for the market, newest first by `sequenceNumber`. Executions recorded before sequence numbers were introduced are not returned. Use the `cursor` parameter to advance pages without repeating or skipping executions at timestamp boundaries. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1684,6 +1770,10 @@ class MarketDataApi:
         :type start_time: int
         :param end_time: Return results at or before this time (inclusive upper bound). Millisecond POSIX timestamp, matched against the endpoint's record timestamp. Execution and bust endpoints use on-chain block timestamps; orderHistory uses the order event timestamp exposed as `lastUpdateAt`. Results are returned newest-first and capped at a maximum that varies by endpoint. Because this bound is inclusive, passing the oldest timestamp from the previous page can repeat boundary rows; clients can deduplicate overlap or subtract 1ms when same-ms boundary ties are not relevant.
         :type end_time: int
+        :param limit: Maximum number of entries per page. The default and the maximum are both 100; larger values are clamped to 100.
+        :type limit: int
+        :param cursor: Opaque page cursor from the previous response's `meta.nextCursor`. Omit for the first page; otherwise pass it unchanged. Keep the same endpoint, wallet or market, and filters between requests. Stop when `meta.nextCursor` is absent. Do not construct or parse cursor values. 
+        :type cursor: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1710,6 +1800,8 @@ class MarketDataApi:
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
+            limit=limit,
+            cursor=cursor,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1733,6 +1825,8 @@ class MarketDataApi:
         symbol,
         start_time,
         end_time,
+        limit,
+        cursor,
         _request_auth,
         _content_type,
         _headers,
@@ -1764,6 +1858,14 @@ class MarketDataApi:
         if end_time is not None:
             
             _query_params.append(('endTime', end_time))
+            
+        if limit is not None:
+            
+            _query_params.append(('limit', limit))
+            
+        if cursor is not None:
+            
+            _query_params.append(('cursor', cursor))
             
         # process the header parameters
         # process the form parameters
@@ -1820,7 +1922,7 @@ class MarketDataApi:
     ) -> MarketSummary:
         """Get perp market summary
 
-        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Every listed market has a summary, including a `PREOPEN` one, whose `status` says it is not open yet. Its open interest and volume are zero and it has no mid price until the book has orders. If a newly listed market's summary is not computed yet, this returns 400 `SYMBOL_NOT_FOUND` with a message saying so. `/perpMarkets/summary` lists `TRADING` markets only. 
+        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1889,7 +1991,7 @@ class MarketDataApi:
     ) -> ApiResponse[MarketSummary]:
         """Get perp market summary
 
-        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Every listed market has a summary, including a `PREOPEN` one, whose `status` says it is not open yet. Its open interest and volume are zero and it has no mid price until the book has orders. If a newly listed market's summary is not computed yet, this returns 400 `SYMBOL_NOT_FOUND` with a message saying so. `/perpMarkets/summary` lists `TRADING` markets only. 
+        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -1958,7 +2060,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp market summary
 
-        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Every listed market has a summary, including a `PREOPEN` one, whose `status` says it is not open yet. Its open interest and volume are zero and it has no mid price until the book has orders. If a newly listed market's summary is not computed yet, this returns 400 `SYMBOL_NOT_FOUND` with a message saying so. `/perpMarkets/summary` lists `TRADING` markets only. 
+        Perp market summary route mirroring the `/spotMarket/{symbol}/summary` naming. Statistics and throttled data for a specific perp market. Recalculated every 0.5s  Includes `PREOPEN` markets: open interest and volume are zero and there is no mid price until the book has orders. Returns 400 `SYMBOL_NOT_FOUND` while a newly listed market's summary is not computed yet. 
 
         :param symbol: Trading symbol (e.g., BTCRUSDPERP) (required)
         :type symbol: str
@@ -2085,7 +2187,7 @@ class MarketDataApi:
     ) -> List[MarketSummary]:
         """Get perp market summaries
 
-        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
+        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all `TRADING` perp markets. Recalculated every 0.5s
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2150,7 +2252,7 @@ class MarketDataApi:
     ) -> ApiResponse[List[MarketSummary]]:
         """Get perp market summaries
 
-        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
+        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all `TRADING` perp markets. Recalculated every 0.5s
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -2215,7 +2317,7 @@ class MarketDataApi:
     ) -> RESTResponseType:
         """Get perp market summaries
 
-        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all perp markets. Recalculated every 0.5s
+        Perp market summary route mirroring the `/spotMarkets/summary` naming. Statistics and throttled market data for all `TRADING` perp markets. Recalculated every 0.5s
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request

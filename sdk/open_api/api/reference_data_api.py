@@ -803,7 +803,7 @@ class ReferenceDataApi:
     ) -> List[MarketDefinition]:
         """Get perp market definitions
 
-        Canonical perp market definitions endpoint for perpOB. Replaces the removed AMM-era `/marketDefinitions` route.  Lists every announced perp market, including markets that are not open yet. Check each definition's `status` before quoting or subscribing: `PREOPEN` markets are listed ahead of launch so integrations can load them in advance, but orders are rejected until the status changes to `TRADING`. Treat any status other than `TRADING` as not open for new orders. 
+        Canonical perp market definitions endpoint for perpOB. Replaces the removed AMM-era `/marketDefinitions` route.  Includes `PREOPEN` markets announced ahead of launch, so integrations can load them in advance; check each definition's `status`. 
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -868,7 +868,7 @@ class ReferenceDataApi:
     ) -> ApiResponse[List[MarketDefinition]]:
         """Get perp market definitions
 
-        Canonical perp market definitions endpoint for perpOB. Replaces the removed AMM-era `/marketDefinitions` route.  Lists every announced perp market, including markets that are not open yet. Check each definition's `status` before quoting or subscribing: `PREOPEN` markets are listed ahead of launch so integrations can load them in advance, but orders are rejected until the status changes to `TRADING`. Treat any status other than `TRADING` as not open for new orders. 
+        Canonical perp market definitions endpoint for perpOB. Replaces the removed AMM-era `/marketDefinitions` route.  Includes `PREOPEN` markets announced ahead of launch, so integrations can load them in advance; check each definition's `status`. 
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -933,7 +933,7 @@ class ReferenceDataApi:
     ) -> RESTResponseType:
         """Get perp market definitions
 
-        Canonical perp market definitions endpoint for perpOB. Replaces the removed AMM-era `/marketDefinitions` route.  Lists every announced perp market, including markets that are not open yet. Check each definition's `status` before quoting or subscribing: `PREOPEN` markets are listed ahead of launch so integrations can load them in advance, but orders are rejected until the status changes to `TRADING`. Treat any status other than `TRADING` as not open for new orders. 
+        Canonical perp market definitions endpoint for perpOB. Replaces the removed AMM-era `/marketDefinitions` route.  Includes `PREOPEN` markets announced ahead of launch, so integrations can load them in advance; check each definition's `status`. 
 
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
