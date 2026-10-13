@@ -77,6 +77,7 @@ sdk/open_api/models/level.py
 sdk/open_api/models/limit_modify_order_request.py
 sdk/open_api/models/limit_order_type.py
 sdk/open_api/models/market_definition.py
+sdk/open_api/models/market_status.py
 sdk/open_api/models/market_summary.py
 sdk/open_api/models/mass_cancel_request.py
 sdk/open_api/models/mass_cancel_response.py

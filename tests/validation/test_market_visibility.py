@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from sdk.open_api.models.market_definition import MarketDefinition
+from sdk.open_api.models.market_status import MarketStatus
 from sdk.reya_rest_api import ReyaTradingClient
 
 pytestmark = pytest.mark.offline
@@ -45,9 +46,18 @@ def test_older_api_payload_needs_no_visibility_or_operating_status() -> None:
     market = MarketDefinition.from_dict(market_payload())
     assert market is not None
     assert market.ui_visible is None
+    assert market.status is None
     assert market.to_dict() == market_payload()
-    # Public status should be introduced when published non-trading states exist.
-    assert "status" not in MarketDefinition.model_fields
+
+
+@pytest.mark.parametrize("status", list(MarketStatus))
+def test_status_round_trips_as_typed_enum(status: MarketStatus) -> None:
+    payload = {**market_payload(), "uiVisible": False, "status": status.value}
+    market = MarketDefinition.from_dict(payload)
+    assert market is not None
+    assert market.status is status
+    assert "status" not in market.additional_properties
+    assert market.to_dict() == payload
 
 
 @pytest.mark.parametrize("invalid", ["false", 0, 1])
@@ -56,8 +66,11 @@ def test_visibility_does_not_coerce_non_boolean_values(invalid: object) -> None:
         MarketDefinition.from_dict({**market_payload(), "uiVisible": invalid})
 
 
-async def test_api_only_market_remains_in_signing_map() -> None:
-    market = MarketDefinition.from_dict({**market_payload(), "uiVisible": False})
+@pytest.mark.parametrize("status", [None, "TRADING", "PREOPEN"])
+async def test_api_only_market_remains_in_signing_map(status: str | None) -> None:
+    # A PREOPEN market stays signable: the server rejects its orders until it opens.
+    extra = {"status": status} if status else {}
+    market = MarketDefinition.from_dict({**market_payload(), "uiVisible": False, **extra})
     client = ReyaTradingClient.__new__(ReyaTradingClient)
     # No session, key, environment file or network is needed to exercise startup.
     client._resources = cast(  # pylint: disable=protected-access

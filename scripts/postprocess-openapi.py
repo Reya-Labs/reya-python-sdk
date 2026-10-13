@@ -24,6 +24,8 @@ OPEN_VOCABULARY_ENUMS = (
     "account_type",
     "cancel_reason",
     "execution_type",
+    # Perp market lifecycle: REDUCE_ONLY, HALTED and CLOSED are planned.
+    "market_status",
     "order_status",
     "request_error_code",
     "server_error_code",
