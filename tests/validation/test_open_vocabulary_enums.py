@@ -33,6 +33,7 @@ from pydantic import TypeAdapter
 
 from sdk.async_api.cancel_reason import CancelReason as WsCancelReason
 from sdk.async_api.execution_type import ExecutionType as WsExecutionType
+from sdk.async_api.market_status import MarketStatus as WsMarketStatus
 from sdk.async_api.order_status import OrderStatus as WsOrderStatus
 from sdk.async_api.transfer_type import TransferType as WsTransferType
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
@@ -41,6 +42,8 @@ from sdk.async_exec_api.ws_exec_error_code import WsExecErrorCode
 from sdk.open_api.models.account_type import AccountType
 from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.execution_type import ExecutionType
+from sdk.open_api.models.market_definition import MarketDefinition
+from sdk.open_api.models.market_status import MarketStatus
 from sdk.open_api.models.order_status import OrderStatus
 from sdk.open_api.models.order_type import OrderType
 from sdk.open_api.models.request_error_code import RequestErrorCode
@@ -59,12 +62,14 @@ SERVER_OWNED = [
     pytest.param(AccountType, id="open_api.AccountType"),
     pytest.param(CancelReason, id="open_api.CancelReason"),
     pytest.param(ExecutionType, id="open_api.ExecutionType"),
+    pytest.param(MarketStatus, id="open_api.MarketStatus"),
     pytest.param(OrderStatus, id="open_api.OrderStatus"),
     pytest.param(RequestErrorCode, id="open_api.RequestErrorCode"),
     pytest.param(ServerErrorCode, id="open_api.ServerErrorCode"),
     pytest.param(TierType, id="open_api.TierType"),
     pytest.param(WsCancelReason, id="async_api.CancelReason"),
     pytest.param(WsExecutionType, id="async_api.ExecutionType"),
+    pytest.param(WsMarketStatus, id="async_api.MarketStatus"),
     pytest.param(WsOrderStatus, id="async_api.OrderStatus"),
     pytest.param(WsExecOrderStatus, id="async_exec_api.OrderStatus"),
     pytest.param(WsExecRequestErrorCode, id="async_exec_api.RequestErrorCode"),
@@ -107,3 +112,25 @@ def test_the_order_entry_vocabularies_still_fail_loudly(enum_type: Any) -> None:
     assert not hasattr(enum_type, "UNKNOWN")
     with pytest.raises(ValueError):
         enum_type(UNKNOWN_WIRE_VALUE)
+
+
+def test_a_market_definition_with_a_newer_status_still_parses() -> None:
+    """``client.start()`` loads every definition: one market in a status this SDK
+    predates (e.g. a future REDUCE_ONLY) must not fail the whole list."""
+    definition = MarketDefinition.from_dict(
+        {
+            "symbol": "XAURUSDPERP",
+            "marketId": 76,
+            "minOrderQty": "0.0025",
+            "qtyStepSize": "0.0001",
+            "tickSize": "0.01",
+            "liquidationMarginParameter": "0.01",
+            "initialMarginParameter": "0.02",
+            "maxLeverage": 50,
+            "oiCap": "120",
+            "uiVisible": False,
+            "status": "REDUCE_ONLY",
+        }
+    )
+    assert definition is not None
+    assert definition.status is MarketStatus.UNKNOWN

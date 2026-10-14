@@ -1,9 +1,10 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import model_serializer, model_validator, BaseModel, Field
-
+from sdk.async_api.market_status import MarketStatus
 class MarketSummary(BaseModel): 
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
+  status: Optional[MarketStatus] = Field(description='''Perp market operating status. `TRADING`: open for order entry. `PREOPEN`: listed ahead of launch; orders are rejected until the market changes to `TRADING`. The server may add values (for example `REDUCE_ONLY` or `HALTED`) without a client release, so treat any value other than `TRADING` as not open for new orders.''', default=None)
   updated_at: int = Field(alias='''updatedAt''')
   oi_qty: str = Field(alias='''oiQty''')
   funding_rate: str = Field(alias='''fundingRate''')
@@ -35,13 +36,13 @@ class MarketSummary(BaseModel):
     if not isinstance(data, dict):
       data = data.model_dump()
     json_properties = list(data.keys())
-    known_object_properties = ['symbol', 'updated_at', 'oi_qty', 'funding_rate', 'long_funding_value', 'short_funding_value', 'volume24h', 'px_change24h', 'mark_price', 'oracle_price', 'throttled_mid_price', 'prices_updated_at', 'additional_properties']
+    known_object_properties = ['symbol', 'status', 'updated_at', 'oi_qty', 'funding_rate', 'long_funding_value', 'short_funding_value', 'volume24h', 'px_change24h', 'mark_price', 'oracle_price', 'throttled_mid_price', 'prices_updated_at', 'additional_properties']
     unknown_object_properties = [element for element in json_properties if element not in known_object_properties]
     # Ignore attempts that validate regular models, only when unknown input is used we add unwrap extensions
     if len(unknown_object_properties) == 0: 
       return data
   
-    known_json_properties = ['symbol', 'updatedAt', 'oiQty', 'fundingRate', 'longFundingValue', 'shortFundingValue', 'volume24h', 'pxChange24h', 'markPrice', 'oraclePrice', 'throttledMidPrice', 'pricesUpdatedAt', 'additionalProperties']
+    known_json_properties = ['symbol', 'status', 'updatedAt', 'oiQty', 'fundingRate', 'longFundingValue', 'shortFundingValue', 'volume24h', 'pxChange24h', 'markPrice', 'oraclePrice', 'throttledMidPrice', 'pricesUpdatedAt', 'additionalProperties']
     additional_properties = data.get('additional_properties', {})
     for obj_key in unknown_object_properties:
       if not known_json_properties.__contains__(obj_key):
