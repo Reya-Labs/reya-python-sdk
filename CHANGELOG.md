@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Strategy examples in `examples/strategies/`: `mark_feed.py`, a reconnecting,
+  staleness-aware mark-price feed on the market-summary channel (a mark older than
+  10 s counts as stale), and `price_cross_entry.py`, which enters once with an IOC
+  limit when the mark crosses a level, sized from a dollar amount and rounded down
+  to the quantity step, then arms a whole-position `STOP_LOSS` once the fill shows
+  in the position. It is a dry run unless `--live` is passed, and never resends an
+  entry whose outcome is unclear. Offline tests in
+  `tests/validation/test_strategy_examples.py`.
 - Wallet transfer history (account ledger), regenerated from the
   specs `3.4.1`: `GET /v2/wallet/{address}/transfers` as
   `WalletDataApi.get_wallet_transfers` and `ReyaTradingClient.get_transfers`,
