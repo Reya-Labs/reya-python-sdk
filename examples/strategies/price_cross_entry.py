@@ -6,7 +6,8 @@ through 2,492, with a stop-loss at 2,560". It:
 1. watches the mark on the WebSocket Info API (see mark_feed.py);
 2. fires when the previous fresh mark was above the level and the new one is at or
    below it (``--direction down``; ``up`` is the reverse). A crossing during a feed gap
-   is reported, never fired late;
+   or a reconnect is reported, never fired late, and a crossing mark already past the
+   stop does not enter;
 3. sends one IOC limit order at the mark plus or minus ``--bound-bps``, sized from
    ``--notional`` at that limit price and rounded down to the market's quantity step;
 4. once the fill shows in the position, arms a STOP_LOSS that protects the whole
@@ -70,6 +71,11 @@ def new_client_order_id() -> int:
     return secrets.randbits(63) | 1
 
 
+def stop_not_protective(is_buy: bool, stop_px: Decimal, price: Decimal) -> bool:
+    """True when a stop at ``stop_px`` would not sit on the losing side of ``price``."""
+    return stop_px >= price if is_buy else stop_px <= price
+
+
 def past_level(price: Decimal, level: Decimal, direction: str) -> bool:
     return price <= level if direction == "down" else price >= level
 
@@ -95,6 +101,10 @@ async def wait_for_crossing(feed: MarkFeed, level: Decimal, direction: str) -> M
             logger.warning("stale mark (%d ms old) ignored", mark.age_ms(now))
             previous = None
             continue
+        if previous is not None and mark.connection != previous.connection:
+            # The feed reconnected: marks were missed, so never compare across the gap.
+            logger.info("feed reconnected; starting the comparison again from mark %s", mark.price)
+            previous = None
         if previous is None:
             if past_level(mark.price, level, direction):
                 # Already past the level at start, or the level was crossed during a gap.
@@ -150,6 +160,39 @@ async def send_entry(client: ReyaTradingClient, params: LimitOrderParameters):
         return None
 
 
+async def arm_stop_after_fill(
+    client: ReyaTradingClient, symbol: str, expected_side: Side, before_seq: int, stop: TriggerOrderParameters
+) -> int:
+    """Arm the stop once the fill shows in the position. Any failure says POSITION UNPROTECTED."""
+    for _ in range(POSITION_WAIT_READS):
+        try:
+            position = await read_position(client, symbol)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning("position read failed; reading again", exc_info=True)
+            position = None
+        if position and position.side == expected_side and position.last_trade_sequence_number > before_seq:
+            break
+        await asyncio.sleep(POSITION_WAIT_S)
+    else:
+        logger.error("the fill is not in the position yet: POSITION UNPROTECTED, arm the stop by hand")
+        return 1
+
+    try:
+        armed = await client.create_trigger_order(stop)
+    except ApiException as exc:
+        logger.error("stop not armed (%s): POSITION UNPROTECTED. %s", error_code(exc), exc.body)
+        return 1
+    except Exception:  # pylint: disable=broad-exception-caught
+        # A timeout or dropped connection: the stop may or may not be on the book. Never resend blindly.
+        logger.exception(
+            "stop outcome unknown: POSITION MAY BE UNPROTECTED; check openOrders for clientOrderId %s",
+            stop.client_order_id,
+        )
+        return 1
+    logger.info("stop %s %s: trigger %s, limit %s", armed.order_id, armed.status, stop.trigger_px, stop.limit_px)
+    return 0
+
+
 async def main(args: argparse.Namespace) -> int:
     level = Decimal(args.level)
     stop_px = Decimal(args.stop_px)
@@ -159,7 +202,7 @@ async def main(args: argparse.Namespace) -> int:
     if not 10 <= args.bound_bps <= 100:
         logger.error("--bound-bps must be 10-100")
         return 2
-    if (is_buy and stop_px >= level) or (not is_buy and stop_px <= level):
+    if stop_not_protective(is_buy, stop_px, level):
         logger.error("the stop must be below the level for a buy, above it for a sell")
         return 2
 
@@ -180,6 +223,11 @@ async def main(args: argparse.Namespace) -> int:
         finally:
             feed.stop()
             feed_task.cancel()
+
+        # The crossing mark can overshoot the level, past the stop: the stop would fire at once.
+        if stop_not_protective(is_buy, stop_px, mark.price):
+            logger.error("mark %s is already beyond the stop %s; not entering", mark.price, stop_px)
+            return 1
 
         # Price the IOC from the mark at firing, not from the level, and round inward to the tick.
         limit = round_down(mark.price * (1 + bound), tick) if is_buy else round_up(mark.price * (1 - bound), tick)
@@ -241,23 +289,7 @@ async def main(args: argparse.Namespace) -> int:
             return 0
 
         # Arm the stop only once the fill shows in the position.
-        expected_side = Side.B if is_buy else Side.A
-        for _ in range(POSITION_WAIT_READS):
-            position = await read_position(client, args.symbol)
-            if position and position.side == expected_side and position.last_trade_sequence_number > before_seq:
-                break
-            await asyncio.sleep(POSITION_WAIT_S)
-        else:
-            logger.error("the fill is not in the position yet: POSITION UNPROTECTED, arm the stop by hand")
-            return 1
-
-        try:
-            armed = await client.create_trigger_order(stop)
-        except ApiException as exc:
-            logger.error("stop not armed (%s): POSITION UNPROTECTED. %s", error_code(exc), exc.body)
-            return 1
-        logger.info("stop %s %s: trigger %s, limit %s", armed.order_id, armed.status, wire(trigger), wire(stop_limit))
-        return 0
+        return await arm_stop_after_fill(client, args.symbol, Side.B if is_buy else Side.A, before_seq, stop)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

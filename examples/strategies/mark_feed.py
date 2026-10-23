@@ -21,7 +21,7 @@ import logging
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from sdk.async_api.error_message_payload import ErrorMessagePayload
@@ -43,10 +43,15 @@ def now_ms() -> int:
 
 @dataclass(frozen=True)
 class Mark:
-    """One mark price and the venue time it was computed at (milliseconds)."""
+    """One mark price, the venue time it was computed at (milliseconds) and the connection it came on.
+
+    ``connection`` changes whenever the feed closes, so a consumer can tell two marks apart by
+    a gap even when both are still fresh.
+    """
 
     price: Decimal
     at_ms: int
+    connection: int = 0
 
     def age_ms(self, now: int | None = None) -> int:
         return (now if now is not None else now_ms()) - self.at_ms
@@ -67,15 +72,25 @@ class MarkFeed:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop = threading.Event()
         self._last_at_ms = 0
+        self._connection = 0
 
-    # Runs on the event loop thread.
+    # Runs on the event loop thread, in the order the SDK thread scheduled them.
     def _push(self, mark: Mark) -> None:
         if mark.at_ms <= self._last_at_ms:
             return  # the summary repeats a mark between recalculations; keep new ones only
         self._last_at_ms = mark.at_ms
         if self._queue.full():
             self._queue.get_nowait()
-        self._queue.put_nowait(mark)
+        self._queue.put_nowait(replace(mark, connection=self._connection))
+
+    def _new_connection(self) -> None:
+        # Marks already queued keep the old number; every mark after the gap gets the new one.
+        self._connection += 1
+
+    def _schedule(self, fn, *args) -> None:
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(fn, *args)
 
     # The SDK calls these on its own thread.
     def _on_open(self, ws: ReyaSocket) -> None:
@@ -88,17 +103,16 @@ class MarkFeed:
             if summary.mark_price is None:
                 return
             at_ms = summary.prices_updated_at or summary.updated_at
-            mark = Mark(Decimal(summary.mark_price), int(at_ms))
-            loop = self._loop
-            if loop is not None and not loop.is_closed():
-                loop.call_soon_threadsafe(self._push, mark)
+            self._schedule(self._push, Mark(Decimal(summary.mark_price), int(at_ms)))
         elif isinstance(message, ErrorMessagePayload):
             logger.warning("feed error: %s", message.message)
 
     def _on_close(self, _ws: ReyaSocket, code: int | None, reason: str | None) -> None:
         # 1012 (restart or max connection age) and 1013 (slow consumer): the SDK
-        # reconnects and replays the subscription by itself.
+        # reconnects and replays the subscription by itself. Marks were missed meanwhile,
+        # so the next mark starts a new connection.
         logger.info("connection closed: %s %s", code, reason)
+        self._schedule(self._new_connection)
 
     async def run(self) -> None:
         """Keep the feed connected until ``stop()``."""
@@ -115,6 +129,7 @@ class MarkFeed:
             if self._stop.is_set():
                 break
             logger.warning("feed stopped reconnecting; starting it again in %s s", RESTART_DELAY_S)
+            self._new_connection()
             await asyncio.sleep(RESTART_DELAY_S)
 
     def stop(self) -> None:

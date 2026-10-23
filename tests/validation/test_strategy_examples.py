@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import asyncio
+import logging
 from decimal import Decimal
 from importlib import import_module
 
@@ -65,6 +68,14 @@ def test_ioc_limits_round_toward_the_mark():
     assert ENTRY.round_up(mark * (1 - bound), tick) == Decimal("2485.51")  # sell: never below the bound
 
 
+def test_a_stop_must_sit_on_the_losing_side_of_the_price():
+    # Checked against the level at start and against the crossing mark, which can overshoot it.
+    assert ENTRY.stop_not_protective(True, Decimal("2480"), Decimal("2479.5"))  # buy: mark already below the stop
+    assert not ENTRY.stop_not_protective(True, Decimal("2480"), Decimal("2491"))
+    assert ENTRY.stop_not_protective(False, Decimal("2560"), Decimal("2561"))  # sell: mark already above the stop
+    assert not ENTRY.stop_not_protective(False, Decimal("2560"), Decimal("2491"))
+
+
 def test_client_order_ids_are_non_zero_uint64():
     for _ in range(100):
         value = ENTRY.new_client_order_id()
@@ -95,6 +106,16 @@ async def test_a_level_already_passed_waits_for_the_re_arm_band(monkeypatch):
 
 async def test_a_crossing_during_a_stale_gap_never_fires_late(monkeypatch):
     assert await _first_crossing(monkeypatch, _marks(("2495", 0), ("2491", 20_000), ("2490", 0))) is None
+
+
+async def test_a_crossing_across_a_reconnect_never_fires_late(monkeypatch):
+    # Both marks are fresh, but the feed reconnected between them: the cross may have happened in the gap.
+    above, below = _marks(("2495", 0), ("2491", 0))
+    assert await _first_crossing(monkeypatch, [above, FEED.Mark(below.price, below.at_ms, connection=1)]) is None
+    # After the reconnect the run re-arms past the band as usual, then fires on a real cross.
+    after = [FEED.Mark(m.price, m.at_ms, connection=1) for m in _marks(("2491", 0), ("2505", 0), ("2491", 0))]
+    hit = await _first_crossing(monkeypatch, [above, *after])
+    assert hit is not None and hit.price == Decimal("2491") and hit.connection == 1
 
 
 def test_mark_freshness():
@@ -142,6 +163,82 @@ async def test_the_feed_keeps_new_marks_and_drops_the_oldest_when_full(monkeypat
     first, second = await feed.next_mark(timeout=0.1), await feed.next_mark(timeout=0.1)
     assert [first.price, second.price] == [Decimal("2492"), Decimal("2493")]
     assert await feed.next_mark(timeout=0.01) is None
+
+
+async def test_a_close_starts_a_new_connection_for_later_marks():
+    feed = FEED.MarkFeed("ETHRUSDPERP", config=WebSocketConfig(url="wss://example.invalid/"))
+    feed._loop = _ImmediateLoop()  # pylint: disable=protected-access
+    feed._on_message(None, _summary_update("2491", NOW_MS + 1))  # pylint: disable=protected-access
+    feed._on_close(None, 1012, "restart")  # pylint: disable=protected-access
+    feed._on_message(None, _summary_update("2492", NOW_MS + 2))  # pylint: disable=protected-access
+    first, second = await feed.next_mark(timeout=0.1), await feed.next_mark(timeout=0.1)
+    assert (first.connection, second.connection) == (0, 1)
+
+
+class _FakeTradingClient:
+    """Answers position reads from a script and records the stop it was asked to arm."""
+
+    def __init__(self, reads: list, stop_result, failed_reads: int = 0) -> None:
+        self.config = SimpleNamespace(account_id=7)
+        self._reads = list(reads)
+        self._failed_reads = failed_reads
+        self._stop_result = stop_result
+        self.stops: list = []
+
+    async def get_positions(self):
+        if self._failed_reads:
+            self._failed_reads -= 1
+            raise TimeoutError("read timed out")
+        return self._reads.pop(0) if self._reads else []
+
+    async def create_trigger_order(self, params):
+        self.stops.append(params)
+        if isinstance(self._stop_result, Exception):
+            raise self._stop_result
+        return self._stop_result
+
+
+def _position(side, seq: int):
+    return SimpleNamespace(symbol="ETHRUSDPERP", account_id=7, side=side, last_trade_sequence_number=seq)
+
+
+def _stop_params() -> TriggerOrderParameters:
+    return TriggerOrderParameters(
+        symbol="ETHRUSDPERP",
+        is_buy=True,
+        trigger_px="2560",
+        trigger_type=OrderType.STOP_LOSS,
+        limit_px="2585.6",
+        time_in_force=TimeInForce.IOC,
+        client_order_id=12345,
+    )
+
+
+async def _arm(monkeypatch, client) -> int:
+    monkeypatch.setattr(ENTRY, "POSITION_WAIT_S", 0)
+    return int(await ENTRY.arm_stop_after_fill(client, "ETHRUSDPERP", ENTRY.Side.A, 10, _stop_params()))
+
+
+async def test_the_stop_arms_after_a_failed_position_read(monkeypatch):
+    armed = SimpleNamespace(order_id="1", status="OPEN")
+    client = _FakeTradingClient([[_position(ENTRY.Side.A, 11)]], armed, failed_reads=1)
+    assert await _arm(monkeypatch, client) == 0
+    assert len(client.stops) == 1
+
+
+async def test_a_fill_that_never_shows_reports_unprotected(monkeypatch, caplog):
+    client = _FakeTradingClient([[_position(ENTRY.Side.A, 10)]] * ENTRY.POSITION_WAIT_READS, None)
+    with caplog.at_level(logging.ERROR, logger="price_cross_entry"):
+        assert await _arm(monkeypatch, client) == 1
+    assert not client.stops and "POSITION UNPROTECTED" in caplog.text
+
+
+async def test_a_stop_request_with_an_unclear_outcome_is_reported_not_resent(monkeypatch, caplog):
+    client = _FakeTradingClient([[_position(ENTRY.Side.A, 11)]], TimeoutError("connection dropped"))
+    with caplog.at_level(logging.ERROR, logger="price_cross_entry"):
+        assert await _arm(monkeypatch, client) == 1
+    assert len(client.stops) == 1
+    assert "POSITION MAY BE UNPROTECTED" in caplog.text and "12345" in caplog.text
 
 
 def test_entry_and_stop_payloads_build_with_the_sdk():

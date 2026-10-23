@@ -39,7 +39,8 @@ python -m examples.strategies.price_cross_entry --symbol ETHRUSDPERP --direction
 
 1. **Waits for a crossing.** It fires when the previous fresh mark was on the other side of `--level` and
    the new one is at or past it. Touching the level counts. If the level is already passed at start, it
-   waits until the mark moves 0.5% back first.
+   waits until the mark moves 0.5% back first. If the crossing mark is already past `--stop-px`, it doesn't
+   enter.
 2. **Sends one IOC limit order** at the mark plus or minus `--bound-bps` (default 25), rounded toward the
    mark to the market's tick. The size is `--notional` at that limit price, rounded down to the market's
    quantity step. It says the real size first: $30 of SOL at 108.15 becomes 0.27 SOL (about $29.20), and
@@ -51,7 +52,8 @@ Without `--live` it prints both orders and sends nothing.
 
 It never resends an entry whose outcome is unclear. A timeout, a dropped connection or
 `ORDER_OUTCOME_UNKNOWN_ERROR` stops it with the `clientOrderId` to reconcile. If the stop can't be armed,
-it says **POSITION UNPROTECTED** so you can arm one by hand.
+for any reason, it says **POSITION UNPROTECTED** so you can arm one by hand. If the stop request's own
+outcome is unclear, it gives the stop's `clientOrderId` to check in `openOrders` instead of sending it again.
 
 Configure it like the other examples, from `.env`:
 - `PERP_ACCOUNT_ID_1`: your account ID;
