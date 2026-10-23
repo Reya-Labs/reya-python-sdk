@@ -57,7 +57,7 @@ Configure it like the other examples, from `.env`:
 - `PERP_ACCOUNT_ID_1`: your account ID;
 - `PERP_WALLET_ADDRESS_1`: your owner wallet;
 - `PERP_PRIVATE_KEY_1`: the signer you approved on the API Keys page;
-- the environment values from `.env.example`.
+- the environment values from `.env.example`, plus `REYA_DEX_ID=1` on devnet1 (the exchange ID devnet1 registers).
 
 Use a dedicated account, so the strategy's position and its stop are its own.
 
