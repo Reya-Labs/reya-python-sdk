@@ -296,6 +296,10 @@ The repository includes example scripts demonstrating how to use the SDK:
     - `examples/rpc/bridge_in_and_deposit.py` - Bridge in and deposit funds
     - `examples/rpc/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
 
+- **Strategy Examples** (see [`examples/strategies/README.md`](examples/strategies/README.md))
+    - `examples/strategies/mark_feed.py` - A reconnecting, staleness-aware mark-price feed
+    - `examples/strategies/price_cross_entry.py` - Enter once when the mark crosses a level, then arm a whole-position stop-loss
+
 ### Running Examples
 
 To run the examples, use Python from the project root with the Poetry environment activated:
