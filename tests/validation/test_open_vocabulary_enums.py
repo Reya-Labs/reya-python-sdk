@@ -39,6 +39,7 @@ from sdk.async_api.transfer_type import TransferType as WsTransferType
 from sdk.async_exec_api.order_status import OrderStatus as WsExecOrderStatus
 from sdk.async_exec_api.request_error_code import RequestErrorCode as WsExecRequestErrorCode
 from sdk.async_exec_api.ws_exec_error_code import WsExecErrorCode
+from sdk.open_api.models.account import Account
 from sdk.open_api.models.account_type import AccountType
 from sdk.open_api.models.cancel_reason import CancelReason
 from sdk.open_api.models.execution_type import ExecutionType
@@ -134,3 +135,11 @@ def test_a_market_definition_with_a_newer_status_still_parses() -> None:
     )
     assert definition is not None
     assert definition.status is MarketStatus.UNKNOWN
+
+
+def test_the_agent_account_parses_as_agentperp() -> None:
+    """The Agent account (specs 3.7.3, AGT-88). An SDK generated before 3.7.3
+    reads the same row as ``UNKNOWN`` instead of failing the account list."""
+    account = Account.from_dict({"accountId": 136339, "name": "Agent account", "type": "AGENTPERP"})
+    assert account is not None
+    assert account.type is AccountType.AGENTPERP
