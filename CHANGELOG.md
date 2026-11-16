@@ -14,12 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`ceil(10**54 / (imMultiplierE18**2 * leverage**2))`, integers only; `0` at
   `maxLeverage`, the reset), signs EIP-712 `SetAccountMarketCustomRisk` over the
   orders-gateway domain, and returns `UpdateLeverageResponse` with the mined
-  `txHash`. The conversion lives in `sdk.reya_rest_api.auth.custom_leverage` and
-  the signer is `SignatureGenerator.sign_set_account_market_custom_risk`.
+  `txHash`. The struct carries no nonce: a signed update is valid until its
+  deadline (at most 300 s ahead, enforced on chain), and the API accepts each
+  signed payload once, rejecting a resubmission with
+  `LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR`. The conversion lives in
+  `sdk.reya_rest_api.auth.custom_leverage` and the signer is
+  `SignatureGenerator.sign_set_account_market_custom_risk`.
   `ReyaTradingClient.get_leverages()` reads `GET /v2/wallet/{address}/leverages`
   as `WalletLeverage` rows. `MarketDefinition` gains the exact, required
   `imMultiplier`; `PositionRisk` gains `leverage` and `initialMarginRequirement`;
-  `RequestErrorCode` gains `LEVERAGE_UPDATE_IN_PROGRESS_ERROR`,
+  `RequestErrorCode` gains `LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR`,
+  `LEVERAGE_UPDATE_IN_PROGRESS_ERROR`,
   `LEVERAGE_NOT_ALLOWED_ERROR` and `UPDATE_LEVERAGE_OTHER_ERROR`. The jump from
   specs `3.7.3` also regenerates the intervening releases into the generated
   packages only (no new high-level client methods or socket resources): the

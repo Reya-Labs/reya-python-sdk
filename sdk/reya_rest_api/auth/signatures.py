@@ -66,15 +66,16 @@ _ORDER_DETAILS_TYPE: list[dict[str, str]] = [
 # EIP-712 `SetAccountMarketCustomRisk` (POST /v2/updateLeverage). A flat struct
 # like the gateway's `ManagePermissionBySig`: the chain id is signed in the
 # struct, the domain is the shared gateway domain, and the SD1x18 `customRisk` is
-# signed as its underlying int64. Field order is part of the typehash; the golden
-# vector in tests/parity/test_custom_leverage_golden.py pins the struct hash.
+# signed as its underlying int64. Like that struct it carries no nonce: the
+# signed `deadline` is the only replay bound, enforced on chain
+# (reya-network #770). Field order is part of the typehash; the golden vector in
+# tests/parity/test_custom_leverage_golden.py pins the struct hash.
 SET_ACCOUNT_MARKET_CUSTOM_RISK_PRIMARY_TYPE = "SetAccountMarketCustomRisk"
 _SET_ACCOUNT_MARKET_CUSTOM_RISK_TYPE: list[dict[str, str]] = [
     {"name": "verifyingChainId", "type": "uint256"},
     {"name": "accountId", "type": "uint128"},
     {"name": "marketId", "type": "uint128"},
     {"name": "customRisk", "type": "int64"},
-    {"name": "nonce", "type": "uint256"},
     {"name": "deadline", "type": "uint256"},
 ]
 
@@ -84,7 +85,6 @@ def set_account_market_custom_risk_message(
     account_id: int,
     market_id: int,
     custom_risk: int,
-    nonce: int,
     deadline: int,
 ) -> dict[str, int]:
     """The `SetAccountMarketCustomRisk` message a leverage update signs.
@@ -98,7 +98,6 @@ def set_account_market_custom_risk_message(
         "accountId": account_id,
         "marketId": market_id,
         "customRisk": custom_risk,
-        "nonce": nonce,
         "deadline": deadline,
     }
 
@@ -334,13 +333,13 @@ class SignatureGenerator:
         account_id: int,
         market_id: int,
         custom_risk: int,
-        nonce: int,
         deadline: int,
     ) -> str:
         """Sign a `SetAccountMarketCustomRisk` envelope (POST /v2/updateLeverage).
 
-        Same gateway domain as orders, chain id in the struct. `custom_risk` is
-        the SD1x18 value in [0, 1e18] (0 resets); derive it from a leverage with
+        Same gateway domain as orders, chain id in the struct, no nonce: the
+        signature stays valid until `deadline`. `custom_risk` is the SD1x18 value
+        in [0, 1e18] (0 resets); derive it from a leverage with
         `custom_risk_for_leverage_setting`, the rule the server verifies against.
         """
         if not 0 <= custom_risk <= MAX_CUSTOM_RISK_E18:
@@ -352,7 +351,6 @@ class SignatureGenerator:
             account_id=account_id,
             market_id=market_id,
             custom_risk=custom_risk,
-            nonce=nonce,
             deadline=deadline,
         )
 

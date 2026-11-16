@@ -3,7 +3,7 @@
 
 Offline: the leverage -> customRisk conversion (the integer rule the server
 verifies signatures against), the SetAccountMarketCustomRisk sign/recover round
-trip, the client's guards ahead of the nonce, and the client methods end to end
+trip, the client's guards ahead of signing, and the client methods end to end
 with only the HTTP transport mocked, so the request body asserted here is the
 exact JSON the API receives.
 """
@@ -57,7 +57,6 @@ ACCOUNT_ID = 4021
 SYMBOL = "ETHRUSDPERP"
 MARKET_ID = 3
 MAX_LEVERAGE = 25
-PINNED_NONCE = 1_700_000_000_000
 PINNED_DEADLINE = OFFLINE_CLOCK_S + 120
 TX_HASH = "0x" + "ab" * 32
 
@@ -87,9 +86,9 @@ def market(**overrides: Any) -> MarketDefinition:
     return definition
 
 
-def recover(custom_risk: int, nonce: int, deadline: int, signature: str, account_id: int = ACCOUNT_ID) -> str:
+def recover(custom_risk: int, deadline: int, signature: str, account_id: int = ACCOUNT_ID) -> str:
     """Recover the signer the way the API does: over the value IT computes."""
-    message = set_account_market_custom_risk_message(CHAIN_ID, account_id, MARKET_ID, custom_risk, nonce, deadline)
+    message = set_account_market_custom_risk_message(CHAIN_ID, account_id, MARKET_ID, custom_risk, deadline)
     return str(Account.recover_message(encode_typed_data(DOMAIN, TYPES, message), signature=signature))
 
 
@@ -213,20 +212,19 @@ def test_signature_recovers_to_the_signer_over_the_signed_value(client: ReyaTrad
         account_id=ACCOUNT_ID,
         market_id=MARKET_ID,
         custom_risk=custom_risk,
-        nonce=PINNED_NONCE,
         deadline=PINNED_DEADLINE,
     )
-    assert recover(custom_risk, PINNED_NONCE, PINNED_DEADLINE, signature) == SIGNER_ADDRESS
+    assert recover(custom_risk, PINNED_DEADLINE, signature) == SIGNER_ADDRESS
     # Any other value, e.g. a client that rounded down, recovers someone else.
-    assert recover(custom_risk - 1, PINNED_NONCE, PINNED_DEADLINE, signature) != SIGNER_ADDRESS
-    assert recover(custom_risk, PINNED_NONCE + 1, PINNED_DEADLINE, signature) != SIGNER_ADDRESS
+    assert recover(custom_risk - 1, PINNED_DEADLINE, signature) != SIGNER_ADDRESS
+    assert recover(custom_risk, PINNED_DEADLINE + 1, signature) != SIGNER_ADDRESS
 
 
 @pytest.mark.parametrize("custom_risk", [-1, MAX_CUSTOM_RISK_E18 + 1])
 def test_signer_refuses_a_value_core_rejects(client: ReyaTradingClient, custom_risk: int) -> None:
     with pytest.raises(ValueError, match="custom_risk"):
         client.signature_generator.sign_set_account_market_custom_risk(
-            account_id=ACCOUNT_ID, market_id=MARKET_ID, custom_risk=custom_risk, nonce=1, deadline=PINNED_DEADLINE
+            account_id=ACCOUNT_ID, market_id=MARKET_ID, custom_risk=custom_risk, deadline=PINNED_DEADLINE
         )
 
 
@@ -236,34 +234,42 @@ def test_signer_refuses_a_value_core_rejects(client: ReyaTradingClient, custom_r
 
 
 def test_payload_signs_the_server_computed_value(client: ReyaTradingClient) -> None:
-    payload = client.build_update_leverage_payload(market(), 10, nonce=PINNED_NONCE, deadline=PINNED_DEADLINE)
+    payload = client.build_update_leverage_payload(market(), 10, deadline=PINNED_DEADLINE)
     assert payload == {
         "accountId": ACCOUNT_ID,
         "symbol": SYMBOL,
         "leverage": 10,
-        "nonce": str(PINNED_NONCE),
         "deadline": PINNED_DEADLINE,
         "signature": payload["signature"],
         "signerWallet": SIGNER_ADDRESS,
     }
-    assert recover(5_917_159_763_313_610, PINNED_NONCE, PINNED_DEADLINE, payload["signature"]) == SIGNER_ADDRESS
+    assert recover(5_917_159_763_313_610, PINNED_DEADLINE, payload["signature"]) == SIGNER_ADDRESS
 
 
 def test_payload_at_max_leverage_signs_the_reset(client: ReyaTradingClient) -> None:
-    payload = client.build_update_leverage_payload(market(), MAX_LEVERAGE, nonce=PINNED_NONCE, deadline=PINNED_DEADLINE)
+    payload = client.build_update_leverage_payload(market(), MAX_LEVERAGE, deadline=PINNED_DEADLINE)
     assert payload["leverage"] == MAX_LEVERAGE
-    assert recover(0, PINNED_NONCE, PINNED_DEADLINE, payload["signature"]) == SIGNER_ADDRESS
+    assert recover(0, PINNED_DEADLINE, payload["signature"]) == SIGNER_ADDRESS
 
 
-def test_payload_defaults_deadline_nonce_and_account(client: ReyaTradingClient) -> None:
+def test_payload_defaults_deadline_and_account_without_touching_the_order_nonce(client: ReyaTradingClient) -> None:
     before = _last_nonce(client)
     payload = client.build_update_leverage_payload(market(), 5, account_id=777)
     assert payload["accountId"] == 777
     assert payload["deadline"] == OFFLINE_CLOCK_S + DEFAULT_DEADLINE_S
-    nonce = int(payload["nonce"])
-    assert nonce > before and nonce == _last_nonce(client)
+    assert "nonce" not in payload
+    assert _last_nonce(client) == before
     custom_risk = custom_risk_from_leverage(5, M_1_3)
-    assert recover(custom_risk, nonce, payload["deadline"], payload["signature"], account_id=777) == SIGNER_ADDRESS
+    assert recover(custom_risk, payload["deadline"], payload["signature"], account_id=777) == SIGNER_ADDRESS
+
+
+def test_identical_inputs_sign_the_identical_payload(client: ReyaTradingClient) -> None:
+    # No nonce: the API accepts a signed payload once, so repeating an update
+    # needs a different deadline to be a different payload.
+    first = client.build_update_leverage_payload(market(), 10, deadline=PINNED_DEADLINE)
+    assert client.build_update_leverage_payload(market(), 10, deadline=PINNED_DEADLINE) == first
+    later = client.build_update_leverage_payload(market(), 10, deadline=PINNED_DEADLINE + 1)
+    assert later["signature"] != first["signature"]
 
 
 @pytest.mark.parametrize(
@@ -275,20 +281,17 @@ def test_payload_defaults_deadline_nonce_and_account(client: ReyaTradingClient) 
         ({"deadline": OFFLINE_CLOCK_S}, "passed"),
         ({"deadline": OFFLINE_CLOCK_S + UPDATE_LEVERAGE_MAX_DEADLINE_S + 1}, "300 seconds"),
         ({"deadline": float(OFFLINE_CLOCK_S + 60)}, "deadline"),
-        ({"nonce": -1}, "nonce"),
-        ({"nonce": 1 << 256}, "nonce"),
-        ({"nonce": "1"}, "nonce"),
         ({"market": market(imMultiplier="1.3e0")}, "imMultiplier"),
     ],
 )
-def test_payload_rejections_happen_before_a_nonce_is_claimed(
+def test_payload_rejections_happen_before_signing(
     client: ReyaTradingClient, kwargs: dict[str, Any], match: str
 ) -> None:
     arguments: dict[str, Any] = {"market": market(), "leverage": 10, **kwargs}
-    before = _last_nonce(client)
-    with pytest.raises(ValueError, match=match):
-        client.build_update_leverage_payload(**arguments)
-    assert _last_nonce(client) == before
+    with patch.object(client.signature_generator, "sign_set_account_market_custom_risk") as sign:
+        with pytest.raises(ValueError, match=match):
+            client.build_update_leverage_payload(**arguments)
+    sign.assert_not_called()
 
 
 def test_payload_requires_an_account(client: ReyaTradingClient) -> None:
@@ -350,7 +353,7 @@ async def test_update_leverage_posts_exactly_what_the_api_expects(client: ReyaTr
         }
     )
     with patch.object(client._api_client.rest_client, "request", sender):
-        response = await client.update_leverage(SYMBOL, 10, nonce=PINNED_NONCE, deadline=PINNED_DEADLINE)
+        response = await client.update_leverage(SYMBOL, 10, deadline=PINNED_DEADLINE)
 
     assert isinstance(response, UpdateLeverageResponse)
     assert (response.account_id, response.symbol, response.leverage, response.tx_hash) == (
@@ -367,7 +370,6 @@ async def test_update_leverage_posts_exactly_what_the_api_expects(client: ReyaTr
         "accountId": ACCOUNT_ID,
         "symbol": SYMBOL,
         "leverage": 10,
-        "nonce": str(PINNED_NONCE),
         "deadline": PINNED_DEADLINE,
         "signature": body["signature"],
         "signerWallet": SIGNER_ADDRESS,
@@ -375,7 +377,7 @@ async def test_update_leverage_posts_exactly_what_the_api_expects(client: ReyaTr
     # What the API does with the body: derive customRisk from its own market
     # definition (imMultiplier 1.3, maxLeverage 25) and recover the signer.
     server_custom_risk = custom_risk_for_leverage_setting(body["leverage"], M_1_3, MAX_LEVERAGE)
-    assert recover(server_custom_risk, int(body["nonce"]), body["deadline"], body["signature"]) == SIGNER_ADDRESS
+    assert recover(server_custom_risk, body["deadline"], body["signature"]) == SIGNER_ADDRESS
 
 
 async def test_update_leverage_refuses_a_symbol_that_is_not_a_perp_market(client: ReyaTradingClient) -> None:
@@ -389,6 +391,7 @@ async def test_update_leverage_refuses_a_symbol_that_is_not_a_perp_market(client
 @pytest.mark.parametrize(
     "code",
     [
+        "LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR",
         "LEVERAGE_UPDATE_IN_PROGRESS_ERROR",
         "LEVERAGE_NOT_ALLOWED_ERROR",
         "UPDATE_LEVERAGE_OTHER_ERROR",
@@ -405,7 +408,7 @@ async def test_update_leverage_rejections_surface_as_typed_request_errors(client
     )
     with patch.object(client._api_client.rest_client, "request", sender):
         with pytest.raises(BadRequestException) as raised:
-            await client.update_leverage(SYMBOL, 10, nonce=PINNED_NONCE, deadline=PINNED_DEADLINE)
+            await client.update_leverage(SYMBOL, 10, deadline=PINNED_DEADLINE)
     assert raised.value.data is not None
     assert raised.value.data.error is RequestErrorCode(code)
 
@@ -436,7 +439,12 @@ async def test_get_leverages_reads_the_wallet_settings(client: ReyaTradingClient
 
 
 def test_request_error_codes_carry_the_leverage_codes() -> None:
-    codes = {"LEVERAGE_UPDATE_IN_PROGRESS_ERROR", "LEVERAGE_NOT_ALLOWED_ERROR", "UPDATE_LEVERAGE_OTHER_ERROR"}
+    codes = {
+        "LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR",
+        "LEVERAGE_UPDATE_IN_PROGRESS_ERROR",
+        "LEVERAGE_NOT_ALLOWED_ERROR",
+        "UPDATE_LEVERAGE_OTHER_ERROR",
+    }
     assert codes <= {code.value for code in RequestErrorCode}
     assert codes <= {code.value for code in WsExecRequestErrorCode}
 

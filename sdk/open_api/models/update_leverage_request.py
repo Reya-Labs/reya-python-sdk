@@ -30,25 +30,17 @@ class UpdateLeverageRequest(BaseModel):
     account_id: Annotated[int, Field(strict=True, ge=0)] = Field(alias="accountId")
     symbol: Annotated[str, Field(strict=True)] = Field(description="Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)")
     leverage: Annotated[int, Field(strict=True, ge=1)] = Field(description="Whole-number leverage from 1 to the market's `maxLeverage`. `maxLeverage` resets the account to the market's default. Other values return INPUT_VALIDATION_ERROR.")
-    nonce: Annotated[str, Field(strict=True)] = Field(description="Leverage-update nonce for the signer as a decimal string (uint256), separate from order nonces. It must be unused; each nonce can be used once. Signed into SetAccountMarketCustomRisk.")
     deadline: Annotated[int, Field(strict=True, ge=0)]
-    signature: StrictStr = Field(description="EIP-712 signature over `SetAccountMarketCustomRisk(uint256 verifyingChainId,uint128 accountId,uint128 marketId,int64 customRisk,uint256 nonce,uint256 deadline)`, with the value of `customRisk` computed from `leverage` as described in POST /v2/updateLeverage.")
+    signature: StrictStr = Field(description="EIP-712 signature over `SetAccountMarketCustomRisk(uint256 verifyingChainId,uint128 accountId,uint128 marketId,int64 customRisk,uint256 deadline)`, with the value of `customRisk` computed from `leverage` as described in POST /v2/updateLeverage.")
     signer_wallet: Annotated[str, Field(strict=True)] = Field(alias="signerWallet")
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["accountId", "symbol", "leverage", "nonce", "deadline", "signature", "signerWallet"]
+    __properties: ClassVar[List[str]] = ["accountId", "symbol", "leverage", "deadline", "signature", "signerWallet"]
 
     @field_validator('symbol')
     def symbol_validate_regular_expression(cls, value):
         """Validates the regular expression"""
         if not re.match(r"^[A-Za-z0-9]+$", value):
             raise ValueError(r"must validate the regular expression /^[A-Za-z0-9]+$/")
-        return value
-
-    @field_validator('nonce')
-    def nonce_validate_regular_expression(cls, value):
-        """Validates the regular expression"""
-        if not re.match(r"^\d+$", value):
-            raise ValueError(r"must validate the regular expression /^\d+$/")
         return value
 
     @field_validator('signer_wallet')
@@ -119,7 +111,6 @@ class UpdateLeverageRequest(BaseModel):
             "accountId": obj.get("accountId"),
             "symbol": obj.get("symbol"),
             "leverage": obj.get("leverage"),
-            "nonce": obj.get("nonce"),
             "deadline": obj.get("deadline"),
             "signature": obj.get("signature"),
             "signerWallet": obj.get("signerWallet")

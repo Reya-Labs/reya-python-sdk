@@ -1,9 +1,10 @@
 """Offline parity test: the SDK's EIP-712 ``SetAccountMarketCustomRisk`` struct hash
 (POST /v2/updateLeverage) must match the canonical golden vector byte-for-byte.
 
-The golden value is the one the off-chain signer, verifier and relay pin
-(reya-off-chain-monorepo ``packages/common/tests/transactions/custom-risk.test.ts``,
-transcribed from the orders gateway's ``OrderHashing.t.sol``). It is re-derived
+The golden value is the orders gateway's own
+(reya-network #770, ``orders-gateway/test/libraries/OrderHashing.t.sol``
+``test_hashSetAccountMarketCustomRisk_GoldenVector``): the struct carries no
+nonce, so the signed deadline is its only replay bound. It is re-derived
 here twice from the SDK's own ``_SET_ACCOUNT_MARKET_CUSTOM_RISK_TYPE`` (the
 definition ``sign_set_account_market_custom_risk`` signs with): once through an
 independent ``abi.encode`` of the struct and once through eth_account's EIP-712
@@ -27,17 +28,16 @@ from sdk.reya_rest_api.config import MAINNET_ORDERS_GATEWAY, TradingConfig
 
 pytestmark = pytest.mark.offline
 
-GOLDEN_STRUCT_HASH = "0xd5f970f13950f34ca3cb1df7e4c760e7f4ec3bd5f11e41ed58f3ef423fdc2620"
+GOLDEN_STRUCT_HASH = "0xbcfd6efb4a78f57181770361b2b8af5e410f5760fd54a2d759ed233b1e1e833c"
 TYPE_STRING = (
     "SetAccountMarketCustomRisk(uint256 verifyingChainId,uint128 accountId,uint128 marketId,"
-    "int64 customRisk,uint256 nonce,uint256 deadline)"
+    "int64 customRisk,uint256 deadline)"
 )
 
 GOLDEN_CHAIN_ID = 1729
 GOLDEN_ACCOUNT_ID = 4021
 GOLDEN_MARKET_ID = 3
 GOLDEN_CUSTOM_RISK = 40_000_000_000_000_000  # 0.04e18
-GOLDEN_NONCE = 1_700_000_000_000
 GOLDEN_DEADLINE = 1_762_819_200
 
 PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -49,7 +49,6 @@ def _golden_message(custom_risk: int = GOLDEN_CUSTOM_RISK) -> dict[str, int]:
         account_id=GOLDEN_ACCOUNT_ID,
         market_id=GOLDEN_MARKET_ID,
         custom_risk=custom_risk,
-        nonce=GOLDEN_NONCE,
         deadline=GOLDEN_DEADLINE,
     )
 
