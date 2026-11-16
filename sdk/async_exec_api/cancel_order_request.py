@@ -8,7 +8,7 @@ class CancelOrderRequest(BaseModel):
   account_id: int = Field(alias='''accountId''')
   symbol: str = Field(description='''Trading symbol (e.g., BTCRUSDPERP, WETHRUSD)''')
   signature: str = Field(description='''EIP-712 signature over the `OrderCancel(uint64 verifyingChainId, uint64 deadline, OrderCancelDetails cancel)` envelope. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.''')
-  nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required per request; replayed nonces are rejected with `INVALID_NONCE_ERROR`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces).''')
+  nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required per request; a reused nonce is rejected with `INVALID_NONCE_ERROR`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces).''')
   deadline: int = Field()
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 

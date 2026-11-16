@@ -90,6 +90,9 @@ CANCEL_REASONS = {
     "OCO_SIBLING_FIRED",
     "POSITION_CLOSED",
     "PROTECTIVE_SELF_TRADE_SWEEP",
+    # The unfilled quantity was cancelled; `cumQty` (possibly zero) is what
+    # filled (specs 3.7.11, PRO-345).
+    "PARTIAL_FILL",
 }
 
 EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
@@ -136,27 +139,26 @@ def test_market_depth_limit_preserves_positional_timeout(method_name: str) -> No
     assert signature.parameters["limit"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_rest_fee_tier_parameters_exposes_only_30_day_volume() -> None:
-    tier = RestFeeTierParameters.from_dict(
-        {
-            "tierId": 2,
-            "takerFee": "0.0003",
-            "makerFee": "0",
-            "volume30d": "10000000",
-            "tierType": "REGULAR",
-        }
-    )
-
-    assert tier is not None
-    assert tier.volume30d == "10000000"
-    assert not hasattr(tier, "volume14d")
-    assert tier.to_dict() == {
+def test_rest_fee_tier_parameters_carries_lookback_volume() -> None:
+    # RET-245: tiers are earned on `volume` over `lookbackWindowSeconds`;
+    # `volume30d` stays, deprecated, for existing clients.
+    payload = {
         "tierId": 2,
         "takerFee": "0.0003",
         "makerFee": "0",
+        "volume": "2000000",
+        "lookbackWindowSeconds": 1209600,
         "volume30d": "10000000",
         "tierType": "REGULAR",
     }
+    tier = RestFeeTierParameters.from_dict(payload)
+
+    assert tier is not None
+    assert tier.volume == "2000000"
+    assert tier.lookback_window_seconds == 1209600
+    assert tier.volume30d == "10000000"
+    assert not hasattr(tier, "volume14d")
+    assert tier.to_dict() == payload
 
 
 def test_rest_request_error_code_exports_pro_405_codes() -> None:

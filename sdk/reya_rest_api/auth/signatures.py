@@ -2,9 +2,10 @@
 Signature generation utilities for Reya Trading API authentication.
 
 Implements EIP-712 signing for the unified spot+perp Order envelope, plus
-matching-engine-layer OrderCancel, MassCancel, and CancelAllAfter envelopes.
-See specs/docs/eip712.md for the canonical typehash strings and field
-semantics.
+matching-engine-layer OrderCancel, MassCancel, and CancelAllAfter envelopes,
+and the orders-gateway SetAccountMarketCustomRisk envelope behind
+POST /v2/updateLeverage. See specs/docs/eip712.md for the canonical typehash
+strings and field semantics.
 """
 
 from decimal import Decimal
@@ -12,6 +13,7 @@ from enum import IntEnum
 
 from eth_account import Account
 
+from sdk.reya_rest_api.auth.custom_leverage import MAX_CUSTOM_RISK_E18
 from sdk.reya_rest_api.config import TradingConfig
 
 
@@ -60,6 +62,45 @@ _ORDER_DETAILS_TYPE: list[dict[str, str]] = [
     {"name": "signer", "type": "address"},
     {"name": "nonce", "type": "uint256"},
 ]
+
+# EIP-712 `SetAccountMarketCustomRisk` (POST /v2/updateLeverage). A flat struct
+# like the gateway's `ManagePermissionBySig`: the chain id is signed in the
+# struct, the domain is the shared gateway domain, and the SD1x18 `customRisk` is
+# signed as its underlying int64. Field order is part of the typehash; the golden
+# vector in tests/parity/test_custom_leverage_golden.py pins the struct hash.
+SET_ACCOUNT_MARKET_CUSTOM_RISK_PRIMARY_TYPE = "SetAccountMarketCustomRisk"
+_SET_ACCOUNT_MARKET_CUSTOM_RISK_TYPE: list[dict[str, str]] = [
+    {"name": "verifyingChainId", "type": "uint256"},
+    {"name": "accountId", "type": "uint128"},
+    {"name": "marketId", "type": "uint128"},
+    {"name": "customRisk", "type": "int64"},
+    {"name": "nonce", "type": "uint256"},
+    {"name": "deadline", "type": "uint256"},
+]
+
+
+def set_account_market_custom_risk_message(
+    chain_id: int,
+    account_id: int,
+    market_id: int,
+    custom_risk: int,
+    nonce: int,
+    deadline: int,
+) -> dict[str, int]:
+    """The `SetAccountMarketCustomRisk` message a leverage update signs.
+
+    `market_id` is the perp market's `marketId` from GET /perpMarketDefinitions
+    (the raw on-chain id). `custom_risk` is the converted value, not the
+    leverage: see `sdk.reya_rest_api.auth.custom_leverage`.
+    """
+    return {
+        "verifyingChainId": chain_id,
+        "accountId": account_id,
+        "marketId": market_id,
+        "customRisk": custom_risk,
+        "nonce": nonce,
+        "deadline": deadline,
+    }
 
 
 class SignatureGenerator:
@@ -284,6 +325,36 @@ class SignatureGenerator:
                 "nonce": nonce,
             },
         }
+
+        signed_message = Account.sign_typed_data(self._private_key, self._domain, types, message)
+        return _to_hex_signature(signed_message.signature.hex())
+
+    def sign_set_account_market_custom_risk(
+        self,
+        account_id: int,
+        market_id: int,
+        custom_risk: int,
+        nonce: int,
+        deadline: int,
+    ) -> str:
+        """Sign a `SetAccountMarketCustomRisk` envelope (POST /v2/updateLeverage).
+
+        Same gateway domain as orders, chain id in the struct. `custom_risk` is
+        the SD1x18 value in [0, 1e18] (0 resets); derive it from a leverage with
+        `custom_risk_for_leverage_setting`, the rule the server verifies against.
+        """
+        if not 0 <= custom_risk <= MAX_CUSTOM_RISK_E18:
+            raise ValueError(f"custom_risk must be within [0, {MAX_CUSTOM_RISK_E18}] (got {custom_risk})")
+
+        types = {SET_ACCOUNT_MARKET_CUSTOM_RISK_PRIMARY_TYPE: _SET_ACCOUNT_MARKET_CUSTOM_RISK_TYPE}
+        message = set_account_market_custom_risk_message(
+            chain_id=self._chain_id,
+            account_id=account_id,
+            market_id=market_id,
+            custom_risk=custom_risk,
+            nonce=nonce,
+            deadline=deadline,
+        )
 
         signed_message = Account.sign_typed_data(self._private_key, self._domain, types, message)
         return _to_hex_signature(signed_message.signature.hex())

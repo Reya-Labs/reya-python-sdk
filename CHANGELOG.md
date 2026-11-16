@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Custom leverage (RET-299), regenerated from the specs `3.7.17` review head
+  (Reya-Labs/reya-api-specs#135). `ReyaTradingClient.update_leverage(symbol,
+  leverage)` sets an account's leverage on one perp market through
+  `POST /v2/updateLeverage`: it fetches the market's current definition, converts
+  the whole-number leverage into the signed `customRisk`
+  (`ceil(10**54 / (imMultiplierE18**2 * leverage**2))`, integers only; `0` at
+  `maxLeverage`, the reset), signs EIP-712 `SetAccountMarketCustomRisk` over the
+  orders-gateway domain, and returns `UpdateLeverageResponse` with the mined
+  `txHash`. The conversion lives in `sdk.reya_rest_api.auth.custom_leverage` and
+  the signer is `SignatureGenerator.sign_set_account_market_custom_risk`.
+  `ReyaTradingClient.get_leverages()` reads `GET /v2/wallet/{address}/leverages`
+  as `WalletLeverage` rows. `MarketDefinition` gains the exact, required
+  `imMultiplier`; `PositionRisk` gains `leverage` and `initialMarginRequirement`;
+  `RequestErrorCode` gains `LEVERAGE_UPDATE_IN_PROGRESS_ERROR`,
+  `LEVERAGE_NOT_ALLOWED_ERROR` and `UPDATE_LEVERAGE_OTHER_ERROR`. The jump from
+  specs `3.7.3` also regenerates the intervening releases into the generated
+  packages only (no new high-level client methods or socket resources): the
+  account summaries, position risk, funding payments and funding-rate history
+  endpoints; candle volumes and trade counts; the `PARTIAL_FILL` cancel reason;
+  fee tiers earned on `volume` over `lookbackWindowSeconds`; and WebSocket models
+  for account summaries, position risk, candles, wallet fills and disconnect
+  notices.
 - Strategy examples in `examples/strategies/`: `mark_feed.py`, a reconnecting,
   staleness-aware mark-price feed on the market-summary channel (a mark older than
   10 s counts as stale), and `price_cross_entry.py`, which enters once with an IOC
