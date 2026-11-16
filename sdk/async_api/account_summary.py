@@ -11,10 +11,10 @@ class AccountSummary(BaseModel):
   initial_margin_requirement: str = Field(description='''Initial margin required by settled positions, at the leverage the account uses on each market (see GET /wallet/{address}/leverages).''', alias='''initialMarginRequirement''')
   liquidation_margin_requirement: str = Field(description='''Liquidation margin required by settled positions; the account is liquidatable below it.''', alias='''liquidationMarginRequirement''')
   free_collateral: str = Field(description='''marginBalance - initialMarginRequirement. Negative means an initial-margin deficit. Not an order-size quote or withdrawal limit.''', alias='''freeCollateral''')
-  initial_margin_ratio: str = Field(description='''initialMarginRequirement / marginBalance as a decimal fraction (1 means 100%). Rounded up to at most 18 decimal places. Null when marginBalance is zero or negative.''', alias='''initialMarginRatio''')
-  liquidation_margin_ratio: str = Field(description='''liquidationMarginRequirement / marginBalance as a decimal fraction. Rounded up to at most 18 decimal places. Null when marginBalance is zero or negative.''', alias='''liquidationMarginRatio''')
+  initial_margin_ratio: Optional[str] = Field(description='''initialMarginRequirement / marginBalance as a decimal fraction (1 means 100%). Rounded up to at most 18 decimal places. Null when marginBalance is zero or negative.''', alias='''initialMarginRatio''')
+  liquidation_margin_ratio: Optional[str] = Field(description='''liquidationMarginRequirement / marginBalance as a decimal fraction. Rounded up to at most 18 decimal places. Null when marginBalance is zero or negative.''', alias='''liquidationMarginRatio''')
   updated_at: int = Field(description='''Calculation time, in Unix milliseconds.''', alias='''updatedAt''')
-  prices_updated_at: int = Field(description='''Source time of the oldest mark or collateral price used by the account, in Unix milliseconds: the matching engine's timestamp for a mark, the oracle's for a collateral price. Null when no price is needed.''', alias='''pricesUpdatedAt''')
+  prices_updated_at: Optional[int] = Field(description='''Source time of the oldest mark or collateral price used by the account, in Unix milliseconds: the matching engine's timestamp for a mark, the oracle's for a collateral price. Null when no price is needed.''', alias='''pricesUpdatedAt''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 
   @model_serializer(mode='wrap')

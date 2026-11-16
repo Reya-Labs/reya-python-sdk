@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 import sdk.open_api as rest_open_api
+from sdk.async_api.account_summary import AccountSummary as WsInfoAccountSummary
 from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
@@ -25,6 +26,7 @@ from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_api.perp_execution import PerpExecution as WsInfoPerpExecution
+from sdk.async_api.position_risk import PositionRisk as WsInfoPositionRisk
 from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
@@ -639,6 +641,75 @@ def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None
         "updatedAt": 1747927089946,
     }
     assert "poolPrice" not in serialized["data"][0]
+
+
+_WS_ACCOUNT_SUMMARY = {
+    "accountId": 7,
+    "collateralValue": "0",
+    "unrealizedPnl": "0",
+    "marginBalance": "0",
+    "equity": "0",
+    "initialMarginRequirement": "0",
+    "liquidationMarginRequirement": "0",
+    "freeCollateral": "0",
+    "initialMarginRatio": None,
+    "liquidationMarginRatio": None,
+    "updatedAt": 1747927089946,
+    "pricesUpdatedAt": None,
+}
+
+_WS_POSITION_RISK = {
+    "accountId": 7,
+    "symbol": "ETHRUSDPERP",
+    "side": "B",
+    "qty": "0.05",
+    "avgEntryPrice": "2000",
+    "lastTradeSequenceNumber": 1,
+    "markPrice": "2000",
+    "notional": "100",
+    "unrealizedPnl": "0",
+    "fundingSinceChange": "0",
+    "fundingSinceOpen": "0",
+    "liquidationMarginRequirement": "3",
+    "initialMarginRequirement": "10",
+    "leverage": 10,
+    "liquidationPrice": None,
+    "hasCorrelatedCollateral": False,
+    "updatedAt": 1747927089946,
+    "pricesUpdatedAt": 1747927089597,
+}
+
+
+def test_ws_info_account_summary_accepts_its_nullable_fields_as_null() -> None:
+    # The specs mark these `nullable: true`; Modelina ignores that keyword, so
+    # scripts/postprocess-nullable-fields.py restores it.
+    # A copy: the generated validator writes additional_properties into its input.
+    summary = WsInfoAccountSummary.model_validate(dict(_WS_ACCOUNT_SUMMARY))
+
+    assert summary.initial_margin_ratio is None
+    assert summary.liquidation_margin_ratio is None
+    assert summary.prices_updated_at is None
+    assert summary.model_dump(mode="json", by_alias=True) == _WS_ACCOUNT_SUMMARY
+
+
+def test_ws_info_position_risk_accepts_a_null_liquidation_price() -> None:
+    risk = WsInfoPositionRisk.model_validate(dict(_WS_POSITION_RISK))
+
+    assert risk.liquidation_price is None
+    assert risk.model_dump(mode="json", by_alias=True) == _WS_POSITION_RISK
+
+
+@pytest.mark.parametrize(
+    ("model", "payload", "key"),
+    [
+        (WsInfoAccountSummary, _WS_ACCOUNT_SUMMARY, "initialMarginRatio"),
+        (WsInfoAccountSummary, _WS_ACCOUNT_SUMMARY, "pricesUpdatedAt"),
+        (WsInfoPositionRisk, _WS_POSITION_RISK, "liquidationPrice"),
+    ],
+)
+def test_ws_info_nullable_fields_stay_required(model: Any, payload: dict[str, Any], key: str) -> None:
+    with pytest.raises(ValidationError):
+        model.model_validate({k: v for k, v in payload.items() if k != key})
 
 
 class _RecordingSocket:

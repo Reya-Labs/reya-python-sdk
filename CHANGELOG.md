@@ -32,7 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   endpoints; candle volumes and trade counts; the `PARTIAL_FILL` cancel reason;
   fee tiers earned on `volume` over `lookbackWindowSeconds`; and WebSocket models
   for account summaries, position risk, candles, wallet fills and disconnect
-  notices.
+  notices. Those WebSocket models accept `null` in the fields the specs mark
+  `nullable: true` (`AccountSummary.initialMarginRatio`,
+  `liquidationMarginRatio` and `pricesUpdatedAt`; `PositionRisk.liquidationPrice`),
+  which stay required: Modelina ignores the keyword, so
+  `scripts/postprocess-nullable-fields.py` restores it from the shared schema
+  after each WebSocket generation.
 - Strategy examples in `examples/strategies/`: `mark_feed.py`, a reconnecting,
   staleness-aware mark-price feed on the market-summary channel (a mark older than
   10 s counts as stale), and `price_cross_entry.py`, which enters once with an IOC
