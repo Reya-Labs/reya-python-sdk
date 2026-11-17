@@ -1131,13 +1131,20 @@ class ReyaTradingClient:
         (``RequestErrorCode``), in particular:
 
         - ``LEVERAGE_UPDATE_IN_PROGRESS_ERROR``: another update for the account
-          is pending (one at a time per account). This request was not
-          submitted; retry after the other completes.
+          is pending (one at a time per account), or one whose outcome is
+          unknown can still be applied (until its ``deadline``, plus a minute).
+          This request was not submitted and can be retried unchanged (call
+          again with the same ``deadline``) once the other settles.
+        - ``SERVICE_UNAVAILABLE_ERROR``: not submitted. Retry unchanged after
+          backing off; unlike an order, there is no nonce to refresh.
         - ``LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR``: this signed payload was
-          submitted before. Check :meth:`get_leverages`; sign a new one (a new
+          submitted before or, on an unchanged retry, could not be released for
+          reuse. Check :meth:`get_leverages`; sign a new one (a new
           ``deadline``) to change leverage again.
         - ``ORDER_OUTCOME_UNKNOWN_ERROR``: the update was submitted and may still
-          apply. Check :meth:`get_leverages` before signing another.
+          apply. Check :meth:`get_leverages` before signing another; until its
+          ``deadline`` has passed (plus a minute), further updates for the
+          account return ``LEVERAGE_UPDATE_IN_PROGRESS_ERROR``.
         - ``ACCOUNT_BELOW_INITIAL_MARGIN_ERROR``: the update lowers leverage on a
           market the account has traded, and the account would not meet the
           raised initial margin requirement; nothing changed. Raising leverage,

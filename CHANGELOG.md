@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Custom leverage (RET-299), regenerated from the specs `3.7.17` review head
-  (Reya-Labs/reya-api-specs#135). `ReyaTradingClient.update_leverage(symbol,
+- Custom leverage (RET-299), regenerated from the specs `3.7.18` review head
+  (Reya-Labs/reya-api-specs#135), which includes the released specs `3.7.17`
+  and its `MODIFY_ALREADY_HELD_ERROR`. `ReyaTradingClient.update_leverage(symbol,
   leverage)` sets an account's leverage on one perp market through
   `POST /v2/updateLeverage`: it fetches the market's current definition, converts
   the whole-number leverage into the signed `customRisk`
@@ -30,7 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   packages only (no new high-level client methods or socket resources): the
   account summaries, position risk, funding payments and funding-rate history
   endpoints; candle volumes and trade counts; the `PARTIAL_FILL` cancel reason;
-  fee tiers earned on `volume` over `lookbackWindowSeconds`; and WebSocket models
+  fee tiers earned on `volume` over `lookbackWindowSeconds`; `3.7.17`'s
+  `RequestErrorCode.MODIFY_ALREADY_HELD_ERROR` (REST and order-entry WebSocket),
+  returned while an earlier modification of the same order is still delayed
+  before it reaches the book, with that release's self-trade-prevention wording
+  (the resting order is cancelled, not the incoming one) in the generated
+  docstrings; and WebSocket models
   for account summaries, position risk, candles, wallet fills and disconnect
   notices. Those WebSocket models accept `null` in the fields the specs mark
   `nullable: true` (`AccountSummary.initialMarginRatio`,
