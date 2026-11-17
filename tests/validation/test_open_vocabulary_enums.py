@@ -127,6 +127,7 @@ def test_a_market_definition_with_a_newer_status_still_parses() -> None:
             "tickSize": "0.01",
             "liquidationMarginParameter": "0.01",
             "initialMarginParameter": "0.02",
+            "imMultiplier": "2",
             "maxLeverage": 50,
             "oiCap": "120",
             "uiVisible": False,

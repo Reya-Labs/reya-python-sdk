@@ -9,7 +9,7 @@ class Position(BaseModel):
   qty: str = Field()
   side: Side = Field(description='''Order side (B = Buy/Bid, A = Ask/Sell)''')
   avg_entry_price: str = Field(alias='''avgEntryPrice''')
-  avg_entry_funding_value: str = Field(alias='''avgEntryFundingValue''')
+  avg_entry_funding_value: str = Field(description='''Deprecated: for the funding on a position, use fundingSinceOpen or fundingSinceChange in GET /wallet/{address}/positionRisk. This is the average market funding value at which the open size was entered. Funding worked out from it does not in general match what the position paid or received.''', alias='''avgEntryFundingValue''')
   last_trade_sequence_number: int = Field(alias='''lastTradeSequenceNumber''')
   additional_properties: Optional[dict[str, Any]] = Field(default=None, exclude=True)
 

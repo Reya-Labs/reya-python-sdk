@@ -16,7 +16,7 @@ class LimitModifyOrderRequest(BaseModel):
   qty: Optional[str] = Field(default=None)
   expires_after: Optional[int] = Field(default=None, alias='''expiresAfter''')
   signature: str = Field(description='''Fresh EIP-712 signature over the full post-modify order state — the same `Order` envelope as `createOrder`, with the modified values substituted into `OrderDetails`. See the EIP-712 signing reference in the Reya docs (https://docs.reya.xyz/developers/readme/signatures-and-nonces) for the exact typehash string and signing algorithm.''')
-  nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required for every modification; replayed nonces are rejected with `INVALID_NONCE_ERROR`.''')
+  nonce: str = Field(description='''Monotonically increasing per-signer nonce. A fresh nonce is required for every modification; a reused nonce is rejected with `INVALID_NONCE_ERROR`.''')
   signer_wallet: str = Field(alias='''signerWallet''')
   deadline: int = Field()
   order_type: LimitOrderType = Field(alias='''orderType''')

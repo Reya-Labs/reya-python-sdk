@@ -24,10 +24,12 @@ This ensures the SDK version always reflects compatibility with the underlying A
     - Get perpetual executions via `/v2/wallet/{address}/perpExecutions`
     - Get spot executions via `/v2/wallet/{address}/spotExecutions`
     - Get configuration via `/v2/wallet/{address}/configuration`
+    - Get leverage settings via `/v2/wallet/{address}/leverages`
 
 - **Order Entry Resource**
     - Create orders via `/v2/createOrder` (IOC, GTC, SL, TP)
     - Cancel orders via `/v2/cancelOrder`
+    - Set a perp market's leverage via `/v2/updateLeverage`
 
 - **Market Data Resource**
     - Get all perp markets summary via `/v2/perpMarkets/summary`
@@ -193,10 +195,12 @@ ReyaTradingClient
 │   ├── get_open_orders()            # /v2/wallet/{address}/openOrders
 │   ├── get_perp_executions()        # /v2/wallet/{address}/perpExecutions
 │   ├── get_spot_executions()        # /v2/wallet/{address}/spotExecutions
-│   └── get_configuration()          # /v2/wallet/{address}/configuration
+│   ├── get_configuration()          # /v2/wallet/{address}/configuration
+│   └── get_wallet_leverages()       # /v2/wallet/{address}/leverages
 ├── orders                           # Order Entry resource
 │   ├── create_order()               # /v2/createOrder (IOC, GTC, SL, TP)
-│   └── cancel_order()               # /v2/cancelOrder
+│   ├── cancel_order()               # /v2/cancelOrder
+│   └── update_leverage()            # /v2/updateLeverage
 ├── markets                          # Market Data resource
 │   ├── get_perp_markets_summary()   # /v2/perpMarkets/summary
 │   ├── get_perp_market_summary()    # /v2/perpMarket/{symbol}/summary

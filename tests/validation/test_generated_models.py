@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 import sdk.open_api as rest_open_api
+from sdk.async_api.account_summary import AccountSummary as WsInfoAccountSummary
 from sdk.async_api.asset_oracle_prices_channel import AssetOraclePricesChannel
 from sdk.async_api.asset_oracle_prices_update_payload import AssetOraclePricesUpdatePayload
 from sdk.async_api.cancel_reason import CancelReason as WsInfoCancelReason
@@ -25,6 +26,7 @@ from sdk.async_api.order_change_update_payload import OrderChangeUpdatePayload
 from sdk.async_api.order_changes_subscribed_payload import OrderChangesSubscribedPayload
 from sdk.async_api.order_status import OrderStatus as WsInfoOrderStatus
 from sdk.async_api.perp_execution import PerpExecution as WsInfoPerpExecution
+from sdk.async_api.position_risk import PositionRisk as WsInfoPositionRisk
 from sdk.async_api.spot_execution import SpotExecution as WsInfoSpotExecution
 from sdk.async_exec_api.cancel_reason import CancelReason as WsExecCancelReason
 from sdk.async_exec_api.create_order_request import CreateOrderRequest as WsExecCreateOrderRequest
@@ -90,6 +92,9 @@ CANCEL_REASONS = {
     "OCO_SIBLING_FIRED",
     "POSITION_CLOSED",
     "PROTECTIVE_SELF_TRADE_SWEEP",
+    # The unfilled quantity was cancelled; `cumQty` (possibly zero) is what
+    # filled (specs 3.7.11, PRO-345).
+    "PARTIAL_FILL",
 }
 
 EXECUTION_TYPES = {"ORDER_MATCH", "LIQUIDATION", "ADL", "MARKET_CLOSE"}
@@ -136,27 +141,26 @@ def test_market_depth_limit_preserves_positional_timeout(method_name: str) -> No
     assert signature.parameters["limit"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_rest_fee_tier_parameters_exposes_only_30_day_volume() -> None:
-    tier = RestFeeTierParameters.from_dict(
-        {
-            "tierId": 2,
-            "takerFee": "0.0003",
-            "makerFee": "0",
-            "volume30d": "10000000",
-            "tierType": "REGULAR",
-        }
-    )
-
-    assert tier is not None
-    assert tier.volume30d == "10000000"
-    assert not hasattr(tier, "volume14d")
-    assert tier.to_dict() == {
+def test_rest_fee_tier_parameters_carries_lookback_volume() -> None:
+    # RET-245: tiers are earned on `volume` over `lookbackWindowSeconds`;
+    # `volume30d` stays, deprecated, for existing clients.
+    payload = {
         "tierId": 2,
         "takerFee": "0.0003",
         "makerFee": "0",
+        "volume": "2000000",
+        "lookbackWindowSeconds": 1209600,
         "volume30d": "10000000",
         "tierType": "REGULAR",
     }
+    tier = RestFeeTierParameters.from_dict(payload)
+
+    assert tier is not None
+    assert tier.volume == "2000000"
+    assert tier.lookback_window_seconds == 1209600
+    assert tier.volume30d == "10000000"
+    assert not hasattr(tier, "volume14d")
+    assert tier.to_dict() == payload
 
 
 def test_rest_request_error_code_exports_pro_405_codes() -> None:
@@ -637,6 +641,75 @@ def test_ws_info_asset_oracle_prices_payload_parses_without_pool_price() -> None
         "updatedAt": 1747927089946,
     }
     assert "poolPrice" not in serialized["data"][0]
+
+
+_WS_ACCOUNT_SUMMARY = {
+    "accountId": 7,
+    "collateralValue": "0",
+    "unrealizedPnl": "0",
+    "marginBalance": "0",
+    "equity": "0",
+    "initialMarginRequirement": "0",
+    "liquidationMarginRequirement": "0",
+    "freeCollateral": "0",
+    "initialMarginRatio": None,
+    "liquidationMarginRatio": None,
+    "updatedAt": 1747927089946,
+    "pricesUpdatedAt": None,
+}
+
+_WS_POSITION_RISK = {
+    "accountId": 7,
+    "symbol": "ETHRUSDPERP",
+    "side": "B",
+    "qty": "0.05",
+    "avgEntryPrice": "2000",
+    "lastTradeSequenceNumber": 1,
+    "markPrice": "2000",
+    "notional": "100",
+    "unrealizedPnl": "0",
+    "fundingSinceChange": "0",
+    "fundingSinceOpen": "0",
+    "liquidationMarginRequirement": "3",
+    "initialMarginRequirement": "10",
+    "leverage": 10,
+    "liquidationPrice": None,
+    "hasCorrelatedCollateral": False,
+    "updatedAt": 1747927089946,
+    "pricesUpdatedAt": 1747927089597,
+}
+
+
+def test_ws_info_account_summary_accepts_its_nullable_fields_as_null() -> None:
+    # The specs mark these `nullable: true`; Modelina ignores that keyword, so
+    # scripts/postprocess-nullable-fields.py restores it.
+    # A copy: the generated validator writes additional_properties into its input.
+    summary = WsInfoAccountSummary.model_validate(dict(_WS_ACCOUNT_SUMMARY))
+
+    assert summary.initial_margin_ratio is None
+    assert summary.liquidation_margin_ratio is None
+    assert summary.prices_updated_at is None
+    assert summary.model_dump(mode="json", by_alias=True) == _WS_ACCOUNT_SUMMARY
+
+
+def test_ws_info_position_risk_accepts_a_null_liquidation_price() -> None:
+    risk = WsInfoPositionRisk.model_validate(dict(_WS_POSITION_RISK))
+
+    assert risk.liquidation_price is None
+    assert risk.model_dump(mode="json", by_alias=True) == _WS_POSITION_RISK
+
+
+@pytest.mark.parametrize(
+    ("model", "payload", "key"),
+    [
+        (WsInfoAccountSummary, _WS_ACCOUNT_SUMMARY, "initialMarginRatio"),
+        (WsInfoAccountSummary, _WS_ACCOUNT_SUMMARY, "pricesUpdatedAt"),
+        (WsInfoPositionRisk, _WS_POSITION_RISK, "liquidationPrice"),
+    ],
+)
+def test_ws_info_nullable_fields_stay_required(model: Any, payload: dict[str, Any], key: str) -> None:
+    with pytest.raises(ValidationError):
+        model.model_validate({k: v for k, v in payload.items() if k != key})
 
 
 class _RecordingSocket:

@@ -46,7 +46,11 @@ from sdk.open_api.models.time_in_force import TimeInForce
 from sdk.open_api.models.transfer_list import TransferList
 from sdk.open_api.models.transfer_type import TransferType
 from sdk.open_api.models.trigger_modify_order_request import TriggerModifyOrderRequest
+from sdk.open_api.models.update_leverage_request import UpdateLeverageRequest
+from sdk.open_api.models.update_leverage_response import UpdateLeverageResponse
 from sdk.open_api.models.wallet_configuration import WalletConfiguration
+from sdk.open_api.models.wallet_leverage import WalletLeverage
+from sdk.reya_rest_api.auth.custom_leverage import custom_risk_for_leverage_setting, parse_im_multiplier
 from sdk.reya_rest_api.auth.signatures import OrderTypeInt, SignatureGenerator, TimeInForceInt
 from sdk.reya_rest_api.config import TradingConfig, get_config
 
@@ -79,6 +83,12 @@ _ME_MAX_PRICE = Decimal(1 << 49) / Decimal(10**9)
 CANCEL_ALL_AFTER_DISARM_MS = 0
 CANCEL_ALL_AFTER_MIN_TIMEOUT_MS = 5_000
 CANCEL_ALL_AFTER_MAX_TIMEOUT_MS = 60_000
+
+# POST /v2/updateLeverage refuses a deadline more than this far ahead
+# (ORDER_DEADLINE_TOO_HIGH_ERROR). A signed update carries no nonce: its deadline,
+# enforced on chain, is the only bound on how long it stays executable, so the
+# client defaults to the same short window as its other signed envelopes.
+UPDATE_LEVERAGE_MAX_DEADLINE_S = 300
 
 # Spot/perp namespace discriminator on the unified marketId, mirroring the
 # off-chain market-id namespace convention. Perp market ids are the raw on-chain
@@ -227,6 +237,23 @@ def _default_deadline(now_s: int, expires_after: int) -> int:
     if expires_after != PERPETUAL_LIFETIME and now_s < expires_after <= deadline:
         return expires_after - 1
     return deadline
+
+
+def _require_update_leverage_deadline(deadline: Any, now_s: int) -> None:
+    """Refuse a leverage-update deadline the API is certain to reject.
+
+    Checked against the local clock before signing; the server re-checks
+    against its own, so a skewed clock can still see it refused.
+    """
+    if isinstance(deadline, bool) or not isinstance(deadline, int):
+        raise ValueError(f"deadline must be whole Unix seconds (got {deadline!r})")
+    if deadline <= now_s:
+        raise ValueError(f"deadline {deadline} has already passed (now {now_s})")
+    if deadline > now_s + UPDATE_LEVERAGE_MAX_DEADLINE_S:
+        raise ValueError(
+            f"deadline must be at most {UPDATE_LEVERAGE_MAX_DEADLINE_S} seconds ahead "
+            f"(got {deadline}, latest {now_s + UPDATE_LEVERAGE_MAX_DEADLINE_S})"
+        )
 
 
 def _reject_zero_client_order_id(client_order_id: Optional[int]) -> None:
@@ -1063,6 +1090,144 @@ class ReyaTradingClient:
         if params.client_order_id is not None:
             payload["clientOrderId"] = str(params.client_order_id)
         return _strip_absent_json_fields(payload), nonce
+
+    async def update_leverage(
+        self,
+        symbol: str,
+        leverage: int,
+        account_id: Optional[int] = None,
+        deadline: Optional[int] = None,
+    ) -> UpdateLeverageResponse:
+        """Set an account's leverage on one perp market (POST /v2/updateLeverage).
+
+        ``leverage`` is a whole number from 1 to the market's ``maxLeverage``;
+        ``maxLeverage`` resets the account to the market's default. The setting
+        raises only that market's initial margin requirement for the account;
+        the liquidation margin requirement and liquidation price do not change.
+        Read settings back with :meth:`get_leverages`.
+
+        The market definition is fetched on every call, not taken from the
+        ``start()`` cache: the signature covers a risk value derived from the
+        market's current ``imMultiplier`` and ``maxLeverage``, and the server
+        derives it from its own current values, so a stale definition signs a
+        value the server rejects as UNAUTHORIZED_SIGNATURE_ERROR. ``start()`` is
+        therefore not required.
+
+        ``account_id`` defaults to the configured account. ``deadline`` defaults
+        to now + 60 s and may be at most 300 s ahead.
+
+        The signed payload carries no nonce and does not touch the order-nonce
+        counter. It is valid until its ``deadline``, which is enforced on chain,
+        and the API accepts each signed payload once: a second submission, by
+        anyone and even after the first was rejected on chain, returns
+        ``LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR``. Signing is deterministic,
+        so two calls for the same account, market and leverage within the same
+        second sign the same payload and the second is rejected that way; pass a
+        later ``deadline`` to send the same update again.
+
+        The API responds once the update is mined, with its ``txHash``.
+        Rejections raise ``sdk.open_api.exceptions.BadRequestException`` whose
+        ``data`` is a ``RequestError``; branch on ``data.error``
+        (``RequestErrorCode``), in particular:
+
+        - ``LEVERAGE_UPDATE_IN_PROGRESS_ERROR``: another update for the account
+          is pending (one at a time per account), or one whose outcome is
+          unknown can still be applied (until its ``deadline``, plus a minute).
+          This request was not submitted and can be retried unchanged (call
+          again with the same ``deadline``) once the other settles.
+        - ``SERVICE_UNAVAILABLE_ERROR``: not submitted. Retry unchanged after
+          backing off; unlike an order, there is no nonce to refresh.
+        - ``LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR``: this signed payload was
+          submitted before or, on an unchanged retry, could not be released for
+          reuse. Check :meth:`get_leverages`; sign a new one (a new
+          ``deadline``) to change leverage again.
+        - ``ORDER_OUTCOME_UNKNOWN_ERROR``: the update was submitted and may still
+          apply. Check :meth:`get_leverages` before signing another; until its
+          ``deadline`` has passed (plus a minute), further updates for the
+          account return ``LEVERAGE_UPDATE_IN_PROGRESS_ERROR``.
+        - ``ACCOUNT_BELOW_INITIAL_MARGIN_ERROR``: the update lowers leverage on a
+          market the account has traded, and the account would not meet the
+          raised initial margin requirement; nothing changed. Raising leverage,
+          a reset, or a market never traded is not margin-checked.
+        - ``LEVERAGE_NOT_ALLOWED_ERROR``: the account or market cannot take a
+          setting. Retrying unchanged does not help.
+        - ``UPDATE_LEVERAGE_OTHER_ERROR``: rejected for another reason.
+        """
+        market = await self._fetch_perp_market_definition(symbol)
+        payload = self.build_update_leverage_payload(market, leverage, account_id=account_id, deadline=deadline)
+        return await self.orders.update_leverage(UpdateLeverageRequest(**payload))
+
+    def build_update_leverage_payload(
+        self,
+        market: MarketDefinition,
+        leverage: int,
+        account_id: Optional[int] = None,
+        deadline: Optional[int] = None,
+    ) -> dict:
+        """Build the camelCase wire payload for an updateLeverage request.
+
+        Pure (no I/O). ``market`` is the perp market's current definition from
+        GET /perpMarketDefinitions; it supplies ``marketId``, ``maxLeverage`` and
+        the exact ``imMultiplier`` the signed ``customRisk`` is computed from.
+        Same arg semantics as :meth:`update_leverage`.
+        """
+        resolved_account_id = account_id if account_id is not None else self.config.account_id
+        if resolved_account_id is None:
+            raise ValueError("account_id is required (pass it or set in config)")
+        if self._signature_generator is None:
+            raise ValueError("Signature generator is required for signing")
+
+        custom_risk = custom_risk_for_leverage_setting(
+            leverage, parse_im_multiplier(market.im_multiplier), market.max_leverage
+        )
+
+        now_s = int(time.time())
+        resolved_deadline = deadline if deadline is not None else now_s + DEFAULT_DEADLINE_S
+        _require_update_leverage_deadline(resolved_deadline, now_s)
+
+        signature = self._signature_generator.sign_set_account_market_custom_risk(
+            account_id=resolved_account_id,
+            market_id=market.market_id,
+            custom_risk=custom_risk,
+            deadline=resolved_deadline,
+        )
+
+        return {
+            "accountId": resolved_account_id,
+            "symbol": market.symbol,
+            "leverage": leverage,
+            "deadline": resolved_deadline,
+            "signature": signature,
+            "signerWallet": self.signer_wallet_address,
+        }
+
+    async def _fetch_perp_market_definition(self, symbol: str) -> MarketDefinition:
+        """Fetch one perp market's current definition from GET /perpMarketDefinitions."""
+        definitions: list[MarketDefinition] = await self.reference.get_perp_market_definitions()
+        for market in definitions:
+            if market.symbol == symbol:
+                return market
+        available = sorted(market.symbol for market in definitions)
+        raise ValueError(f"'{symbol}' is not a perp market; leverage is set per perp market. Available: {available}")
+
+    async def get_leverages(
+        self,
+        account_id: Optional[int] = None,
+        wallet_address: Optional[str] = None,
+    ) -> list[WalletLeverage]:
+        """Get the leverage settings of the wallet's perp accounts
+        (GET /v2/wallet/{address}/leverages), ordered by account ID, then symbol.
+
+        One row per account and market with a setting; ``leverage`` is the
+        setting capped at the market's current ``maxLeverage``. A market without
+        a row uses its ``maxLeverage``. Pass ``account_id`` to select one
+        account; one the wallet does not own returns an empty list.
+        ``wallet_address`` defaults to the owner wallet.
+        """
+        wallet = wallet_address or self.owner_wallet_address
+        if not wallet:
+            raise ValueError("No wallet address available.")
+        return await self.wallet.get_wallet_leverages(address=wallet, account_id=account_id)
 
     async def get_positions(self, wallet_address: Optional[str] = None) -> list[Position]:
         wallet = wallet_address or self.owner_wallet_address

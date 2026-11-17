@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Custom leverage (RET-299), regenerated from the specs `3.7.18` review head
+  (Reya-Labs/reya-api-specs#135), which includes the released specs `3.7.17`
+  and its `MODIFY_ALREADY_HELD_ERROR`. `ReyaTradingClient.update_leverage(symbol,
+  leverage)` sets an account's leverage on one perp market through
+  `POST /v2/updateLeverage`: it fetches the market's current definition, converts
+  the whole-number leverage into the signed `customRisk`
+  (`ceil(10**54 / (imMultiplierE18**2 * leverage**2))`, integers only; `0` at
+  `maxLeverage`, the reset), signs EIP-712 `SetAccountMarketCustomRisk` over the
+  orders-gateway domain, and returns `UpdateLeverageResponse` with the mined
+  `txHash`. The struct carries no nonce: a signed update is valid until its
+  deadline (at most 300 s ahead, enforced on chain), and the API accepts each
+  signed payload once, rejecting a resubmission with
+  `LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR`. The conversion lives in
+  `sdk.reya_rest_api.auth.custom_leverage` and the signer is
+  `SignatureGenerator.sign_set_account_market_custom_risk`.
+  `ReyaTradingClient.get_leverages()` reads `GET /v2/wallet/{address}/leverages`
+  as `WalletLeverage` rows. `MarketDefinition` gains the exact, required
+  `imMultiplier`; `PositionRisk` gains `leverage` and `initialMarginRequirement`;
+  `RequestErrorCode` gains `LEVERAGE_UPDATE_ALREADY_SUBMITTED_ERROR`,
+  `LEVERAGE_UPDATE_IN_PROGRESS_ERROR`,
+  `LEVERAGE_NOT_ALLOWED_ERROR` and `UPDATE_LEVERAGE_OTHER_ERROR`. The jump from
+  specs `3.7.3` also regenerates the intervening releases into the generated
+  packages only (no new high-level client methods or socket resources): the
+  account summaries, position risk, funding payments and funding-rate history
+  endpoints; candle volumes and trade counts; the `PARTIAL_FILL` cancel reason;
+  fee tiers earned on `volume` over `lookbackWindowSeconds`; `3.7.17`'s
+  `RequestErrorCode.MODIFY_ALREADY_HELD_ERROR` (REST and order-entry WebSocket),
+  returned while an earlier modification of the same order is still delayed
+  before it reaches the book, with that release's self-trade-prevention wording
+  (the resting order is cancelled, not the incoming one) in the generated
+  docstrings; and WebSocket models
+  for account summaries, position risk, candles, wallet fills and disconnect
+  notices. Those WebSocket models accept `null` in the fields the specs mark
+  `nullable: true` (`AccountSummary.initialMarginRatio`,
+  `liquidationMarginRatio` and `pricesUpdatedAt`; `PositionRisk.liquidationPrice`),
+  which stay required: Modelina ignores the keyword, so
+  `scripts/postprocess-nullable-fields.py` restores it from the shared schema
+  after each WebSocket generation.
+  Release order: publish this version only once the API with custom leverage
+  (reya-off-chain-monorepo#3578) is live on every environment the SDK targets,
+  because `MarketDefinition.im_multiplier` and `PositionRisk.leverage` /
+  `initial_margin_requirement` are required and `start()` fails against an older API.
 - Strategy examples in `examples/strategies/`: `mark_feed.py`, a reconnecting,
   staleness-aware mark-price feed on the market-summary channel (a mark older than
   10 s counts as stale), and `price_cross_entry.py`, which enters once with an IOC

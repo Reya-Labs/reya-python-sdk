@@ -27,6 +27,7 @@ def market_payload() -> dict[str, Any]:
         "tickSize": "0.01",
         "liquidationMarginParameter": "0.04",
         "initialMarginParameter": "0.05",
+        "imMultiplier": "1.25",
         "maxLeverage": 20,
         "oiCap": "1000",
     }

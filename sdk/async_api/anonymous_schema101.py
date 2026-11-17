@@ -1,4 +1,4 @@
 from enum import Enum
 
 class AnonymousSchema101(Enum): 
-  ORDER_EXPIRED = "OrderExpired"
+  PRICE_DEVIATION_TOO_LARGE = "PriceDeviationTooLarge"

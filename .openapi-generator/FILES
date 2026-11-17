@@ -13,6 +13,7 @@ sdk/open_api/exceptions.py
 sdk/open_api/models/__init__.py
 sdk/open_api/models/account.py
 sdk/open_api/models/account_balance.py
+sdk/open_api/models/account_summary.py
 sdk/open_api/models/account_type.py
 sdk/open_api/models/asset_definition.py
 sdk/open_api/models/asset_oracle_price.py
@@ -72,6 +73,10 @@ sdk/open_api/models/execution_bust_reason_unknown.py
 sdk/open_api/models/execution_bust_reason_unmapped.py
 sdk/open_api/models/execution_type.py
 sdk/open_api/models/fee_tier_parameters.py
+sdk/open_api/models/funding_payment.py
+sdk/open_api/models/funding_payment_list.py
+sdk/open_api/models/funding_rate_history_list.py
+sdk/open_api/models/funding_rate_sample.py
 sdk/open_api/models/global_fee_parameters.py
 sdk/open_api/models/level.py
 sdk/open_api/models/limit_modify_order_request.py
@@ -95,6 +100,7 @@ sdk/open_api/models/pagination_meta.py
 sdk/open_api/models/perp_execution.py
 sdk/open_api/models/perp_execution_list.py
 sdk/open_api/models/position.py
+sdk/open_api/models/position_risk.py
 sdk/open_api/models/request_error.py
 sdk/open_api/models/request_error_code.py
 sdk/open_api/models/server_error.py
@@ -111,5 +117,8 @@ sdk/open_api/models/transfer_list.py
 sdk/open_api/models/transfer_type.py
 sdk/open_api/models/trigger_modify_order_request.py
 sdk/open_api/models/trigger_order_type.py
+sdk/open_api/models/update_leverage_request.py
+sdk/open_api/models/update_leverage_response.py
 sdk/open_api/models/wallet_configuration.py
+sdk/open_api/models/wallet_leverage.py
 sdk/open_api/rest.py
