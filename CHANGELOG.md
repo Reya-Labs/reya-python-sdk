@@ -38,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   which stay required: Modelina ignores the keyword, so
   `scripts/postprocess-nullable-fields.py` restores it from the shared schema
   after each WebSocket generation.
+  Release order: publish this version only once the API with custom leverage
+  (reya-off-chain-monorepo#3578) is live on every environment the SDK targets,
+  because `MarketDefinition.im_multiplier` and `PositionRisk.leverage` /
+  `initial_margin_requirement` are required and `start()` fails against an older API.
 - Strategy examples in `examples/strategies/`: `mark_feed.py`, a reconnecting,
   staleness-aware mark-price feed on the market-summary channel (a mark older than
   10 s counts as stale), and `price_cross_entry.py`, which enters once with an IOC
