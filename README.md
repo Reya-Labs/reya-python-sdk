@@ -293,8 +293,9 @@ The repository includes example scripts demonstrating how to use the SDK:
     - `examples/consume_data_feed.py` - Working with the WebSocket data feed
 
 - **On-chain Action Examples** (`sdk.reya_rpc`, Reya Network mainnet only)
-    - `examples/rpc/bridge_in_and_deposit.py` - Bridge in and deposit funds
-    - `examples/rpc/withdraw_and_bridge_out.py` - Withdraw and bridge out funds
+    - `examples/rpc/ma_funds_flow.py` - Create margin accounts, then deposit, transfer and withdraw rUSD
+    - `examples/rpc/passive_pool_funds_flow.py` - Stake and unstake rUSD in the passive pool
+    - `examples/rpc/rusd_cross_wallet_transfer.py` - Move rUSD between accounts owned by different wallets
 
 - **Strategy Examples** (see [`examples/strategies/README.md`](examples/strategies/README.md))
     - `examples/strategies/mark_feed.py` - A reconnecting, staleness-aware mark-price feed

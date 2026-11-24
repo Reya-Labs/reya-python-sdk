@@ -159,6 +159,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the spec repo.
 
 ### Removed
+- `sdk.reya_rpc` no longer bridges funds between Reya Network and another
+  chain. The Socket bridge helpers are removed: `bridge_in_from_arbitrum`,
+  `bridge_out_to_arbitrum`, `BridgeInParams`, `BridgeOutParams`, the generic
+  `bridge_in` and `bridge_out` behind them, `calculate_socket_fees`, the
+  `SocketVaultWithPayload` and `SocketControllerWithPayload` ABIs, and the
+  examples `examples/rpc/bridge_in_and_deposit.py` and
+  `examples/rpc/withdraw_and_bridge_out.py`. `BridgeFeeExceededError` and
+  `NetworkConfigurationError`, which only those helpers raised, go with them.
+  Config that only those helpers read is removed too: `get_config()` no longer
+  returns the `periphery` and `usdc` contracts, `get_network_addresses()` no
+  longer returns `periphery_address` and `usdc_address`, and
+  `load_contract_abis()` no longer loads the `PeripheryProxy` ABI, which held
+  only the two Socket entry points. To move funds in or out of Reya Network,
+  bridge through the Reya app. `create_account`, `deposit`, `withdraw`,
+  `transfer`, `stake` and `unstake` are not affected by this removal.
 - `sdk.reya_rpc` dropped helpers that cannot work any more. `trade`/`TradeParams`
   and `examples/rpc/trade_execution.py` sent the legacy AMM `MatchOrder` core
   command, which mainnet stopped accepting at the 28 Sep cutover;
@@ -175,8 +190,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `docs/spot-account-topup.md`, which now lists devnet1's Core.
 
 ### Fixed
-- `create_account`, `stake`, `unstake`, `bridge_out_to_arbitrum` and the approve
-  step of `deposit` called web3 `.transact()`, which only works when the RPC
+- `create_account`, `stake`, `unstake` and the approve step of `deposit`
+  called web3 `.transact()`, which only works when the RPC
   node holds the key, so they failed against any public RPC. They now sign
   locally with the configured key, like `withdraw` and `transfer` already did,
   through the shared `sign_and_send` helper.

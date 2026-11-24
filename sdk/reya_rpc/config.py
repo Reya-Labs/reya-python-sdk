@@ -17,8 +17,6 @@ def get_network_addresses(chain_id: int) -> dict:
             "core_address": "0xA763B6a5E09378434406C003daE6487FbbDc1a80",
             "passive_pool_address": "0xB4B77d6180cc14472A9a7BDFF01cc2459368D413",
             "rusd_address": "0xa9F32a851B1800742e47725DA54a09A7Ef2556A3",
-            "periphery_address": "0xCd2869d1eb1BC8991Bc55de9E9B779e912faF736",
-            "usdc_address": "0x3B860c0b53f2e8bd5264AA7c3451d41263C933F2",
         }
     raise InvalidChainIdError(
         f"reya_rpc supports only Reya Network mainnet (chain id 1729), got {chain_id}. "
@@ -40,9 +38,6 @@ def load_contract_abis() -> dict:
 
     with open(os.path.join(abis_dir, "PassivePoolProxy.json"), encoding="utf-8") as f:
         abis["passive_pool_abi"] = json.load(f)
-
-    with open(os.path.join(abis_dir, "PeripheryProxy.json"), encoding="utf-8") as f:
-        abis["periphery_abi"] = json.load(f)
 
     with open(os.path.join(abis_dir, "Erc20.json"), encoding="utf-8") as f:
         abis["erc20_abi"] = json.load(f)
@@ -73,9 +68,7 @@ def get_config() -> dict:
     # Create contract instances
     w3core = w3.eth.contract(address=network_config["core_address"], abi=abis["core_abi"])
     w3passive_pool = w3.eth.contract(address=network_config["passive_pool_address"], abi=abis["passive_pool_abi"])
-    w3periphery = w3.eth.contract(address=network_config["periphery_address"], abi=abis["periphery_abi"])
     w3rusd = w3.eth.contract(address=network_config["rusd_address"], abi=abis["erc20_abi"])
-    w3usdc = w3.eth.contract(address=network_config["usdc_address"], abi=abis["erc20_abi"])
 
     return {
         "chain_id": chain_id,
@@ -85,8 +78,6 @@ def get_config() -> dict:
         "w3contracts": {
             "core": w3core,
             "passive_pool": w3passive_pool,
-            "periphery": w3periphery,
             "rusd": w3rusd,
-            "usdc": w3usdc,
         },
     }
