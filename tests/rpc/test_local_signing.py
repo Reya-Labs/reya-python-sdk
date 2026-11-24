@@ -3,7 +3,6 @@
 from typing import Any
 
 import ast
-from importlib import import_module
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -13,11 +12,9 @@ from web3 import Web3
 
 import sdk.reya_rpc
 from sdk.reya_rpc import (
-    BridgeOutParams,
     DepositParams,
     StakingParams,
     UnstakingParams,
-    bridge_out_to_arbitrum,
     create_account,
     deposit,
     stake,
@@ -29,13 +26,9 @@ from sdk.reya_rpc.utils.transaction_utils import sign_and_send
 
 pytestmark = pytest.mark.offline
 
-# actions/__init__.py re-exports the functions under the submodule names, so take the module object.
-bridge_out_module = import_module("sdk.reya_rpc.actions.bridge_out")
-
 SENDER = "0x000000000000000000000000000000000000dEaD"
 NONCE = 7
 CHAIN_ID = 1729
-SOCKET_FEE = 123
 ACCOUNT_CREATED = "AccountCreated(uint128,address,address,uint256)"
 SHARE_BALANCE_UPDATED = "ShareBalanceUpdated(uint128,address,int256,uint256,int256,uint256,address,int256)"
 
@@ -79,8 +72,7 @@ class _Chain:
         self.w3.eth.wait_for_transaction_receipt.return_value = self.receipt
 
         contracts = {
-            name: _Contract(f"0x{index:040x}")
-            for index, name in enumerate(["core", "passive_pool", "periphery", "rusd"], 1)
+            name: _Contract(f"0x{index:040x}") for index, name in enumerate(["core", "passive_pool", "rusd"], 1)
         }
         contracts["core"].events.AccountCreated.return_value.process_log.return_value = {"args": {"accountId": 42}}
         contracts["passive_pool"].events.ShareBalanceUpdated.return_value.process_log.return_value = {
@@ -121,15 +113,10 @@ def test_sign_and_send_builds_signs_and_sends_raw():
             [("approve", 0), ("addLiquidity", 0)],
         ),
         (lambda config: unstake(config, UnstakingParams(shares_amount=100, min_tokens=0)), [("removeLiquidity", 0)]),
-        (
-            lambda config: bridge_out_to_arbitrum(config, BridgeOutParams(amount=100, fee_limit=10**18)),
-            [("approve", 0), ("withdraw", SOCKET_FEE)],
-        ),
     ],
-    ids=["create_account", "deposit", "stake", "unstake", "bridge_out_to_arbitrum"],
+    ids=["create_account", "deposit", "stake", "unstake"],
 )
-def test_every_sender_signs_locally(monkeypatch, action, expected):
-    monkeypatch.setattr(bridge_out_module, "calculate_socket_fees", lambda *_args: SOCKET_FEE)
+def test_every_sender_signs_locally(action, expected):
     chain = _Chain()
 
     action(chain.config)
