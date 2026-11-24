@@ -159,6 +159,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the spec repo.
 
 ### Removed
+- `sdk.reya_rpc` no longer bridges funds between Reya Network and another
+  chain. The Socket bridge helpers are removed: `bridge_in_from_arbitrum`,
+  `bridge_out_to_arbitrum`, `BridgeInParams`, `BridgeOutParams`, the generic
+  `bridge_in` and `bridge_out` behind them, `calculate_socket_fees`, the
+  `SocketVaultWithPayload` and `SocketControllerWithPayload` ABIs, and the
+  examples `examples/rpc/bridge_in_and_deposit.py` and
+  `examples/rpc/withdraw_and_bridge_out.py`. `BridgeFeeExceededError` and
+  `NetworkConfigurationError`, which only those helpers raised, go with them.
+  To move funds in or out of Reya Network, bridge through the Reya app.
+  `deposit`, `withdraw`, `transfer`, `stake` and `unstake` are unchanged, and
+  `get_config()` returns the same contracts as before.
 - `sdk.reya_rpc` dropped helpers that cannot work any more. `trade`/`TradeParams`
   and `examples/rpc/trade_execution.py` sent the legacy AMM `MatchOrder` core
   command, which mainnet stopped accepting at the 28 Sep cutover;

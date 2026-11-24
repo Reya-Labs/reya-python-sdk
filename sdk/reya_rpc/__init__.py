@@ -1,14 +1,10 @@
 # Actions
 from sdk.reya_rpc.actions import (
-    BridgeInParams,
-    BridgeOutParams,
     DepositParams,
     StakingParams,
     TransferParams,
     UnstakingParams,
     WithdrawParams,
-    bridge_in_from_arbitrum,
-    bridge_out_to_arbitrum,
     create_account,
     deposit,
     stake,
@@ -28,16 +24,12 @@ from sdk.reya_rpc.types import CommandType, MarketIds, MarketPriceStreams, Marke
 
 __all__ = [
     # Actions - Parameter classes
-    "BridgeInParams",
-    "BridgeOutParams",
     "DepositParams",
     "StakingParams",
     "TransferParams",
     "UnstakingParams",
     "WithdrawParams",
     # Actions - Functions
-    "bridge_in_from_arbitrum",
-    "bridge_out_to_arbitrum",
     "create_account",
     "deposit",
     "stake",
