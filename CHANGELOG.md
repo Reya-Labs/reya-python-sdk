@@ -173,7 +173,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `load_contract_abis()` no longer loads the `PeripheryProxy` ABI, which held
   only the two Socket entry points. To move funds in or out of Reya Network,
   bridge through the Reya app. `create_account`, `deposit`, `withdraw`,
-  `transfer`, `stake` and `unstake` are unchanged.
+  `transfer`, `stake` and `unstake` are not affected by this removal.
 - `sdk.reya_rpc` dropped helpers that cannot work any more. `trade`/`TradeParams`
   and `examples/rpc/trade_execution.py` sent the legacy AMM `MatchOrder` core
   command, which mainnet stopped accepting at the 28 Sep cutover;
