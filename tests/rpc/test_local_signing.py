@@ -72,8 +72,7 @@ class _Chain:
         self.w3.eth.wait_for_transaction_receipt.return_value = self.receipt
 
         contracts = {
-            name: _Contract(f"0x{index:040x}")
-            for index, name in enumerate(["core", "passive_pool", "periphery", "rusd"], 1)
+            name: _Contract(f"0x{index:040x}") for index, name in enumerate(["core", "passive_pool", "rusd"], 1)
         }
         contracts["core"].events.AccountCreated.return_value.process_log.return_value = {"args": {"accountId": 42}}
         contracts["passive_pool"].events.ShareBalanceUpdated.return_value.process_log.return_value = {
